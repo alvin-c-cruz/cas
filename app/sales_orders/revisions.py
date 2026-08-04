@@ -141,86 +141,99 @@ from app.delivery_receipts.models import so_line_open_qty  # noqa: E402
 
 
 def _delivered_qty(item):
-    """Quantity already committed by non-draft, non-cancelled DRs.
-
-    Delivered is derived, never stored: so_line_open_qty(item) is
-    ordered-minus-committed, so ordered-minus-open recovers committed.
-    """
+    """Quantity already committed by non-draft, non-cancelled DRs."""
     return Decimal(str(item.quantity or 0)) - so_line_open_qty(item)
+
+
+def _line_label(item):
+    return item.product.code if item.product else 'line %s' % item.line_number
 
 
 def validate_amendment(so, new_lines):
     """Return a list of refusal messages for a proposed amendment; [] if valid.
 
-    `new_lines` is the parsed submitted line list (dicts with product_id and
-    quantity) -- not ORM objects. Several submitted lines may share a
-    product_id; they are summed per product before comparing against each
-    existing line.
+    Keys submitted lines on `so_item_id` -- the SAME identity Task 6's
+    _apply_amended_so_lines uses to apply them.
 
-    Three rules, each protecting something a crafted POST must not be able to
-    corrupt:
-      1. A line's new quantity may not fall below what has already been
-         DELIVERED (so_line_open_qty would go negative -- Order Monitoring
-         corruption / potential over-delivery). A reduction below delivered is
-         a RETURN and belongs in a credit memo, not an amendment.
-      2. A line with any deliveries may not be REMOVED -- same rule at zero.
-         The per-line close already covers "stop further delivery without
-         rewriting history".
-      3. On a BILLED Sales Order (so.sales_invoice_id is not None), only
-         INCREASES are permitted -- any decrease, and any removal, is refused.
-         An increase only creates future obligation; a decrease would
-         contradict an invoice that is already posted.
+    VALIDATION MUST MIRROR APPLICATION. An earlier version aggregated submitted
+    quantities per PRODUCT and compared that total against every existing line
+    sharing the product. Because an order may legitimately carry several lines
+    of one product (tranches with different delivery dates/sites), a caller
+    could submit [row A -> 0, row B -> 5000] and pass: each row was checked
+    against the 5000 TOTAL rather than its own value, so a fully-delivered
+    tranche could be zeroed while a sibling absorbed the number. Verified
+    exploitable. Per-row keying makes that shape unrepresentable.
+
+    Never raises and never mutates -- the route flashes these and re-renders.
     """
     errors = []
     billed = so.sales_invoice_id is not None
 
     submitted = {}
     for line in new_lines:
-        pid = line.get('product_id')
-        if pid in (None, '', 'null'):
-            continue
+        raw_id = line.get('so_item_id')
+        try:
+            item_id = int(raw_id) if raw_id not in (None, '', 'null') else None
+        except (ValueError, TypeError):
+            # Unparseable id -- treat as a NEW line rather than raising. The
+            # contract is "return messages", so a crafted POST must not 500.
+            item_id = None
+        if item_id is None:
+            continue  # a newly added line has no existing row to guard
+
         try:
             qty = Decimal(str(line.get('quantity') or 0))
-        except (InvalidOperation, TypeError):
+        except (InvalidOperation, TypeError, ValueError):
+            qty = Decimal('0')
+
+        if item_id in submitted:
+            errors.append(
+                'Malformed submission: two lines target the same original row '
+                '(id %s). Reload the Sales Order and try again.' % item_id)
             continue
-        pid = int(pid)
-        submitted[pid] = submitted.get(pid, Decimal('0')) + qty
+        submitted[item_id] = qty
 
     for item in so.line_items:
-        delivered = _delivered_qty(item)
-        # getattr-defensive: real SalesOrderItem rows always carry `product`/
-        # `line_number`, but this is exercised in unit tests against plain fake
-        # line objects that expose only product_id/quantity -- the label must
-        # degrade gracefully rather than raise on either shape.
-        product = getattr(item, 'product', None)
-        line_number = getattr(item, 'line_number', None)
-        if product is not None:
-            label = product.code
-        elif line_number is not None:
-            label = f'line {line_number}'
-        else:
-            label = f'product {item.product_id}'
+        label = _line_label(item)
         ordered = Decimal(str(item.quantity or 0))
 
-        if item.product_id not in submitted:
-            if delivered > 0:
+        # A closed line's remaining quantity is already abandoned. Guard it on
+        # its OWN terms: so_line_open_qty returns 0 unconditionally for a closed
+        # line, which would make _delivered_qty read as the full ordered amount
+        # and produce a refusal claiming everything was delivered when nothing
+        # may have been.
+        if item.line_status == 'closed':
+            if item.id not in submitted:
                 errors.append(
-                    f'{label}: cannot remove a line with {delivered} already delivered. '
-                    f'Close the line instead to stop further delivery.')
-            elif billed:
+                    '%s: cannot remove a closed line. Its history stays on the '
+                    'order.' % label)
+            elif submitted[item.id] != ordered:
                 errors.append(
-                    f'{label}: cannot remove a line from a billed Sales Order. '
-                    f'Void the invoice first.')
+                    '%s: this line is closed -- its quantity can no longer be '
+                    'changed.' % label)
             continue
 
-        new_qty = submitted[item.product_id]
+        delivered = _delivered_qty(item)
+
+        if item.id not in submitted:
+            if delivered > 0:
+                errors.append(
+                    '%s: cannot remove a line with %s already delivered. Close '
+                    'the line instead to stop further delivery.' % (label, delivered))
+            elif billed:
+                errors.append(
+                    '%s: cannot remove a line from a billed Sales Order. Void '
+                    'the invoice first.' % label)
+            continue
+
+        new_qty = submitted[item.id]
         if new_qty < delivered:
             errors.append(
-                f'{label}: new quantity {new_qty} is below the {delivered} already '
-                f'delivered. Raise a credit memo instead of reducing the order.')
+                '%s: new quantity %s is below the %s already delivered. Raise a '
+                'credit memo instead of reducing the order.' % (label, new_qty, delivered))
         elif billed and new_qty < ordered:
             errors.append(
-                f'{label}: quantity cannot be reduced on a billed Sales Order '
-                f'(only increases are allowed). Void the invoice first.')
+                '%s: quantity cannot be reduced on a billed Sales Order (only '
+                'increases are allowed). Void the invoice first.' % label)
 
     return errors

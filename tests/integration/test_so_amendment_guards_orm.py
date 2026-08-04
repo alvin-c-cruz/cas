@@ -131,12 +131,12 @@ def test_amendment_against_partially_delivered_line(client, db_session, branch, 
     db_session.refresh(soi)
 
     # Below delivered (3000) -> refused.
-    errs = validate_amendment(so, [{'product_id': soi.product_id, 'quantity': '2000'}])
+    errs = validate_amendment(so, [{'so_item_id': soi.id, 'quantity': '2000'}])
     assert len(errs) == 1
     assert '3000' in errs[0] and 'delivered' in errs[0].lower()
 
     # Exactly delivered (3000) -> allowed.
-    errs = validate_amendment(so, [{'product_id': soi.product_id, 'quantity': '3000'}])
+    errs = validate_amendment(so, [{'so_item_id': soi.id, 'quantity': '3000'}])
     assert errs == []
 
 
@@ -152,10 +152,50 @@ def test_amendment_against_billed_so(client, db_session, branch, customer, produ
     db_session.refresh(so)
 
     # Increase -> allowed.
-    errs = validate_amendment(so, [{'product_id': soi.product_id, 'quantity': '7000'}])
+    errs = validate_amendment(so, [{'so_item_id': soi.id, 'quantity': '7000'}])
     assert errs == []
 
     # Decrease -> refused.
-    errs = validate_amendment(so, [{'product_id': soi.product_id, 'quantity': '4000'}])
+    errs = validate_amendment(so, [{'so_item_id': soi.id, 'quantity': '4000'}])
     assert len(errs) == 1
     assert 'billed' in errs[0].lower()
+
+
+def test_exploit_two_tranches_same_product_guarded_independently_real_orm(
+        client, db_session, branch, customer, product):
+    """THE exploit, proved against real ORM objects and the real so_line_open_qty
+    -- not just the unit-test fakes. A confirmed SO carries two lines of the SAME
+    product (legitimate: different delivery tranches). One line has a real
+    approved Delivery Receipt against it (fully delivered); the other has none.
+    Submitting [delivered line -> 0, untouched sibling -> absorb the total] must
+    be refused, proving the guard cannot be defeated by aggregating on product_id
+    the way the old (defective) implementation did.
+    """
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    soi1 = so.line_items[0]
+
+    # A second tranche of the SAME product on the same order.
+    from app.sales_orders.models import SalesOrderItem
+    soi2 = SalesOrderItem(
+        sales_order_id=so.id, line_number=2, product_id=product.id,
+        quantity=Decimal('2000'), unit_price=Decimal('4.20'),
+        amount=Decimal('8400.00'),
+    )
+    db_session.add(soi2)
+    db_session.commit()
+    db_session.refresh(so)
+
+    # Line 1 is fully delivered via a real approved DR.
+    _approved_dr(db_session, branch, customer, so, soi1, Decimal('3000'), dr_number='DR-TEST-2')
+    db_session.refresh(so)
+    db_session.refresh(soi1)
+    db_session.refresh(soi2)
+
+    # Exploit shape: zero out the fully-delivered tranche, dump its quantity
+    # onto the untouched sibling of the same product.
+    errs = validate_amendment(so, [
+        {'so_item_id': soi1.id, 'quantity': '0'},
+        {'so_item_id': soi2.id, 'quantity': '5000'},
+    ])
+    assert len(errs) == 1
+    assert '3000' in errs[0] and 'delivered' in errs[0].lower()
