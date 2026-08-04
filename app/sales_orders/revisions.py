@@ -170,7 +170,16 @@ def validate_amendment(so, new_lines):
     billed = so.sales_invoice_id is not None
 
     submitted = {}
-    for line in new_lines:
+    for line in (new_lines or []):
+        # new_lines comes straight from json.loads(request.form['line_items']),
+        # so it can be any JSON shape at all. Anything that is not an object is
+        # malformed input, not a line.
+        if not isinstance(line, dict):
+            errors.append(
+                'Malformed submission: expected a line object. Reload the Sales '
+                'Order and try again.')
+            continue
+
         raw_id = line.get('so_item_id')
         try:
             item_id = int(raw_id) if raw_id not in (None, '', 'null') else None
@@ -181,10 +190,22 @@ def validate_amendment(so, new_lines):
         if item_id is None:
             continue  # a newly added line has no existing row to guard
 
+        # None means "unreadable", which is NOT the same as zero. Do not guess a
+        # value for a field whose most destructive value is the one you would be
+        # guessing -- and the applier (_dec in views.py) writes NULL for the same
+        # garbage, so coercing to 0 here would validate a number that never gets
+        # stored. Validation must mirror application.
+        raw_qty = line.get('quantity')
         try:
-            qty = Decimal(str(line.get('quantity') or 0))
+            qty = (Decimal(str(raw_qty))
+                   if raw_qty not in (None, '', 'null') else None)
         except (InvalidOperation, TypeError, ValueError):
-            qty = Decimal('0')
+            qty = None
+        # Decimal accepts 'NaN' and 'Infinity' happily; a later ordered
+        # comparison against a quiet NaN then signals InvalidOperation, which in
+        # the route is a 500 rather than a flashed refusal.
+        if qty is not None and not qty.is_finite():
+            qty = None
 
         if item_id in submitted:
             errors.append(
@@ -202,6 +223,11 @@ def validate_amendment(so, new_lines):
         # line, which would make _delivered_qty read as the full ordered amount
         # and produce a refusal claiming everything was delivered when nothing
         # may have been.
+        # Only line_status is special-cased here. so_line_open_qty ALSO
+        # short-circuits to 0 when so.status is 'cancelled'/'closed', which would
+        # make _delivered_qty read as the full ordered quantity -- but the route
+        # admits only status == 'confirmed', and the effect is over-refusal, so
+        # it is unreachable and fail-closed either way.
         if item.line_status == 'closed':
             if item.id not in submitted:
                 errors.append(
@@ -227,6 +253,11 @@ def validate_amendment(so, new_lines):
             continue
 
         new_qty = submitted[item.id]
+        if new_qty is None:
+            errors.append(
+                '%s: could not read the submitted quantity. Re-enter it and try '
+                'again.' % label)
+            continue
         if new_qty < delivered:
             errors.append(
                 '%s: new quantity %s is below the %s already delivered. Raise a '

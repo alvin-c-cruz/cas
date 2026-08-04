@@ -156,3 +156,52 @@ def test_a_closed_line_gets_its_own_message_not_a_delivered_claim():
     assert len(errs) == 1
     assert 'closed' in errs[0].lower()
     assert 'delivered' not in errs[0].lower()
+
+
+def test_hostile_payloads_never_raise():
+    """Contract: return messages, never raise. A crafted POST must not 500.
+
+    'NaN' and 'Infinity' are the interesting ones -- Decimal() ACCEPTS both, so
+    the parse guard does not fire and a later ordered comparison against a quiet
+    NaN signals InvalidOperation.
+    """
+    so = _SO([_Line(1, 1, 3000, 3000)])
+    for bad in ([{'so_item_id': 'abc', 'quantity': '500'}],
+                [{'so_item_id': 1, 'quantity': 'xyz'}],
+                [{'so_item_id': 1, 'quantity': 'NaN'}],
+                [{'so_item_id': 1, 'quantity': 'sNaN'}],
+                [{'so_item_id': 1, 'quantity': 'Infinity'}],
+                [{'so_item_id': 1, 'quantity': '-Infinity'}],
+                [{'so_item_id': None, 'quantity': None}],
+                [{}],
+                ['not-a-dict'],
+                [None],
+                [[1, 2]],
+                None,
+                []):
+        result = validate_amendment(so, bad)
+        assert isinstance(result, list)
+
+
+def test_an_unreadable_quantity_is_refused_not_treated_as_zero():
+    """The applier (_dec in views.py) writes NULL for the same garbage, so
+    coercing to 0 here would validate a number that never gets stored --
+    validation must mirror application. Zero is also the most destructive value
+    to guess."""
+    so = _SO([_Line(1, 1, 3000, 0)])          # undelivered, unbilled
+    errs = validate_amendment(so, [{'so_item_id': 1, 'quantity': 'xyz'}])
+    assert len(errs) == 1
+    assert 'could not read' in errs[0].lower()
+
+
+def test_infinity_is_not_accepted_as_a_legal_increase():
+    so = _SO([_Line(1, 1, 3000, 0)])
+    errs = validate_amendment(so, [{'so_item_id': 1, 'quantity': 'Infinity'}])
+    assert len(errs) == 1
+    assert 'could not read' in errs[0].lower()
+
+
+def test_a_non_dict_line_is_reported_not_crashed_on():
+    so = _SO([_Line(1, 1, 3000, 0)])
+    errs = validate_amendment(so, ['garbage'])
+    assert any('malformed' in e.lower() for e in errs)
