@@ -5,8 +5,8 @@ from datetime import date
 from decimal import Decimal
 
 from app import db
-from app.sales_orders.models import SalesOrder
-from app.sales_orders.revisions import build_snapshot, summarize_change
+from app.sales_orders.models import SalesOrder, SalesOrderItem
+from app.sales_orders.revisions import build_snapshot, summarize_change, write_revision
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
@@ -71,12 +71,16 @@ def confirmed_so(db_session, main_branch, accountant_user):
     item.calculate_amounts()
     db_session.add(item)
     db_session.flush()
-    # Force the line_items collection's FIRST lazy load here, inside the
-    # fixture. Its very first query-triggered load is what the ORM uses as the
-    # occasion to fully materialise the row -- deferring that first touch into
-    # the test body made the *test's own* first read of so.line_items already
-    # come back at column scale (Decimal('3000.0000')), which defeated the
-    # "form-parsed value" premise this fixture exists to set up.
+    # Keep the flushed instance alive here, inside the fixture, by forcing a
+    # reference to it via so.line_items[0]. The real mechanism is NOT "first
+    # lazy load coerces the value" -- SQLAlchemy's identity map is a
+    # WeakInstanceDict, so once the clean flushed instance is garbage
+    # collected, the NEXT access reloads it from the row at full column scale
+    # (Decimal('3000.0000')). Deferring this reference into the test body left
+    # nothing holding the instance alive between the fixture returning and the
+    # test's first read, so that first read could already come back at column
+    # scale -- which defeated the "form-parsed value" premise this fixture
+    # exists to set up.
     so.line_items[0]
     return so
 
@@ -88,11 +92,19 @@ def test_unchanged_order_reports_no_change_across_a_commit_cycle(
     With a raw str(Decimal) this fails on EVERY line -- '3000' from the form
     versus '3000.0000' from Numeric(15,4)."""
     before = build_snapshot(confirmed_so)
+    # Pin the premise. Without these the test can pass VACUOUSLY: if `before`
+    # were already at column scale, both sides would read '3000.0000' and the
+    # bare-str(Decimal) mutation would survive. The fixture keeps the
+    # form-shaped instance alive on purpose (SQLAlchemy's identity map is a
+    # WeakInstanceDict -- once the clean flushed instance is collected, the
+    # collection reloads it from the row at full column scale).
+    assert before['lines'][0]['quantity'] == '3000'
 
     db_session.commit()
     db_session.expire_all()
     reloaded = db_session.get(SalesOrder, confirmed_so.id)
     after = build_snapshot(reloaded)
+    assert reloaded.line_items[0].quantity == Decimal('3000.0000')
 
     assert summarize_change(before, after)['changes'] == []
 
@@ -172,3 +184,59 @@ def test_renumbering_lines_on_reorder_is_not_a_change(db_session, main_branch,
     after = build_snapshot(so)
 
     assert summarize_change(before, after)['changes'] == []
+
+
+def test_write_revision_flushes_before_snapshotting_an_appended_line(
+        db_session, confirmed_so, accountant_user):
+    """The amend route (Task 6) may append a new SalesOrderItem without an
+    explicit flush of its own; write_revision must flush before either
+    snapshot is built, because the diff's identity is the row id. Without that
+    flush, the added line's id is still None and hits the fail-closed guard in
+    _by_line_id -- it must RAISE, never silently vanish from a revision that
+    carries a reason and an authorizing PO."""
+    write_revision(confirmed_so, user_id=accountant_user.id)  # revision 0
+    db_session.flush()
+
+    new_item = SalesOrderItem(
+        line_number=2, product_id=confirmed_so.line_items[0].product_id,
+        quantity=Decimal('10'), unit_price=Decimal('1.00'))
+    new_item.calculate_amounts()
+    # Append to the relationship collection (as the amend route does), not a
+    # bare FK assignment -- so.line_items was already loaded by the fixture,
+    # and only appending updates that cached in-memory collection immediately.
+    confirmed_so.line_items.append(new_item)
+    # Deliberately NOT flushed here -- new_item.id is still None at this point.
+
+    rev = write_revision(confirmed_so, user_id=accountant_user.id,
+                         reason='add tranche')
+    summary = json.loads(rev.change_summary)
+    added = [c for c in summary['changes'] if c['kind'] == 'added']
+    assert len(added) == 1
+
+
+def test_write_revisions_own_flush_does_not_depend_on_caller_autoflush(
+        db_session, confirmed_so, accountant_user):
+    """write_revision's internal flush must hold even when the SESSION's
+    autoflush is suppressed around the call -- as app/utils/concurrency.py
+    does elsewhere in this codebase (db.session.no_autoflush) to dodge a
+    premature query-triggered flush. Inside that context, latest_revision()'s
+    own query can no longer implicitly flush a pending appended line for us;
+    only write_revision's explicit db.session.flush() can. Without it the
+    appended line's id stays None and the fail-closed _by_line_id guard
+    raises instead of completing."""
+    write_revision(confirmed_so, user_id=accountant_user.id)
+    db_session.flush()
+
+    new_item = SalesOrderItem(
+        line_number=2, product_id=confirmed_so.line_items[0].product_id,
+        quantity=Decimal('10'), unit_price=Decimal('1.00'))
+    new_item.calculate_amounts()
+    confirmed_so.line_items.append(new_item)
+
+    with db.session.no_autoflush:
+        rev = write_revision(confirmed_so, user_id=accountant_user.id,
+                             reason='add tranche')
+
+    summary = json.loads(rev.change_summary)
+    added = [c for c in summary['changes'] if c['kind'] == 'added']
+    assert len(added) == 1

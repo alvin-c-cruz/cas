@@ -24,6 +24,7 @@ HEADER_FIELDS = {
     'reference': 'Reference',
     'notes': 'Notes',
     'salesperson_id': 'Salesperson',
+    'salesperson_name': 'Salesperson',
     'subtotal': 'Subtotal',
     'vat_amount': 'VAT',
     'total_amount': 'Total',
@@ -57,6 +58,11 @@ def _s(value):
     if value is None:
         return None
     if isinstance(value, Decimal):
+        # Decimal('-0') == Decimal('0') is True but they would serialise as
+        # '-0' and '0' -- equal values with unequal strings is precisely the
+        # failure mode this normalisation exists to prevent.
+        if value == 0:
+            value = abs(value)
         # normalize() collapses trailing zeros; format(..., 'f') avoids the
         # scientific notation normalize() produces for large integral values
         # (Decimal('3000').normalize() is Decimal('3E+3')).
@@ -66,9 +72,26 @@ def _s(value):
     return str(value)
 
 
+def _money(value):
+    """DISPLAY form for money: always 2 decimal places.
+
+    Deliberately separate from _s(). _s canonicalises for COMPARISON, which
+    means Decimal('4.20') collapses to '4.2' -- correct for detecting a change,
+    wrong on a printed job order slip where money must read as 4.20.
+    """
+    if value is None:
+        return None
+    return format(Decimal(str(value)).quantize(Decimal('0.01')), 'f')
+
+
 def build_snapshot(so):
     """Complete order state -- header + all lines -- as of right now."""
     header = {k: _s(getattr(so, k, None)) for k in HEADER_FIELDS}
+    # Unlike customer (which has customer_name alongside the suppressed
+    # customer_id) salesperson had no readable companion, so a reassignment
+    # could not be reported at all.
+    header['salesperson_name'] = (so.salesperson.full_name
+                                  if so.salesperson else None)
     lines = []
     for item in sorted(so.line_items, key=lambda i: (i.line_number or 0, i.id or 0)):
         row = {}
@@ -87,30 +110,51 @@ def build_snapshot(so):
                           if item.withholding_tax else None)
         row['uom_display'] = (item.unit_of_measure.code
                               if item.unit_of_measure else item.uom_text)
+        # Composite so a free-text uom_text change is detected even when the FK
+        # is null on both sides.
+        row['uom_key'] = '%s|%s' % (item.unit_of_measure_id or '',
+                                    item.uom_text or '')
+        # Money is COMPARED via _s (canonical) but DISPLAYED at 2 dp.
+        row['unit_price_display'] = _money(item.unit_price)
+        row['amount_display'] = _money(item.amount)
         lines.append(row)
     return {'header': header, 'lines': lines}
 
 
 # Line fields whose change is user-meaningful and therefore summarised.
-# (compare_field, label, display_field). The comparison is done on the FIRST
+# Key -> label shown in the revision history panel. `quantity` is handled
+# specially (kind 'qty') so it renders as the headline change it usually is.
+# (compared field, label, display field). The comparison is done on the FIRST
 # element and the value shown to the reader comes from the THIRD -- so a change
 # is detected on the stable id but rendered as a human-readable name. Two
 # delivery sites can share a name (CustomerDeliverySite has no unique constraint
 # on (customer_id, name)), so comparing names alone would hide a real change.
-# `quantity` is handled specially (kind 'qty') so it renders as the headline
-# change it usually is.
 SUMMARISED_LINE_FIELDS = (
+    # The amend route updates rows IN PLACE, so a line can change product while
+    # keeping its id. Without this entry that change is invisible -- and worse,
+    # _line_label renders the NEW product beside the OLD quantity.
+    ('product_id', 'Product', 'product_name'),
     ('quantity', 'Qty', 'quantity'),
-    ('unit_price', 'Unit price', 'unit_price'),
-    ('amount', 'Amount', 'amount'),
+    ('unit_price', 'Unit price', 'unit_price_display'),
+    ('amount', 'Amount', 'amount_display'),
     ('vat_category', 'VAT', 'vat_category'),
     ('vat_rate', 'VAT rate', 'vat_rate'),
-    ('unit_of_measure_id', 'UOM', 'uom_display'),
+    # Compared on a composite key: uom_text is a real nullable free-text column
+    # used whenever unit_of_measure_id is null, so comparing the id alone makes
+    # a 'pcs' -> 'kg' change invisible. "3000 pcs" and "3000 kg" are different
+    # manufacturing instructions.
+    ('uom_key', 'UOM', 'uom_display'),
     ('delivery_date', 'Delivery date', 'delivery_date'),
     ('delivery_site_id', 'Delivery site', 'delivery_site_name'),
     ('wt_id', 'WT', 'wt_code'),
     ('line_status', 'Line status', 'line_status'),
 )
+
+# Fields whose change is fully explained by another reported change. `amount` is
+# derived (qty x price) exactly as the header totals are, and the header totals
+# are already suppressed for that reason -- reporting it alongside its own
+# inputs double-counts one edit.
+_DERIVED_LINE_FIELDS = {'amount': ('quantity', 'unit_price')}
 
 
 def _by_line_id(lines):
@@ -128,14 +172,27 @@ def _by_line_id(lines):
     rebuilding them (see Task 6): the rebuild would issue new ids every save and
     destroy the only stable identity these rows have.
     """
-    return {line.get('line_id'): line
-            for line in lines if line.get('line_id') is not None}
+    indexed = {}
+    for line in lines:
+        line_id = line.get('line_id')
+        if line_id is None:
+            # Fail CLOSED. Silently skipping an unidentified line makes the diff
+            # under-report: an added line whose row was never flushed would
+            # produce an empty change summary on a revision that carries a
+            # reason and an authorizing PO. write_revision flushes first so this
+            # is unreachable; if it fires, something upstream is wrong.
+            raise ValueError(
+                'snapshot line has no line_id -- the row was not flushed before '
+                'build_snapshot(); write_revision() must flush first')
+        indexed[line_id] = line
+    return indexed
 
 
 def _line_label(line):
     code = line.get('product_code') or '?'
     name = line.get('product_name') or ''
-    return f'{code} - {name}'.strip().rstrip('-').strip()
+    # Do NOT rstrip('-') -- that eats a trailing hyphen from a real product name.
+    return f'{code} - {name}' if name else code
 
 
 def summarize_change(prev, new):
@@ -160,10 +217,17 @@ def summarize_change(prev, new):
         prev_line = prev_lines.get(line_id)
         if prev_line is None:
             changes.append({'kind': 'added', 'line': _line_label(new_line),
-                            'old': None, 'new': new_line.get('quantity')})
+                            'old': None,
+                            'new': (new_line.get('quantity')
+                                    or new_line.get('amount_display'))})
             continue
         for compare_field, label, display_field in SUMMARISED_LINE_FIELDS:
             if prev_line.get(compare_field) == new_line.get(compare_field):
+                continue
+            # Skip a derived field whose own inputs already changed -- otherwise
+            # one quantity edit reports twice (Qty and Amount).
+            inputs = _DERIVED_LINE_FIELDS.get(compare_field)
+            if inputs and any(prev_line.get(f) != new_line.get(f) for f in inputs):
                 continue
             old_v = prev_line.get(display_field)
             new_v = new_line.get(display_field)
@@ -178,7 +242,9 @@ def summarize_change(prev, new):
     for line_id, prev_line in prev_lines.items():
         if line_id not in new_lines:
             changes.append({'kind': 'removed', 'line': _line_label(prev_line),
-                            'old': prev_line.get('quantity'), 'new': None})
+                            'old': (prev_line.get('quantity')
+                                    or prev_line.get('amount_display')),
+                            'new': None})
 
     return {'changes': changes}
 
@@ -192,6 +258,10 @@ def latest_revision(so_id):
 
 def write_revision(so, user_id, reason=None, authorizing_po=None):
     """Append the next revision for *so*. Adds to the session; does NOT commit."""
+    # Flush first: a line appended but not yet flushed has id None, and the
+    # snapshot's identity depends on that id existing.
+    db.session.flush()
+
     prev = latest_revision(so.id)
     next_number = 0 if prev is None else prev.revision_number + 1
 
