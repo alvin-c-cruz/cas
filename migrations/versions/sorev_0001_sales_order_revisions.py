@@ -5,8 +5,7 @@ Revises: bomloss_0001
 Create Date: 2026-08-04
 
 R-01 post-confirm amendment. Append-only revision log for Sales Orders: one row
-per revision holding a full JSON snapshot of the order as of that revision, plus
-a cached change summary against the previous one.
+per revision holding a full JSON snapshot of the order as of that revision.
 
 New table only -- no ALTER on an existing table, so no batch_alter_table needed.
 """
@@ -27,7 +26,6 @@ def upgrade():
         sa.Column('sales_order_id', sa.Integer(), nullable=False),
         sa.Column('revision_number', sa.Integer(), nullable=False),
         sa.Column('snapshot_json', sa.Text(), nullable=False),
-        sa.Column('change_summary', sa.Text(), nullable=True),
         sa.Column('reason', sa.String(length=500), nullable=True),
         sa.Column('authorizing_po_number', sa.String(length=100), nullable=True),
         sa.Column('amended_by_id', sa.Integer(), nullable=True),

@@ -29,9 +29,6 @@ class SalesOrderRevision(db.Model):
     # Complete order state -- header + all lines -- AS OF this revision.
     snapshot_json = db.Column(db.Text, nullable=False)
 
-    # Cached JSON diff vs. revision N-1; null on Rev 0 (nothing to diff against).
-    change_summary = db.Column(db.Text, nullable=True)
-
     # Required (>=10 chars) for N >= 1; null on Rev 0.
     reason = db.Column(db.String(500), nullable=True)
 

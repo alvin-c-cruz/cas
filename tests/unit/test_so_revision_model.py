@@ -12,7 +12,6 @@ def test_revision_row_persists_all_fields(db_session):
         sales_order_id=1,
         revision_number=0,
         snapshot_json='{"header": {}, "lines": []}',
-        change_summary=None,
         reason=None,
         authorizing_po_number=None,
         amended_by_id=None,
