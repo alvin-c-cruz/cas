@@ -165,3 +165,15 @@ def test_write_revisions_own_flush_does_not_depend_on_caller_autoflush(
         rev = write_revision(confirmed_so, user_id=None)
     ids = [l['line_id'] for l in json.loads(rev.snapshot_json)['lines']]
     assert None not in ids and len(ids) == 2
+
+
+def test_snapshot_captures_confirmation_provenance(db_session, confirmed_so):
+    """Rev 0 is 'the order as originally confirmed' -- a snapshot that cannot say
+    who confirmed it is not the complete record this now claims to be."""
+    header = build_snapshot(confirmed_so)['header']
+    for field in ('confirmed_by_id', 'confirmed_at',
+                  'cancelled_by_id', 'cancelled_at', 'cancel_reason'):
+        assert field in header
+    line = build_snapshot(confirmed_so)['lines'][0]
+    for field in ('vat_amount', 'closed_by_id', 'closed_at', 'closed_reason'):
+        assert field in line

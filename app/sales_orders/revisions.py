@@ -20,12 +20,16 @@ HEADER_FIELDS = (
     'customer_name', 'customer_tin', 'customer_address', 'customer_po_number',
     'customer_po_date', 'payment_terms', 'reference', 'notes', 'salesperson_id',
     'subtotal', 'vat_amount', 'vat_override', 'total_amount', 'status',
+    # Provenance: who confirmed this order as originally placed, when, and how cancellation
+    # (if any) was recorded. Rev 0 is 'the order as originally confirmed' -- losing provenance
+    # makes that snapshot incomplete.
+    'confirmed_by_id', 'confirmed_at', 'cancelled_by_id', 'cancelled_at', 'cancel_reason',
 )
 
 LINE_FIELDS = (
     'line_number', 'product_id', 'quantity', 'unit_of_measure_id', 'uom_text',
-    'unit_price', 'amount', 'vat_category', 'vat_rate', 'wt_id', 'line_status',
-    'closed_reason', 'line_total', 'delivery_date', 'delivery_site_id',
+    'unit_price', 'amount', 'vat_amount', 'vat_category', 'vat_rate', 'wt_id', 'line_status',
+    'closed_by_id', 'closed_at', 'closed_reason', 'line_total', 'delivery_date', 'delivery_site_id',
 )
 
 
