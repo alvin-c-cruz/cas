@@ -65,6 +65,36 @@ def test_no_change_yields_empty_change_list():
     assert summarize_change(prev, dict(prev))['changes'] == []
 
 
+def test_two_lines_of_the_same_product_are_tracked_separately():
+    """Split deliveries: one product legitimately occupies several lines.
+    Keying the diff on product alone collapses them and loses real changes."""
+    prev = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000', n=1),
+                  _line('P031', 'HTA PLASTIC TRAY', '2000', n=2)])
+    new = _snap([_line('P031', 'HTA PLASTIC TRAY', '7000', n=1),
+                 _line('P031', 'HTA PLASTIC TRAY', '2000', n=2)])
+    changes = summarize_change(prev, new)['changes']
+    assert changes == [{'kind': 'qty', 'line': 'P031 - HTA PLASTIC TRAY',
+                        'old': '3000', 'new': '7000'}]
+
+
+def test_unit_price_change_is_reported():
+    """A price correction changes no quantity -- it must still be recorded."""
+    prev = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000', price='4.20')])
+    new = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000', price='5.00')])
+    assert summarize_change(prev, new)['changes'] == [{
+        'kind': 'line_field', 'line': 'P031 - HTA PLASTIC TRAY',
+        'field': 'Unit price', 'old': '4.20', 'new': '5.00'}]
+
+
+def test_removing_one_of_two_same_product_lines_reports_one_removal():
+    prev = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000', n=1),
+                  _line('P031', 'HTA PLASTIC TRAY', '2000', n=2)])
+    new = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000', n=1)])
+    assert summarize_change(prev, new)['changes'] == [{
+        'kind': 'removed', 'line': 'P031 - HTA PLASTIC TRAY',
+        'old': '2000', 'new': None}]
+
+
 def test_multiple_simultaneous_changes_all_reported():
     prev = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000')])
     new = _snap([_line('P031', 'HTA PLASTIC TRAY', '7000'),

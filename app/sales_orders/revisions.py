@@ -65,14 +65,38 @@ def build_snapshot(so):
     return {'header': header, 'lines': lines}
 
 
-def _line_key(line):
-    """Identity of a line for diffing: the product it commits us to.
+# Line fields whose change is user-meaningful and therefore summarised.
+# Key -> label shown in the revision history panel. `quantity` is handled
+# specially (kind 'qty') so it renders as the headline change it usually is.
+SUMMARISED_LINE_FIELDS = {
+    'quantity': 'Qty',
+    'unit_price': 'Unit price',
+    'uom_text': 'UOM',
+    'delivery_date': 'Delivery date',
+    'delivery_site_id': 'Delivery site',
+    'vat_category': 'VAT',
+    'wt_id': 'WT',
+}
 
-    Keyed on product, NOT line_number -- reordering lines is not a change, and a
-    line whose product was swapped must read as removed+added (spec resolved
-    edge case 1), which falls out of this key naturally.
-    """
+
+def _product_key(line):
+    """Which product a line commits us to."""
     return line.get('product_id') or line.get('product_code')
+
+
+def _group_by_product(lines):
+    """Group lines by product, preserving their order within each group.
+
+    One product legitimately appears on SEVERAL lines -- per-line delivery_date
+    and delivery_site_id exist precisely so a product can ship in tranches. A
+    plain {product: line} dict silently collapses those to the last one and
+    loses real changes, so lines are grouped and then paired positionally
+    within each group.
+    """
+    groups = {}
+    for line in lines:
+        groups.setdefault(_product_key(line), []).append(line)
+    return groups
 
 
 def _line_label(line):
@@ -95,22 +119,35 @@ def summarize_change(prev, new):
             changes.append({'kind': 'header', 'field': label,
                             'old': old_v, 'new': new_v})
 
-    prev_lines = {_line_key(l): l for l in prev.get('lines', [])}
-    new_lines = {_line_key(l): l for l in new.get('lines', [])}
+    prev_groups = _group_by_product(prev.get('lines', []))
+    new_groups = _group_by_product(new.get('lines', []))
 
-    for key, line in new_lines.items():
-        if key not in prev_lines:
-            changes.append({'kind': 'added', 'line': _line_label(line),
-                            'old': None, 'new': line.get('quantity')})
-        elif prev_lines[key].get('quantity') != line.get('quantity'):
-            changes.append({'kind': 'qty', 'line': _line_label(line),
-                            'old': prev_lines[key].get('quantity'),
-                            'new': line.get('quantity')})
+    for key, new_lines in new_groups.items():
+        prev_lines = prev_groups.get(key, [])
+        for i, new_line in enumerate(new_lines):
+            if i >= len(prev_lines):
+                # More lines of this product than before -- a new tranche.
+                changes.append({'kind': 'added', 'line': _line_label(new_line),
+                                'old': None, 'new': new_line.get('quantity')})
+                continue
+            prev_line = prev_lines[i]
+            for field, label in SUMMARISED_LINE_FIELDS.items():
+                old_v, new_v = prev_line.get(field), new_line.get(field)
+                if old_v == new_v:
+                    continue
+                if field == 'quantity':
+                    changes.append({'kind': 'qty', 'line': _line_label(new_line),
+                                    'old': old_v, 'new': new_v})
+                else:
+                    changes.append({'kind': 'line_field',
+                                    'line': _line_label(new_line), 'field': label,
+                                    'old': old_v, 'new': new_v})
 
-    for key, line in prev_lines.items():
-        if key not in new_lines:
-            changes.append({'kind': 'removed', 'line': _line_label(line),
-                            'old': line.get('quantity'), 'new': None})
+    for key, prev_lines in prev_groups.items():
+        kept = len(new_groups.get(key, []))
+        for prev_line in prev_lines[kept:]:
+            changes.append({'kind': 'removed', 'line': _line_label(prev_line),
+                            'old': prev_line.get('quantity'), 'new': None})
 
     return {'changes': changes}
 
