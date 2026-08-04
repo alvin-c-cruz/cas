@@ -1,5 +1,6 @@
 """Unit tests -- SalesOrderRevision model."""
 import pytest
+from sqlalchemy.exc import IntegrityError
 from app import db
 from app.sales_orders.revision_models import SalesOrderRevision
 
@@ -30,8 +31,10 @@ def test_revision_number_is_unique_per_sales_order(db_session):
         db_session.add(SalesOrderRevision(
             sales_order_id=7, revision_number=n,
             snapshot_json='{}', branch_id=1))
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError) as excinfo:
         db_session.commit()
+    error_msg = str(excinfo.value)
+    assert 'sales_order_id' in error_msg and 'revision_number' in error_msg
     db_session.rollback()
 
 
