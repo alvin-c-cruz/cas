@@ -127,3 +127,100 @@ def write_revision(so, user_id, reason=None, authorizing_po=None):
     )
     db.session.add(rev)
     return rev
+
+
+# ── amendment guards ──────────────────────────────────────────────────────────
+#
+# A confirmed Sales Order can be amended (Task 6), but three refusals protect
+# delivery integrity and posted accounting. validate_amendment is pure and
+# side-effect free -- Task 6's route flashes each returned message and
+# re-renders the form, so this must never raise and must never mutate.
+from decimal import Decimal, InvalidOperation  # noqa: E402
+
+from app.delivery_receipts.models import so_line_open_qty  # noqa: E402
+
+
+def _delivered_qty(item):
+    """Quantity already committed by non-draft, non-cancelled DRs.
+
+    Delivered is derived, never stored: so_line_open_qty(item) is
+    ordered-minus-committed, so ordered-minus-open recovers committed.
+    """
+    return Decimal(str(item.quantity or 0)) - so_line_open_qty(item)
+
+
+def validate_amendment(so, new_lines):
+    """Return a list of refusal messages for a proposed amendment; [] if valid.
+
+    `new_lines` is the parsed submitted line list (dicts with product_id and
+    quantity) -- not ORM objects. Several submitted lines may share a
+    product_id; they are summed per product before comparing against each
+    existing line.
+
+    Three rules, each protecting something a crafted POST must not be able to
+    corrupt:
+      1. A line's new quantity may not fall below what has already been
+         DELIVERED (so_line_open_qty would go negative -- Order Monitoring
+         corruption / potential over-delivery). A reduction below delivered is
+         a RETURN and belongs in a credit memo, not an amendment.
+      2. A line with any deliveries may not be REMOVED -- same rule at zero.
+         The per-line close already covers "stop further delivery without
+         rewriting history".
+      3. On a BILLED Sales Order (so.sales_invoice_id is not None), only
+         INCREASES are permitted -- any decrease, and any removal, is refused.
+         An increase only creates future obligation; a decrease would
+         contradict an invoice that is already posted.
+    """
+    errors = []
+    billed = so.sales_invoice_id is not None
+
+    submitted = {}
+    for line in new_lines:
+        pid = line.get('product_id')
+        if pid in (None, '', 'null'):
+            continue
+        try:
+            qty = Decimal(str(line.get('quantity') or 0))
+        except (InvalidOperation, TypeError):
+            continue
+        pid = int(pid)
+        submitted[pid] = submitted.get(pid, Decimal('0')) + qty
+
+    for item in so.line_items:
+        delivered = _delivered_qty(item)
+        # getattr-defensive: real SalesOrderItem rows always carry `product`/
+        # `line_number`, but this is exercised in unit tests against plain fake
+        # line objects that expose only product_id/quantity -- the label must
+        # degrade gracefully rather than raise on either shape.
+        product = getattr(item, 'product', None)
+        line_number = getattr(item, 'line_number', None)
+        if product is not None:
+            label = product.code
+        elif line_number is not None:
+            label = f'line {line_number}'
+        else:
+            label = f'product {item.product_id}'
+        ordered = Decimal(str(item.quantity or 0))
+
+        if item.product_id not in submitted:
+            if delivered > 0:
+                errors.append(
+                    f'{label}: cannot remove a line with {delivered} already delivered. '
+                    f'Close the line instead to stop further delivery.')
+            elif billed:
+                errors.append(
+                    f'{label}: cannot remove a line from a billed Sales Order. '
+                    f'Void the invoice first.')
+            continue
+
+        new_qty = submitted[item.product_id]
+        if new_qty < delivered:
+            errors.append(
+                f'{label}: new quantity {new_qty} is below the {delivered} already '
+                f'delivered. Raise a credit memo instead of reducing the order.')
+        elif billed and new_qty < ordered:
+            errors.append(
+                f'{label}: quantity cannot be reduced on a billed Sales Order '
+                f'(only increases are allowed). Void the invoice first.')
+
+    return errors
