@@ -28,6 +28,7 @@ from app.utils.concurrency import claim_version, conflict_message, submitted_ver
 from app.sales_orders.preprinted_layout import (
     get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
     DATE_FORMATS, FIELD_LABELS, TEXT_KEYS)
+from app.sales_orders.revisions import write_revision
 
 sales_orders_bp = Blueprint('sales_orders', __name__, template_folder='templates')
 
@@ -620,6 +621,9 @@ def confirm(id):
     so.status = 'confirmed'
     so.confirmed_by_id = current_user.id
     so.confirmed_at = ph_now()
+    # Rev 0 -- the baseline every later amendment is measured against, and the
+    # snapshot that reproduces the job order slip issued to production.
+    write_revision(so, current_user.id)
     db.session.commit()
 
     log_update(
