@@ -5,6 +5,7 @@ write_revision touches the session but never commits -- the caller owns the
 transaction so a revision and the order edit that produced it land atomically.
 """
 import json
+from decimal import Decimal
 
 from app import db
 from app.sales_orders.revision_models import SalesOrderRevision
@@ -43,9 +44,23 @@ LINE_FIELDS = (
 
 
 def _s(value):
-    """JSON-safe, exact string form. Decimals keep full precision; dates ISO."""
+    """JSON-safe, CANONICAL string form. Dates ISO; Decimals normalised.
+
+    Normalising Decimals is not cosmetic -- it is load-bearing. The same value
+    stringifies differently depending on where it came from: a Numeric(15,4)
+    column read back from SQLite gives Decimal('3000.0000') -> '3000.0000',
+    while the amend route's own parser gives Decimal('3000') -> '3000'. Snapshots
+    are taken from the in-session object, so a diff would otherwise compare
+    DB-shaped strings against form-shaped strings and report a change on every
+    single line of an amendment that changed nothing at all.
+    """
     if value is None:
         return None
+    if isinstance(value, Decimal):
+        # normalize() collapses trailing zeros; format(..., 'f') avoids the
+        # scientific notation normalize() produces for large integral values
+        # (Decimal('3000').normalize() is Decimal('3E+3')).
+        return format(value.normalize(), 'f')
     if hasattr(value, 'isoformat'):
         return value.isoformat()
     return str(value)
@@ -55,10 +70,13 @@ def build_snapshot(so):
     """Complete order state -- header + all lines -- as of right now."""
     header = {k: _s(getattr(so, k, None)) for k in HEADER_FIELDS}
     lines = []
-    for item in sorted(so.line_items, key=lambda i: (i.line_number or 0)):
+    for item in sorted(so.line_items, key=lambda i: (i.line_number or 0, i.id or 0)):
         row = {}
         for f in LINE_FIELDS:
             row[f] = _s(getattr(item, f, None))
+        # The row's own identity -- the only stable handle across revisions.
+        # Kept as an int, not passed through _s(), so lookups are exact.
+        row['line_id'] = item.id
         row['product_code'] = item.product.code if item.product else None
         row['product_name'] = item.product.name if item.product else None
         # Resolve FKs to human-readable values -- the change summary is read by
@@ -74,49 +92,44 @@ def build_snapshot(so):
 
 
 # Line fields whose change is user-meaningful and therefore summarised.
-# Key -> label shown in the revision history panel. `quantity` is handled
-# specially (kind 'qty') so it renders as the headline change it usually is.
-SUMMARISED_LINE_FIELDS = {
-    'quantity': 'Qty',
-    'unit_price': 'Unit price',
-    'uom_display': 'UOM',
-    'delivery_date': 'Delivery date',
-    # Resolved NAMES, never raw FK integers -- "Delivery site: 3 -> 5" is
-    # meaningless to a reader, and this text is printed on a factory-floor slip.
-    'delivery_site_name': 'Delivery site',
-    'vat_category': 'VAT',
-    'wt_code': 'WT',
-    'line_status': 'Line status',
-}
+# (compare_field, label, display_field). The comparison is done on the FIRST
+# element and the value shown to the reader comes from the THIRD -- so a change
+# is detected on the stable id but rendered as a human-readable name. Two
+# delivery sites can share a name (CustomerDeliverySite has no unique constraint
+# on (customer_id, name)), so comparing names alone would hide a real change.
+# `quantity` is handled specially (kind 'qty') so it renders as the headline
+# change it usually is.
+SUMMARISED_LINE_FIELDS = (
+    ('quantity', 'Qty', 'quantity'),
+    ('unit_price', 'Unit price', 'unit_price'),
+    ('amount', 'Amount', 'amount'),
+    ('vat_category', 'VAT', 'vat_category'),
+    ('vat_rate', 'VAT rate', 'vat_rate'),
+    ('unit_of_measure_id', 'UOM', 'uom_display'),
+    ('delivery_date', 'Delivery date', 'delivery_date'),
+    ('delivery_site_id', 'Delivery site', 'delivery_site_name'),
+    ('wt_id', 'WT', 'wt_code'),
+    ('line_status', 'Line status', 'line_status'),
+)
 
 
-def _line_identity(line):
-    """Everything summarised about a line, as a comparable tuple.
+def _by_line_id(lines):
+    """Index lines by their SalesOrderItem id.
 
-    Two lines with equal identity are the SAME commitment and must be treated as
-    unchanged rather than paired against a line that did change.
+    Line identity is the ROW ID, never content or position. Earlier designs
+    guessed correspondence from the product plus list position; both were wrong.
+    Content-matching breaks the moment any field changes, and position-matching
+    fabricates edits whenever an insert or delete happens anywhere but the tail
+    -- e.g. removing the first of two tranches reported a phantom edit on the
+    untouched survivor and attributed the removal to the wrong quantity. An id
+    is unambiguous, survives reordering for free, and needs no heuristic.
+
+    This is why the amend route UPDATES lines in place instead of deleting and
+    rebuilding them (see Task 6): the rebuild would issue new ids every save and
+    destroy the only stable identity these rows have.
     """
-    return tuple(line.get(f) for f in SUMMARISED_LINE_FIELDS)
-
-
-def _product_key(line):
-    """Which product a line commits us to."""
-    return line.get('product_id') or line.get('product_code')
-
-
-def _group_by_product(lines):
-    """Group lines by product, preserving their order within each group.
-
-    One product legitimately appears on SEVERAL lines -- per-line delivery_date
-    and delivery_site_id exist precisely so a product can ship in tranches. A
-    plain {product: line} dict silently collapses those to the last one and
-    loses real changes, so lines are grouped and then paired positionally
-    within each group.
-    """
-    groups = {}
-    for line in lines:
-        groups.setdefault(_product_key(line), []).append(line)
-    return groups
+    return {line.get('line_id'): line
+            for line in lines if line.get('line_id') is not None}
 
 
 def _line_label(line):
@@ -139,55 +152,31 @@ def summarize_change(prev, new):
             changes.append({'kind': 'header', 'field': label,
                             'old': old_v, 'new': new_v})
 
-    prev_groups = _group_by_product(prev.get('lines', []))
-    new_groups = _group_by_product(new.get('lines', []))
+    prev_lines = _by_line_id(prev.get('lines', []))
+    new_lines = _by_line_id(new.get('lines', []))
 
-    for key, new_lines in new_groups.items():
-        remaining_prev = list(prev_groups.get(key, []))
-
-        # PASS 1 -- consume lines that are identical across every summarised
-        # field. An UNCHANGED line must never be paired against a changed one,
-        # or it masquerades as an edit. Purely positional pairing produced
-        # exactly that: removing the FIRST of two tranches reported a fabricated
-        # "3000 -> 2000" edit on the surviving line plus a removal attributed to
-        # the wrong quantity, and inserting a tranche mid-list reported the new
-        # quantity as an edit while "added" carried the OLD one.
-        changed_new = []
-        for new_line in new_lines:
-            match = next((p for p in remaining_prev
-                          if _line_identity(p) == _line_identity(new_line)), None)
-            if match is not None:
-                remaining_prev.remove(match)
-            else:
-                changed_new.append(new_line)
-
-        # PASS 2 -- whatever genuinely differs, paired positionally.
-        for i, new_line in enumerate(changed_new):
-            if i >= len(remaining_prev):
-                changes.append({'kind': 'added', 'line': _line_label(new_line),
-                                'old': None, 'new': new_line.get('quantity')})
-                continue
-            prev_line = remaining_prev[i]
-            for field, label in SUMMARISED_LINE_FIELDS.items():
-                old_v, new_v = prev_line.get(field), new_line.get(field)
-                if old_v == new_v:
-                    continue
-                if field == 'quantity':
-                    changes.append({'kind': 'qty', 'line': _line_label(new_line),
-                                    'old': old_v, 'new': new_v})
-                else:
-                    changes.append({'kind': 'line_field',
-                                    'line': _line_label(new_line), 'field': label,
-                                    'old': old_v, 'new': new_v})
-
-        for prev_line in remaining_prev[len(changed_new):]:
-            changes.append({'kind': 'removed', 'line': _line_label(prev_line),
-                            'old': prev_line.get('quantity'), 'new': None})
-
-    for key, prev_lines in prev_groups.items():
-        if key in new_groups:
+    # Matched by id -- diff every summarised field.
+    for line_id, new_line in new_lines.items():
+        prev_line = prev_lines.get(line_id)
+        if prev_line is None:
+            changes.append({'kind': 'added', 'line': _line_label(new_line),
+                            'old': None, 'new': new_line.get('quantity')})
             continue
-        for prev_line in prev_lines:
+        for compare_field, label, display_field in SUMMARISED_LINE_FIELDS:
+            if prev_line.get(compare_field) == new_line.get(compare_field):
+                continue
+            old_v = prev_line.get(display_field)
+            new_v = new_line.get(display_field)
+            if compare_field == 'quantity':
+                changes.append({'kind': 'qty', 'line': _line_label(new_line),
+                                'old': old_v, 'new': new_v})
+            else:
+                changes.append({'kind': 'line_field',
+                                'line': _line_label(new_line), 'field': label,
+                                'old': old_v, 'new': new_v})
+
+    for line_id, prev_line in prev_lines.items():
+        if line_id not in new_lines:
             changes.append({'kind': 'removed', 'line': _line_label(prev_line),
                             'old': prev_line.get('quantity'), 'new': None})
 
