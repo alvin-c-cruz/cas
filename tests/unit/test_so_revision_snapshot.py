@@ -95,6 +95,39 @@ def test_removing_one_of_two_same_product_lines_reports_one_removal():
         'old': '2000', 'new': None}]
 
 
+def test_removing_the_FIRST_of_two_tranches_attributes_the_removal_correctly():
+    """Purely positional pairing fabricated a '3000 -> 2000' edit on the
+    surviving line and attributed the removal to the wrong quantity."""
+    prev = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000', n=1),
+                  _line('P031', 'HTA PLASTIC TRAY', '2000', n=2)])
+    new = _snap([_line('P031', 'HTA PLASTIC TRAY', '2000', n=1)])
+    assert summarize_change(prev, new)['changes'] == [{
+        'kind': 'removed', 'line': 'P031 - HTA PLASTIC TRAY',
+        'old': '3000', 'new': None}]
+
+
+def test_inserting_a_tranche_mid_list_reports_the_new_quantity():
+    """Positional pairing reported the NEW quantity as an edit and the OLD one
+    as the addition -- the real new tranche never appeared at all."""
+    prev = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000', n=1),
+                  _line('P031', 'HTA PLASTIC TRAY', '2000', n=2)])
+    new = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000', n=1),
+                 _line('P031', 'HTA PLASTIC TRAY', '999', n=2),
+                 _line('P031', 'HTA PLASTIC TRAY', '2000', n=3)])
+    assert summarize_change(prev, new)['changes'] == [{
+        'kind': 'added', 'line': 'P031 - HTA PLASTIC TRAY',
+        'old': None, 'new': '999'}]
+
+
+def test_swapping_one_product_leaves_the_untouched_sibling_line_alone():
+    prev = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000', n=1),
+                  _line('P031', 'HTA PLASTIC TRAY', '2000', n=2)])
+    new = _snap([_line('P022', 'GRAHAMS LONGTUB', '3000', n=1),
+                 _line('P031', 'HTA PLASTIC TRAY', '2000', n=2)])
+    kinds = sorted(c['kind'] for c in summarize_change(prev, new)['changes'])
+    assert kinds == ['added', 'removed']
+
+
 def test_multiple_simultaneous_changes_all_reported():
     prev = _snap([_line('P031', 'HTA PLASTIC TRAY', '3000')])
     new = _snap([_line('P031', 'HTA PLASTIC TRAY', '7000'),

@@ -61,6 +61,14 @@ def build_snapshot(so):
             row[f] = _s(getattr(item, f, None))
         row['product_code'] = item.product.code if item.product else None
         row['product_name'] = item.product.name if item.product else None
+        # Resolve FKs to human-readable values -- the change summary is read by
+        # people, and on a printed job order slip a bare integer is useless.
+        row['delivery_site_name'] = (item.delivery_site.name
+                                     if item.delivery_site else None)
+        row['wt_code'] = (item.withholding_tax.code
+                          if item.withholding_tax else None)
+        row['uom_display'] = (item.unit_of_measure.code
+                              if item.unit_of_measure else item.uom_text)
         lines.append(row)
     return {'header': header, 'lines': lines}
 
@@ -71,12 +79,24 @@ def build_snapshot(so):
 SUMMARISED_LINE_FIELDS = {
     'quantity': 'Qty',
     'unit_price': 'Unit price',
-    'uom_text': 'UOM',
+    'uom_display': 'UOM',
     'delivery_date': 'Delivery date',
-    'delivery_site_id': 'Delivery site',
+    # Resolved NAMES, never raw FK integers -- "Delivery site: 3 -> 5" is
+    # meaningless to a reader, and this text is printed on a factory-floor slip.
+    'delivery_site_name': 'Delivery site',
     'vat_category': 'VAT',
-    'wt_id': 'WT',
+    'wt_code': 'WT',
+    'line_status': 'Line status',
 }
+
+
+def _line_identity(line):
+    """Everything summarised about a line, as a comparable tuple.
+
+    Two lines with equal identity are the SAME commitment and must be treated as
+    unchanged rather than paired against a line that did change.
+    """
+    return tuple(line.get(f) for f in SUMMARISED_LINE_FIELDS)
 
 
 def _product_key(line):
@@ -123,14 +143,31 @@ def summarize_change(prev, new):
     new_groups = _group_by_product(new.get('lines', []))
 
     for key, new_lines in new_groups.items():
-        prev_lines = prev_groups.get(key, [])
-        for i, new_line in enumerate(new_lines):
-            if i >= len(prev_lines):
-                # More lines of this product than before -- a new tranche.
+        remaining_prev = list(prev_groups.get(key, []))
+
+        # PASS 1 -- consume lines that are identical across every summarised
+        # field. An UNCHANGED line must never be paired against a changed one,
+        # or it masquerades as an edit. Purely positional pairing produced
+        # exactly that: removing the FIRST of two tranches reported a fabricated
+        # "3000 -> 2000" edit on the surviving line plus a removal attributed to
+        # the wrong quantity, and inserting a tranche mid-list reported the new
+        # quantity as an edit while "added" carried the OLD one.
+        changed_new = []
+        for new_line in new_lines:
+            match = next((p for p in remaining_prev
+                          if _line_identity(p) == _line_identity(new_line)), None)
+            if match is not None:
+                remaining_prev.remove(match)
+            else:
+                changed_new.append(new_line)
+
+        # PASS 2 -- whatever genuinely differs, paired positionally.
+        for i, new_line in enumerate(changed_new):
+            if i >= len(remaining_prev):
                 changes.append({'kind': 'added', 'line': _line_label(new_line),
                                 'old': None, 'new': new_line.get('quantity')})
                 continue
-            prev_line = prev_lines[i]
+            prev_line = remaining_prev[i]
             for field, label in SUMMARISED_LINE_FIELDS.items():
                 old_v, new_v = prev_line.get(field), new_line.get(field)
                 if old_v == new_v:
@@ -143,9 +180,14 @@ def summarize_change(prev, new):
                                     'line': _line_label(new_line), 'field': label,
                                     'old': old_v, 'new': new_v})
 
+        for prev_line in remaining_prev[len(changed_new):]:
+            changes.append({'kind': 'removed', 'line': _line_label(prev_line),
+                            'old': prev_line.get('quantity'), 'new': None})
+
     for key, prev_lines in prev_groups.items():
-        kept = len(new_groups.get(key, []))
-        for prev_line in prev_lines[kept:]:
+        if key in new_groups:
+            continue
+        for prev_line in prev_lines:
             changes.append({'kind': 'removed', 'line': _line_label(prev_line),
                             'old': prev_line.get('quantity'), 'new': None})
 
