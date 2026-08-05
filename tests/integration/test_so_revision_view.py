@@ -165,3 +165,31 @@ def test_the_viewer_is_read_only(client, db_session, customer, product):
     html = client.get(f'/sales-orders/{so.id}/revisions/0').data.decode()
     for forbidden in ('/amend', '/confirm', '/cancel', '<form'):
         assert forbidden not in html
+
+
+def test_money_fields_render_with_thousands_separators(
+        client, db_session, customer, product):
+    """Money fields (unit price, amount, totals) must render with comma grouping.
+
+    This is a financial document; ungrouped six-figure values (12600.00) are less
+    readable than grouped (12,600.00) and break app convention.
+    """
+    # Create and confirm with a quantity that produces observable grouping
+    qty = Decimal('12600')
+    unit_price = Decimal('4.20')
+    so = _confirmed_so(client, db_session, customer, product, qty)
+
+    html = client.get(f'/sales-orders/{so.id}/revisions/0').data.decode()
+
+    # Line-item unit price and amount must show grouped form
+    expected_unit_price = '{:,.2f}'.format(unit_price)  # '4.20'
+    expected_amount = '{:,.2f}'.format(qty * unit_price)  # '52,920.00'
+    expected_subtotal = '{:,.2f}'.format(qty * unit_price)
+
+    assert expected_amount in html, f"Grouped amount '{expected_amount}' not found in response"
+    # Ungrouped form must NOT appear (this catches both unformatted and
+    # formatter-on-None crashes)
+    assert '52920.00' not in html, "Ungrouped amount still present in response"
+
+    # Subtotal in the totals block must also be grouped
+    assert expected_subtotal in html, f"Grouped subtotal '{expected_subtotal}' not found"

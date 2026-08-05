@@ -29,7 +29,7 @@
 <div class="card page-sales-order">
     <div class="card-header">
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            <span style="font-size:20px; font-weight:700;">{{ so.so_number }}</span>
+            <span style="font-size:20px; font-weight:700;">{{ header.so_number }}</span>
             <span class="badge badge-secondary">Revision {{ rev.revision_number }}</span>
             <span class="badge badge-{{ 'secondary' if header.status=='draft'
                                         else 'success' if header.status=='confirmed'
@@ -177,10 +177,10 @@
                         </td>
                         <td style="font-size:12px;">{{ line.uom_display or '—' }}</td>
                         <td style="text-align:right; font-family:var(--mono);">
-                            {{ line.unit_price_display or '—' }}
+                            {{ '{:,.2f}'.format(line.unit_price_display|float) if line.unit_price_display else '—' }}
                         </td>
                         <td style="text-align:right; font-family:var(--mono); font-weight:600;">
-                            {{ line.amount_display or '—' }}
+                            {{ '{:,.2f}'.format(line.amount_display|float) if line.amount_display else '—' }}
                         </td>
                         <td style="font-size:12px;">{{ line.vat_category or '—' }}</td>
                         <td style="font-size:12px;">{{ line.wt_code or '—' }}</td>
@@ -200,21 +200,21 @@
                     <tr>
                         <td colspan="4" style="text-align:right; font-weight:700;">Subtotal</td>
                         <td colspan="2" style="text-align:right; font-family:var(--mono); font-weight:700;">
-                            {{ header.subtotal_display }}
+                            {{ '{:,.2f}'.format(header.subtotal_display|float) if header.subtotal_display else '—' }}
                         </td>
                         <td colspan="5"></td>
                     </tr>
                     <tr>
                         <td colspan="4" style="text-align:right; font-weight:700;">VAT</td>
                         <td colspan="2" style="text-align:right; font-family:var(--mono); font-weight:700;">
-                            {{ header.vat_amount_display }}
+                            {{ '{:,.2f}'.format(header.vat_amount_display|float) if header.vat_amount_display else '—' }}
                         </td>
                         <td colspan="5"></td>
                     </tr>
                     <tr>
                         <td colspan="4" style="text-align:right; font-weight:700;">Total Sales</td>
                         <td colspan="2" style="text-align:right; font-family:var(--mono); font-weight:700;">
-                            {{ header.total_amount_display }}
+                            {{ '{:,.2f}'.format(header.total_amount_display|float) if header.total_amount_display else '—' }}
                         </td>
                         <td colspan="5"></td>
                     </tr>
