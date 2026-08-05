@@ -53,6 +53,12 @@
     "reason": null,
     "waived": false
   },
+  "65278e2f2ac7b6a37d9d79b350bcfa0c7db34a72": {
+    "branch": "fix/txn-form-error-collapses-field",
+    "date": "2026-08-05",
+    "reason": null,
+    "waived": false
+  },
   "677413d21b98bb04d16e8c3fd9b71e79adc7edaf": {
     "branch": "fix/hide-cancel-on-billed",
     "date": "2026-08-05",
