@@ -49,6 +49,11 @@
 
   .audit-footer { margin-top: 6px; font-size: 9px; color: #888; text-align: center;
                   border-top: 1px solid #ddd; padding-top: 4px; }
+
+  .print-rev-banner { border: 2px solid #c00; background: #fff3f3; color: #c00;
+                       padding: 5px 8px; margin-bottom: 6px; text-align: center; }
+  .print-rev-banner .print-rev { font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+  .print-rev-banner .print-rev-supersede { font-size: 9px; font-weight: 700; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -61,6 +66,16 @@
 
   {% macro jo_copy() %}
   <div class="jo-copy">
+    {% if current_revision and current_revision.revision_number > 0 %}
+    <div class="print-rev-banner">
+        <span class="print-rev">REV. {{ current_revision.revision_number }}</span>
+        <div class="print-rev-supersede">
+            Supersedes Rev. {{ current_revision.revision_number - 1 }}
+            ({{ current_revision.amended_at.strftime('%Y-%m-%d') }})
+            &mdash; destroy prior copies
+        </div>
+    </div>
+    {% endif %}
     <div class="jo-header">
       <div class="company-name">{{ company.name | upper }}</div>
       <div class="jo-title-block">

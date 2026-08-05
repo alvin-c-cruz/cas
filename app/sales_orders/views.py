@@ -28,7 +28,7 @@ from app.utils.concurrency import claim_version, conflict_message, submitted_ver
 from app.sales_orders.preprinted_layout import (
     get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
     DATE_FORMATS, FIELD_LABELS, TEXT_KEYS)
-from app.sales_orders.revisions import write_revision, validate_amendment
+from app.sales_orders.revisions import write_revision, validate_amendment, latest_revision
 from app.sales_orders.revision_models import SalesOrderRevision
 
 sales_orders_bp = Blueprint('sales_orders', __name__, template_folder='templates')
@@ -814,8 +814,10 @@ def print_so(id):
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
             signatory_ids=TEXT_KEYS,
             date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
+    current_revision = latest_revision(so.id)
     return render_template('sales_orders/print.html', so=so,
-                           company=company, printed_at=ph_now())
+                           company=company, printed_at=ph_now(),
+                           current_revision=current_revision)
 
 
 @sales_orders_bp.route('/sales-orders/<so_number>/print-job-order')
@@ -836,9 +838,10 @@ def print_job_order(so_number):
     }
     created_by_user = (db.session.get(User, so.created_by_id)
                        if so.created_by_id else None)
+    current_revision = latest_revision(so.id)
     return render_template('sales_orders/print_job_order.html', so=so,
                            company=company, created_by_user=created_by_user,
-                           printed_at=ph_now())
+                           printed_at=ph_now(), current_revision=current_revision)
 
 
 @sales_orders_bp.route('/sales-orders/job-order-slips')

@@ -69,7 +69,10 @@ def staff_user(db_session, branch):
     # (User.branches, many-to-many) -- the brief's snippet set the scalar branch_id
     # column only, which the before_request accessible-branches check does not read,
     # so the client fixture below force-logs the user out at the branch picker.
-    u.set_book_permissions({'sales_orders': True})
+    # job_order_slips is its OWN grantable module (Task 5) -- print_job_order's
+    # endpoint is registered under that key, not sales_orders, so a Task 9 print
+    # test that hits it needs this too (see _so_helpers.py's module-enable note).
+    u.set_book_permissions({'sales_orders': True, 'job_order_slips': True})
     db_session.add(u)
     db_session.flush()  # get u.id before set_branches
     u.set_branches([branch])
@@ -742,3 +745,60 @@ def test_amend_refuses_removal_of_a_dr_referenced_line_with_the_dr_message(
     db_session.refresh(so)
     assert len(so.line_items) == 1
     assert so.line_items[0].id == soi.id
+
+
+# --- Task 9: revision banner on both print surfaces -------------------------
+
+def test_print_shows_no_revision_banner_at_rev0(client, db_session, customer, product):
+    """Unamended orders must print exactly as they do today."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    html = client.get(f'/sales-orders/{so.id}/print').data.decode()
+    assert 'REV.' not in html
+    assert 'Supersedes' not in html
+
+
+def test_print_shows_revision_banner_after_amendment(
+        client, db_session, customer, product):
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    lines = json.dumps([{'line_number': 1, 'product_id': product.id,
+                         'quantity': '7000', 'unit_price': '4.20',
+                         'amount': '29400.00'}])
+    client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines, 'amend_reason': 'PO received after job order issued',
+        'authorizing_po_number': 'PO-MMS-88421',
+        'row_version': str(so.row_version)}, follow_redirects=True)
+
+    html = client.get(f'/sales-orders/{so.id}/print').data.decode()
+    assert 'REV. 1' in html
+    assert 'Supersedes Rev. 0' in html
+
+
+def test_job_order_slip_shows_no_revision_banner_at_rev0(
+        client, db_session, customer, product):
+    """The production slip is the surface that matters most -- pin the Rev 0
+    absence here too, not only on print.html."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    html = client.get(f'/sales-orders/{so.so_number}/print-job-order').data.decode()
+    assert 'REV.' not in html
+    assert 'Supersedes' not in html
+
+
+def test_job_order_slip_shows_revision_banner_after_amendment(
+        client, db_session, customer, product):
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    lines = json.dumps([{'line_number': 1, 'product_id': product.id,
+                         'quantity': '7000', 'unit_price': '4.20', 'amount': '29400.00'}])
+    client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines, 'amend_reason': 'PO received after job order issued',
+        'authorizing_po_number': 'PO-MMS-88421',
+        'row_version': str(so.row_version)}, follow_redirects=True)
+
+    # Note: print_job_order is keyed on so_number, not id (views.py:821) -- the
+    # route path is also print-job-order, not job-order-print.
+    html = client.get(f'/sales-orders/{so.so_number}/print-job-order').data.decode()
+    assert 'REV. 1' in html
+    assert 'destroy prior copies' in html
