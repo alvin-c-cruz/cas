@@ -156,6 +156,34 @@ def so_line_open_qty(so_item, exclude_dr_id=None):
     return ordered - committed
 
 
+def so_is_billed(so):
+    """True when ANY Delivery Receipt raised against this Sales Order is invoiced.
+
+    Billed-ness is DERIVED, never stored -- the same choice so_line_open_qty makes
+    just above for delivered quantity, and for the same reason: the fact lives on
+    the child rows, not the header.
+
+    `SalesOrder.sales_invoice_id` exists as a column and used to be what the guards
+    read, but NOTHING in the app has ever written it -- invoicing sets the flag on
+    the Delivery Receipt (`app/sales_invoices/views.py`, `dr.sales_invoice_id =
+    invoice.id`). So every billed-check was permanently False; most seriously,
+    cancel() would let an invoiced order be cancelled. It is not merely unwired
+    either: one order is routinely billed by MANY invoices (RIC's real data has
+    orders spanning 14 of them), so a single nullable FK on the header could not
+    express the answer even if something did populate it. Hence a derivation.
+
+    NO DR-status filter, deliberately. Voiding an invoice already clears
+    `dr.sales_invoice_id` (same module, the void path), so that column is itself
+    the authority on "currently invoiced". Adding `status.in_(COMMITTED_STATUSES)`
+    could only ever un-bill an order that still points at a live invoice -- the
+    fail-OPEN direction, which is the wrong way for a guard to be wrong.
+    """
+    q = (db.session.query(DeliveryReceipt.id)
+         .filter(DeliveryReceipt.sales_order_id == so.id,
+                 DeliveryReceipt.sales_invoice_id.isnot(None)))
+    return bool(db.session.query(q.exists()).scalar())
+
+
 def generate_dr_number(branch_id=None):
     """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
 

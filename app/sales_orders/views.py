@@ -653,8 +653,12 @@ def cancel(id):
         flash('This Sales Order has already been cancelled or closed.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
 
-    # P-60 billed guard: do not cancel an SO that has been invoiced
-    if so.sales_invoice_id is not None:
+    # P-60 billed guard: do not cancel an SO that has been invoiced.
+    # Derived from the order's Delivery Receipts -- so.sales_invoice_id is never
+    # written by any code path, so reading it made this guard permanently dead and
+    # an invoiced Sales Order freely cancellable. See so_is_billed's docstring.
+    from app.delivery_receipts.models import so_is_billed
+    if so_is_billed(so):
         flash('A billed Sales Order cannot be cancelled. Void the invoice first.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
 
@@ -712,7 +716,7 @@ def close_line(id, item_id):
         flash('This line is already closed.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
 
-    # Note: unlike cancel()'s P-60 billed guard (so.sales_invoice_id), close_line
+    # Note: unlike cancel()'s P-60 billed guard (so_is_billed), close_line
     # intentionally does NOT check whether the SO has been billed -- closing a line is
     # forward-looking (it only blocks further delivery/billing of the line's remaining
     # open qty) and touches no posted accounting, so it is safe on a billed SO too.
