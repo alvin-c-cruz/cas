@@ -23,6 +23,12 @@
     "reason": null,
     "waived": false
   },
+  "44e7a024210f342a01def4eabd55c4f49d1b6562": {
+    "branch": "fix/so-billed-flag-derived",
+    "date": "2026-08-05",
+    "reason": null,
+    "waived": false
+  },
   "50dabeeb75cd1e0125cfc4cb9256f7a9f679d9ba": {
     "branch": "feat/ar-aging-debit-memos",
     "date": "2026-08-01",
