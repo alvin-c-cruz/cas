@@ -77,6 +77,12 @@
     "reason": null,
     "waived": false
   },
+  "aad2b98ccb11e0b88be9d21ad4e03fb5ca391bb9": {
+    "branch": "fix/ca-staff-management-nav",
+    "date": "2026-08-05",
+    "reason": null,
+    "waived": false
+  },
   "c4a4c03aa7b054c624dbdc321b900a000535a1bc": {
     "branch": "feat/so-post-confirm-amendment",
     "date": "2026-08-05",
