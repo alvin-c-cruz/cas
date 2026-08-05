@@ -58,5 +58,11 @@
     "date": "2026-08-02",
     "reason": null,
     "waived": false
+  },
+  "cda2447a68f1a789662d17852f5969b6fa684287": {
+    "branch": "feat/so-post-confirm-amendment",
+    "date": "2026-08-04",
+    "reason": null,
+    "waived": false
   }
 }
