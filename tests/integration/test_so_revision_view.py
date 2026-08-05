@@ -161,10 +161,20 @@ def test_the_panel_links_to_each_revision(client, db_session, customer, product)
 
 def test_the_viewer_is_read_only(client, db_session, customer, product):
     """A snapshot is a historical record; it must offer no way to act on it."""
+    import re
     so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
     html = client.get(f'/sales-orders/{so.id}/revisions/0').data.decode()
-    for forbidden in ('/amend', '/confirm', '/cancel', '<form'):
+
+    # URL checks: no links to amend, confirm, or cancel this SO
+    for forbidden in ('/amend', '/confirm', '/cancel'):
         assert forbidden not in html
+
+    # Form check: any form present must target /select-branch (the shared branch-switcher chrome),
+    # never any route that acts on the revision or order.
+    forms = re.findall(r'<form[^>]*action=["\']([^"\']*)["\']', html)
+    for form_action in forms:
+        assert '/select-branch' in form_action, \
+            f"Found form targeting {form_action}; only /select-branch allowed"
 
 
 def test_money_fields_render_with_thousands_separators(
