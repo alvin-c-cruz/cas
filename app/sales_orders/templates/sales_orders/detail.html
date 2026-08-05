@@ -349,13 +349,19 @@
                 {{ rev.amended_at.strftime('%Y-%m-%d') }} &middot;
                 {{ rev.amended_by or 'system' }}
             </div>
-            {% if rev.number == 0 %}
-            <div class="so-rev-meta">Original confirmed order</div>
-            {% else %}
+            {# A backfilled Rev 0 carries a `reason` disclosing that it was
+               RECONSTRUCTED at upgrade rather than captured at confirm time.
+               Hardcoding "Original confirmed order" for every Rev 0 suppressed
+               exactly that disclaimer on the page users land on -- while the
+               migration's own docstring promised the UI would show it. Render
+               the reason whenever there is one, at any revision number. #}
+            {% if rev.reason %}
             <div class="so-rev-meta">
                 {% if rev.authorizing_po_number %}Per {{ rev.authorizing_po_number }} &middot; {% endif %}
                 &ldquo;{{ rev.reason }}&rdquo;
             </div>
+            {% elif rev.number == 0 %}
+            <div class="so-rev-meta">Original confirmed order</div>
             {% endif %}
         </div>
         {% endfor %}

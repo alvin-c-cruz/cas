@@ -695,6 +695,23 @@ def test_amend_form_renders_so_number_read_only(client, db_session, customer, pr
     assert 'readonly' in m.group(0)
 
 
+def test_amend_form_serialises_so_item_id_on_submit(client, db_session, customer, product):
+    """The whole in-place-update design (see revisions.py's validate_amendment
+    docstring and views.py's _apply_amended_so_lines) depends on submitted lines
+    carrying `so_item_id` -- the same identity used to apply an amendment IN
+    PLACE rather than delete-and-rebuild (which would silently re-open a
+    deliberately closed line). form.html's submit handler serialises it on ONE
+    line; deleting that line leaves every existing pytest test green (no test
+    drove a real browser submit with an existing item id), because the test
+    client posts line_items JSON directly rather than exercising this JS. Pin
+    the render so a future edit to that block cannot silently drop the key."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    html = client.get(f'/sales-orders/{so.id}/amend').data.decode()
+    assert re.search(r'so_item_id:\s*item\.so_item_id', html) is not None, (
+        'the submit-time line serialiser no longer emits so_item_id -- an '
+        'amendment would no longer be able to update existing lines in place')
+
+
 def test_edit_form_so_number_is_not_read_only(client, db_session, customer, product):
     """Guard the negative direction: the amend_mode readonly branch must not leak
     into the ordinary draft edit form, which still needs so_number editable."""
