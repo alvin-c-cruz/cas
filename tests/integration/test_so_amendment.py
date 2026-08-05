@@ -1,11 +1,13 @@
 """Integration tests -- SO post-confirm amendment."""
 import json
 import pytest
+from datetime import date
 from decimal import Decimal
 from app import db
 from app.sales_orders.models import SalesOrder, SalesOrderItem
 from app.sales_orders.revision_models import SalesOrderRevision
-from app.customers.models import Customer
+from app.customers.models import Customer, CustomerDeliverySite
+from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
 
 from tests.integration._so_helpers import (
     sales_orders_module_enabled, _login, _select_branch,
@@ -200,7 +202,7 @@ def test_amend_requires_authorizing_po_when_customer_requires_po(
     db_session.commit()
     lines = json.dumps([{'line_number': 1, 'product_id': product.id,
                          'quantity': '7000', 'unit_price': '4.20', 'amount': '29400.00'}])
-    client.post(f'/sales-orders/{so.id}/amend', data={
+    resp = client.post(f'/sales-orders/{so.id}/amend', data={
         'so_number': '2026080001', 'order_date': '2026-08-04',
         'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
         'line_items': lines, 'amend_reason': 'PO received after job order',
@@ -208,6 +210,27 @@ def test_amend_requires_authorizing_po_when_customer_requires_po(
     }, follow_redirects=True)
     db_session.refresh(so)
     assert so.line_items[0].quantity == Decimal('3000')
+    # Assert WHICH refusal fired. "quantity unchanged" is satisfied by ANY
+    # refusal -- a broken reason rule, a row_version regression, even a 500 --
+    # so on its own it does not pin validate_authorizing_po_number at all.
+    assert b'requires a Purchase Order number' in resp.data
+
+
+def test_a_blank_authorizing_po_is_fine_when_the_customer_does_not_require_one(
+        client, db_session, customer, product):
+    """The negative direction. Without this, someone 'fixing' the missing
+    Optional() by reaching for DataRequired() would break nothing visible."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    lines = json.dumps([{'so_item_id': so.line_items[0].id, 'product_id': product.id,
+                         'quantity': '7000', 'unit_price': '4.20', 'amount': '29400.00'}])
+    client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines, 'amend_reason': 'Customer increased by phone',
+        'authorizing_po_number': '', 'row_version': str(so.row_version),
+    }, follow_redirects=True)
+    db_session.refresh(so)
+    assert so.line_items[0].quantity == Decimal('7000')
 
 
 def test_amend_is_reachable_by_staff(client, db_session, customer, product):
@@ -225,7 +248,8 @@ def test_amend_refused_for_viewer(client, db_session, customer, product, staff_u
     import flask
     flask.g.pop('_login_user', None)
     resp = client.get(f'/sales-orders/{so.id}/amend', follow_redirects=True)
-    assert b'do not have permission' in resp.data
+    # Full sentence: five other modules emit the same fragment.
+    assert b'You do not have permission to perform this action.' in resp.data
 
 
 def test_amend_404s_for_an_so_in_another_branch(client, db_session, customer, product):
@@ -423,3 +447,127 @@ def test_a_client_cannot_reopen_a_closed_line_through_the_amend_form(
     assert closed_item.closed_by_id == recorded_by
     assert closed_item.closed_at == recorded_at
     assert closed_item.closed_reason == recorded_reason
+def test_amend_does_not_silently_drop_a_new_line_via_autoflush(
+        client, db_session, customer, product):
+    """CRITICAL. _apply_amended_so_lines's original sweep iterated the LIVE
+    so.line_items collection. A newly added line's id starts out None, but it
+    does not stay that way: the per-line loop calls _so_line_delivery_site_id ->
+    db.session.get(CustomerDeliverySite, ...), and on a cache miss SQLAlchemy
+    AUTOFLUSHES before running that SELECT -- which INSERTs any other pending
+    new SalesOrderItem already added to the session and assigns it a real id.
+    That id was never added to `seen` (only matched EXISTING ids are), so the
+    live-collection sweep deleted the line the user had just added -- silently,
+    with a success flash, and with the loss baked into the revision snapshot as
+    though it were intentional.
+
+    Reproduced through the real route: submitting [existing 3000, NEW 111,
+    NEW 222-with-delivery-site] returned HTTP 200 with an "amended (Rev 1)"
+    success flash and saved only TWO lines.
+
+    The bug reproduces ONLY across a real session/identity-map boundary. If the
+    delivery site stayed in this test's identity map (e.g. freshly created and
+    left attached), db.session.get would resolve it from memory with NO
+    autoflush and NO SELECT at all, and the bug would not reproduce -- so the
+    site is expunged below to mimic a real request boundary, where the site row
+    was created in an earlier, separate transaction.
+    """
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    existing_item_id = so.line_items[0].id
+
+    site = CustomerDeliverySite(customer_id=customer.id, name='Warehouse A')
+    db_session.add(site)
+    db_session.commit()
+    site_id = site.id
+    db_session.expunge(site)  # simulate a fresh request: site not in the identity map
+
+    lines = json.dumps([
+        {'so_item_id': existing_item_id, 'line_number': 1, 'product_id': product.id,
+         'quantity': '3000', 'unit_price': '4.20', 'amount': '12600.00'},
+        {'line_number': 2, 'product_id': product.id,
+         'quantity': '111', 'unit_price': '4.20', 'amount': '466.20'},
+        {'line_number': 3, 'product_id': product.id,
+         'quantity': '222', 'unit_price': '4.20', 'amount': '932.40',
+         'delivery_site_id': site_id},
+    ])
+    resp = client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines,
+        'amend_reason': 'Customer added two more lines by phone',
+        'authorizing_po_number': 'PO-MMS-88421',
+        'row_version': str(so.row_version),
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'amended (Rev 1)' in resp.data
+
+    db_session.refresh(so)
+    db_session.expire(so, ['line_items'])
+    quantities = sorted(i.quantity for i in so.line_items)
+    assert quantities == [Decimal('111'), Decimal('222'), Decimal('3000')], (
+        'a newly added line was silently dropped by the autoflush-blind sweep')
+    assert so.total_amount == Decimal('12600.00') + Decimal('466.20') + Decimal('932.40')
+
+
+def test_amend_refuses_to_remove_a_line_referenced_by_a_draft_dr(
+        client, db_session, branch, customer, product):
+    """IMPORTANT. validate_amendment's removal checks looked only at
+    _delivered_qty (which counts COMMITTED_STATUSES DRs -- approved/delivered/
+    billed) and `billed`. A DRAFT (or cancelled) DR contributes zero to that
+    count, so removing the SO line it references passed validation and deleted
+    the row. SQLite FK enforcement is off app-wide, so this left the DR line's
+    sales_order_item_id dangling -- the next so_line_open_qty(li.sales_order_item)
+    call on that DR (e.g. on approve) dereferences None and 500s, unrecoverable
+    through the UI. Guard it status-agnostically: ANY DR reference blocks
+    removal, draft included.
+
+    A DRAFT DR is used deliberately, not an approved one -- an approved DR is
+    already blocked by the delivered-quantity check, so testing with one would
+    prove nothing about this new guard.
+    """
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    soi = so.line_items[0]
+
+    dr = DeliveryReceipt(
+        branch_id=branch.id, dr_number='DR-DRAFT-1', delivery_date=date(2026, 8, 4),
+        sales_order_id=so.id, customer_id=customer.id, customer_name=customer.name,
+        status='draft')
+    dr.line_items.append(DeliveryReceiptItem(
+        line_number=1, sales_order_item_id=soi.id, product_id=soi.product_id,
+        delivered_quantity=Decimal('0')))
+    db_session.add(dr)
+    db_session.commit()
+
+    lines = json.dumps([])  # submit with the SO's only line removed
+    resp = client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines,
+        'amend_reason': 'Attempting to remove a DR-referenced line',
+        'authorizing_po_number': 'PO-DR-1', 'row_version': str(so.row_version),
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'Delivery Receipt' in resp.data
+
+    db_session.refresh(so)
+    assert len(so.line_items) == 1
+    assert so.line_items[0].id == soi.id
+
+
+def test_amend_saves_a_changed_order_date(client, db_session, customer, product):
+    """IMPORTANT. edit() assigns order_date onto the SO; amend() did not, and
+    nothing renders the field read-only -- a changed order_date validated
+    cleanly (it IS a real form field) but was silently discarded on save."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    lines = json.dumps([{'so_item_id': so.line_items[0].id, 'line_number': 1,
+                         'product_id': product.id, 'quantity': '3000',
+                         'unit_price': '4.20', 'amount': '12600.00'}])
+    resp = client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-10',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines, 'amend_reason': 'Order date corrected per customer call',
+        'authorizing_po_number': 'PO-DATE-1', 'row_version': str(so.row_version),
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+
+    db_session.refresh(so)
+    assert so.order_date == date(2026, 8, 10)

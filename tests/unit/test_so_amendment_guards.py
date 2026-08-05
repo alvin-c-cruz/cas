@@ -38,10 +38,20 @@ def _sub(item_id, qty):
 
 @pytest.fixture(autouse=True)
 def _stub_open_qty(monkeypatch):
-    """so_line_open_qty = ordered - delivered, read off the fake line."""
+    """so_line_open_qty = ordered - delivered, read off the fake line.
+
+    Also stub _has_any_dr_reference to False for every fake line: this file
+    proves branching logic against dict-shaped fakes with no real DB rows
+    behind them (that is the whole point -- see test_so_amendment_guards_orm.py's
+    module docstring), so a fake line's `id` never corresponds to a real
+    DeliveryReceiptItem row. The guard's own behaviour (a DRAFT DR blocking
+    removal) is proved against the real ORM/DB in
+    tests/integration/test_so_amendment.py instead.
+    """
     import app.sales_orders.revisions as mod
     monkeypatch.setattr(mod, 'so_line_open_qty',
                         lambda item: item.quantity - item._delivered)
+    monkeypatch.setattr(mod, '_has_any_dr_reference', lambda item: False)
 
 
 def test_increase_is_allowed():

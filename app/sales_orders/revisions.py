@@ -137,7 +137,7 @@ def write_revision(so, user_id, reason=None, authorizing_po=None):
 # re-renders the form, so this must never raise and must never mutate.
 from decimal import Decimal, InvalidOperation  # noqa: E402
 
-from app.delivery_receipts.models import so_line_open_qty  # noqa: E402
+from app.delivery_receipts.models import so_line_open_qty, DeliveryReceiptItem  # noqa: E402
 
 
 # SalesOrderItem.quantity is Numeric(15, 4) -- 11 integer digits and 4 decimals.
@@ -157,6 +157,24 @@ _OUT_OF_RANGE = object()
 def _delivered_qty(item):
     """Quantity already committed by non-draft, non-cancelled DRs."""
     return Decimal(str(item.quantity or 0)) - so_line_open_qty(item)
+
+
+def _has_any_dr_reference(item):
+    """True if ANY Delivery Receipt line references this SO line, regardless of
+    the DR's status -- draft and cancelled included.
+
+    so_line_open_qty (and therefore _delivered_qty) only counts DRs whose status
+    is in COMMITTED_STATUSES ('approved', 'delivered', 'billed'), so a DRAFT or
+    CANCELLED DR contributes zero to _delivered_qty and would not, on its own,
+    block removal of the SO line it references. But SQLite FK enforcement is off
+    app-wide, so deleting the SO line anyway leaves that DR line's
+    sales_order_item_id dangling -- the next so_line_open_qty(li.sales_order_item)
+    call on that DR (e.g. when it is later approved) dereferences None and 500s,
+    unrecoverable through the UI. This check is deliberately status-agnostic.
+    """
+    return (db.session.query(DeliveryReceiptItem.id)
+            .filter(DeliveryReceiptItem.sales_order_item_id == item.id)
+            .first() is not None)
 
 
 def _line_label(item):
@@ -263,7 +281,12 @@ def validate_amendment(so, new_lines):
         delivered = _delivered_qty(item)
 
         if item.id not in submitted:
-            if delivered > 0:
+            if _has_any_dr_reference(item):
+                errors.append(
+                    '%s: cannot remove a line referenced by a Delivery Receipt '
+                    '(draft or otherwise). Cancel or edit that Delivery Receipt '
+                    'first.' % label)
+            elif delivered > 0:
                 errors.append(
                     '%s: cannot remove a line with %s already delivered. Close '
                     'the line instead to stop further delivery.' % (label, delivered))

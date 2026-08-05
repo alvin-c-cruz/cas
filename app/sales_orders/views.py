@@ -184,11 +184,19 @@ def _apply_amended_so_lines(so, lines_json):
         else:
             seen.add(item.id)
 
-    # NOTE: this module defines a view function named `list` (the SO list
-    # route) at module scope, which shadows the builtin `list` here -- use a
-    # slice copy instead of list(...) to iterate a snapshot while mutating.
-    for item in so.line_items[:]:
-        if item.id is not None and item.id not in seen:
+    # Iterate the PRE-LOOP `existing` snapshot, never the live collection.
+    #
+    # A newly added row starts with id None, but it does not stay that way: the
+    # loop above calls _so_line_delivery_site_id -> db.session.get(...), and on a
+    # cache miss SQLAlchemy AUTOFLUSHES before the SELECT, INSERTing the pending
+    # new row and assigning it an id. That id was never added to `seen` (only
+    # matched EXISTING ids are), so a sweep over the LIVE collection would DELETE
+    # THE LINE THE USER JUST ADDED -- silently, with a success flash, and with the
+    # loss baked into the revision snapshot as though it were intentional.
+    # Reading `existing` is equivalent for real removals and immune to autoflush,
+    # because it was captured before the loop ever ran.
+    for item_id, item in existing.items():
+        if item_id not in seen:
             so.line_items.remove(item)
             db.session.delete(item)
 
@@ -636,6 +644,10 @@ def amend(id):
                 'so_number', 'order_date', 'customer_name',
                 'subtotal', 'vat_amount', 'total_amount', 'status'])
 
+            # so_number is deliberately NOT reassigned (an amendment revises an
+            # order, it does not renumber it) -- but order_date is an ordinary
+            # editable field and must not be silently discarded.
+            so.order_date = form.order_date.data
             so.expected_delivery_date = form.expected_delivery_date.data or None
             so.customer_id = cust.id
             so.customer_name = cust.name
@@ -689,6 +701,19 @@ def amend(id):
             current_app.logger.error('Error amending sales order', exc_info=True)
             log_exception(e, severity='ERROR', module='sales_orders.amend')
             flash('An error occurred while saving the amendment. Please try again.', 'error')
+
+    elif request.method == 'POST':
+        # form.validate_on_submit() failed on a real submission (not the initial
+        # GET). A WTForms field-level ValidationError -- e.g.
+        # validate_authorizing_po_number's -- only populates form.<field>.errors,
+        # and the amend form template does not yet render per-field errors for
+        # amend_reason/authorizing_po_number. Without this, that refusal reason
+        # would silently vanish: the response would be a plain 200 with nothing
+        # to distinguish it from any other refusal. Flash it explicitly, mirroring
+        # how validate_amendment's errors are already surfaced above.
+        for field_errors in form.errors.values():
+            for message in field_errors:
+                flash(message, 'error')
 
     return _render()
 
