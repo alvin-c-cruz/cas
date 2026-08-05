@@ -114,6 +114,9 @@
             <a href="{{ url_for('delivery_receipts.create', so=so.id) }}"
                class="btn btn-secondary">+ Delivery Receipt</a>
             {% endif %}
+            {% if so.status == 'confirmed' %}
+            <a href="{{ url_for('sales_orders.amend', id=so.id) }}" class="btn btn-primary">Amend</a>
+            {% endif %}
             {# Confirm: staff/accountant/admin, draft only (logic wired in Task 8) #}
             {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <button type="button" class="btn btn-success"
@@ -332,6 +335,31 @@
 
     </div>
 </div>
+
+{% if revisions %}
+<div class="card">
+    <div class="card-header"><h3>Revision history</h3></div>
+    <div class="card-body">
+        {% for rev in revisions %}
+        <div class="so-rev {% if rev.number == 0 %}so-rev-original{% endif %}">
+            <div class="so-rev-head">
+                Rev {{ rev.number }} &middot;
+                {{ rev.amended_at.strftime('%Y-%m-%d') }} &middot;
+                {{ rev.amended_by or 'system' }}
+            </div>
+            {% if rev.number == 0 %}
+            <div class="so-rev-meta">Original confirmed order</div>
+            {% else %}
+            <div class="so-rev-meta">
+                {% if rev.authorizing_po_number %}Per {{ rev.authorizing_po_number }} &middot; {% endif %}
+                &ldquo;{{ rev.reason }}&rdquo;
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 <style>
 .badge { padding:4px 8px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; }

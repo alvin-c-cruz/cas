@@ -29,6 +29,7 @@ from app.sales_orders.preprinted_layout import (
     get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
     DATE_FORMATS, FIELD_LABELS, TEXT_KEYS)
 from app.sales_orders.revisions import write_revision, validate_amendment
+from app.sales_orders.revision_models import SalesOrderRevision
 
 sales_orders_bp = Blueprint('sales_orders', __name__, template_folder='templates')
 
@@ -739,10 +740,26 @@ def view(id):
                          if so.confirmed_by_id else None)
     cancelled_by_user = (db.session.get(User, so.cancelled_by_id)
                          if so.cancelled_by_id else None)
+
+    revisions = (SalesOrderRevision.query
+                 .filter_by(sales_order_id=so.id)
+                 .order_by(SalesOrderRevision.revision_number.desc())
+                 .all())
+    parsed_revisions = []
+    for r in revisions:
+        parsed_revisions.append({
+            'number': r.revision_number,
+            'amended_at': r.amended_at,
+            'amended_by': r.amended_by.username if r.amended_by else None,
+            'reason': r.reason,
+            'authorizing_po_number': r.authorizing_po_number,
+        })
+
     return render_template('sales_orders/detail.html', so=so,
                            created_by_user=created_by_user,
                            confirmed_by_user=confirmed_by_user,
-                           cancelled_by_user=cancelled_by_user)
+                           cancelled_by_user=cancelled_by_user,
+                           revisions=parsed_revisions)
 
 
 @sales_orders_bp.route('/sales-orders/<int:id>/print')

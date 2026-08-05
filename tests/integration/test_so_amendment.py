@@ -1,5 +1,6 @@
 """Integration tests -- SO post-confirm amendment."""
 import json
+import re
 import pytest
 from datetime import date
 from decimal import Decimal
@@ -614,6 +615,97 @@ def test_amend_refuses_removal_of_a_delivered_line_with_the_delivered_message(
     db_session.refresh(so)
     assert len(so.line_items) == 1
     assert so.line_items[0].id == soi.id
+
+
+def test_detail_shows_amend_button_on_confirmed_so(client, db_session, customer, product):
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    html = client.get(f'/sales-orders/{so.id}').data.decode()
+    assert f'href="/sales-orders/{so.id}/amend"' in html
+
+
+def test_detail_hides_amend_button_on_draft_so(client, db_session, customer, product):
+    lines = json.dumps([{'line_number': 1, 'product_id': product.id,
+                         'quantity': '3000', 'unit_price': '4.20', 'amount': '12600.00'}])
+    client.post('/sales-orders/create', data={
+        'so_number': '2026080003', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    so = SalesOrder.query.filter_by(so_number='2026080003').one()
+    html = client.get(f'/sales-orders/{so.id}').data.decode()
+    assert f'href="/sales-orders/{so.id}/amend"' not in html
+
+
+def test_detail_lists_every_revision_with_reason_and_po(
+        client, db_session, customer, product):
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    lines = json.dumps([{'line_number': 1, 'product_id': product.id,
+                         'quantity': '7000', 'unit_price': '4.20', 'amount': '29400.00'}])
+    client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines, 'amend_reason': 'PO received after job order issued',
+        'authorizing_po_number': 'PO-MMS-88421',
+        'row_version': str(so.row_version)}, follow_redirects=True)
+
+    html = client.get(f'/sales-orders/{so.id}').data.decode()
+    assert 'Revision history' in html
+    assert 'Rev 1' in html and 'Rev 0' in html
+    assert 'PO received after job order issued' in html
+    assert 'PO-MMS-88421' in html
+    # There is no computed change summary (owner decision 2026-08-04, option B) --
+    # the panel itself carries no line data. What the page DOES guarantee is that
+    # the line-items table reflects the post-amendment state: the line was
+    # updated IN PLACE (Task 6), so the amended quantity renders and the
+    # superseded original does not linger anywhere on the page.
+    assert '7,000.0000' in html
+    assert '3,000.0000' not in html
+
+
+def test_detail_has_no_revision_panel_when_never_amended_beyond_rev0(
+        client, db_session, customer, product):
+    """Rev 0 alone still shows the panel -- it is the original-order record."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    html = client.get(f'/sales-orders/{so.id}').data.decode()
+    assert 'Revision history' in html
+    assert 'Rev 0' in html
+    assert 'Rev 1' not in html
+
+
+def test_detail_hides_amend_button_on_cancelled_so(client, db_session, customer, product):
+    """The Amend button gates on status == 'confirmed' only -- a cancelled SO
+    must not offer it either, not just a draft."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    so.status = 'cancelled'
+    db_session.commit()
+    html = client.get(f'/sales-orders/{so.id}').data.decode()
+    assert f'href="/sales-orders/{so.id}/amend"' not in html
+
+
+def test_amend_form_renders_so_number_read_only(client, db_session, customer, product):
+    """so_number must render read-only in amend mode -- assert the FULL <input>
+    tag carries the attribute, not a bare 'readonly' token that could match an
+    unrelated field elsewhere on the page."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    html = client.get(f'/sales-orders/{so.id}/amend').data.decode()
+    m = re.search(r'<input[^>]*name="so_number"[^>]*>', html)
+    assert m is not None, 'so_number input not found in the amend form'
+    assert 'readonly' in m.group(0)
+
+
+def test_edit_form_so_number_is_not_read_only(client, db_session, customer, product):
+    """Guard the negative direction: the amend_mode readonly branch must not leak
+    into the ordinary draft edit form, which still needs so_number editable."""
+    lines = json.dumps([{'line_number': 1, 'product_id': product.id,
+                         'quantity': '3000', 'unit_price': '4.20', 'amount': '12600.00'}])
+    client.post('/sales-orders/create', data={
+        'so_number': '2026080004', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    so = SalesOrder.query.filter_by(so_number='2026080004').one()
+    html = client.get(f'/sales-orders/{so.id}/edit').data.decode()
+    m = re.search(r'<input[^>]*name="so_number"[^>]*>', html)
+    assert m is not None, 'so_number input not found in the edit form'
+    assert 'readonly' not in m.group(0)
 
 
 def test_amend_refuses_removal_of_a_dr_referenced_line_with_the_dr_message(

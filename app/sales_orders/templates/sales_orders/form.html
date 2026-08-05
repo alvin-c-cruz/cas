@@ -24,7 +24,14 @@
 
                 {# Left 1/3: header fields #}
                 <div class="left-col-fields header-fields{% if so %} header-fields--active{% endif %}">
+                    {% if amend_mode %}
+                    <div class="form-group">
+                        {{ form.so_number.label(class='form-label') }}
+                        {{ form.so_number(class='form-control', readonly=true) }}
+                    </div>
+                    {% else %}
                     {{ render_field(form.so_number) }}
+                    {% endif %}
                     {{ render_field(form.order_date) }}
                     {{ render_field(form.expected_delivery_date) }}
                     {{ render_field(form.payment_terms) }}
@@ -110,6 +117,24 @@
 
                 <button type="button" class="btn btn-secondary" id="addLineBtn" onclick="addLineItem()" style="margin-top: 8px;">+ Add Line</button>
                 <input type="hidden" name="line_items" id="lineItemsData">
+
+                {# ── Amend-mode fields (Task 7). NOTE: amend() flashes form.errors on a
+                   failed validation POST (Task 6) -- that flash is the SINGLE channel for
+                   an amend_reason/authorizing_po_number refusal. Do NOT also render
+                   per-field errors here, or a refusal shows twice. ── #}
+                {% if amend_mode %}
+                <div class="alert alert-info">
+                    This Sales Order is confirmed. Saving creates a new revision.
+                </div>
+                <div class="form-group">
+                    <label for="amend_reason">Reason for amendment <span class="required">*</span></label>
+                    {{ form.amend_reason(class="form-control", rows="2") }}
+                </div>
+                <div class="form-group">
+                    <label for="authorizing_po_number">Authorizing customer PO #</label>
+                    {{ form.authorizing_po_number(class="form-control") }}
+                </div>
+                {% endif %}
 
                 <div class="form-actions" style="margin-top: 32px;">
                     <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
