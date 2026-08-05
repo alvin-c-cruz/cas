@@ -114,6 +114,9 @@
             <a href="{{ url_for('delivery_receipts.create', so=so.id) }}"
                class="btn btn-secondary">+ Delivery Receipt</a>
             {% endif %}
+            {% if so.status == 'confirmed' %}
+            <a href="{{ url_for('sales_orders.amend', id=so.id) }}" class="btn btn-primary">Amend</a>
+            {% endif %}
             {# Confirm: staff/accountant/admin, draft only (logic wired in Task 8) #}
             {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <button type="button" class="btn btn-success"
@@ -332,6 +335,39 @@
 
     </div>
 </div>
+
+{% if revisions %}
+<div class="card">
+    <div class="card-header"><h3>Revision history</h3></div>
+    <div class="card-body">
+        {% for rev in revisions %}
+        <div class="so-rev {% if rev.number == 0 %}so-rev-original{% endif %}">
+            <a class="view-link"
+               href="{{ url_for('sales_orders.view_revision', id=so.id, number=rev.number) }}">view full order</a>
+            <div class="so-rev-head">
+                Rev {{ rev.number }} &middot;
+                {{ rev.amended_at.strftime('%Y-%m-%d') }} &middot;
+                {{ rev.amended_by or 'system' }}
+            </div>
+            {# A backfilled Rev 0 carries a `reason` disclosing that it was
+               RECONSTRUCTED at upgrade rather than captured at confirm time.
+               Hardcoding "Original confirmed order" for every Rev 0 suppressed
+               exactly that disclaimer on the page users land on -- while the
+               migration's own docstring promised the UI would show it. Render
+               the reason whenever there is one, at any revision number. #}
+            {% if rev.reason %}
+            <div class="so-rev-meta">
+                {% if rev.authorizing_po_number %}Per {{ rev.authorizing_po_number }} &middot; {% endif %}
+                &ldquo;{{ rev.reason }}&rdquo;
+            </div>
+            {% elif rev.number == 0 %}
+            <div class="so-rev-meta">Original confirmed order</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 <style>
 .badge { padding:4px 8px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; }

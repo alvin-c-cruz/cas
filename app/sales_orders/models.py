@@ -157,3 +157,8 @@ class SalesOrderItem(db.Model):
 def copy_salesperson(src, dst):
     """Carry the salesperson down the SO->DR->SI chain (future cascade hook)."""
     dst.salesperson_id = src.salesperson_id
+
+
+# Revisions live in their own module but must be imported here so create_all()
+# and Alembic autogenerate both see the mapper.
+from app.sales_orders.revision_models import SalesOrderRevision  # noqa: E402,F401

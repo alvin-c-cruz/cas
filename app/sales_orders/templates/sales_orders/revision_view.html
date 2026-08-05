@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}SO {{ so.so_number }} — Rev {{ rev.revision_number }}{% endblock %}
+{% block page_title %}Sales Order — {{ so.so_number }} (Revision {{ rev.revision_number }}){% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=1">
+
+{% set header = snapshot.header %}
+{% set lines = snapshot.lines %}
+
+<div style="font-size:12px; color:var(--text-3); margin-bottom:12px;">
+    <a href="{{ url_for('sales_orders.view', id=so.id) }}">{{ so.so_number }}</a>
+    &nbsp;/&nbsp; Revision {{ rev.revision_number }}
+</div>
+
+{# ── Historical-record banner (brief Step 4) ─────────────────────────────── #}
+<div class="alert alert-info">
+    <div>
+        <strong>Revision {{ rev.revision_number }}</strong> &mdash;
+        {% if rev.revision_number == 0 %}the order as originally confirmed{% else %}amended
+        {{ rev.amended_at.strftime('%Y-%m-%d') }} by {{ rev.amended_by.username if rev.amended_by else 'system' }}{% endif %}.
+        This is a historical record and cannot be edited.
+        {% if rev.authorizing_po_number %}<br>Authorized by {{ rev.authorizing_po_number }}.{% endif %}
+        {% if rev.reason %}<br>&ldquo;{{ rev.reason }}&rdquo;{% endif %}
+    </div>
+</div>
+
+<div class="card page-sales-order">
+    <div class="card-header">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="font-size:20px; font-weight:700;">{{ header.so_number }}</span>
+            <span class="badge badge-secondary">Revision {{ rev.revision_number }}</span>
+            <span class="badge badge-{{ 'secondary' if header.status=='draft'
+                                        else 'success' if header.status=='confirmed'
+                                        else 'danger' if header.status=='cancelled'
+                                        else 'info' if header.status=='closed'
+                                        else 'dark' }}">
+                {{ header.status | title }}
+            </span>
+        </div>
+        <div class="card-header-actions">
+            <a href="{{ url_for('sales_orders.view', id=so.id) }}" class="btn btn-secondary">
+                &#8592; Back to Sales Order
+            </a>
+        </div>
+    </div>
+
+    <div class="card-body">
+
+        {# ── Two-column header (mirrors detail.html) ─────────────────────── #}
+        <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:24px; margin-bottom:32px;">
+
+            {# LEFT: order metadata #}
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">SO #</span>
+                    <span style="font-weight:600; font-family:var(--mono);">{{ header.so_number }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Order Date</span>
+                    <span>{{ header.order_date or '—' }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Salesperson</span>
+                    <span>{{ header.salesperson_name or 'Company Account' }}</span>
+                </div>
+                {% if header.expected_delivery_date %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Expected Delivery</span>
+                    <span>{{ header.expected_delivery_date }}</span>
+                </div>
+                {% endif %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Payment Terms</span>
+                    <span>{{ header.payment_terms or '—' }}</span>
+                </div>
+                {% if header.reference %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Reference</span>
+                    <span>{{ header.reference }}</span>
+                </div>
+                {% endif %}
+                {% if header.customer_po_number %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Customer PO #</span>
+                    <span style="font-family:var(--mono);">{{ header.customer_po_number }}</span>
+                </div>
+                {% endif %}
+                {% if header.customer_po_date %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">PO Date</span>
+                    <span>{{ header.customer_po_date }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            {# RIGHT: customer + notes #}
+            <div style="display:flex; flex-direction:column; gap:16px;">
+                <div>
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase;
+                                letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">
+                        Customer
+                    </div>
+                    <div style="border:2px solid var(--blue, #3b82f6);
+                                background:var(--alert-info-bg); border-radius:8px;
+                                padding:16px 20px;">
+                        <div style="font-weight:700; font-size:15px; margin-bottom:4px;">
+                            {{ header.customer_name }}
+                        </div>
+                        {% if header.customer_tin %}
+                        <div style="color:var(--text-2); font-size:12px; margin-bottom:2px;">
+                            TIN: {{ header.customer_tin }}
+                        </div>
+                        {% endif %}
+                        {% if header.customer_address %}
+                        <div style="color:var(--text-2); font-size:12px;">
+                            {{ header.customer_address }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div style="flex:1;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase;
+                                letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">
+                        Notes
+                    </div>
+                    <div style="background:var(--bg); border-radius:6px; padding:14px 16px;
+                                min-height:48px; height:100%;">
+                        <p style="margin:0; color:var(--text-2); white-space:pre-wrap;
+                                  font-size:13px;">{{ header.notes or '' }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Line Items (all from snapshot.lines) ─────────────────────────── #}
+        <div style="overflow-x:auto; margin-bottom:24px;">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Product</th>
+                        <th style="text-align:right;">Qty</th>
+                        <th>UOM</th>
+                        <th style="text-align:right;">Unit Price</th>
+                        <th style="text-align:right;">Amount</th>
+                        <th>VT</th>
+                        <th>WT</th>
+                        <th>Delivery Date</th>
+                        <th>Delivery Site</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in lines %}
+                    <tr>
+                        <td>{{ line.line_number }}</td>
+                        <td style="font-size:12px; color:var(--text-2);">
+                            {% if line.product_code or line.product_name %}
+                                {{ line.product_code }} — {{ line.product_name }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td style="text-align:right; font-family:var(--mono);">
+                            {% set qty = line.quantity | float %}
+                            {{ '{:,.4f}'.format(qty) if qty % 1 else '{:,.0f}'.format(qty) }}
+                        </td>
+                        <td style="font-size:12px;">{{ line.uom_display or '—' }}</td>
+                        <td style="text-align:right; font-family:var(--mono);">
+                            {{ '{:,.2f}'.format(line.unit_price_display|float) if line.unit_price_display else '—' }}
+                        </td>
+                        <td style="text-align:right; font-family:var(--mono); font-weight:600;">
+                            {{ '{:,.2f}'.format(line.amount_display|float) if line.amount_display else '—' }}
+                        </td>
+                        <td style="font-size:12px;">{{ line.vat_category or '—' }}</td>
+                        <td style="font-size:12px;">{{ line.wt_code or '—' }}</td>
+                        <td style="font-size:12px;">{{ line.delivery_date or '—' }}</td>
+                        <td style="font-size:12px;">{{ line.delivery_site_name or '—' }}</td>
+                        <td style="font-size:12px; white-space:nowrap;">
+                            {% if line.line_status == 'closed' %}
+                            <span class="badge badge-secondary" title="{{ line.closed_reason or '' }}">Closed</span>
+                            {% else %}
+                            {{ line.line_status | title if line.line_status else '—' }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="4" style="text-align:right; font-weight:700;">Subtotal</td>
+                        <td colspan="2" style="text-align:right; font-family:var(--mono); font-weight:700;">
+                            {{ '{:,.2f}'.format(header.subtotal_display|float) if header.subtotal_display else '—' }}
+                        </td>
+                        <td colspan="5"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" style="text-align:right; font-weight:700;">VAT</td>
+                        <td colspan="2" style="text-align:right; font-family:var(--mono); font-weight:700;">
+                            {{ '{:,.2f}'.format(header.vat_amount_display|float) if header.vat_amount_display else '—' }}
+                        </td>
+                        <td colspan="5"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" style="text-align:right; font-weight:700;">Total Sales</td>
+                        <td colspan="2" style="text-align:right; font-family:var(--mono); font-weight:700;">
+                            {{ '{:,.2f}'.format(header.total_amount_display|float) if header.total_amount_display else '—' }}
+                        </td>
+                        <td colspan="5"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        {# ── Provenance footer ─────────────────────────────────────────────── #}
+        <div style="margin-top:8px; padding-top:16px; border-top:1px solid var(--border);
+                    font-size:12px; color:var(--text-3);">
+            {% if header.confirmed_at %}
+            Confirmed
+            {% if header.confirmed_at %} on {{ header.confirmed_at }}{% endif %}
+            {% endif %}
+            {% if header.cancelled_at %}
+            &mdash; Cancelled on {{ header.cancelled_at }}
+            {% if header.cancel_reason %} &mdash; <em>{{ header.cancel_reason }}</em>{% endif %}
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+{% endblock %}

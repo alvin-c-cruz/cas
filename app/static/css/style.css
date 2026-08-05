@@ -533,6 +533,22 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
   border: 1px solid var(--border);
 }
 
+/* Sales Orders list -- "Rev N" chip beside the SO number, shown only once an
+   order has been amended (revision >= 1); Rev 0 (every confirmed order,
+   including all pre-existing ones) gets no chip -- see views.py::list(). */
+.so-rev-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: #fef3c7;
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--amber);
+}
+
 /* ── LIFO Valuation (Internal) report (R-03 slice 2c) ──────────
    Tab 1's deficit row reuses .fifo-layer-deficit/.badge-error verbatim above --
    same conceptual "deficit" state, just a different report. Tab 2's variance-cell
@@ -2099,3 +2115,20 @@ tr.pc-row-excluded { background: var(--bg); }
   .pb-filter-bar .form-control, .pb-filter-bar select.form-control,
   .pb-filter-bar input[type="date"].form-control, .pb-filter-bar .choices { width: 100%; }
 }
+
+/* ── SO revision-history panel (Task 7) — scoped, matches the approved mockup ── */
+.so-rev {
+  position: relative;
+  border-left: 3px solid var(--blue);
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: var(--bg);
+  border-radius: 0 6px 6px 0;
+}
+.so-rev:last-child { margin-bottom: 0; }
+.so-rev-original { border-left-color: var(--text-3); }
+.so-rev-head { font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 4px; }
+.so-rev-meta { color: var(--text-2); font-size: 12px; margin-top: 2px; }
+/* Links to the read-only revision viewer (Task 13). */
+.view-link { float: right; font-size: 12px; font-weight: 600; color: var(--blue); text-decoration: none; }
+.view-link:hover { text-decoration: underline; }
