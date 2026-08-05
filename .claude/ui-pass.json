@@ -59,6 +59,12 @@
     "reason": null,
     "waived": false
   },
+  "c4a4c03aa7b054c624dbdc321b900a000535a1bc": {
+    "branch": "feat/so-post-confirm-amendment",
+    "date": "2026-08-05",
+    "reason": null,
+    "waived": false
+  },
   "cda2447a68f1a789662d17852f5969b6fa684287": {
     "branch": "feat/so-post-confirm-amendment",
     "date": "2026-08-04",
