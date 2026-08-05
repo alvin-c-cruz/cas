@@ -195,6 +195,7 @@
                     <td>
                         <a href="{{ url_for('sales_orders.view', id=order.id) }}"
                            style="font-weight:600;color:var(--blue);">{{ order.so_number }}</a>
+                        {% if rev_numbers.get(order.id) %}<span class="so-rev-chip">Rev {{ rev_numbers[order.id] }}</span>{% endif %}
                     </td>
                     <td>{{ order.order_date.strftime('%b %d, %Y') }}</td>
                     <td>{{ order.customer_name }}</td>

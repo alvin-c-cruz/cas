@@ -384,6 +384,19 @@ def list():
     from app.sales_orders.utils import compute_sales_orders_summary
     summary = compute_sales_orders_summary(branch_id)
 
+    # ONE grouped query for the whole page, never latest_revision() per row --
+    # this page is paginated but a branch can still hold 100+ orders. Rev 0
+    # (every confirmed order has one -- migration sorev_0002 backfilled it for
+    # RIC's 121 pre-existing orders) must NOT surface a chip, so anything <= 0
+    # is filtered out below; the chip means "amended", not "confirmed".
+    from sqlalchemy import func
+    rev_rows = (db.session.query(SalesOrderRevision.sales_order_id,
+                                 func.max(SalesOrderRevision.revision_number))
+                .filter(SalesOrderRevision.sales_order_id.in_(
+                    [o.id for o in pagination.items] or [0]))
+                .group_by(SalesOrderRevision.sales_order_id).all())
+    rev_numbers = {so_id: n for so_id, n in rev_rows if n and n > 0}
+
     return render_template('sales_orders/list.html',
                            orders=pagination.items,
                            pagination=pagination,
@@ -393,7 +406,8 @@ def list():
                            customer_filter=customer_filter,
                            q=q_text,
                            date_from=date_from,
-                           date_to=date_to)
+                           date_to=date_to,
+                           rev_numbers=rev_numbers)
 
 
 @sales_orders_bp.route('/sales-orders/create', methods=['GET', 'POST'])

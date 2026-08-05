@@ -802,3 +802,28 @@ def test_job_order_slip_shows_revision_banner_after_amendment(
     html = client.get(f'/sales-orders/{so.so_number}/print-job-order').data.decode()
     assert 'REV. 1' in html
     assert 'destroy prior copies' in html
+
+
+def test_list_shows_rev_chip_only_for_amended_orders(
+        client, db_session, customer, product):
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    html = client.get('/sales-orders').data.decode()
+    assert 'Rev 1' not in html          # Rev 0 gets no chip
+    # A stronger absence check than the one above: 'Rev 1' not in html would
+    # stay TRUE even if the chip mistakenly rendered "Rev 0" (RIC's 121
+    # pre-existing confirmed orders each carry exactly one Rev 0 row -- see
+    # migration sorev_0002) -- so pin the chip's absence by its own class,
+    # not merely by the higher revision number's text.
+    assert 'so-rev-chip' not in html
+
+    lines = json.dumps([{'line_number': 1, 'product_id': product.id,
+                         'quantity': '7000', 'unit_price': '4.20', 'amount': '29400.00'}])
+    client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines, 'amend_reason': 'PO received after job order issued',
+        'authorizing_po_number': 'PO-MMS-88421',
+        'row_version': str(so.row_version)}, follow_redirects=True)
+
+    html = client.get('/sales-orders').data.decode()
+    assert '<span class="so-rev-chip">Rev 1</span>' in html

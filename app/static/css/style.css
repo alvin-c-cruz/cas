@@ -533,6 +533,22 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
   border: 1px solid var(--border);
 }
 
+/* Sales Orders list -- "Rev N" chip beside the SO number, shown only once an
+   order has been amended (revision >= 1); Rev 0 (every confirmed order,
+   including all pre-existing ones) gets no chip -- see views.py::list(). */
+.so-rev-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: #fef3c7;
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--amber);
+}
+
 /* ── LIFO Valuation (Internal) report (R-03 slice 2c) ──────────
    Tab 1's deficit row reuses .fifo-layer-deficit/.badge-error verbatim above --
    same conceptual "deficit" state, just a different report. Tab 2's variance-cell
