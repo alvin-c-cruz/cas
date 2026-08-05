@@ -47,6 +47,12 @@
     "reason": null,
     "waived": false
   },
+  "677413d21b98bb04d16e8c3fd9b71e79adc7edaf": {
+    "branch": "fix/hide-cancel-on-billed",
+    "date": "2026-08-05",
+    "reason": null,
+    "waived": false
+  },
   "786f29ccd6d3f7e0b7523553bf2569304985caf6": {
     "branch": "feat/r07-d5-wo-costing-variance",
     "date": "2026-08-02",
