@@ -132,19 +132,30 @@ class TestChiefAccountantApprovedEmails:
         assert b'/approved-emails' in resp.data
         assert b'Approved Emails' in resp.data
 
-    def test_ca_does_not_see_staff_management_link(self, client, db_session,
-                                                   chief_accountant_user, main_branch):
-        # staff_management is accountant-only; a CA must not get a dead link to it.
-        # Assert on the actual nav link (URL + the real nav-section markup), not a bare
-        # 'Staff Management' substring -- base.html's sidebar-accordion JS has an
-        # unrelated `//` comment mentioning "Staff Management" that ships in every
-        # response body regardless of role (JS comments aren't stripped server-side
-        # like Jinja {# #} comments are), which defeated the blanket substring check
-        # even though the real nav section is correctly role-gated.
+    def test_ca_SEES_staff_management_link(self, client, db_session,
+                                           chief_accountant_user, main_branch):
+        # INVERTED 2026-08-05 (BUG-CA-STAFF-MANAGEMENT-NO-NAV-LINK). This test used to
+        # assert the opposite, on the stated grounds that "staff_management is
+        # accountant-only; a CA must not get a dead link to it". That premise is wrong:
+        # app/staff_management/views.py::accountant_required admits
+        # ('accountant', 'chief_accountant'), and a CA request returns HTTP 200 with the
+        # real page -- verified live on RIC data. The link was never dead; the CA simply
+        # had no way to click it. Codifying the wrong premise here is very likely why the
+        # gap survived: the suite asserted the defect was correct behaviour.
+        #
+        # The "no dead link" principle it was reaching for is preserved and now applied
+        # where it actually holds -- see test_admin_does_NOT_see_it in
+        # test_sidebar_staff_management_gate.py: accountant_required rejects ADMIN, so an
+        # admin link really would flash-and-redirect.
+        #
+        # data-section="staff" stays absent for a CA on purpose: the CA's copy of the link
+        # lives inside the existing Tax & Oversight section (where she already has Audit
+        # Log, Control Accounts and Approved Emails), not in a second accountant-style
+        # section that would duplicate all three.
         db_session.commit()
         login(client, 'chief', 'chief123')
         resp = client.get('/under-development')
-        assert b'/staff-management' not in resp.data
+        assert b'href="/staff-management"' in resp.data
         assert b'data-section="staff"' not in resp.data
 
     def test_accountant_still_sees_approved_emails_link(self, client, db_session,

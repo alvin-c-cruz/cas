@@ -1354,6 +1354,20 @@
                         <span class="nav-icon">📜</span>
                         <span class="nav-text">Audit Log</span>
                     </a>
+                    {# Staff Management: staff_management's own accountant_required admits
+                       ('accountant', 'chief_accountant') -- NOT admin -- so a Chief Accountant
+                       is authorized here and previously had no way to click through to it
+                       (BUG-CA-STAFF-MANAGEMENT-NO-NAV-LINK). The accountant-only section below
+                       carries the same link for a plain accountant; this is the Chief
+                       Accountant's copy, guarded exactly like Approved Emails beneath it.
+                       Deliberately NOT shown to admin: accountant_required rejects admin, so an
+                       admin link would flash 'not permitted' and redirect. #}
+                    {% if not current_user.is_admin %}
+                    <a href="{{ url_for('staff_management.list_staff') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('staff_management.') %}active{% endif %}">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-text">Staff Management</span>
+                    </a>
+                    {% endif %}
                     {# Approved Emails: Chief Accountants manage staff registrations but are
                        not sysadmins. Admins already have this under the Admin section, so show
                        it here only to non-admin full-access users (i.e. Chief Accountants). #}
