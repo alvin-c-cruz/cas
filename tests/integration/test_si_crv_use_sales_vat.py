@@ -5,9 +5,13 @@ not from the purchase-side VATCategory.
 RED: fails when _vat_categories_for_form() still reads VATCategory.
 GREEN: passes after repoint to SalesVATCategory.
 """
+import pytest
+
 from app.sales_invoices.views import _vat_categories_for_form
 from app.sales_vat_categories.models import SalesVATCategory
 from app.vat_categories.models import VATCategory
+
+pytestmark = [pytest.mark.sales_vat]
 
 
 def test_si_vat_choices_come_from_sales_table(db_session, app):

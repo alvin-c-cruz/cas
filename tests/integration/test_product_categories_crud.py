@@ -4,7 +4,7 @@ from app import db
 from app.product_categories.models import ProductCategory
 from app.audit.models import AuditLog
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.product_categories]
 
 
 @pytest.fixture

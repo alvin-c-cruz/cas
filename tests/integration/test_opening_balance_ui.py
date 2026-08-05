@@ -20,7 +20,7 @@ from tests.integration.test_opening_balance_approval_routes import (
     _setup_pending_request,
 )
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.opening_balances]
 
 
 class TestOpeningBalanceActionItemsCount:

@@ -4,6 +4,8 @@ from app import db
 from app.products.models import Product
 from app.product_categories.models import ProductCategory
 
+pytestmark = [pytest.mark.product_categories]
+
 
 @pytest.fixture
 def products_module_enabled(db_session):

@@ -18,7 +18,7 @@ from tests.integration.test_opening_balances import (
     _login, _select_branch, _save_payload, _make_postable,
 )
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.opening_balances]
 
 
 def _post_line_form(cutover, account_id):

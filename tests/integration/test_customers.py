@@ -1,7 +1,11 @@
 """
 Integration tests for the customer list view.
 """
+import pytest
+
 from app import db
+
+pytestmark = [pytest.mark.customers]
 
 
 def test_customer_list_renders_empty(client, db_session, accountant_user, main_branch):

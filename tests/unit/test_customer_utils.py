@@ -10,6 +10,8 @@ from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
 from app.withholding_tax.models import WithholdingTax
 from app.customers.utils import compute_ar_aging, compute_creditable_wht_ytd
 
+pytestmark = [pytest.mark.customers]
+
 
 def _customer(db_session, code='C001'):
     c = Customer(code=code, name=f'Customer {code}', is_active=True)

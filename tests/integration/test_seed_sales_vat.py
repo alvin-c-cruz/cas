@@ -1,11 +1,15 @@
 """
 Integration tests for sales VAT category seed and WT sales_name backfill.
 """
+import pytest
+
 from app.fixtures import load_default_sales_vat_categories, load_default_withholding_tax
 from app.sales_vat_categories.models import SalesVATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.accounts.models import Account
 import app.seeds.seed_data as seed_data
+
+pytestmark = [pytest.mark.sales_vat]
 
 
 def test_seed_sales_vat_categories(db_session):

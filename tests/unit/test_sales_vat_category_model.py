@@ -1,9 +1,13 @@
+import pytest
+
 from decimal import Decimal
 from app.accounts.models import Account
 from app.sales_vat_categories.models import (
     SalesVATCategory, SalesVATCategoryChangeRequest,
     SALES_NATURES, SALES_NATURE_LABELS, format_sales_nature,
 )
+
+pytestmark = [pytest.mark.sales_vat]
 
 
 class TestSalesVATCategoryModel:

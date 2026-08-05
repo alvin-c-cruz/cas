@@ -6,7 +6,7 @@ and to_dict() keys.
 import pytest
 from app import db
 
-pytestmark = [pytest.mark.unit, pytest.mark.models]
+pytestmark = [pytest.mark.unit, pytest.mark.models, pytest.mark.customers]
 
 
 def _make_customer(code='CUST-DS-0001', name='Test Co'):

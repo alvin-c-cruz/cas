@@ -2,7 +2,7 @@
 import pytest
 from app import db
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.customers]
 
 
 def _login(client, user):

@@ -10,6 +10,8 @@ import pytest
 from app.customers.models import Customer, CustomerDeliverySite
 from app.audit.models import AuditLog
 
+pytestmark = [pytest.mark.customers]
+
 
 def _customer(db_session, code='C001', name='Acme Trading'):
     c = Customer(code=code, name=name, payment_terms='Net 30', is_active=True)

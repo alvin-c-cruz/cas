@@ -15,7 +15,7 @@ from app.sales_vat_categories.models import (
 from app.accounts.models import Account
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.sales_vat]
 
 
 def login(client, username, password):

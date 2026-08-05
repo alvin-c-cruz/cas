@@ -2,7 +2,7 @@
 import pytest
 from app import db
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.customers]
 
 
 def test_customer_default_salesperson_defaults_to_none(db_session):

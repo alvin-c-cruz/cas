@@ -3,11 +3,15 @@
 Mirrors the vendor `/vendors/<id>/defaults` endpoint so the Sales Invoice
 customer card can auto-fill line defaults the same way the APV vendor card does.
 """
+import pytest
+
 from datetime import date
 
 from app.customers.models import Customer
 from app.withholding_tax.models import WithholdingTax
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+
+pytestmark = [pytest.mark.customers]
 
 
 def _login(client, user, branch):

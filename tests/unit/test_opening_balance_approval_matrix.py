@@ -3,6 +3,8 @@ from app import db
 from app.users.models import User
 from app.opening_balances.approval_models import OpeningBalanceChangeRequest
 
+pytestmark = [pytest.mark.opening_balances]
+
 
 def _user(username, role):
     u = User(username=username, email=f'{username}@t.co', full_name=username.title(),

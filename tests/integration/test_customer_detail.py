@@ -8,6 +8,8 @@ from app.utils import ph_now
 from app.customers.models import Customer
 from app.sales_invoices.models import SalesInvoice
 
+pytestmark = [pytest.mark.customers]
+
 
 def _customer(db_session, code='C001'):
     c = Customer(code=code, name='Acme Trading', tin='123-456-789-000',

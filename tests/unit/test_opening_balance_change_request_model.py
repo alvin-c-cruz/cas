@@ -2,6 +2,8 @@ import pytest
 from app import db
 from app.opening_balances.approval_models import OpeningBalanceChangeRequest
 
+pytestmark = [pytest.mark.opening_balances]
+
 
 @pytest.mark.unit
 class TestOpeningBalanceChangeRequestModel:

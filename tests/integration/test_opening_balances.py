@@ -4,7 +4,7 @@ from app.journals.views import VOUCHER_TYPES
 from app.reports.general_journal_data import VOUCHER_ENTRY_TYPES
 from app.users.module_access import MODULE_REGISTRY
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.opening_balances]
 
 
 def test_opening_balance_is_a_registered_voucher_type():

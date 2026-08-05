@@ -1,8 +1,12 @@
+import pytest
+
 from decimal import Decimal
 from app import db
 from app.accounts.models import Account
 from app.utils.cache_helpers import get_sales_vat_categories, clear_sales_vat_cache
 from app.sales_vat_categories.models import SalesVATCategory
+
+pytestmark = [pytest.mark.sales_vat]
 
 
 def test_get_and_clear_sales_vat_cache(db_session):

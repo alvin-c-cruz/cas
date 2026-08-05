@@ -1,7 +1,11 @@
 """Integration tests for sales_vat_categories blueprint (admin-only access)."""
+import pytest
+
 from app.sales_vat_categories.models import SalesVATCategory, SalesVATCategoryChangeRequest
 from app.audit.models import AuditLog
 from app.users.models import User
+
+pytestmark = [pytest.mark.sales_vat]
 
 
 def _login_admin(client, admin_user):

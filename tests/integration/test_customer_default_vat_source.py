@@ -1,5 +1,9 @@
+import pytest
+
 from app.sales_vat_categories.models import SalesVATCategory
 from app.vat_categories.models import VATCategory
+
+pytestmark = [pytest.mark.customers]
 
 
 def test_customer_form_lists_sales_vat_names(client, db_session, admin_user, main_branch):

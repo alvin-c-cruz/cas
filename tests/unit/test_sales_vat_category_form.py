@@ -1,5 +1,9 @@
+import pytest
+
 from werkzeug.datastructures import MultiDict
 from app.sales_vat_categories.forms import SalesVATCategoryForm
+
+pytestmark = [pytest.mark.sales_vat]
 
 
 def test_output_account_required_when_rated(app):

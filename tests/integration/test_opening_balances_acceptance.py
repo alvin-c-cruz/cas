@@ -26,7 +26,7 @@ from app import db
 from app.accounts.models import Account
 from app.reports.financial import generate_trial_balance
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.opening_balances]
 
 # Reuse helpers from the main integration module.
 from tests.integration.test_opening_balances import (

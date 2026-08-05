@@ -3,6 +3,8 @@ import pytest
 from app import db
 from app.product_categories.models import ProductCategory
 
+pytestmark = [pytest.mark.product_categories]
+
 
 @pytest.mark.unit
 @pytest.mark.models

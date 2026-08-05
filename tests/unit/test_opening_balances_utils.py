@@ -9,7 +9,7 @@ from app.journal_entries.models import JournalEntry
 from app.accounts.models import Account
 from app.periods.models import AccountingPeriod
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.opening_balances]
 
 
 def _opening_je(branch_id, status='draft', entry_date=date(2026, 1, 1)):

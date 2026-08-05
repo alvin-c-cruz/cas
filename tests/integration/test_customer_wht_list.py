@@ -1,3 +1,5 @@
+import pytest
+
 import glob
 import importlib.util
 import os
@@ -7,6 +9,8 @@ import sqlalchemy as sa
 from app import db
 from app.customers.models import Customer
 from app.withholding_tax.models import WithholdingTax
+
+pytestmark = [pytest.mark.customers]
 
 
 def _backfill_sql():
