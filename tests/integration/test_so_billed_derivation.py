@@ -183,6 +183,62 @@ def test_cancel_ignores_the_legacy_column_too(
     assert db.session.get(SalesOrder, so.id).status == 'cancelled'
 
 
+# ── the control itself: no futile Cancel button on a billed order ───────────
+
+def test_detail_page_HIDES_cancel_on_a_billed_order(
+        client, db_session, main_branch, customer, accountant_user):
+    """The route refuses; the page should not offer the action at all. Asserts the
+    cancel URL is gone, not just the label -- the trigger button and the modal's
+    own submit share the text 'Cancel Order', so gating only the button would
+    leave the modal (and a working POST target) in the DOM while a label-only
+    absence test still passed."""
+    so = _so(db_session, main_branch, customer, accountant_user, 'SO-B-012')
+    _dr(db_session, so, main_branch, customer, 'DR-B-012', invoice_id=1201)
+
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/sales-orders/%d' % so.id)
+    assert resp.status_code == 200
+    assert b'Cancel Order' not in resp.data
+    assert ('/sales-orders/%d/cancel' % so.id).encode() not in resp.data
+    assert b'cancelModal' not in resp.data
+    # positive control on the SAME page -- proves it rendered the real detail
+    # view rather than an error/empty body that would pass any absence test.
+    assert so.so_number.encode() in resp.data
+
+
+def test_detail_page_STILL_OFFERS_cancel_on_an_unbilled_order(
+        client, db_session, main_branch, customer, accountant_user):
+    """The other half: hiding must be scoped to billed orders only."""
+    so = _so(db_session, main_branch, customer, accountant_user, 'SO-B-013')
+    _dr(db_session, so, main_branch, customer, 'DR-B-013')   # delivered, uninvoiced
+
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/sales-orders/%d' % so.id)
+    assert resp.status_code == 200
+    assert b'Cancel Order' in resp.data
+    assert ('/sales-orders/%d/cancel' % so.id).encode() in resp.data
+    assert b'cancelModal' in resp.data
+
+
+def test_hiding_the_button_does_not_replace_the_route_guard(
+        client, db_session, main_branch, customer, accountant_user):
+    """Belt and braces. The button is gone, but a replayed/hand-made POST must
+    still be refused -- a hidden control is not an authorization check."""
+    from app.sales_orders.models import SalesOrder
+    so = _so(db_session, main_branch, customer, accountant_user, 'SO-B-014')
+    _dr(db_session, so, main_branch, customer, 'DR-B-014', invoice_id=1401)
+
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/sales-orders/%d/cancel' % so.id,
+                       data={'cancel_reason': 'Bypassing the hidden button entirely'},
+                       follow_redirects=True)
+    assert b'billed Sales Order cannot be cancelled' in resp.data
+    assert db.session.get(SalesOrder, so.id).status == 'confirmed'
+
+
 def test_cancel_still_SUCCEEDS_on_an_unbilled_confirmed_order(
         client, db_session, main_branch, customer, accountant_user):
     """The guard must not over-block: an order with a delivery but no invoice is

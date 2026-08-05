@@ -793,10 +793,16 @@ def view(id):
             'authorizing_po_number': r.authorizing_po_number,
         })
 
+    # Same derivation cancel() guards on, so the page cannot offer an action the
+    # route will refuse. Passed in rather than computed in the template: the
+    # helper hits the DB, and a template-side call would put a query behind a
+    # Jinja expression where it is invisible to anyone reading the view.
+    from app.delivery_receipts.models import so_is_billed
     return render_template('sales_orders/detail.html', so=so,
                            created_by_user=created_by_user,
                            confirmed_by_user=confirmed_by_user,
                            cancelled_by_user=cancelled_by_user,
+                           so_billed=so_is_billed(so),
                            revisions=parsed_revisions)
 
 
