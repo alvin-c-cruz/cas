@@ -41,6 +41,21 @@ def product(db_session):
 
 
 @pytest.fixture
+def accountant_user(db_session, branch):
+    """An accountant user -- close_line's role gate is accountant/admin, not staff."""
+    from app.users.models import User
+    u = User(username='ana', email='ana@example.com', full_name='Ana',
+             role='accountant', is_active=True, branch_id=branch.id)
+    u.set_password('uitest-Pass123!')
+    u.set_book_permissions({'sales_orders': True})
+    db_session.add(u)
+    db_session.flush()  # get u.id before set_branches
+    u.set_branches([branch])
+    db_session.commit()
+    return u
+
+
+@pytest.fixture
 def staff_user(db_session, branch):
     """A staff user -- amendment must be reachable by staff, not just accountants."""
     from app.users.models import User
@@ -70,15 +85,24 @@ def client(client, db_session, staff_user, branch):
 # --- shared helper ----------------------------------------------------------
 
 def _confirmed_so(client, db_session, customer, product, qty,
-                  so_number='2026080001'):
+                  so_number='2026080001', second_line_qty=None):
     """Create a draft SO through the route, then confirm it through the route.
 
     Deliberately drives both routes rather than building rows directly, so Rev 0
     is written by the code under test.
+
+    second_line_qty, when given, adds a SECOND line (same product) to the initial
+    submission -- for tests that need to close one line while amending the other.
+    Existing call sites are unaffected: default None keeps the single-line shape.
     """
-    lines = json.dumps([{'line_number': 1, 'product_id': product.id,
-                         'quantity': str(qty), 'unit_price': '4.20',
-                         'amount': str(qty * Decimal('4.20'))}])
+    line_list = [{'line_number': 1, 'product_id': product.id,
+                  'quantity': str(qty), 'unit_price': '4.20',
+                  'amount': str(qty * Decimal('4.20'))}]
+    if second_line_qty is not None:
+        line_list.append({'line_number': 2, 'product_id': product.id,
+                          'quantity': str(second_line_qty), 'unit_price': '4.20',
+                          'amount': str(second_line_qty * Decimal('4.20'))})
+    lines = json.dumps(line_list)
     client.post('/sales-orders/create', data={
         'so_number': so_number, 'order_date': '2026-08-04',
         'customer_id': str(customer.id), 'payment_terms': 'Net 60',
@@ -282,3 +306,120 @@ def test_amend_ignores_foreign_so_item_id(client, db_session, customer, product)
     assert len(so.line_items) == 2
     quantities = sorted(i.quantity for i in so.line_items)
     assert quantities == sorted([Decimal('3000'), Decimal('9000')])
+
+
+def test_amending_does_not_reopen_a_closed_line(
+        client, db_session, customer, product, accountant_user, staff_user, branch):
+    """The single most important reason _apply_amended_so_lines updates rows IN
+    PLACE rather than deleting-and-rebuilding: a rebuild resets line_status to
+    'open', silently RE-OPENING a line someone deliberately short-closed and
+    discarding closed_by_id/closed_at/closed_reason with it. This was reasoned
+    about but never exercised -- pin it."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'),
+                       second_line_qty=Decimal('1000'))
+    items = sorted(so.line_items, key=lambda i: i.line_number)
+    closed_item, open_item = items[0], items[1]
+    closed_item_id, open_item_id = closed_item.id, open_item.id
+
+    # Close line 1 through the real route, as an accountant -- close_line's role
+    # gate is accountant/admin, not staff.
+    _login(client, accountant_user)
+    _select_branch(client, branch.id)
+    resp = client.post(f'/sales-orders/{so.id}/lines/{closed_item_id}/close',
+                       data={'closed_reason': 'Customer cancelled this tranche'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db_session.refresh(closed_item)
+    assert closed_item.line_status == 'closed', (
+        'setup failed: the close route did not actually close the line')
+    recorded_by = closed_item.closed_by_id
+    recorded_at = closed_item.closed_at
+    recorded_reason = closed_item.closed_reason
+    assert recorded_by == accountant_user.id
+    assert recorded_reason == 'Customer cancelled this tranche'
+
+    # Amend as staff, changing only the OTHER (open) line's quantity. The closed
+    # line's submitted quantity stays equal to its current value -- validate_amendment
+    # separately refuses a quantity change on a closed line; that is not what this
+    # test is checking.
+    _login(client, staff_user)
+    _select_branch(client, branch.id)
+    db_session.refresh(so)
+    lines = json.dumps([
+        {'so_item_id': closed_item_id, 'line_number': 1, 'product_id': product.id,
+         'quantity': '3000', 'unit_price': '4.20', 'amount': '12600.00'},
+        {'so_item_id': open_item_id, 'line_number': 2, 'product_id': product.id,
+         'quantity': '5000', 'unit_price': '4.20', 'amount': '21000.00'},
+    ])
+    resp = client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines,
+        'amend_reason': 'Increase remaining open line quantity',
+        'authorizing_po_number': 'PO-CLOSE-1',
+        'row_version': str(so.row_version),
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+
+    db_session.refresh(so)
+    open_item_after = next(i for i in so.line_items if i.id == open_item_id)
+    assert open_item_after.quantity == Decimal('5000')
+
+    db_session.refresh(closed_item)
+    assert closed_item.line_status == 'closed'
+    assert closed_item.closed_by_id == recorded_by
+    assert closed_item.closed_at == recorded_at
+    assert closed_item.closed_reason == recorded_reason
+
+
+def test_a_client_cannot_reopen_a_closed_line_through_the_amend_form(
+        client, db_session, customer, product, accountant_user, staff_user, branch):
+    """A crafted amend POST that additionally carries line_status/closed_by_id/
+    closed_at/closed_reason for a closed line -- trying to launder a re-open
+    through the form -- must be ignored entirely. These are not form fields;
+    _assign_so_line_fields never reads or writes them."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'),
+                       second_line_qty=Decimal('1000'))
+    items = sorted(so.line_items, key=lambda i: i.line_number)
+    closed_item, open_item = items[0], items[1]
+    closed_item_id, open_item_id = closed_item.id, open_item.id
+
+    _login(client, accountant_user)
+    _select_branch(client, branch.id)
+    resp = client.post(f'/sales-orders/{so.id}/lines/{closed_item_id}/close',
+                       data={'closed_reason': 'Customer cancelled this tranche'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db_session.refresh(closed_item)
+    assert closed_item.line_status == 'closed', (
+        'setup failed: the close route did not actually close the line')
+    recorded_by = closed_item.closed_by_id
+    recorded_at = closed_item.closed_at
+    recorded_reason = closed_item.closed_reason
+
+    _login(client, staff_user)
+    _select_branch(client, branch.id)
+    db_session.refresh(so)
+    lines = json.dumps([
+        {'so_item_id': closed_item_id, 'line_number': 1, 'product_id': product.id,
+         'quantity': '3000', 'unit_price': '4.20', 'amount': '12600.00',
+         'line_status': 'open', 'closed_by_id': None, 'closed_at': None,
+         'closed_reason': None},
+        {'so_item_id': open_item_id, 'line_number': 2, 'product_id': product.id,
+         'quantity': '1000', 'unit_price': '4.20', 'amount': '4200.00'},
+    ])
+    resp = client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines,
+        'amend_reason': 'Attempt to launder a reopen through the amend form',
+        'authorizing_po_number': 'PO-CLOSE-2',
+        'row_version': str(so.row_version),
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+
+    db_session.refresh(closed_item)
+    assert closed_item.line_status == 'closed'
+    assert closed_item.closed_by_id == recorded_by
+    assert closed_item.closed_at == recorded_at
+    assert closed_item.closed_reason == recorded_reason
