@@ -140,6 +140,14 @@ from decimal import Decimal, InvalidOperation  # noqa: E402
 from app.delivery_receipts.models import so_line_open_qty  # noqa: E402
 
 
+# SalesOrderItem.quantity is Numeric(15, 4) -- 11 integer digits and 4 decimals.
+# SQLite does NOT enforce column precision, so an out-of-range value is stored
+# verbatim: Decimal('1E+9999') lands in the row as `inf`, and every later
+# so_line_open_qty computation on that line is then infinite. The column bound is
+# therefore not a bound at all unless this guard applies it.
+MAX_LINE_QUANTITY = Decimal('99999999999.9999')
+
+
 def _delivered_qty(item):
     """Quantity already committed by non-draft, non-cancelled DRs."""
     return Decimal(str(item.quantity or 0)) - so_line_open_qty(item)
@@ -205,6 +213,13 @@ def validate_amendment(so, new_lines):
         # comparison against a quiet NaN then signals InvalidOperation, which in
         # the route is a 500 rather than a flashed refusal.
         if qty is not None and not qty.is_finite():
+            qty = None
+        # is_finite() does NOT catch this -- Decimal('1E+9999') is perfectly
+        # finite, merely far larger than the column can hold.
+        elif qty is not None and abs(qty) > MAX_LINE_QUANTITY:
+            errors.append(
+                'Quantity %s is out of range (maximum %s).'
+                % (qty, MAX_LINE_QUANTITY))
             qty = None
 
         if item_id in submitted:

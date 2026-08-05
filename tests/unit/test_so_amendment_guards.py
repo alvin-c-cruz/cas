@@ -201,6 +201,23 @@ def test_infinity_is_not_accepted_as_a_legal_increase():
     assert 'could not read' in errs[0].lower()
 
 
+def test_a_quantity_larger_than_the_column_can_hold_is_refused():
+    """is_finite() does not catch this: Decimal('1E+9999') is finite, just far
+    bigger than Numeric(15,4). SQLite does not enforce column precision, so such
+    a value is stored verbatim as `inf` and every later so_line_open_qty
+    computation on that line becomes infinite. The guard is the only bound."""
+    so = _SO([_Line(1, 1, 3000, 0)])
+    errs = validate_amendment(so, [{'so_item_id': 1, 'quantity': '1E+9999'}])
+    assert any('out of range' in e.lower() for e in errs)
+
+
+def test_the_largest_storable_quantity_is_still_accepted():
+    """Boundary: the ceiling refuses what the column cannot hold, not what it can."""
+    so = _SO([_Line(1, 1, 3000, 0)])
+    assert validate_amendment(
+        so, [{'so_item_id': 1, 'quantity': '99999999999.9999'}]) == []
+
+
 def test_a_non_dict_line_is_reported_not_crashed_on():
     so = _SO([_Line(1, 1, 3000, 0)])
     errs = validate_amendment(so, ['garbage'])
