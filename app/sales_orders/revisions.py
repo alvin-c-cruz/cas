@@ -281,15 +281,32 @@ def validate_amendment(so, new_lines):
         delivered = _delivered_qty(item)
 
         if item.id not in submitted:
-            if _has_any_dr_reference(item):
+            # ORDER IS LOAD-BEARING: delivered > 0, THEN _has_any_dr_reference,
+            # THEN billed. _has_any_dr_reference is a strict SUPERSET of
+            # delivered > 0 -- delivered only counts COMMITTED_STATUSES DRs
+            # (approved/delivered/billed), and every one of those statuses ALSO
+            # matches the reference check (which is status-agnostic by design).
+            # Checking the reference first therefore made the delivered>0 branch
+            # (and very likely the billed branch) DEAD CODE: any state that could
+            # reach them had already matched the DR branch above. That mattered
+            # beyond tidiness -- the generic DR message tells the user to "Cancel
+            # or amend that Delivery Receipt", and cancelling an approved/
+            # delivered DR reverses real stock and COGS postings. The specific
+            # "Close the line" message it displaced is the lightweight,
+            # purpose-built remedy this module already provides. Checking
+            # delivered > 0 first restores that message for the case it belongs
+            # to. The reference check still runs next, so the FK-orphan case it
+            # was added for (a draft/cancelled DR, delivered == 0, not billed by
+            # construction) still reaches it.
+            if delivered > 0:
+                errors.append(
+                    '%s: cannot remove a line with %s already delivered. Close '
+                    'the line instead to stop further delivery.' % (label, delivered))
+            elif _has_any_dr_reference(item):
                 errors.append(
                     '%s: cannot remove a line referenced by a Delivery Receipt '
                     '(draft or otherwise). Cancel or edit that Delivery Receipt '
                     'first.' % label)
-            elif delivered > 0:
-                errors.append(
-                    '%s: cannot remove a line with %s already delivered. Close '
-                    'the line instead to stop further delivery.' % (label, delivered))
             elif billed:
                 errors.append(
                     '%s: cannot remove a line from a billed Sales Order. Void '

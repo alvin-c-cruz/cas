@@ -174,6 +174,14 @@ def _apply_amended_so_lines(so, lines_json):
             is_new = False
 
         if not _assign_so_line_fields(so, item, d, idx):
+            # For an EXISTING item this `continue` leaves it out of `seen`, so
+            # the sync loop below deletes it -- an implicit "blank an existing
+            # row to remove it" path. It is unreachable in practice only because
+            # a blank submission also blanks quantity, and validate_amendment's
+            # per-row qty parse (see revisions.py, "VALIDATION MUST MIRROR
+            # APPLICATION") refuses a missing/unparseable quantity before this
+            # function is ever called. A future edit to either parser could
+            # silently reopen this path -- they must keep matching.
             continue  # blank trailing line -- do not attach/keep it
         kept += 1
         item.line_number = kept

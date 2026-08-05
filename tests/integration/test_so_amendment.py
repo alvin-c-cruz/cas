@@ -571,3 +571,82 @@ def test_amend_saves_a_changed_order_date(client, db_session, customer, product)
 
     db_session.refresh(so)
     assert so.order_date == date(2026, 8, 10)
+
+
+def test_amend_refuses_removal_of_a_delivered_line_with_the_delivered_message(
+        client, db_session, branch, customer, product):
+    """PINS THE GUARD ORDER: delivered > 0 must be checked BEFORE
+    _has_any_dr_reference. Every DR that commits real quantity (approved/
+    delivered/billed) ALSO matches the reference check -- so an approved DR
+    with delivered_quantity > 0 satisfies BOTH guards. If the reference check
+    ran first (as it originally did), this case would always report the
+    generic 'Cancel or amend that Delivery Receipt' message instead of the
+    specific 'Close the line' remedy this module actually provides -- and
+    cancelling an approved DR reverses real stock/COGS postings, a much
+    heavier action than closing the line. Assert the DR-reference wording is
+    ABSENT: a substring shared between refusals proves nothing about which one
+    fired."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    soi = so.line_items[0]
+
+    dr = DeliveryReceipt(
+        branch_id=branch.id, dr_number='DR-APPROVED-1', delivery_date=date(2026, 8, 4),
+        sales_order_id=so.id, customer_id=customer.id, customer_name=customer.name,
+        status='approved')
+    dr.line_items.append(DeliveryReceiptItem(
+        line_number=1, sales_order_item_id=soi.id, product_id=soi.product_id,
+        delivered_quantity=Decimal('1000')))
+    db_session.add(dr)
+    db_session.commit()
+
+    lines = json.dumps([])  # submit with the SO's only line removed
+    resp = client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines,
+        'amend_reason': 'Attempting to remove a line already delivered against',
+        'authorizing_po_number': 'PO-DELIVERED-1', 'row_version': str(so.row_version),
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'already delivered. Close the line instead to stop further delivery.' in resp.data
+    assert b'referenced by a Delivery Receipt' not in resp.data
+
+    db_session.refresh(so)
+    assert len(so.line_items) == 1
+    assert so.line_items[0].id == soi.id
+
+
+def test_amend_refuses_removal_of_a_dr_referenced_line_with_the_dr_message(
+        client, db_session, branch, customer, product):
+    """The companion case: a DR reference with delivered == 0 (draft status,
+    not billed) must still get the DR-specific message. This is the FK-orphan
+    guard's own reason for existing -- it must still fire once the delivered
+    check is checked first. Assert the delivered-line wording is ABSENT."""
+    so = _confirmed_so(client, db_session, customer, product, Decimal('3000'))
+    soi = so.line_items[0]
+
+    dr = DeliveryReceipt(
+        branch_id=branch.id, dr_number='DR-DRAFT-2', delivery_date=date(2026, 8, 4),
+        sales_order_id=so.id, customer_id=customer.id, customer_name=customer.name,
+        status='draft')
+    dr.line_items.append(DeliveryReceiptItem(
+        line_number=1, sales_order_item_id=soi.id, product_id=soi.product_id,
+        delivered_quantity=Decimal('0')))
+    db_session.add(dr)
+    db_session.commit()
+
+    lines = json.dumps([])  # submit with the SO's only line removed
+    resp = client.post(f'/sales-orders/{so.id}/amend', data={
+        'so_number': '2026080001', 'order_date': '2026-08-04',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 60', 'notes': '',
+        'line_items': lines,
+        'amend_reason': 'Attempting to remove a DR-referenced but undelivered line',
+        'authorizing_po_number': 'PO-DR-2', 'row_version': str(so.row_version),
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'referenced by a Delivery Receipt' in resp.data
+    assert b'already delivered. Close the line instead to stop further delivery.' not in resp.data
+
+    db_session.refresh(so)
+    assert len(so.line_items) == 1
+    assert so.line_items[0].id == soi.id
