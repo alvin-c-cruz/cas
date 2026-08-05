@@ -208,7 +208,11 @@ def test_a_quantity_larger_than_the_column_can_hold_is_refused():
     computation on that line becomes infinite. The guard is the only bound."""
     so = _SO([_Line(1, 1, 3000, 0)])
     errs = validate_amendment(so, [{'so_item_id': 1, 'quantity': '1E+9999'}])
-    assert any('out of range' in e.lower() for e in errs)
+    # Exactly ONE message. Overloading None for "unparseable" and "out of range"
+    # produced a second, false "could not read" alongside it.
+    assert len(errs) == 1
+    assert 'out of range' in errs[0].lower()
+    assert 'could not read' not in errs[0].lower()
 
 
 def test_the_largest_storable_quantity_is_still_accepted():

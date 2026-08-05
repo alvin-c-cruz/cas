@@ -147,6 +147,12 @@ from app.delivery_receipts.models import so_line_open_qty  # noqa: E402
 # therefore not a bound at all unless this guard applies it.
 MAX_LINE_QUANTITY = Decimal('99999999999.9999')
 
+# Distinct from None. None means "could not be parsed at all"; this means
+# "parsed fine, but refused as out of range". Overloading None for both made the
+# per-item loop report a value it had already rejected as unreadable, which is a
+# user-facing lie -- it read fine, it was simply too large.
+_OUT_OF_RANGE = object()
+
 
 def _delivered_qty(item):
     """Quantity already committed by non-draft, non-cancelled DRs."""
@@ -220,7 +226,7 @@ def validate_amendment(so, new_lines):
             errors.append(
                 'Quantity %s is out of range (maximum %s).'
                 % (qty, MAX_LINE_QUANTITY))
-            qty = None
+            qty = _OUT_OF_RANGE
 
         if item_id in submitted:
             errors.append(
@@ -268,6 +274,8 @@ def validate_amendment(so, new_lines):
             continue
 
         new_qty = submitted[item.id]
+        if new_qty is _OUT_OF_RANGE:
+            continue  # already refused above, with its own message
         if new_qty is None:
             errors.append(
                 '%s: could not read the submitted quantity. Re-enter it and try '
