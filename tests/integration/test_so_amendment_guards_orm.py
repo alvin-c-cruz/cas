@@ -151,14 +151,38 @@ def test_amendment_against_billed_so(client, db_session, branch, customer, produ
     db_session.commit()
     db_session.refresh(so)
 
-    # Increase -> allowed.
-    errs = validate_amendment(so, [{'so_item_id': soi.id, 'quantity': '7000'}])
+    # Increase -> allowed. Every payload here echoes the STORED unit_price,
+    # exactly as the amend form does: _assign_so_line_fields writes
+    # item.unit_price = _so_line_dec(d.get('unit_price')), so a payload omitting
+    # the key NULLs the price and is a price CHANGE, not a neutral one.
+    errs = validate_amendment(
+        so, [{'so_item_id': soi.id, 'quantity': '7000', 'unit_price': '4.20'}])
     assert errs == []
 
     # Decrease -> refused.
-    errs = validate_amendment(so, [{'so_item_id': soi.id, 'quantity': '4000'}])
+    errs = validate_amendment(
+        so, [{'so_item_id': soi.id, 'quantity': '4000', 'unit_price': '4.20'}])
     assert len(errs) == 1
     assert 'billed' in errs[0].lower()
+
+    # Price change -> refused, in BOTH directions, against the REAL Numeric
+    # column rather than a fake's Decimal. This layer is what proves the
+    # comparison survives the round-trip: SQLAlchemy hands back the column's own
+    # scale, so a guard that compared FORMATTED STRINGS could pass every
+    # unit-level fake and still refuse an untouched price here.
+    assert soi.unit_price == Decimal('4.20')
+    for changed in ('0.01', '99.00'):
+        errs = validate_amendment(
+            so, [{'so_item_id': soi.id, 'quantity': '5000',
+                  'unit_price': changed}])
+        assert len(errs) == 1, errs
+        assert 'price' in errs[0].lower()
+
+    # ...and the same price written with different trailing zeros is NOT a
+    # change, which is the false-refusal this guard must not produce.
+    errs = validate_amendment(
+        so, [{'so_item_id': soi.id, 'quantity': '5000', 'unit_price': '4.2'}])
+    assert errs == []
 
 
 def test_exploit_two_tranches_same_product_guarded_independently_real_orm(

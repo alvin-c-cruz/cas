@@ -202,6 +202,12 @@ def validate_amendment(so, new_lines):
     billed = so.sales_invoice_id is not None
 
     submitted = {}
+    # Kept as a PARALLEL dict rather than folding price into `submitted`'s
+    # value: every existing guard reads submitted[id] as the quantity, and
+    # changing that shape would touch each of them for no behavioural gain.
+    # The two are written in lockstep at the one assignment site below, so
+    # `id in submitted` is a valid membership test for both.
+    submitted_price = {}
     for line in (new_lines or []):
         # new_lines comes straight from json.loads(request.form['line_items']),
         # so it can be any JSON shape at all. Anything that is not an object is
@@ -246,16 +252,61 @@ def validate_amendment(so, new_lines):
                 % (qty, MAX_LINE_QUANTITY))
             qty = _OUT_OF_RANGE
 
+        # Parsed with the SAME tolerance as the applier's _so_line_dec
+        # (unreadable -> None, which it stores as NULL). Mirroring that is what
+        # makes an unreadable or omitted price a CHANGE rather than a pass:
+        # otherwise the one payload shape that erases the price would be the one
+        # shape the billed-order guard waves through. No range/NaN handling is
+        # needed here, unlike quantity -- this value is only ever compared with
+        # != (never ordered), and Decimal('NaN') != anything is True, which is
+        # the fail-closed answer.
+        raw_price = line.get('unit_price')
+        try:
+            price = (Decimal(str(raw_price))
+                     if raw_price not in (None, '', 'null') else None)
+        except (InvalidOperation, TypeError, ValueError):
+            price = None
+
         if item_id in submitted:
             errors.append(
                 'Malformed submission: two lines target the same original row '
                 '(id %s). Reload the Sales Order and try again.' % item_id)
             continue
         submitted[item_id] = qty
+        submitted_price[item_id] = price
 
     for item in so.line_items:
         label = _line_label(item)
         ordered = Decimal(str(item.quantity or 0))
+
+        # Unit price is FROZEN on a billed Sales Order, in BOTH directions.
+        # Deliberately asymmetric with the quantity rule below, which allows
+        # increases: extra units were never invoiced and can be billed later,
+        # but unit price applies to the units ALREADY on the invoice, so raising
+        # it contradicts that invoice exactly as much as cutting it does.
+        #
+        # POSITION IS LOAD-BEARING -- this sits ahead of the closed-line branch,
+        # which `continue`s. A closed line on a billed order is still invoiced:
+        # closing abandons its remaining QUANTITY, it does not unbill what was
+        # already sold. Placing this check lower would leave closed lines
+        # repriceable, which is the exact hole the guard exists to close.
+        # Guarded on `item.id in submitted` so a REMOVED line keeps its own,
+        # more actionable removal message instead of also drawing a price one.
+        if billed and item.id in submitted:
+            invoiced = (Decimal(str(item.unit_price))
+                        if item.unit_price is not None else None)
+            # Decimal equality is NUMERIC: 4.20 == 4.2 == 4.2000, so a price
+            # merely re-typed with different trailing zeros is not a change.
+            # Comparing formatted strings here would refuse that and make the
+            # guard unusable. None != Decimal is True, which covers both the
+            # erased-price and the never-priced-line directions.
+            if submitted_price[item.id] != invoiced:
+                shown = _money(item.unit_price)
+                errors.append(
+                    '%s: unit price cannot be changed on a billed Sales Order '
+                    '(%s). Void the invoice first.'
+                    % (label, ('invoiced at %s' % shown) if shown is not None
+                       else 'this line carries no invoiced price'))
 
         # A closed line's remaining quantity is already abandoned. Guard it on
         # its OWN terms: so_line_open_qty returns 0 unconditionally for a closed
