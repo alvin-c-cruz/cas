@@ -23,6 +23,12 @@
     "reason": null,
     "waived": false
   },
+  "3d6acecc7190513c32727ca3d1e30f61b14ff4de": {
+    "branch": "fix/so-create-error-keeps-lines",
+    "date": "2026-08-05",
+    "reason": null,
+    "waived": false
+  },
   "4202e51f99dfef2ed24e45e464b7bc89ef079f5f": {
     "branch": "feat/so-post-confirm-amendment",
     "date": "2026-08-05",
