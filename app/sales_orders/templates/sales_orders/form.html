@@ -357,8 +357,8 @@ function addLineItem(existingItem) {
     lineCounter++;
     const id = lineCounter;
     const item = existingItem
-        ? { ...existingItem, id }
-        : { id, product_id: null, quantity: null, uom_id: null, uom_text: null,
+        ? { ...existingItem, id, so_item_id: existingItem.id != null ? existingItem.id : (existingItem.so_item_id != null ? existingItem.so_item_id : null) }
+        : { id, so_item_id: null, product_id: null, quantity: null, uom_id: null, uom_text: null,
             unit_price: null, amount: 0.00, vat_category: currentCustomerVatCategory || '',
             wt_id: null, delivery_date: null, delivery_site_id: null };
 
@@ -744,6 +744,7 @@ document.getElementById('soForm').addEventListener('submit', function () {
         const vat     = vatCategories.find(v => v.code === item.vat_category);
         const vatRate = vat ? vat.rate : 0;
         return {
+            so_item_id:        item.so_item_id         != null ? item.so_item_id        : null,
             product_id:        item.product_id        != null ? item.product_id        : null,
             quantity:          item.quantity           != null ? item.quantity          : null,
             uom_id:            item.uom_id             != null ? item.uom_id            : null,

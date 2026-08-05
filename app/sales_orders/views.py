@@ -14,7 +14,7 @@ from flask_login import login_required, current_user
 from app import db
 from app.sales_orders.models import SalesOrder, SalesOrderItem
 from app.branches.models import Branch
-from app.sales_orders.forms import SalesOrderForm
+from app.sales_orders.forms import SalesOrderForm, SalesOrderAmendForm
 from app.customers.models import Customer, CustomerDeliverySite
 from app.customers.views import build_customer_quick_add_form
 from app.withholding_tax.models import WithholdingTax
@@ -28,7 +28,7 @@ from app.utils.concurrency import claim_version, conflict_message, submitted_ver
 from app.sales_orders.preprinted_layout import (
     get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
     DATE_FORMATS, FIELD_LABELS, TEXT_KEYS)
-from app.sales_orders.revisions import write_revision
+from app.sales_orders.revisions import write_revision, validate_amendment
 
 sales_orders_bp = Blueprint('sales_orders', __name__, template_folder='templates')
 
@@ -37,76 +37,160 @@ VALID_SO_STATUSES = {'draft', 'confirmed', 'cancelled', 'closed'}
 
 # ── line-item helpers (kept from Tasks 1-3) ──────────────────────────────────
 
+def _so_line_dec(v):
+    try:
+        return Decimal(str(v)) if v not in (None, '', 'null') else None
+    except (InvalidOperation, TypeError):
+        return None
+
+
+def _so_line_int(v):
+    try:
+        return int(v) if v and str(v).strip() not in ('', 'null') else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _so_line_date(v):
+    if v in (None, '', 'null'):
+        return None
+    try:
+        return date.fromisoformat(v)
+    except (ValueError, TypeError):
+        return None
+
+
+def _so_line_delivery_site_id(so, v):
+    """Resolve a submitted delivery_site_id, but only if it actually belongs to
+    this SO's own customer -- a direct POST, a replay, or a stale in-memory line
+    array (e.g. from before a header customer change) must never silently persist
+    a foreign customer's site. Mirrors this parser's tolerant style for other
+    optional cross-reference fields (invalid/missing -> None, not a raised error).
+    """
+    site_id = _so_line_int(v)
+    if site_id is None:
+        return None
+    site = db.session.get(CustomerDeliverySite, site_id)
+    if site is None or site.customer_id != so.customer_id:
+        return None
+    return site_id
+
+
+def _assign_so_line_fields(so, item, d, idx):
+    """Coerce + assign one submitted line's fields onto *item* (new or existing).
+
+    Shared by both parsers below -- _parse_and_attach_so_lines (draft create/edit,
+    rebuild-from-scratch) and _apply_amended_so_lines (post-confirm amend, update
+    in place) -- so the coercion/validation rules (including the delivery-site
+    ownership check) exist in exactly one place. Does NOT touch line_status,
+    closed_by_id, closed_at, or closed_reason -- those are not form fields.
+
+    *idx* is the line's 1-based position in the SUBMITTED array (including any
+    blank trailing lines) and is used only in the raised ValueError's message --
+    it mirrors the original inlined behaviour exactly. It is NOT the same
+    number as item.line_number, which callers assign separately once they know
+    how many non-blank lines have been kept so far.
+
+    Returns False (and leaves *item* untouched) for a blank trailing line;
+    True otherwise.
+    """
+    vat_rate = _so_line_dec(d.get('vat_rate')) or Decimal('0.00')
+    product_id = _so_line_int(d.get('product_id'))
+    amount = Decimal(str(d.get('amount', '0') or '0'))
+    qty = _so_line_dec(d.get('quantity'))
+    price = _so_line_dec(d.get('unit_price'))
+    is_empty = (product_id is None and (amount is None or amount == 0)
+                and qty is None and price is None)
+    if is_empty:
+        return False  # skip a blank trailing line
+    if product_id is None:
+        raise ValueError(f'Line {idx}: select a product.')
+
+    item.quantity = qty
+    item.unit_price = price
+    item.uom_text = (d.get('uom_text') or None)
+    item.unit_of_measure_id = _so_line_int(d.get('uom_id'))
+    item.product_id = product_id
+    item.amount = amount
+    item.vat_category = d.get('vat_category') or None
+    item.vat_rate = vat_rate
+    item.wt_id = _so_line_int(d.get('wt_id'))
+    item.delivery_date = _so_line_date(d.get('delivery_date'))
+    item.delivery_site_id = _so_line_delivery_site_id(so, d.get('delivery_site_id'))
+    item.calculate_amounts()
+    return True
+
+
 def _parse_and_attach_so_lines(so, lines_json):
     """Parse hidden-JSON line array and attach SalesOrderItem objects to *so*.
     Mirrors sales_invoices.views._parse_and_attach_line_items but with no account_id/wt.
     """
-    def _dec(v):
-        try:
-            return Decimal(str(v)) if v not in (None, '', 'null') else None
-        except (InvalidOperation, TypeError):
-            return None
-
-    def _int(v):
-        try:
-            return int(v) if v and str(v).strip() not in ('', 'null') else None
-        except (ValueError, TypeError):
-            return None
-
-    def _date(v):
-        if v in (None, '', 'null'):
-            return None
-        try:
-            return date.fromisoformat(v)
-        except (ValueError, TypeError):
-            return None
-
-    def _delivery_site_id(v):
-        """Resolve a submitted delivery_site_id, but only if it actually belongs to
-        this SO's own customer -- a direct POST, a replay, or a stale in-memory line
-        array (e.g. from before a header customer change) must never silently persist
-        a foreign customer's site. Mirrors this parser's tolerant style for other
-        optional cross-reference fields (invalid/missing -> None, not a raised error).
-        """
-        site_id = _int(v)
-        if site_id is None:
-            return None
-        site = db.session.get(CustomerDeliverySite, site_id)
-        if site is None or site.customer_id != so.customer_id:
-            return None
-        return site_id
-
     items = json.loads(lines_json) if lines_json else []
     kept = 0
     for idx, d in enumerate(items, start=1):
-        vat_rate = _dec(d.get('vat_rate')) or Decimal('0.00')
-        product_id = _int(d.get('product_id'))
-        amount = Decimal(str(d.get('amount', '0') or '0'))
-        qty = _dec(d.get('quantity'))
-        price = _dec(d.get('unit_price'))
-        is_empty = (product_id is None and (amount is None or amount == 0)
-                    and qty is None and price is None)
-        if is_empty:
-            continue  # skip a blank trailing line
-        if product_id is None:
-            raise ValueError(f'Line {idx}: select a product.')
+        li = SalesOrderItem()
+        if not _assign_so_line_fields(so, li, d, idx):
+            continue  # blank trailing line
         kept += 1
-        li = SalesOrderItem(
-            line_number=kept,
-            quantity=qty,
-            unit_price=price,
-            uom_text=(d.get('uom_text') or None),
-            unit_of_measure_id=_int(d.get('uom_id')),
-            product_id=product_id,
-            amount=amount,
-            vat_category=d.get('vat_category') or None,
-            vat_rate=vat_rate,
-            wt_id=_int(d.get('wt_id')),
-            delivery_date=_date(d.get('delivery_date')),
-            delivery_site_id=_delivery_site_id(d.get('delivery_site_id')),
-        )
-        li.calculate_amounts()
+        li.line_number = kept
         so.line_items.append(li)
+
+
+def _apply_amended_so_lines(so, lines_json):
+    """Update this SO's lines IN PLACE from the submitted JSON.
+
+    Unlike _parse_and_attach_so_lines (which the draft edit path uses after a
+    wholesale delete), this preserves SalesOrderItem.id for every line the user
+    kept -- the identity the revision diff matches on -- and therefore also
+    preserves line_status and its closed_by/closed_at/closed_reason companions,
+    which a rebuild would silently reset to 'open'.
+
+    A submitted line carries `so_item_id` when it came from an existing row and
+    null when the user added it in this amendment. Any existing row whose id is
+    absent from the submission was removed by the user and is deleted.
+
+    SECURITY: the lookup is scoped to THIS order's own so.line_items only -- an
+    so_item_id belonging to a DIFFERENT Sales Order is never resolved against a
+    global query, so it cannot rewrite another order's row. It simply falls
+    through to "not found" and creates a new line on this order instead.
+    """
+    items = json.loads(lines_json) if lines_json else []
+    existing = {item.id: item for item in so.line_items}
+    seen = set()
+    kept = 0
+
+    for idx, d in enumerate(items, start=1):
+        raw_id = d.get('so_item_id')
+        try:
+            item_id = int(raw_id) if raw_id not in (None, '', 'null') else None
+        except (ValueError, TypeError):
+            item_id = None
+
+        item = existing.get(item_id) if item_id is not None else None
+        if item is None:
+            item = SalesOrderItem(sales_order_id=so.id)
+            is_new = True
+        else:
+            is_new = False
+
+        if not _assign_so_line_fields(so, item, d, idx):
+            continue  # blank trailing line -- do not attach/keep it
+        kept += 1
+        item.line_number = kept
+
+        if is_new:
+            db.session.add(item)
+            so.line_items.append(item)
+        else:
+            seen.add(item.id)
+
+    # NOTE: this module defines a view function named `list` (the SO list
+    # route) at module scope, which shadows the builtin `list` here -- use a
+    # slice copy instead of list(...) to iterate a snapshot while mutating.
+    for item in so.line_items[:]:
+        if item.id is not None and item.id not in seen:
+            so.line_items.remove(item)
+            db.session.delete(item)
 
 
 # Per-branch suffix appended to the numeric SO number (owner directive, 2026-07-29).
@@ -491,6 +575,122 @@ def edit(id):
 
     return render_template('sales_orders/form.html', form=form, so=so,
                            line_items=restore_items, **_common_form_ctx())
+
+
+@sales_orders_bp.route('/sales-orders/<int:id>/amend', methods=['GET', 'POST'])
+@login_required
+def amend(id):
+    """Post-confirm amendment. Mirrors edit(), but the SO stays confirmed and
+    every save appends a SalesOrderRevision."""
+    gate = _role_gate()
+    if gate:
+        return gate
+
+    so = db.get_or_404(SalesOrder, id)
+    if so.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    if so.status != 'confirmed':
+        flash('Only confirmed Sales Orders can be amended.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    po_required = bool(so.customer and so.customer.po_required)
+    form = SalesOrderAmendForm(obj=so, po_required=po_required)
+    form.salesperson_id.choices = _salesperson_choices(session.get('selected_branch_id'))
+
+    restore_items = ([item.to_dict() for item in so.line_items]
+                     if request.method == 'GET'
+                     else json.loads(request.form.get('line_items', '[]') or '[]'))
+
+    def _render():
+        return render_template('sales_orders/form.html', form=form, so=so,
+                               amend_mode=True, line_items=restore_items,
+                               **_common_form_ctx())
+
+    if form.validate_on_submit():
+        submitted_lines = json.loads(request.form.get('line_items', '[]') or '[]')
+
+        errors = validate_amendment(so, submitted_lines)
+        if errors:
+            for message in errors:
+                flash(message, 'error')
+            return _render()
+
+        try:
+            customer_id = int(form.customer_id.data)
+        except (ValueError, TypeError):
+            flash('Invalid customer.', 'error')
+            return _render()
+
+        cust = db.session.get(Customer, customer_id)
+        if not cust:
+            flash('Selected customer not found.', 'error')
+            return _render()
+
+        try:
+            if not claim_version(SalesOrder, so.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('sales_orders', so.id), 'error')
+                return _render()
+
+            old_values = model_to_dict(so, [
+                'so_number', 'order_date', 'customer_name',
+                'subtotal', 'vat_amount', 'total_amount', 'status'])
+
+            so.expected_delivery_date = form.expected_delivery_date.data or None
+            so.customer_id = cust.id
+            so.customer_name = cust.name
+            so.customer_tin = cust.tin
+            so.customer_address = cust.address
+            so.customer_po_number = form.customer_po_number.data or None
+            so.customer_po_date = form.customer_po_date.data or None
+            so.payment_terms = form.payment_terms.data
+            so.reference = form.reference.data or None
+            so.salesperson_id = form.salesperson_id.data or None
+            so.notes = form.notes.data or ''
+
+            # UPDATE IN PLACE -- do NOT delete-and-rebuild the way edit() does.
+            # A rebuild resets line_status to 'open', silently RE-OPENING a line
+            # someone deliberately short-closed and discarding closed_by_id /
+            # closed_at / closed_reason with it. Per-line close is the module's
+            # existing mechanism for stopping delivery on a tranche; an
+            # amendment must not quietly undo it.
+            # (It also keeps SalesOrderItem.id stable across revisions, so two
+            # snapshots can be lined up by row when a reader compares them.)
+            _apply_amended_so_lines(so, request.form.get('line_items', '[]'))
+            db.session.flush()
+            db.session.expire(so, ['line_items'])
+            so.calculate_totals()
+
+            rev = write_revision(
+                so, current_user.id,
+                reason=(form.amend_reason.data or '').strip(),
+                authorizing_po=(form.authorizing_po_number.data or '').strip() or None)
+            db.session.commit()
+
+            log_update(
+                module='sales_orders', record_id=so.id,
+                record_identifier=f'{so.so_number} - {so.customer_name}',
+                old_values=old_values,
+                new_values=model_to_dict(so, [
+                    'so_number', 'order_date', 'customer_name',
+                    'subtotal', 'vat_amount', 'total_amount', 'status']),
+                notes=f'Amended to Rev {rev.revision_number}')
+
+            flash(f'Sales Order "{so.so_number}" amended '
+                  f'(Rev {rev.revision_number}).', 'success')
+            return redirect(url_for('sales_orders.view', id=so.id))
+
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), 'error')
+            return _render()
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error('Error amending sales order', exc_info=True)
+            log_exception(e, severity='ERROR', module='sales_orders.amend')
+            flash('An error occurred while saving the amendment. Please try again.', 'error')
+
+    return _render()
 
 
 @sales_orders_bp.route('/sales-orders/<int:id>')
