@@ -4,6 +4,7 @@ import glob
 import os
 import sqlite3
 import tempfile
+from datetime import datetime
 
 import pytest
 
@@ -157,12 +158,26 @@ def test_run_backup_prunes_to_cap_on_success(db_session, tmp_path):
     cfg = _cfg(tmp_path)
     cfg["BACKUP_LOCAL_DIR"] = str(tmp_path / "s")
     cfg["BACKUP_RETENTION_COUNT"] = 2
+    # Inject the clock run_backup already accepts rather than letting the new
+    # backup be stamped with the real date. This assertion used to read
+    # `any("2026-07" in n for n in db_names)  # today's new backup is kept`,
+    # which was only ever true DURING July 2026 -- from 2026-08-01 the test failed
+    # on every run, forever, while the pruning it checks worked fine. Owning the
+    # stamp makes the expected name exact and unable to rot.
+    #
+    # The date is deliberately far from any plausible "today": if someone drops
+    # the injection and the real clock comes back, this fails loudly instead of
+    # passing by coincidence for one month.
+    frozen = datetime(2031, 5, 17, 13, 45, 9)
     run = run_backup('cli', 'admin', storage=store, source_db_path=str(src),
-                     key_provider=KP, config=cfg)
+                     key_provider=KP, config=cfg, clock=lambda: frozen)
     assert run.status == 'success'
     db_names = sorted(o.name for o in store.list() if o.name.endswith(".db.enc"))
     assert len(db_names) == 2  # capped at 2 newest after the new backup landed
-    assert any("2026-07" in n for n in db_names)  # today's new backup is kept
+    # Name BOTH survivors. `len == 2` alone does not say which two, so it would
+    # pass even if pruning had thrown away the backup just written.
+    assert 'cas-2031-05-17T13-45-09.db.enc' in db_names   # the new backup is kept
+    assert 'cas-2026-01-03T10-00-00.db.enc' in db_names   # ...and the newest old one
 
 
 def test_no_plaintext_left_on_disk(db_session, tmp_path):
