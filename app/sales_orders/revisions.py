@@ -137,7 +137,8 @@ def write_revision(so, user_id, reason=None, authorizing_po=None):
 # re-renders the form, so this must never raise and must never mutate.
 from decimal import Decimal, InvalidOperation  # noqa: E402
 
-from app.delivery_receipts.models import so_line_open_qty, DeliveryReceiptItem  # noqa: E402
+from app.delivery_receipts.models import (  # noqa: E402
+    so_line_open_qty, so_is_billed, DeliveryReceiptItem)
 
 
 # SalesOrderItem.quantity is Numeric(15, 4) -- 11 integer digits and 4 decimals.
@@ -199,7 +200,12 @@ def validate_amendment(so, new_lines):
     Never raises and never mutates -- the route flashes these and re-renders.
     """
     errors = []
-    billed = so.sales_invoice_id is not None
+    # DERIVED, not read off so.sales_invoice_id. That column is written by nothing
+    # -- invoicing sets the flag on the Delivery Receipt -- so reading it made all
+    # three billed guards below permanently dead, exactly as it did cancel()'s.
+    # See so_is_billed's docstring for why the column cannot simply be populated
+    # instead (one order is routinely billed by many invoices).
+    billed = so_is_billed(so)
 
     submitted = {}
     # Kept as a PARALLEL dict rather than folding price into `submitted`'s

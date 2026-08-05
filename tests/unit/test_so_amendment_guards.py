@@ -41,7 +41,13 @@ class _Line:
 class _SO:
     def __init__(self, lines, billed=False):
         self.line_items = lines
-        self.sales_invoice_id = 99 if billed else None
+        self._billed = billed
+        # Kept only to prove it is IGNORED: billed-ness is derived from the order's
+        # Delivery Receipts, never read off this column (nothing in the app writes
+        # it). Deliberately set to the OPPOSITE of _billed so any code that went
+        # back to reading it would invert every billed test in this file rather
+        # than pass by luck.
+        self.sales_invoice_id = None if billed else 99
 
 
 def _sub(item_id, qty, price=DEFAULT_PRICE):
@@ -71,6 +77,12 @@ def _stub_open_qty(monkeypatch):
     monkeypatch.setattr(mod, 'so_line_open_qty',
                         lambda item: item.quantity - item._delivered)
     monkeypatch.setattr(mod, '_has_any_dr_reference', lambda item: False)
+    # so_is_billed queries the DR table for real; these fakes have no rows behind
+    # them, so it is stubbed off the fake's own flag -- same treatment as the two
+    # derivations above. The real derivation is proved against the ORM/DB in
+    # tests/integration/test_so_billed_derivation.py and, for the amendment guards
+    # specifically, in test_so_amendment_guards_orm.py.
+    monkeypatch.setattr(mod, 'so_is_billed', lambda so: so._billed)
 
 
 def test_increase_is_allowed():

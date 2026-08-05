@@ -141,15 +141,31 @@ def test_amendment_against_partially_delivered_line(client, db_session, branch, 
 
 
 def test_amendment_against_billed_so(client, db_session, branch, customer, product):
-    """Billed SO (sales_invoice_id set): an increase is allowed, a decrease is
-    refused. No real SalesInvoice row is needed -- SQLite FK enforcement is off
-    app-wide, and the guard only reads so.sales_invoice_id is not None.
+    """Billed SO: a quantity increase is allowed, a decrease is refused, and the
+    unit price is frozen.
+
+    Billed-ness is DERIVED from the order's Delivery Receipts (so_is_billed), so
+    this builds the state the way the app really produces it -- an invoiced DR --
+    rather than setting so.sales_invoice_id, which no code path writes and which
+    the guard no longer reads. An earlier version of this test did set that column,
+    and so proved the guard fired in a state no user could ever reach.
+
+    No real SalesInvoice row is needed: SQLite FK enforcement is off app-wide and
+    the derivation only asks whether dr.sales_invoice_id is set -- the same shape
+    app/sales_invoices/views.py writes (dr.sales_invoice_id = invoice.id).
     """
     so = _confirmed_so(client, db_session, customer, product, Decimal('5000'))
     soi = so.line_items[0]
-    so.sales_invoice_id = 99
+    billed_dr = _approved_dr(db_session, branch, customer, so, soi,
+                             Decimal('0'), dr_number='DR-BILLED-1')
+    billed_dr.sales_invoice_id = 99
+    # Left set to prove it is IGNORED -- the derivation must answer from the DR.
+    so.sales_invoice_id = None
     db_session.commit()
     db_session.refresh(so)
+
+    from app.delivery_receipts.models import so_is_billed
+    assert so_is_billed(so) is True, 'the invoiced DR must make this order billed'
 
     # Increase -> allowed. Every payload here echoes the STORED unit_price,
     # exactly as the amend form does: _assign_so_line_fields writes
