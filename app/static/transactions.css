@@ -20,6 +20,17 @@
     letter-spacing: 0.04em; color: var(--text-2);
 }
 .left-col-fields .form-group .form-control { flex: 1; }
+/* A field-level validation error renders <div class="field-errors"> as a THIRD
+   child of this two-child row (LABEL | INPUT). Without wrapping it competes for
+   the same line and the input -- being the only flex:1 item -- surrenders the
+   width: measured 183px -> 39px on the Sales Order form, i.e. about four
+   characters, at the exact moment the user has to retype the value.
+   Wrap the row and give the error its own full-width line instead.
+   Affects every .left-col-fields form: AP, CDV, CRV, quotations, SI, SO.
+   The narrow-viewport rule below already stacks this row, which is why the
+   collapse only ever showed on desktop. */
+.left-col-fields .form-group { flex-wrap: wrap; }
+.left-col-fields .form-group .field-errors { flex: 0 0 100%; }
 .notes-col .form-label {
     font-size: 11px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.04em; color: var(--text-2); margin-bottom: 6px;
