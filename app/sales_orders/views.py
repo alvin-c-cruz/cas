@@ -77,6 +77,34 @@ def _so_line_delivery_site_id(so, v):
     return site_id
 
 
+#: The builtin, captured because this module defines a VIEW FUNCTION named
+#: `list` (the /sales-orders route) which shadows it at module scope. Writing
+#: `isinstance(x, list)` anywhere below raises
+#: "TypeError: isinstance() arg 2 must be a type" -- it is checking against a
+#: Flask view. Captured here rather than renaming the route, which is a public
+#: endpoint name.
+_LIST = type([])
+
+
+def _submitted_line_items():
+    """The line array the browser posted, for re-rendering a form after a
+    validation failure so the user does not lose their work.
+
+    Never raises. The payload is whatever was POSTed, so a truncated or crafted
+    body must re-render an empty grid rather than 500 the page -- the caller is
+    already on an error path and a traceback there is the worst possible answer.
+
+    Returns [] on a GET, which is what a fresh form wants anyway.
+    """
+    if request.method != 'POST':
+        return []
+    try:
+        items = json.loads(request.form.get('line_items', '[]') or '[]')
+    except (ValueError, TypeError):
+        return []
+    return items if isinstance(items, _LIST) else []
+
+
 def _assign_so_line_fields(so, item, d, idx):
     """Coerce + assign one submitted line's fields onto *item* (new or existing).
 
@@ -420,31 +448,38 @@ def create():
     form = SalesOrderForm()
     form.salesperson_id.choices = _salesperson_choices(session.get('selected_branch_id'))
 
+    # Re-render with the lines the user actually submitted, not an empty grid.
+    # Every error path below used to pass line_items=[], so a duplicate SO number
+    # -- an ordinary typo, since SO numbers are typed -- threw the whole order away
+    # while KEEPING the number, which reads as 'your work is still here'.
+    # edit() and amend() already do this; create() never did.
+    restore_items = _submitted_line_items()
+
     if form.validate_on_submit():
         so_number = (form.so_number.data or '').strip()
         if not so_number:
             flash('SO number is required.', 'error')
             return render_template('sales_orders/form.html', form=form, so=None,
-                                   line_items=[], **_common_form_ctx())
+                                   line_items=restore_items, **_common_form_ctx())
 
         # Uniqueness check (no self-exclusion for create)
         if SalesOrder.query.filter(SalesOrder.so_number == so_number).first():
             flash('Sales Order number already exists.', 'error')
             return render_template('sales_orders/form.html', form=form, so=None,
-                                   line_items=[], **_common_form_ctx())
+                                   line_items=restore_items, **_common_form_ctx())
 
         try:
             customer_id = int(form.customer_id.data)
         except (ValueError, TypeError):
             flash('Invalid customer.', 'error')
             return render_template('sales_orders/form.html', form=form, so=None,
-                                   line_items=[], **_common_form_ctx())
+                                   line_items=restore_items, **_common_form_ctx())
 
         cust = db.session.get(Customer, customer_id)
         if not cust:
             flash('Selected customer not found.', 'error')
             return render_template('sales_orders/form.html', form=form, so=None,
-                                   line_items=[], **_common_form_ctx())
+                                   line_items=restore_items, **_common_form_ctx())
 
         try:
             so = SalesOrder(
@@ -485,7 +520,7 @@ def create():
             db.session.rollback()
             flash(str(e), 'error')
             return render_template('sales_orders/form.html', form=form, so=None,
-                                   line_items=[], **_common_form_ctx())
+                                   line_items=restore_items, **_common_form_ctx())
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error creating sales order', exc_info=True)
@@ -498,7 +533,7 @@ def create():
         form.so_number.data = generate_so_number(branch, form.order_date.data)
 
     return render_template('sales_orders/form.html', form=form, so=None,
-                           line_items=[], **_common_form_ctx())
+                           line_items=restore_items, **_common_form_ctx())
 
 
 @sales_orders_bp.route('/sales-orders/<int:id>/edit', methods=['GET', 'POST'])
