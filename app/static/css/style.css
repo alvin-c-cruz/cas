@@ -2113,3 +2113,6 @@ tr.pc-row-excluded { background: var(--bg); }
 .so-rev-original { border-left-color: var(--text-3); }
 .so-rev-head { font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 4px; }
 .so-rev-meta { color: var(--text-2); font-size: 12px; margin-top: 2px; }
+/* Links to the read-only revision viewer (Task 13). */
+.view-link { float: right; font-size: 12px; font-weight: 600; color: var(--blue); text-decoration: none; }
+.view-link:hover { text-decoration: underline; }

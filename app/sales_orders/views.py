@@ -727,6 +727,30 @@ def amend(id):
     return _render()
 
 
+@sales_orders_bp.route('/sales-orders/<int:id>/revisions/<int:number>')
+@login_required
+def view_revision(id, number):
+    """Render a stored revision snapshot as a read-only order document.
+
+    Reads ONLY snapshot_json -- never the live SalesOrder rows. That is the whole
+    point: Rev 0 must keep showing what production was originally told to make,
+    however many times the order has since been amended.
+    """
+    so = db.get_or_404(SalesOrder, id)
+    if so.branch_id != session.get('selected_branch_id'):
+        abort(404)
+
+    rev = (SalesOrderRevision.query
+           .filter_by(sales_order_id=so.id, revision_number=number)
+           .first())
+    if rev is None:
+        abort(404)
+
+    snapshot = json.loads(rev.snapshot_json)
+    return render_template('sales_orders/revision_view.html',
+                           so=so, rev=rev, snapshot=snapshot)
+
+
 @sales_orders_bp.route('/sales-orders/<int:id>')
 @login_required
 def view(id):

@@ -342,6 +342,8 @@
     <div class="card-body">
         {% for rev in revisions %}
         <div class="so-rev {% if rev.number == 0 %}so-rev-original{% endif %}">
+            <a class="view-link"
+               href="{{ url_for('sales_orders.view_revision', id=so.id, number=rev.number) }}">view full order</a>
             <div class="so-rev-head">
                 Rev {{ rev.number }} &middot;
                 {{ rev.amended_at.strftime('%Y-%m-%d') }} &middot;
