@@ -24,7 +24,13 @@
     "instances": {
       "cas": { "file": "cas.db", "resettable": true, "reset_allow": true, "live": false },
       "ric": { "file": "ric.db", "resettable": false, "reset_allow": false, "live": true },
-      "zhiyuan": { "file": "zhiyuan.db", "resettable": false, "reset_allow": false, "live": true }
+      "zhiyuan": { "file": "zhiyuan.db", "resettable": false, "reset_allow": false, "live": true },
+      "philgen": {
+        "file": "philgen.db",
+        "resettable": false,
+        "reset_allow": false,
+        "live": false
+      }
     },
     "seed_cmd": "flask seed-minimal",
     "migrate_cmd": "flask db upgrade"
