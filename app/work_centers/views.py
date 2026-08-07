@@ -16,6 +16,20 @@ def _can_manage():
     return current_user.has_full_access or current_user.role == 'accountant'
 
 
+def _get_scoped(id):
+    """Fetch by id WITHIN the selected branch -- 404 for another branch's record.
+
+    A bare db.get_or_404 handed back any branch's record to anyone who typed its
+    URL, while list() above filtered correctly
+    (BUG-BRANCH-SCOPED-MASTERS-EDIT-NOT-BRANCH-FILTERED). The before_request hook
+    validates that the SELECTED branch is accessible; it never checks the
+    FETCHED record's branch. Same shape as manufacturing_departments._get_scoped.
+    """
+    return (WorkCenter.query
+            .filter_by(id=id, branch_id=session.get('selected_branch_id'))
+            .first_or_404())
+
+
 @work_centers_bp.route('/work-centers')
 @login_required
 def list():
@@ -55,7 +69,7 @@ def edit(id):
     if not _can_manage():
         flash('You do not have permission to manage work centers.', 'error')
         return redirect(url_for('work_centers.list'))
-    wc = db.get_or_404(WorkCenter, id)
+    wc = _get_scoped(id)
     form = WorkCenterForm(obj=wc)
     if request.method == 'GET':
         form.is_active.data = '1' if wc.is_active else '0'

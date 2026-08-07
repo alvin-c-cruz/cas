@@ -58,6 +58,34 @@ def accountant_or_above_required(f):
     return decorated_function
 
 
+def _get_scoped_fund(id):
+    """Fetch a fund by id WITHIN the selected branch -- 404 for another branch's.
+
+    A bare db.get_or_404 served any branch's fund to anyone who typed its URL,
+    while fund_list() filters correctly
+    (BUG-BRANCH-SCOPED-MASTERS-EDIT-NOT-BRANCH-FILTERED). Petty cash is the most
+    exposed member of that bug: 9 routes over funds, vouchers and
+    replenishments, i.e. money movement rather than master data.
+    """
+    return (PettyCashFund.query
+            .filter_by(id=id, branch_id=session.get('selected_branch_id'))
+            .first_or_404())
+
+
+def _get_scoped_child(model, id):
+    """Fetch a voucher/replenishment by id, scoped through its FUND's branch.
+
+    PettyCashVoucher and PettyCashReplenishment carry NO branch_id of their own
+    -- they inherit the branch via fund_id -- so the guard has to join the fund
+    rather than filter a column that does not exist.
+    """
+    return (model.query
+            .join(PettyCashFund, model.fund_id == PettyCashFund.id)
+            .filter(model.id == id,
+                    PettyCashFund.branch_id == session.get('selected_branch_id'))
+            .first_or_404())
+
+
 def _gl_account_choices(exclude_ids=None):
     """Active leaf accounts, minus any already claimed by another PettyCashFund
     (account_id is 1:1, same pattern as bank_accounts._available_account_choices)."""
@@ -132,7 +160,7 @@ def fund_new():
 @login_required
 @accountant_or_above_required
 def fund_edit(id):
-    fund = db.get_or_404(PettyCashFund, id)
+    fund = _get_scoped_fund(id)
     form = PettyCashFundAdjustForm(obj=fund)
 
     if form.validate_on_submit():
@@ -159,7 +187,7 @@ def fund_edit(id):
 @login_required
 @accountant_or_above_required
 def fund_close(id):
-    fund = db.get_or_404(PettyCashFund, id)
+    fund = _get_scoped_fund(id)
     before = model_to_dict(fund, _FUND_FIELDS)
     try:
         post_close(fund, actor=current_user)
@@ -177,7 +205,7 @@ def fund_close(id):
 @login_required
 @staff_or_above_required
 def fund_status(id):
-    fund = db.get_or_404(PettyCashFund, id)
+    fund = _get_scoped_fund(id)
     held_vouchers = (PettyCashVoucher.query
                      .filter_by(fund_id=fund.id, status='held')
                      .order_by(PettyCashVoucher.voucher_date).all())
@@ -192,7 +220,7 @@ def fund_status(id):
 @login_required
 @staff_or_above_required
 def voucher_new(fund_id):
-    fund = db.get_or_404(PettyCashFund, fund_id)
+    fund = _get_scoped_fund(fund_id)
     form = PettyCashVoucherForm()
     form.expense_account_id.choices = _expense_account_choices()
 
@@ -213,7 +241,7 @@ def voucher_new(fund_id):
 @login_required
 @staff_or_above_required
 def voucher_edit(id):
-    v = db.get_or_404(PettyCashVoucher, id)
+    v = _get_scoped_child(PettyCashVoucher, id)
     if v.status != 'held':
         flash('Only held vouchers can be edited.', 'error')
         return redirect(url_for('petty_cash.fund_status', id=v.fund_id))
@@ -239,7 +267,7 @@ def voucher_edit(id):
 @login_required
 @staff_or_above_required
 def voucher_delete(id):
-    v = db.get_or_404(PettyCashVoucher, id)
+    v = _get_scoped_child(PettyCashVoucher, id)
     if v.status != 'held':
         flash('Only held vouchers can be deleted.', 'error')
         return redirect(url_for('petty_cash.fund_status', id=v.fund_id))
@@ -257,7 +285,7 @@ def voucher_delete(id):
 @login_required
 @accountant_or_above_required
 def replenish_new(id):
-    fund = db.get_or_404(PettyCashFund, id)
+    fund = _get_scoped_fund(id)
     held_vouchers = (PettyCashVoucher.query
                      .filter_by(fund_id=fund.id, status='held')
                      .order_by(PettyCashVoucher.voucher_date).all())
@@ -307,7 +335,7 @@ def replenish_new(id):
 @login_required
 @staff_or_above_required
 def replenish_detail(id):
-    rep = db.get_or_404(PettyCashReplenishment, id)
+    rep = _get_scoped_child(PettyCashReplenishment, id)
     return render_template('petty_cash/replenish_detail.html', rep=rep)
 
 
@@ -315,7 +343,7 @@ def replenish_detail(id):
 @login_required
 @staff_or_above_required
 def replenish_print(id):
-    rep = db.get_or_404(PettyCashReplenishment, id)
+    rep = _get_scoped_child(PettyCashReplenishment, id)
     from app.settings import AppSettings
     from app.utils import ph_now
     company = {

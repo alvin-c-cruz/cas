@@ -47,6 +47,20 @@ def _available_account_choices():
     return [(aid, label) for aid, label in choices if aid not in claimed]
 
 
+def _get_scoped(id):
+    """Fetch by id WITHIN the selected branch -- 404 for another branch's record.
+
+    A bare db.get_or_404 handed back any branch's record to anyone who typed its
+    URL, while list_accounts() below filtered correctly
+    (BUG-BRANCH-SCOPED-MASTERS-EDIT-NOT-BRANCH-FILTERED). The before_request hook
+    validates that the SELECTED branch is accessible; it never checks the
+    FETCHED record's branch. Same shape as manufacturing_departments._get_scoped.
+    """
+    return (BankAccount.query
+            .filter_by(id=id, branch_id=session.get('selected_branch_id'))
+            .first_or_404())
+
+
 @bank_accounts_bp.route('/bank-accounts/')
 @login_required
 def list_accounts():
@@ -125,7 +139,7 @@ def quick_add():
 @login_required
 @staff_or_above_required
 def edit_account(id):
-    ba = db.get_or_404(BankAccount, id)
+    ba = _get_scoped(id)
     form = BankAccountForm(obj=ba)
     # account_id is immutable -- the template never renders it as an editable input,
     # so it is absent from the POST body and WTForms falls back to obj's value (the
@@ -163,7 +177,7 @@ def toggle_active(id):
     (employees.toggle_status et al). Not wired to a list-row button per the approved
     mockup (status is set via the edit form's toggle); kept as its own endpoint since
     it's part of this module's declared interface for other callers."""
-    ba = db.get_or_404(BankAccount, id)
+    ba = _get_scoped(id)
     old_values = model_to_dict(ba, ['is_active'])
     ba.is_active = not ba.is_active
     db.session.commit()
