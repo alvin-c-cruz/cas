@@ -106,5 +106,11 @@
     "date": "2026-08-04",
     "reason": null,
     "waived": false
+  },
+  "da59fa7053174220b67ec4440b6976462700eb36": {
+    "branch": "fix/branch-scoped-byid-fetch",
+    "date": "2026-08-06",
+    "reason": null,
+    "waived": false
   }
 }
