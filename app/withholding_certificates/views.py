@@ -5,7 +5,8 @@ this register live in service.py + the reports routes below.
 """
 from datetime import datetime
 from functools import wraps
-from flask import (Blueprint, render_template, redirect, url_for, flash, request)
+from flask import (Blueprint, render_template, redirect, url_for, flash, request,
+                   abort)
 from flask_login import login_required, current_user
 
 from app import db
@@ -68,6 +69,22 @@ def _accessible_branch_ids():
     return [b.id for b in get_accessible_branches(current_user)]
 
 
+def _get_scoped_certificate(cert_id):
+    """Fetch a certificate only when its branch is one this user can reach.
+
+    Set MEMBERSHIP, mirroring list_certificates' own filter -- NOT equality with
+    `session['selected_branch_id']`, which would refuse a certificate in another
+    assigned branch that the list route displays.
+    Full-access users are unaffected: `get_accessible_branches` returns every
+    active branch for them, so this is a no-op there, exactly as the list is.
+    See BUG-BRANCH-SCOPED-MASTERS-EDIT-NOT-BRANCH-FILTERED.
+    """
+    rec = db.get_or_404(WithholdingCertificateReceived, cert_id)
+    if rec.branch_id not in set(_accessible_branch_ids()):
+        abort(404)
+    return rec
+
+
 @withholding_certificates_bp.route('/withholding-certificates')
 @login_required
 @accountant_or_admin_required
@@ -104,7 +121,7 @@ def create_certificate():
 @login_required
 @accountant_or_admin_required
 def edit_certificate(cert_id):
-    rec = db.get_or_404(WithholdingCertificateReceived, cert_id)
+    rec = _get_scoped_certificate(cert_id)
     form = WithholdingCertificateReceivedForm(obj=rec)
     _set_choices(form)
     if form.validate_on_submit():
@@ -125,7 +142,7 @@ def edit_certificate(cert_id):
 @login_required
 @accountant_or_admin_required
 def delete_certificate(cert_id):
-    rec = db.get_or_404(WithholdingCertificateReceived, cert_id)
+    rec = _get_scoped_certificate(cert_id)
     old = model_to_dict(rec, _FIELDS)
     number = rec.certificate_number
     db.session.delete(rec)

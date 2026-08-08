@@ -1,7 +1,8 @@
 """Fixed Asset register (R-05 Slice 1): AssetCategory + FixedAsset CRUD, the
 tagging flow, and the opening-asset flow."""
 from functools import wraps
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
+from flask import (Blueprint, render_template, redirect, url_for, request, flash,
+                   jsonify, abort)
 from flask_login import login_required, current_user
 from app import db
 from app.accounts.models import Account
@@ -86,6 +87,23 @@ def category_edit(id):
 
 
 # ---- Opening assets --------------------------------------------------------
+
+def _get_scoped_asset(id):
+    """Fetch a FixedAsset only when its branch is one this user can reach.
+
+    Set MEMBERSHIP, deliberately not equality against
+    `session['selected_branch_id']`. The list route scopes to
+    `get_accessible_branches(current_user)`, so a record in ANY assigned branch
+    must stay openable even while a different branch is selected -- the
+    single-branch `_get_scoped()` used by work_centers/bank_accounts/petty_cash
+    would hide records this user is entitled to see, turning a security fix into
+    a regression. See BUG-BRANCH-SCOPED-MASTERS-EDIT-NOT-BRANCH-FILTERED.
+    """
+    asset = db.get_or_404(FixedAsset, id)
+    if asset.branch_id not in {b.id for b in get_accessible_branches(current_user)}:
+        abort(404)
+    return asset
+
 
 def _populate_common_choices(form):
     form.branch_id.choices = [(b.id, b.name) for b in get_accessible_branches(current_user)]
@@ -198,7 +216,7 @@ def list():
 @fixed_assets_bp.route('/fixed-assets/<int:id>')
 @login_required
 def view(id):
-    asset = db.get_or_404(FixedAsset, id)
+    asset = _get_scoped_asset(id)
     return render_template('fixed_assets/detail.html', asset=asset)
 
 
@@ -206,7 +224,7 @@ def view(id):
 @login_required
 @accountant_or_admin_required
 def edit(id):
-    asset = db.get_or_404(FixedAsset, id)
+    asset = _get_scoped_asset(id)
     form = FixedAssetForm(obj=asset)
     _populate_common_choices(form)
     # cost_account_id is immutable -- the picker only ever offers its current value.
@@ -249,7 +267,7 @@ def delete(id):
     """Slice 1 posts no JE for a FixedAsset, so deleting one is always safe --
     it just removes the subledger row and frees its tagged line (if any) for
     re-tagging. (Slices 2/3 will restrict this once depreciation/disposal exist.)"""
-    asset = db.get_or_404(FixedAsset, id)
+    asset = _get_scoped_asset(id)
     old = asset.to_dict()
     code = asset.code
     db.session.delete(asset)

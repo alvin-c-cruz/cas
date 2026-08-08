@@ -1,7 +1,8 @@
 """Depreciation run lifecycle (R-05 Slice 2): new-run preview/confirm-post,
 list, reverse."""
 from decimal import Decimal, InvalidOperation
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import (Blueprint, render_template, redirect, url_for, request, flash,
+                   abort)
 from flask_login import login_required, current_user
 from app import db
 from app.fixed_asset_depreciation.forms import DepreciationRunPeriodForm, ReversalForm
@@ -94,7 +95,13 @@ def list_runs():
 @login_required
 @_accountant_or_admin_required
 def reverse_run(id):
+    # Set MEMBERSHIP against accessible branches, matching list_runs' own filter.
+    # NOT equality with session['selected_branch_id'] -- that would refuse a run
+    # in another assigned branch, which list_runs happily shows.
+    # See BUG-BRANCH-SCOPED-MASTERS-EDIT-NOT-BRANCH-FILTERED.
     run = db.get_or_404(DepreciationRun, id)
+    if run.branch_id not in {b.id for b in get_accessible_branches(current_user)}:
+        abort(404)
     form = ReversalForm()
     if not form.validate_on_submit():
         flash('A valid reversal date is required.', 'error')
