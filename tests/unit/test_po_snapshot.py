@@ -66,3 +66,14 @@ class TestPurchaseOrderSnapshot:
         line = _po(db_session).build_snapshot()['lines'][0]
         assert 'received_quantity' not in line
         assert 'billed_quantity' not in line
+
+    def test_billing_seam_is_snapshotted(self, db_session):
+        # accounts_payable_id is written by purchase_billing.py, so it is real state
+        # the snapshot must carry -- unlike the never-written line counters.
+        po = _po(db_session)
+        snap = po.build_snapshot()
+        assert 'accounts_payable_id' in snap['header']
+        assert snap['header']['accounts_payable_id'] is None
+        po.accounts_payable_id = 42
+        db.session.commit()
+        assert po.build_snapshot()['header']['accounts_payable_id'] == '42'
