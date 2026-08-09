@@ -16,6 +16,7 @@ from app.purchase_orders.forms import PurchaseOrderForm
 from app.vendors.models import Vendor
 from app.users.models import User
 from app.settings import AppSettings
+from app.amendments.service import write_revision
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
@@ -403,6 +404,10 @@ def approve(id):
     po.status = 'approved'
     po.approved_by_id = current_user.id
     po.approved_at = ph_now()
+    # Rev 0 -- the baseline every later amendment is measured against. Written
+    # AFTER the status change so the snapshot records the PO as approved, and
+    # inside the same transaction so approval and baseline land atomically.
+    write_revision(po, current_user.id)
     db.session.commit()
 
     log_update(module='purchase_orders', record_id=po.id, record_identifier=po.po_number,
