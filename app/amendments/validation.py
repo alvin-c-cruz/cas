@@ -88,3 +88,73 @@ def parse_submission(new_lines, id_key):
         submitted[item_id] = qty
 
     return submitted, errors
+
+
+def _line_label(line):
+    product = getattr(line, 'product', None)
+    if product is not None and getattr(product, 'code', None):
+        return product.code
+    return 'line %s' % line.line_number
+
+
+def _qty(value):
+    """Display-format a quantity for a refusal message.
+
+    consumed_qty() reads back through a Numeric(15,4) column, so SQLAlchemy's
+    scale-preserving result processor hands back e.g. Decimal('4.0000') for a
+    value of 4 -- correct arithmetically, but "below the 4.0000 already
+    received" reads like a formatting bug to the user. Strip the DB scale
+    padding to the value's natural precision, same convention as
+    app/sales_orders/revisions.py::_s.
+    """
+    value = Decimal(str(value))
+    if value == 0:
+        value = abs(value)  # Decimal('-0') == Decimal('0') but renders '-0'
+    return format(value.normalize(), 'f')
+
+
+def validate_amendment(document, new_lines, id_key):
+    """Refusal messages for a proposed amendment; [] if allowed.
+
+    Pure: never raises, never mutates. The route flashes these and re-renders.
+
+    The document supplies consumed_qty(line), has_any_child_reference(line) and
+    child_document_label. Nothing here knows what kind of document it is.
+    """
+    submitted, errors = parse_submission(new_lines, id_key)
+
+    for line in document.line_items:
+        label = _line_label(line)
+        consumed = document.consumed_qty(line)
+
+        if line.id not in submitted:
+            # ORDER IS LOAD-BEARING: consumed > 0 FIRST, then the reference check.
+            # has_any_child_reference is a strict SUPERSET of consumed > 0, so
+            # checking it first would make this branch dead code -- and its message
+            # is the actionable one. The generic message tells the user to cancel
+            # the child document, which for a committed receipt reverses real
+            # postings.
+            if consumed > 0:
+                errors.append(
+                    '%s: cannot remove a line with %s already received.'
+                    % (label, _qty(consumed)))
+            elif document.has_any_child_reference(line):
+                errors.append(
+                    '%s: cannot remove a line referenced by a %s (draft or '
+                    'otherwise). Cancel or edit that %s first.'
+                    % (label, document.child_document_label,
+                       document.child_document_label))
+            continue
+
+        new_qty = submitted[line.id]
+        if new_qty is OUT_OF_RANGE:
+            continue  # already refused above, with its own message
+        if new_qty is None:
+            errors.append('%s: could not read the submitted quantity. Re-enter it '
+                          'and try again.' % label)
+            continue
+        if new_qty < consumed:
+            errors.append('%s: new quantity %s is below the %s already received.'
+                          % (label, _qty(new_qty), _qty(consumed)))
+
+    return errors
