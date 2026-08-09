@@ -55,12 +55,21 @@ class TestWriteRevision:
     def test_unflushed_line_still_gets_an_id_in_the_snapshot(self, db_session):
         # A line appended but not yet flushed has id None, and snapshot line
         # identity depends on that id existing. write_revision flushes first.
+        #
+        # no_autoflush is LOAD-BEARING, not tidiness. write_revision calls
+        # latest_revision() first, whose query would trigger SQLAlchemy's default
+        # autoflush and assign the id anyway -- so without this wrap the test passes
+        # whether or not the explicit flush exists, pinning nothing. The Sales Order
+        # twin of this test (tests/integration/test_so_revision_snapshot_orm.py,
+        # test_write_revisions_own_flush_does_not_depend_on_caller_autoflush) wraps it
+        # for exactly this reason.
         po = _po()
         po.line_items.append(PurchaseOrderItem(
             line_number=2, description='late', quantity=Decimal('1'),
             unit_price=Decimal('1.00'), amount=Decimal('1.00'),
             line_total=Decimal('1.00'), vat_rate=Decimal('0'), vat_amount=Decimal('0')))
-        rev = write_revision(po, user_id=None)
+        with db.session.no_autoflush:
+            rev = write_revision(po, user_id=None)
         db.session.commit()
         ids = [ln['line_id'] for ln in json.loads(rev.snapshot_json)['lines']]
         assert None not in ids, 'flush-first is missing'
