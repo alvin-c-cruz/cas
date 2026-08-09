@@ -27,6 +27,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,16 @@ pytestmark = pytest.mark.slow
 #  PO-BACKFILL-0001 field-identical to PO-LIVE-0001 apart from po_number, approved
 #                   but with no revision -- the row the migration must reconstruct.
 #  PO-DRAFT-0001    identical again but still draft -- must get nothing.
+#  PO-WIDE-LIVE-0001 / PO-WIDE-0001  the same live/backfill pair, but with line
+#                   values carrying MORE decimal digits than their columns hold
+#                   (quantity 0.12345 into Numeric(15,4), unit_price 10.005 and
+#                   amount 1.2351 into Numeric(15,2)). The app accepts these --
+#                   _dec() in purchase_orders/views.py never quantizes -- and
+#                   SQLite stores the full float, so only the ORM's read-side
+#                   rounding makes the live snapshot say '0.1235'. Every value in
+#                   the round pair above already matches its column's scale, so
+#                   the pair alone could not tell a scale-corrected backfill from
+#                   an unscaled one.
 #
 # approved_at deliberately has microsecond 0: SQLite always stores 6 fractional
 # digits while datetime.isoformat() omits the fraction entirely at microsecond 0,
@@ -81,7 +92,12 @@ with app.app_context():
 
     APPROVED_AT = datetime(2026, 8, 9, 12, 0, 0)
 
-    def make_po(number, status):
+    # More digits than the columns hold: the ORM rounds these on read, so a
+    # backfill that does not must produce a different snapshot.
+    WIDE_LINE = dict(quantity=Decimal('0.12345'), unit_price=Decimal('10.005'),
+                     amount=Decimal('1.2351'), line_total=Decimal('1.2351'))
+
+    def make_po(number, status, line_overrides=None):
         po = PurchaseOrder(
             po_number=number, order_date=date(2026, 8, 5),
             expected_date=date(2026, 8, 20),
@@ -93,13 +109,15 @@ with app.app_context():
             subtotal=Decimal('25.50'), vat_amount=Decimal('2.73'),
             vat_override=True, total_amount=Decimal('25.50'),
             branch_id=branch.id)
-        po.line_items.append(PurchaseOrderItem(
+        line = dict(
             line_number=1, product_id=product.id,
             description='Widget, 12" blade -- O\\'Brien spec',
             quantity=Decimal('2.5'), unit_price=Decimal('10.20'),
             amount=Decimal('25.50'), uom_text='pc', unit_of_measure_id=uom.id,
             vat_category='V12DG', vat_rate=Decimal('12.00'),
-            line_total=Decimal('25.50'), vat_amount=Decimal('2.73')))
+            line_total=Decimal('25.50'), vat_amount=Decimal('2.73'))
+        line.update(line_overrides or {})
+        po.line_items.append(PurchaseOrderItem(**line))
         if status != 'draft':
             po.approved_by_id = user.id
             po.approved_at = APPROVED_AT
@@ -113,6 +131,16 @@ with app.app_context():
 
     make_po('PO-BACKFILL-0001', 'approved')
     make_po('PO-DRAFT-0001', 'draft')
+
+    # commit() above expired `wide_live`, so write_revision() re-reads its line
+    # through the ORM -- i.e. through the Numeric rounding the migration has to
+    # reproduce. Snapshotting the in-memory Decimals instead would compare the
+    # backfill against values no live capture ever sees.
+    wide_live = make_po('PO-WIDE-LIVE-0001', 'approved', WIDE_LINE)
+    write_revision(wide_live, user.id)
+    db.session.commit()
+
+    make_po('PO-WIDE-0001', 'approved', WIDE_LINE)
 '''
 
 
@@ -127,8 +155,35 @@ def _env(db_path):
             'SECRET_KEY': 'test-secret-key-for-backfill-tests-only'}
 
 
-def _run(args, db_path):
-    result = subprocess.run(args, cwd=CAS_ROOT, env=_env(db_path),
+def _assert_targets_tmp(env, tmp_root):
+    """Refuse to launch a subprocess that could migrate a REAL database.
+
+    These are the only tests in the suite that shell out to `flask db upgrade`,
+    and their targeting rests entirely on _env() winning over .env via
+    load_dotenv's non-override semantics. `.env` points at sqlite:///ric.db --
+    a live client's working copy. One typo in _env, one subprocess that reloads
+    dotenv with override=True, and an upgrade runs against real client data.
+    So the target is proven to live under this test's tmp directory BEFORE the
+    subprocess starts, not assumed."""
+    uri = env.get('SQLALCHEMY_DATABASE_URI')
+    prefix = 'sqlite:///'
+    if not uri or not uri.startswith(prefix):
+        pytest.fail(f'refusing to run: SQLALCHEMY_DATABASE_URI is {uri!r}, '
+                    f'not a {prefix} path under the test tmp directory')
+    target = Path(uri[len(prefix):]).resolve()
+    root = Path(tmp_root).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        pytest.fail(f'refusing to run a migration against {target} -- it is outside '
+                    f'the test tmp directory {root}. These subprocesses must never '
+                    f'touch a real database (.env points at a live client DB).')
+
+
+def _run(args, db_path, tmp_root):
+    env = _env(db_path)
+    _assert_targets_tmp(env, tmp_root)
+    result = subprocess.run(args, cwd=CAS_ROOT, env=env,
                             capture_output=True, text=True)
     # pytest.fail, never pytest.skip: an unrunnable migration is a FAILURE.
     if result.returncode != 0:
@@ -144,13 +199,14 @@ def _build_db(directory):
     # The REAL schema at the pre-backfill revision. A conftest create_all() would
     # build today's model, not the migration history, and so cannot prove a
     # migration works.
-    _run([sys.executable, '-m', 'flask', 'db', 'upgrade', 'docrev_0001'], db_path)
+    _run([sys.executable, '-m', 'flask', 'db', 'upgrade', 'docrev_0001'],
+         db_path, directory)
 
     seed = directory / 'seed_po_rev0.py'
     seed.write_text(_SEED_SCRIPT, encoding='utf-8')
-    _run([sys.executable, str(seed), str(CAS_ROOT)], db_path)
+    _run([sys.executable, str(seed), str(CAS_ROOT)], db_path, directory)
 
-    _run([sys.executable, '-m', 'flask', 'db', 'upgrade'], db_path)
+    _run([sys.executable, '-m', 'flask', 'db', 'upgrade'], db_path, directory)
     return db_path
 
 
@@ -184,20 +240,57 @@ def _by_po(db_path):
     return out
 
 
+def _comparable_pair(revs, live_po, back_po):
+    """The live and the backfilled Rev 0 of a field-identical pair of POs, with
+    the only two values that may legitimately differ -- po_number and line_id --
+    asserted and then removed, so the caller can compare everything else."""
+    (live_number, live_reason, live), = revs[live_po]
+    (back_number, back_reason, back), = revs[back_po]
+    assert (live_number, back_number) == (0, 0)
+    assert live_reason is None, 'a live capture is a baseline, not an amendment'
+    assert 'reconstructed' in back_reason.lower(), \
+        'a backfilled Rev 0 must not claim to be an original capture'
+
+    assert live['header'].pop('po_number') == live_po
+    assert back['header'].pop('po_number') == back_po
+    assert len(live['lines']) == len(back['lines']) == 1
+    for snapshot in (live, back):
+        for line in snapshot['lines']:
+            assert isinstance(line.pop('line_id'), int), 'line identity must stay a raw int'
+    return live, back
+
+
+def _assert_identical(live, back):
+    # Key sets first: a missing key fails here with a readable diff rather than
+    # inside a 40-key value comparison.
+    assert set(back['header']) == set(live['header'])
+    assert [sorted(line) for line in back['lines']] == [sorted(line) for line in live['lines']]
+    assert back == live
+
+
+def test_the_subprocess_guard_refuses_a_database_outside_tmp(tmp_path):
+    """The guard is the only thing standing between a typo in _env() and
+    `flask db upgrade` running against the sqlite:///ric.db in .env, so prove it
+    is LIVE -- an unexercised guard fails open and nothing ever notices."""
+    for uri in ('sqlite:///ric.db', f'sqlite:///{CAS_ROOT / "instance" / "ric.db"}', None):
+        with pytest.raises(pytest.fail.Exception) as exc:
+            _assert_targets_tmp({'SQLALCHEMY_DATABASE_URI': uri}, tmp_path)
+        assert 'refusing to run' in str(exc.value)
+
+    # ...and does NOT refuse the real thing, or it would just be a broken test.
+    _assert_targets_tmp(_env(tmp_path / 'ok.db'), tmp_path)
+
+
 def test_backfilled_rev0_equals_a_live_written_rev0(migrated_db):
     """The whole point of the migration: a reconstructed Rev 0 must be what
     write_revision() would have written for the same PO, key for key and value
     for value. Anything less and slice 2's validator compares a live Rev N
     against a baseline that was never in the same dialect."""
     revs = _by_po(migrated_db)
-    assert set(revs) == {'PO-LIVE-0001', 'PO-BACKFILL-0001'}
+    assert set(revs) == {'PO-LIVE-0001', 'PO-BACKFILL-0001',
+                         'PO-WIDE-LIVE-0001', 'PO-WIDE-0001'}
 
-    (live_number, live_reason, live), = revs['PO-LIVE-0001']
-    (back_number, back_reason, back), = revs['PO-BACKFILL-0001']
-    assert (live_number, back_number) == (0, 0)
-    assert live_reason is None, 'a live capture is a baseline, not an amendment'
-    assert 'reconstructed' in back_reason.lower(), \
-        'a backfilled Rev 0 must not claim to be an original capture'
+    live, back = _comparable_pair(revs, 'PO-LIVE-0001', 'PO-BACKFILL-0001')
 
     # The parity assertion is only meaningful if the derived/formatted keys
     # actually carry values -- pin the ones the mutation testing targeted.
@@ -209,21 +302,60 @@ def test_backfilled_rev0_equals_a_live_written_rev0(migrated_db):
     assert live['lines'][0]['uom_code'] == 'PCS'
     assert live['lines'][0]['unit_price_display'] == '10.20'
 
-    # po_number and line_id are the ONLY values that legitimately differ between
-    # two field-identical POs. Everything else, including vat_override and the
-    # datetimes, must match exactly.
-    assert live['header'].pop('po_number') == 'PO-LIVE-0001'
-    assert back['header'].pop('po_number') == 'PO-BACKFILL-0001'
-    assert len(live['lines']) == len(back['lines']) == 1
-    for snapshot in (live, back):
-        for line in snapshot['lines']:
-            assert isinstance(line.pop('line_id'), int), 'line identity must stay a raw int'
+    # Everything else, including vat_override and the datetimes, must match.
+    _assert_identical(live, back)
 
-    # Key sets first: a missing key fails here with a readable diff rather than
-    # inside a 40-key value comparison.
-    assert set(back['header']) == set(live['header'])
-    assert [sorted(line) for line in back['lines']] == [sorted(line) for line in live['lines']]
-    assert back == live
+
+def test_out_of_scale_numerics_are_rounded_the_way_the_orm_rounds_them(migrated_db):
+    """SQLite stores a Numeric as a plain float, and SQLAlchemy's read processor
+    rebuilds it as Decimal('%.<scale>f' % raw) -- so the live canonical() only
+    ever sees values already rounded to the column's scale, while the migration
+    reads the raw float. `Decimal(str(raw))` therefore keeps digits the ORM drops
+    and the two Rev 0s diverge on exactly the POs a user can create today
+    (_dec() in purchase_orders/views.py never quantizes).
+
+    The round-number pair above cannot see this: every one of its values already
+    matches its column's scale, so it passes with the scaling removed."""
+    revs = _by_po(migrated_db)
+    live, back = _comparable_pair(revs, 'PO-WIDE-LIVE-0001', 'PO-WIDE-0001')
+
+    # The LIVE capture is the specification -- pinned so a drift in either
+    # implementation, not just a divergence between them, is visible.
+    line = live['lines'][0]
+    assert line['quantity'] == '0.1235', 'Numeric(15, 4) -- 0.12345 rounds on read'
+    assert line['unit_price'] == '10.01', 'Numeric(15, 2) -- 10.005 rounds on read'
+    assert line['amount'] == '1.24'
+    assert line['line_total'] == '1.24'
+    # The display forms round from the ORM's already-rounded Decimal, not from
+    # the raw float -- quantizing 10.005 directly would give '10.00'.
+    assert line['unit_price_display'] == '10.01'
+    assert line['amount_display'] == '1.24'
+
+    _assert_identical(live, back)
+
+
+def test_backfilled_rows_are_stamped_in_philippine_time(migrated_db):
+    """amended_at is written from a hand-rolled PHT constant (a migration cannot
+    import app.utils.ph_now). Nothing else in this file reads it beyond a NOT
+    NULL column, so flipping that constant's sign -- an 8-hour skew that shows
+    the PREVIOUS day's date on any upgrade after 16:00 PH, the exact bug the
+    constant exists to prevent -- left every other test in this file green."""
+    con = sqlite3.connect(migrated_db)
+    try:
+        stamps = [row[0] for row in con.execute(
+            "SELECT amended_at FROM document_revisions "
+            "WHERE document_type = 'purchase_orders' AND reason IS NOT NULL").fetchall()]
+    finally:
+        con.close()
+    assert stamps, 'no backfilled rows to check'
+
+    ph_now = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+    for stamp in stamps:
+        written = datetime.strptime(stamp, '%Y-%m-%d %H:%M:%S.%f')
+        drift = abs((ph_now - written).total_seconds())
+        assert drift < 600, (
+            f'amended_at is {stamp}, {drift / 3600:.1f}h from PH now ({ph_now}) '
+            f'-- the migration is not stamping Philippine time')
 
 
 def test_only_non_draft_purchase_orders_are_backfilled(migrated_db):
@@ -260,8 +392,8 @@ def test_downgrade_removes_reconstructed_rows_and_spares_live_ones(tmp_path, mig
     dst = tmp_path / 'po-rev0-downgrade.db'
     shutil.copy(migrated_db, dst)
 
-    _run([sys.executable, '-m', 'flask', 'db', 'downgrade', 'docrev_0001'], dst)
+    _run([sys.executable, '-m', 'flask', 'db', 'downgrade', 'docrev_0001'], dst, tmp_path)
 
     remaining = [(po_number, number, reason)
                  for po_number, number, reason, _ in _revisions(dst)]
-    assert remaining == [('PO-LIVE-0001', 0, None)]
+    assert remaining == [('PO-LIVE-0001', 0, None), ('PO-WIDE-LIVE-0001', 0, None)]

@@ -26,11 +26,13 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
         'po_number', 'order_date', 'expected_date', 'vendor_id', 'vendor_name',
         'vendor_tin', 'vendor_address', 'payment_terms', 'reference', 'notes',
         'vat_treatment', 'status', 'subtotal', 'vat_amount', 'vat_override',
+        'total_amount', 'purchase_request_id',
         # accounts_payable_id IS live state -- purchase_billing.py sets it when the
         # PO is billed and clears it on void. Unlike received_quantity/billed_quantity
         # (never written, excluded below), omitting it would lose whether this PO was
         # billed and onto which bill.
-        'total_amount', 'purchase_request_id', 'accounts_payable_id', 'branch_id',
+        'accounts_payable_id',
+        'branch_id',
         # Provenance: Rev 0 is "the PO as originally approved" -- losing who
         # approved it and when makes that snapshot incomplete.
         'approved_by_id', 'approved_at', 'cancelled_by_id', 'cancelled_at',

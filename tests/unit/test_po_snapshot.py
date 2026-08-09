@@ -51,14 +51,23 @@ class TestPurchaseOrderSnapshot:
         assert 'product_code' in line and 'product_name' in line
 
     def test_lines_are_ordered_by_line_number(self, db_session):
+        # Appended OUT of order (1, 3, 2) and snapshotted straight off the
+        # in-memory collection: the relationship's own order_by only sorts a
+        # collection LOADED from the database, so it cannot stand in for the
+        # mixin's sorted(). Seeding the lines in order made this test pass with
+        # that sorted() deleted -- it asserted nothing.
         po = _po(db_session)
-        po.line_items.append(PurchaseOrderItem(
-            line_number=2, description='second', quantity=Decimal('2'),
-            unit_price=Decimal('6.50'), amount=Decimal('13.00'),
-            line_total=Decimal('13.00'), vat_rate=Decimal('0'), vat_amount=Decimal('0')))
-        db.session.commit()
+        for number, description in ((3, 'third'), (2, 'second')):
+            po.line_items.append(PurchaseOrderItem(
+                line_number=number, description=description, quantity=Decimal('2'),
+                unit_price=Decimal('6.50'), amount=Decimal('13.00'),
+                line_total=Decimal('13.00'), vat_rate=Decimal('0'), vat_amount=Decimal('0')))
+        db.session.flush()  # ids, WITHOUT the reload a commit's expiry would force
+        assert [ln.line_number for ln in po.line_items] == [1, 3, 2], \
+            'the collection must actually be out of order, or this test is vacuous'
+
         nums = [ln['line_number'] for ln in po.build_snapshot()['lines']]
-        assert nums == ['1', '2']
+        assert nums == ['1', '2', '3']
 
     def test_dead_counters_are_not_snapshotted(self, db_session):
         # received_quantity/billed_quantity are never written by anything (see spec,

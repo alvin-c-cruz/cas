@@ -18,9 +18,21 @@ a document that was not blank but FALSE.
 A migration cannot `import app.`, so the formatters below are standalone
 reimplementations applied PER FIELD -- raw sqlite3 rows are plain primitives
 (int/float/str/None), not the ORM-typed objects the app's canonical() dispatches
-on. Two of those primitives need field-specific correction, not just plain
+on. Three of those primitives need field-specific correction, not just plain
 str(value), confirmed against a live copy of philgen.db before writing this:
 
+  - Numeric columns are ROUNDED TO THE COLUMN'S SCALE on the way out. SQLite has
+    no decimal type, so SQLAlchemy stores a Numeric as a float and its result
+    processor rebuilds it as `Decimal("%.<scale>f" % raw_float)` (verified in
+    sqlalchemy.engine._py_processors.to_decimal_processor_factory). The live
+    canonical() therefore NEVER sees a value with more digits than the column's
+    scale, while raw sqlite3 hands back the full float. `Decimal(str(raw))` keeps
+    digits the ORM would have dropped -- with quantity=0.12345 stored, the live
+    Rev 0 says '0.1235' and an unscaled backfill says '0.12345'. That is
+    reachable: `_dec()` in app/purchase_orders/views.py is Decimal(str(v)) with
+    no quantize, so the server accepts un-rounded line values. The same
+    correction has to reach _money(), or unit_price 10.005 renders '10.00' here
+    against the live '10.01'.
   - vat_override is Boolean. sqlite3 hands back the on-disk int (0/1), but
     canonical(True/False) is str(bool) -> 'True'/'False'. str(1) would give
     '1', silently mismatching a live-captured revision's text forever.
@@ -74,6 +86,33 @@ NUMERIC_FIELDS = set(MONEY_FIELDS) | {
 BOOL_FIELDS = {'vat_override'}
 DATETIME_FIELDS = {'approved_at', 'cancelled_at'}
 
+# Decimal scale of each numeric column, from app/purchase_orders/models.py:
+# quantity is Numeric(15, 4), vat_rate is Numeric(5, 2), every money column is
+# Numeric(15, 2). This is what the ORM rounds to on read (see module docstring),
+# so it is what a backfilled snapshot must round to as well.
+SCALE = {'subtotal': 2, 'vat_amount': 2, 'total_amount': 2, 'amount': 2,
+         'unit_price': 2, 'line_total': 2, 'vat_rate': 2, 'quantity': 4}
+
+# Fail LOUDLY at import, not silently at some default, if a numeric field ever
+# joins NUMERIC_FIELDS without a scale: an unscaled field is precisely the bug
+# this map exists to fix, and it would otherwise reappear unnoticed.
+_unscaled = NUMERIC_FIELDS - set(SCALE)
+if _unscaled:
+    raise RuntimeError(
+        'docrev_0002: numeric field(s) with no declared scale: %s'
+        % ', '.join(sorted(_unscaled)))
+
+
+def _scaled(name, value):
+    """The Decimal the ORM would have produced for this column's raw value.
+
+    Mirrors SQLAlchemy's Numeric result processor exactly -- Decimal built from
+    '%.<scale>f' of the float, NOT Decimal(str(raw)), which keeps digits the ORM
+    drops. KeyError on an unmapped name is deliberate (see _unscaled above)."""
+    if value is None:
+        return None
+    return Decimal('%.*f' % (SCALE[name], float(value)))
+
 
 def _ph_timestamp():
     """Naive 'YYYY-MM-DD HH:MM:SS.ffffff', matching how a ph_now()-defaulted
@@ -88,7 +127,7 @@ def _canonical(name, value):
     if value is None:
         return None
     if name in NUMERIC_FIELDS:
-        d = Decimal(str(value))
+        d = _scaled(name, value)
         if d == 0:
             d = abs(d)
         return format(d.normalize(), 'f')
@@ -108,10 +147,16 @@ def _canonical(name, value):
     return str(value)
 
 
-def _money(value):
+def _money(name, value):
+    """DISPLAY form, mirroring app.amendments.snapshot.money().
+
+    Takes the field NAME so the raw value is scale-corrected FIRST: live, money()
+    is handed the ORM's already-rounded Decimal, so quantizing the raw float here
+    would round twice from a different starting point (unit_price 10.005 -> the
+    ORM's 10.01 -> '10.01' live, but straight to '10.00' here)."""
     if value is None:
         return None
-    return format(Decimal(str(value)).quantize(Decimal('0.01')), 'f')
+    return format(_scaled(name, value).quantize(Decimal('0.01')), 'f')
 
 
 def upgrade():
@@ -140,7 +185,7 @@ def upgrade():
         for i, name in enumerate(HEADER_FIELDS, start=1):
             header[name] = _canonical(name, po[i])
         for name in MONEY_FIELDS:
-            header[f'{name}_display'] = _money(po[HEADER_FIELDS.index(name) + 1])
+            header[f'{name}_display'] = _money(name, po[HEADER_FIELDS.index(name) + 1])
 
         branch_id = po[HEADER_FIELDS.index('branch_id') + 1]
         branch_row = None
@@ -174,8 +219,10 @@ def upgrade():
                 uom = conn.exec_driver_sql(
                     "SELECT code FROM units_of_measure WHERE id = %d" % int(uom_id)).fetchone()
             line['uom_code'] = uom[0] if uom else line.get('uom_text')
-            line['unit_price_display'] = _money(row[LINE_FIELDS.index('unit_price') + 1])
-            line['amount_display'] = _money(row[LINE_FIELDS.index('amount') + 1])
+            line['unit_price_display'] = _money(
+                'unit_price', row[LINE_FIELDS.index('unit_price') + 1])
+            line['amount_display'] = _money(
+                'amount', row[LINE_FIELDS.index('amount') + 1])
             lines.append(line)
 
         snapshot = json.dumps({'header': header, 'lines': lines})
