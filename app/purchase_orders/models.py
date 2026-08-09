@@ -10,13 +10,38 @@ from decimal import Decimal, ROUND_HALF_UP
 from app import db
 from app.utils import ph_now
 from app.utils.concurrency import RowVersioned
+from app.amendments.mixins import Amendable
+from app.amendments.snapshot import money
 
 VAT_TREATMENTS = ('inclusive', 'exclusive', 'zero_rated')
 STANDARD_VAT_RATE = Decimal('12')
 
 
-class PurchaseOrder(RowVersioned, db.Model):
+class PurchaseOrder(Amendable, RowVersioned, db.Model):
     __tablename__ = 'purchase_orders'
+
+    DOCUMENT_TYPE = 'purchase_orders'
+
+    SNAPSHOT_HEADER_FIELDS = (
+        'po_number', 'order_date', 'expected_date', 'vendor_id', 'vendor_name',
+        'vendor_tin', 'vendor_address', 'payment_terms', 'reference', 'notes',
+        'vat_treatment', 'status', 'subtotal', 'vat_amount', 'vat_override',
+        'total_amount', 'purchase_request_id', 'branch_id',
+        # Provenance: Rev 0 is "the PO as originally approved" -- losing who
+        # approved it and when makes that snapshot incomplete.
+        'approved_by_id', 'approved_at', 'cancelled_by_id', 'cancelled_at',
+        'cancel_reason',
+    )
+
+    # received_quantity/billed_quantity are deliberately EXCLUDED: nothing in the
+    # app writes them, so snapshotting their permanent 0 would record a false fact.
+    SNAPSHOT_LINE_FIELDS = (
+        'line_number', 'product_id', 'description', 'quantity', 'unit_price',
+        'amount', 'uom_text', 'unit_of_measure_id', 'vat_category', 'vat_rate',
+        'line_total', 'vat_amount',
+    )
+
+    SNAPSHOT_MONEY_FIELDS = ('subtotal', 'vat_amount', 'total_amount')
 
     id = db.Column(db.Integer, primary_key=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True, index=True)
@@ -82,6 +107,19 @@ class PurchaseOrder(RowVersioned, db.Model):
             self.vat_amount = sum((Decimal(str(li.vat_amount or 0)) for li in self.line_items),
                                   Decimal('0.00'))
             self.total_amount = gross
+
+    def snapshot_line_extras(self, line):
+        return {
+            'product_code': line.product.code if line.product else None,
+            'product_name': line.product.name if line.product else None,
+            'uom_code': (line.unit_of_measure.code if line.unit_of_measure
+                         else line.uom_text),
+            'unit_price_display': money(line.unit_price),
+            'amount_display': money(line.amount),
+        }
+
+    def snapshot_header_extras(self):
+        return {'branch_name': self.branch.name if self.branch else None}
 
     def to_dict(self):
         return {'id': self.id, 'po_number': self.po_number,
