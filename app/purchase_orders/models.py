@@ -97,6 +97,35 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
                                  cascade='all, delete-orphan',
                                  order_by='PurchaseOrderItem.line_number')
 
+    #: Statuses from which an amendment is allowed. 'partially_received' is in
+    #: VALID_PO_STATUSES but is never assigned by any code path today (see the
+    #: spec's Out of scope); accepting it costs nothing and is correct when that
+    #: transition ships. 'closed' is deliberately absent: billing sets it
+    #: (purchase_billing.py), so a billed PO is unreachable here by design.
+    AMEND_STATUSES = ('approved', 'partially_received')
+
+    child_document_label = 'Receiving Report'
+
+    def consumed_qty(self, line):
+        """Quantity already committed by non-draft, non-cancelled Receiving Reports."""
+        from app.receiving_reports.models import po_line_open_qty
+        return Decimal(str(line.quantity or 0)) - po_line_open_qty(line)
+
+    def has_any_child_reference(self, line):
+        """True if ANY Receiving Report line references this PO line, whatever its status.
+
+        Deliberately STATUS-AGNOSTIC and wider than consumed_qty. A draft or
+        cancelled RR contributes zero received quantity and so would not, on its
+        own, block removing this line -- but SQLite FK enforcement is off app-wide,
+        so deleting the line anyway leaves that RR line's purchase_order_item_id
+        dangling, and the next po_line_open_qty() on it dereferences None and 500s,
+        unrecoverable through the UI.
+        """
+        from app.receiving_reports.models import ReceivingReportItem
+        return (db.session.query(ReceivingReportItem.id)
+                .filter(ReceivingReportItem.purchase_order_item_id == line.id)
+                .first() is not None)
+
     def calculate_totals(self):
         """Header totals branch on vat_treatment (mirror Quotation.calculate_totals)."""
         gross = sum((Decimal(str(li.amount or 0)) for li in self.line_items), Decimal('0.00'))
