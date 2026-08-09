@@ -44,6 +44,17 @@ pytestmark = pytest.mark.slow
 #  PO-BACKFILL-0001 field-identical to PO-LIVE-0001 apart from po_number, approved
 #                   but with no revision -- the row the migration must reconstruct.
 #  PO-DRAFT-0001    identical again but still draft -- must get nothing.
+#  PO-CANCELLED-APPROVED-0001       approved_at set, then cancelled -- MUST be
+#                   backfilled (it really was approved; status != 'draft' would
+#                   also catch this one, so it doesn't discriminate the two
+#                   predicates on its own -- it proves cancellation-after-
+#                   approval doesn't suppress the backfill).
+#  PO-CANCELLED-NEVER-APPROVED-0001 cancelled directly from draft (cancel()
+#                   blocks only status in ('cancelled', 'closed'), never
+#                   requires prior approval) -- approved_at/approved_by_id are
+#                   NULL, so it must NOT be backfilled. This is the PO that
+#                   `status != 'draft'` gets wrong: it is non-draft
+#                   (status='cancelled') but was never approved.
 #  PO-WIDE-LIVE-0001 / PO-WIDE-0001  the same live/backfill pair, but with line
 #                   values carrying MORE decimal digits than their columns hold
 #                   (quantity 0.12345 into Numeric(15,4), unit_price 10.005 and
@@ -97,7 +108,13 @@ with app.app_context():
     WIDE_LINE = dict(quantity=Decimal('0.12345'), unit_price=Decimal('10.005'),
                      amount=Decimal('1.2351'), line_total=Decimal('1.2351'))
 
-    def make_po(number, status, line_overrides=None):
+    def make_po(number, status, line_overrides=None, approved=None):
+        # `approved` defaults to "status is non-draft" (the old, WRONG
+        # predicate) so most callers don't have to think about it -- but the
+        # two cancellation fixtures below pass it explicitly, because for them
+        # approval and terminal status must be independent of each other.
+        if approved is None:
+            approved = (status != 'draft')
         po = PurchaseOrder(
             po_number=number, order_date=date(2026, 8, 5),
             expected_date=date(2026, 8, 20),
@@ -118,7 +135,7 @@ with app.app_context():
             line_total=Decimal('25.50'), vat_amount=Decimal('2.73'))
         line.update(line_overrides or {})
         po.line_items.append(PurchaseOrderItem(**line))
-        if status != 'draft':
+        if approved:
             po.approved_by_id = user.id
             po.approved_at = APPROVED_AT
         db.session.add(po)
@@ -131,6 +148,17 @@ with app.app_context():
 
     make_po('PO-BACKFILL-0001', 'approved')
     make_po('PO-DRAFT-0001', 'draft')
+
+    # approved, THEN cancelled -- cancel() never clears approved_at/
+    # approved_by_id, so this PO really was approved and must still be
+    # backfilled even though its current status is 'cancelled'.
+    make_po('PO-CANCELLED-APPROVED-0001', 'cancelled', approved=True)
+
+    # cancelled WITHOUT ever being approved -- cancel() blocks only
+    # status in ('cancelled', 'closed'), so a draft PO can be cancelled
+    # directly. approved_at/approved_by_id are NULL; `status != 'draft'`
+    # would wrongly hand this one a Rev 0 captioned "as approved".
+    make_po('PO-CANCELLED-NEVER-APPROVED-0001', 'cancelled', approved=False)
 
     # commit() above expired `wide_live`, so write_revision() re-reads its line
     # through the ORM -- i.e. through the Numeric rounding the migration has to
@@ -288,7 +316,8 @@ def test_backfilled_rev0_equals_a_live_written_rev0(migrated_db):
     against a baseline that was never in the same dialect."""
     revs = _by_po(migrated_db)
     assert set(revs) == {'PO-LIVE-0001', 'PO-BACKFILL-0001',
-                         'PO-WIDE-LIVE-0001', 'PO-WIDE-0001'}
+                         'PO-WIDE-LIVE-0001', 'PO-WIDE-0001',
+                         'PO-CANCELLED-APPROVED-0001'}
 
     live, back = _comparable_pair(revs, 'PO-LIVE-0001', 'PO-BACKFILL-0001')
 
@@ -358,18 +387,47 @@ def test_backfilled_rows_are_stamped_in_philippine_time(migrated_db):
             f'-- the migration is not stamping Philippine time')
 
 
-def test_only_non_draft_purchase_orders_are_backfilled(migrated_db):
-    """Rev 0 means 'as approved'. A draft PO has never been approved, so it gets
-    none -- but the non-draft control must be backfilled in the same run, or this
-    test would pass with upgrade() replaced by `pass`."""
+def test_backfill_selects_by_approved_at_not_by_status(migrated_db):
+    """Rev 0 means 'as approved at some point', so the selection predicate is
+    `approved_at IS NOT NULL`, not `status != 'draft'`. The two predicates only
+    disagree on a PO that is non-draft but was never approved -- a draft PO
+    cancelled directly (cancel() blocks only status in ('cancelled',
+    'closed'), never requires prior approval). Four outcomes, by PO number:
+
+    - PO-DRAFT-0001: never approved, still draft -> no Rev 0 (both predicates
+      agree).
+    - PO-BACKFILL-0001: approved, still 'approved' -> Rev 0 (both predicates
+      agree; a plain positive control).
+    - PO-CANCELLED-APPROVED-0001: approved_at set, then cancelled -> Rev 0.
+      `status != 'draft'` also backfills this one, so it alone would not
+      catch a regression back to the old predicate -- it exists to prove
+      cancellation-after-approval does not suppress a backfill it deserves.
+    - PO-CANCELLED-NEVER-APPROVED-0001: never approved, cancelled directly
+      from draft -> NO Rev 0. This is the discriminating case: `status !=
+      'draft'` would give it a Rev 0 captioned "as approved" that it never
+      was -- exactly the affirmative false claim this feature exists to
+      remove. `approved_at IS NOT NULL` correctly excludes it.
+    """
     revs = _by_po(migrated_db)
 
     assert 'PO-DRAFT-0001' not in revs, 'a draft PO must not be given a Rev 0'
+    assert 'PO-CANCELLED-NEVER-APPROVED-0001' not in revs, (
+        'a PO cancelled without ever being approved must not get a Rev 0 '
+        'captioned "as approved" -- its approved_at is NULL')
 
     (number, reason, snapshot), = revs['PO-BACKFILL-0001']
     assert number == 0
     assert 'reconstructed' in reason.lower()
     assert snapshot['header']['status'] == 'approved'
+    assert snapshot['lines'], 'lines must be captured, not just the header'
+
+    (number, reason, snapshot), = revs['PO-CANCELLED-APPROVED-0001']
+    assert number == 0
+    assert 'reconstructed' in reason.lower()
+    assert snapshot['header']['status'] == 'cancelled', (
+        'the snapshot reflects CURRENT state (reconstructed, not captured at '
+        'approval time) -- this PO must still get a Rev 0 despite its '
+        'current status being cancelled')
     assert snapshot['lines'], 'lines must be captured, not just the header'
 
 

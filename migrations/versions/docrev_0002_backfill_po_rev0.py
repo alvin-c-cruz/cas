@@ -1,4 +1,4 @@
-"""backfill Rev 0 for pre-existing non-draft Purchase Orders
+"""backfill Rev 0 for pre-existing approved Purchase Orders
 
 Revision ID: docrev_0002
 Revises: docrev_0001
@@ -9,6 +9,26 @@ FROM CURRENT STATE rather than captured at approval. Any PO edited while still
 draft has a snapshot that is not literally what was approved -- so every
 backfilled row says so in its `reason`, and the UI shows it. Claiming otherwise
 would be exactly the dishonesty this feature exists to remove.
+
+The backfill selects `WHERE approved_at IS NOT NULL`, not `status != 'draft'`.
+The live path writes Rev 0 in exactly one place -- a successful approve() in
+app/purchase_orders/views.py -- and the backfill's whole job is to give
+pre-existing documents the row that live path *would* have written, so the
+selection has to key on the same fact approve() records: `approved_at`.
+
+`status != 'draft'` gets this wrong in one direction: cancel() blocks only
+status in ('cancelled', 'closed'), so a DRAFT PO can be cancelled without ever
+being approved. Such a PO is non-draft (status='cancelled') with
+approved_at/approved_by_id both NULL -- `status != 'draft'` would hand it a Rev
+0 captioned "as approved" that it never was, which is exactly the kind of
+affirmative false claim this feature exists to remove.
+
+The Sales Order equivalent's `status = 'confirmed'` gets it wrong the OTHER
+way: it silently skips orders that were confirmed and later closed or
+cancelled, even though they genuinely have an approval to reconstruct. Do not
+copy that predicate here -- `approved_at IS NOT NULL` is correct in both
+directions: present exactly when a real approval happened, regardless of
+whatever terminal status followed it.
 
 The snapshot below MUST emit the same key set PurchaseOrder.build_snapshot()
 emits, because the revision viewer renders it. When the Sales Order equivalent
@@ -164,7 +184,7 @@ def upgrade():
     stamp = _ph_timestamp()
 
     pos = conn.exec_driver_sql(
-        "SELECT id, %s FROM purchase_orders WHERE status != 'draft'"
+        "SELECT id, %s FROM purchase_orders WHERE approved_at IS NOT NULL"
         % ', '.join(HEADER_FIELDS)).fetchall()
 
     for po in pos:
