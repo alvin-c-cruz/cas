@@ -95,7 +95,16 @@ def _canonical(name, value):
     if name in BOOL_FIELDS:
         return str(bool(value))
     if name in DATETIME_FIELDS:
-        return str(value).replace(' ', 'T')
+        text = str(value).replace(' ', 'T')
+        # SQLite's DATETIME storage format ALWAYS writes 6 fractional digits, but
+        # datetime.isoformat() -- what the live canonical() calls -- omits the
+        # fraction entirely when microsecond is 0. Without this strip, a PO
+        # approved on a whole second gives '...T16:21:38' live and
+        # '...T16:21:38.000000' here: equal instants, unequal text, which is
+        # exactly the equality contract canonical() exists to hold.
+        if text.endswith('.000000'):
+            text = text[:-len('.000000')]
+        return text
     return str(value)
 
 
@@ -184,6 +193,11 @@ def upgrade():
 
 
 def downgrade():
-    op.get_bind().exec_driver_sql(
-        "DELETE FROM document_revisions WHERE document_type = 'purchase_orders' "
-        "AND revision_number = 0 AND reason = '%s'" % RECONSTRUCTED)
+    # Bound parameter, not interpolation -- same reason the INSERT above binds:
+    # RECONSTRUCTED is prose that may grow an apostrophe, and sorev_0002's
+    # matching downgrade already binds it. Deletes ONLY reconstructed rows, so a
+    # live-captured Rev 0 (reason IS NULL) survives a downgrade untouched.
+    op.get_bind().execute(
+        sa.text("DELETE FROM document_revisions WHERE document_type = 'purchase_orders' "
+                "AND revision_number = 0 AND reason = :reason"),
+        {'reason': RECONSTRUCTED})
