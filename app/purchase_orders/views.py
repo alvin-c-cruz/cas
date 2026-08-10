@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from flask import (Blueprint, render_template, redirect, url_for, flash,
                    request, session, abort, current_app, jsonify)
 from flask_login import login_required, current_user
+from sqlalchemy.orm import joinedload
 
 from app import db
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem, generate_po_number
@@ -16,6 +17,7 @@ from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
 from app.vendors.models import Vendor
 from app.users.models import User
 from app.settings import AppSettings
+from app.amendments.models import DocumentRevision
 from app.amendments.service import write_revision
 from app.amendments.validation import validate_amendment
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
@@ -206,6 +208,42 @@ def _get_po_or_404(id):
     if po.branch_id != session.get('selected_branch_id'):
         abort(404)
     return po
+
+
+def _revision_panel_rows(po):
+    """Rows for the detail page's revision-history panel, newest first.
+
+    ONE query, and one `joinedload` rather than a lazy `amended_by` per row --
+    `latest_revision()` per revision (or a bare relationship access in the
+    template) would render an identical page while paying a query per revision.
+    `tests/integration/test_po_revision_panel.py` measures this by counting the
+    SQL the request actually executes, at 1 and at 6 revisions.
+
+    `document_type` is part of the filter, not decoration: `document_id` is a
+    plain Integer pointing at eight different tables, so PO id 1 and Sales Order
+    id 1 are the same number and only the type separates them.
+
+    Flattened to plain dicts here rather than handed to the template as ORM rows
+    so the template cannot reach a relationship (and therefore a query) behind a
+    Jinja expression, where it would be invisible to anyone reading this view.
+    """
+    revisions = (DocumentRevision.query
+                 .options(joinedload(DocumentRevision.amended_by))
+                 .filter_by(document_type=po.DOCUMENT_TYPE, document_id=po.id)
+                 .order_by(DocumentRevision.revision_number.desc())
+                 .all())
+    return [{
+        'number': r.revision_number,
+        # Already Philippine local time: amended_at defaults to ph_now() and is
+        # stored on a naive DateTime column, so the offset is dropped on the way
+        # in. Formatting is left to the template's strftime -- passing it through
+        # format_ph_datetime() would treat this naive PH value as UTC and shift
+        # it forward eight hours.
+        'amended_at': r.amended_at,
+        'amended_by': r.amended_by.username if r.amended_by else None,
+        'reason': r.reason,
+        'authorizing_reference': r.authorizing_reference,
+    } for r in revisions]
 
 
 def _active_vendors():
@@ -402,7 +440,8 @@ def view(id):
     return render_template('purchase_orders/detail.html', po=po,
                            created_by_user=created_by_user,
                            approved_by_user=approved_by_user,
-                           cancelled_by_user=cancelled_by_user)
+                           cancelled_by_user=cancelled_by_user,
+                           revisions=_revision_panel_rows(po))
 
 
 @purchase_orders_bp.route('/purchase-orders/<int:id>/edit', methods=['GET', 'POST'])

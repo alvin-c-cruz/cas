@@ -76,6 +76,45 @@
   </div>
 </div></div>
 
+{% if revisions %}
+{# Revision history. Mirrors the Sales Order panel, and deliberately REUSES its
+   .so-rev* rules from style.css rather than adding new ones: those rules are
+   document-agnostic (a left rule, a heading, a meta line, all on design tokens),
+   and generalising the class names to .doc-rev would edit style.css and force a
+   ?v=N bump in every template that loads it -- out of this task's scope. No PO
+   revision viewer exists yet, so unlike the SO panel there is no "view full
+   order" link. #}
+<div class="card"><div class="card-body">
+  <h3>Revision history</h3>
+  {% for rev in revisions %}
+  <div class="so-rev {% if rev.number == 0 %}so-rev-original{% endif %}">
+    <div class="so-rev-head">
+      Rev {{ rev.number }} &middot;
+      {{ rev.amended_at.strftime('%b %d, %Y %H:%M') }} &middot;
+      {{ rev.amended_by or 'system' }}
+    </div>
+    {# Rev 0 has TWO sources and they are not equally trustworthy. A live capture
+       (written by approve() at the moment of approval) carries no reason and IS
+       the original approved document. A backfilled one (migration docrev_0002)
+       was rebuilt from the row's CURRENT state and carries that migration's own
+       disclosure in `reason` -- rendered verbatim here, never retyped, so a
+       reworded migration cannot leave this page asserting something it no longer
+       writes. The reason branch is FIRST for that reason: captioning a
+       reconstruction "Original approved order" would be an affirmative false
+       claim about a document users make decisions on. #}
+    {% if rev.reason %}
+    <div class="so-rev-meta">
+      {% if rev.authorizing_reference %}Per {{ rev.authorizing_reference }} &middot; {% endif %}
+      &ldquo;{{ rev.reason }}&rdquo;
+    </div>
+    {% elif rev.number == 0 %}
+    <div class="so-rev-meta">Original approved order</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div></div>
+{% endif %}
+
 {% if can_write or can_approve %}
 <div class="card"><div class="card-body">
   {% if po.status == 'draft' and can_approve %}
