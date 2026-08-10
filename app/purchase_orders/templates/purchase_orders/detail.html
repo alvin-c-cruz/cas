@@ -87,7 +87,14 @@
 <div class="card"><div class="card-body">
   <h3>Revision history</h3>
   {% for rev in revisions %}
-  <div class="so-rev {% if rev.number == 0 %}so-rev-original{% endif %}">
+  {# data-revision is a STABLE HANDLE, not decoration: the panel's tests have to
+     bound each entry to compare one against another, and keying that off the
+     class attribute coupled them to a trailing space that only exists because of
+     the `{% if %}` below. A behaviour-identical tidy of this attribute made the
+     test helper return only the Rev 0 entries and two tests then failed blaming
+     the panel. Restyling (including the .so-rev -> .doc-rev sweep this file's
+     comment above contemplates) must not be able to do that again. #}
+  <div data-revision="{{ rev.number }}" class="so-rev {% if rev.number == 0 %}so-rev-original{% endif %}">
     <div class="so-rev-head">
       Rev {{ rev.number }} &middot;
       {{ rev.amended_at.strftime('%b %d, %Y %H:%M') }} &middot;
@@ -102,12 +109,29 @@
        writes. The reason branch is FIRST for that reason: captioning a
        reconstruction "Original approved order" would be an affirmative false
        claim about a document users make decisions on. #}
+    {# An EMPTY reason is treated as no reason (truthiness, not `is not none`):
+       there is nothing to quote, and a bare pair of quotation marks tells a
+       reader only that something was lost. It is unreachable from amend()
+       (DataRequired + Length(min=10)); the shared service accepts one from any
+       caller.
+
+       authorizing_reference is RESERVED for slice 3, deliberately: the column and
+       the write_revision kwarg exist, PurchaseOrderAmendForm has no such field on
+       purpose (there is no PO analogue of the Sales Order's authorizing PO
+       number), and nothing in the app passes one today. It renders here so the
+       first document type that carries one inherits the panel unchanged. #}
     {% if rev.reason %}
     <div class="so-rev-meta">
       {% if rev.authorizing_reference %}Per {{ rev.authorizing_reference }} &middot; {% endif %}
       &ldquo;{{ rev.reason }}&rdquo;
     </div>
     {% elif rev.number == 0 %}
+    {# Rev 0 ONLY. `{% else %}` here would caption every reason-less revision as
+       the original approved order, including an amendment -- the affirmative
+       false claim this panel exists to remove. write_revision's `reason`
+       defaults to None and the >= 10-char rule lives in the FORM, not the
+       service, so one slice-3 route calling write_revision(doc, uid) is all it
+       takes. Pinned by test_a_reason_less_amendment_is_not_captioned_as_the_original. #}
     <div class="so-rev-meta">Original approved order</div>
     {% endif %}
   </div>

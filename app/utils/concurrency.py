@@ -230,9 +230,16 @@ def conflict_message(module, doc_id):
     # time, and audit.models must not be pulled into that edge.
     from app.audit.models import AuditLog
 
+    # 'amend' as well as 'update': a post-approval amendment is a write to the
+    # same row that bumps the same row_version, and it is logged under its own
+    # action so an auditor can tell a draft edit from a rewrite of an approved
+    # document. Reading only 'update' would name whoever last edited the draft
+    # while ignoring the amender whose write actually caused this conflict.
     entry = (
         AuditLog.query
-        .filter_by(module=module, action='update', record_id=doc_id)
+        .filter(AuditLog.module == module,
+                AuditLog.action.in_(('update', 'amend')),
+                AuditLog.record_id == doc_id)
         .order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
         .first()
     )

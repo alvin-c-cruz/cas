@@ -1,7 +1,10 @@
 """parse_submission turns raw POSTed JSON into a per-row map, or messages. Never raises."""
 from decimal import Decimal
 
-from app.amendments.validation import MAX_LINE_QUANTITY, OUT_OF_RANGE, parse_submission
+import pytest
+
+from app.amendments.validation import (MAX_LINE_QUANTITY, OUT_OF_RANGE,
+                                       parse_submission)
 
 
 class TestParseSubmission:
@@ -21,6 +24,29 @@ class TestParseSubmission:
         submitted, errors = parse_submission(['not-a-line', 42, None], 'po_item_id')
         assert submitted == {}
         assert len(errors) == 3
+
+    @pytest.mark.parametrize('crafted', [123, 1.5, True, False, 'x', None,
+                                         {'po_item_id': 1}, ()])
+    def test_a_submission_that_is_not_a_list_is_refused_not_raised(self, crafted):
+        # `for line in (new_lines or [])` raises TypeError on an int/float/bool
+        # and silently iterates the CHARACTERS of a string or the KEYS of a dict.
+        # The route calls validate_amendment outside its try block, so the raise
+        # was an unhandled 500 -- the exact outcome this module's docstring says
+        # cannot happen. A tuple is refused too: the applier's `items or []`
+        # contract is a JSON array, and json.loads never produces a tuple, so
+        # anything else is a caller that has not been through json.loads.
+        submitted, errors = parse_submission(crafted, 'po_item_id')
+        assert submitted == {}
+        assert len(errors) == 1
+        assert 'Malformed submission' in errors[0]
+
+    def test_an_empty_list_is_a_valid_submission(self):
+        # CONTROL for the guard above: `[]` is a well-formed submission (the user
+        # removed every line) and must stay judgeable on its own terms. Whether it
+        # is ALLOWED is a document-level question the route answers -- see
+        # PurchaseOrder.has_approvable_line -- not a parse error.
+        submitted, errors = parse_submission([], 'po_item_id')
+        assert submitted == {} and errors == []
 
     def test_new_line_without_an_id_is_skipped(self):
         submitted, errors = parse_submission([{'po_item_id': None, 'quantity': '3'}], 'po_item_id')

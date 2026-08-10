@@ -351,16 +351,26 @@ class TestPoAmend:
         assert resp.status_code == 404
         assert _revs(approved_po) and len(_revs(approved_po)) == 1
 
-    def test_the_amendment_is_audited(self, client, admin_user, approved_po):
+    def test_the_amendment_is_audited_under_the_amend_action(
+            self, client, admin_user, approved_po):
+        # The spec asks for action `amend`, not `update`: the audit log is where
+        # an auditor separates "somebody edited a draft" from "somebody rewrote an
+        # APPROVED document", and `update` collapses the two. approve() and the
+        # draft edit() keep `update`, so the distinction is only worth anything if
+        # the amendment is the one that differs -- asserted in both directions.
         from app.audit.models import AuditLog
         self._amend(client, approved_po)
         entry = (AuditLog.query
-                 .filter_by(module='purchase_orders', action='update',
+                 .filter_by(module='purchase_orders', action='amend',
                             record_id=approved_po.id)
                  .order_by(AuditLog.id.desc()).first())
-        assert entry is not None
+        assert entry is not None, 'the amendment was not audited as an amendment'
         assert entry.user_id == admin_user.id
         assert 'Rev 1' in (entry.notes or '')
+        assert not [e for e in AuditLog.query.filter_by(
+            module='purchase_orders', action='update',
+            record_id=approved_po.id).all() if 'Rev 1' in (e.notes or '')], (
+            'the amendment was also logged as a plain update')
 
     # -- the role gate is the APPROVE-level gate, not the edit-level one ------
 
@@ -464,6 +474,12 @@ class TestPoAmend:
         # the absent-key guard. Here the guard that fires is the receipts guard,
         # with its own actionable message -- so the two cases stay distinguishable
         # and the fix cannot be over-tightened into "any empty list is malformed".
+        #
+        # The OUTCOME is asserted, not merely the message. Asserting only that the
+        # receipts message appeared is what let C1 survive Task 4's review: this
+        # test proved the `[]` path was REACHABLE, and was read as proof that the
+        # path was SAFE -- while the same POST against a PO with no receipts
+        # emptied it (see TestAnAmendmentMustLeaveAnApprovablePo below).
         po = approved_po_with_receipt
         before = len(_revs(po))
         resp = self._amend(client, po, line_items=json.dumps([]))
@@ -471,13 +487,17 @@ class TestPoAmend:
         assert b'already received' in resp.data
         assert b'did not reach the server' not in resp.data
         assert len(_revs(po)) == before
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, approved_po_with_receipt.id)
+        assert len(po.line_items) == 1, 'a refused amendment must leave the lines alone'
+        assert po.total_amount == Decimal('50.00')
+        assert po.status == 'approved'
 
     def test_a_non_json_line_items_is_refused_not_a_500(
             self, client, admin_user, approved_po):
         # app/amendments/validation.py's contract is "a crafted POST must produce
         # messages, not a 500" -- but a non-JSON body never reaches the validator:
-        # json.loads raises straight out of the view. Every other crafted-but-valid
-        # -JSON shape ({"a": 1}, [1,2,3], [null], "x") is already handled.
+        # json.loads raises straight out of the view.
         before = len(_revs(approved_po))
         resp = self._amend(client, approved_po, line_items='not json at all')
 
@@ -486,6 +506,177 @@ class TestPoAmend:
         assert len(_revs(approved_po)) == before
         db.session.expire_all()
         assert len(db.session.get(PurchaseOrder, approved_po.id).line_items) == 1
+
+    @pytest.mark.parametrize('crafted', ['123', 'true', 'false', '1.5', 'null',
+                                         '"x"', '{"a": 1}'])
+    def test_valid_json_that_is_not_a_list_is_refused_not_a_500(
+            self, client, admin_user, approved_po, crafted):
+        # M1 (final review). `json.loads` only refuses input that is not JSON at
+        # all; `123`, `true` and `1.5` parse fine and then reach
+        # parse_submission's `for line in (new_lines or [])`, which raises
+        # TypeError: 'int' object is not iterable. validate_amendment is called
+        # OUTSIDE the route's try block, so that is an unhandled 500 -- exactly
+        # what validation.py's docstring says cannot happen.
+        #
+        # `null` is the same door as C1 by another route: it reaches the applier
+        # as `items or []` and empties the PO.
+        before = len(_revs(approved_po))
+        resp = self._amend(client, approved_po, line_items=crafted)
+
+        assert resp.status_code == 200, 'a crafted line_items must not 500'
+        assert b'could not be read' in resp.data
+        assert len(_revs(approved_po)) == before
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert len(po.line_items) == 1
+        assert po.total_amount == Decimal('50.00')
+
+    def test_a_json_list_of_junk_still_reaches_the_validator(
+            self, client, admin_user, approved_po):
+        # Control for the parametrised refusal above, so the isinstance guard
+        # cannot be over-tightened into "anything unusual is unreadable". A LIST
+        # is a well-formed submission whatever it holds: each element is judged on
+        # its own and gets the validator's per-element message, which is a
+        # different (and more specific) refusal than "could not be read".
+        before = len(_revs(approved_po))
+        resp = self._amend(client, approved_po, line_items=json.dumps([1, 2, None]))
+
+        assert resp.status_code == 200
+        assert b'expected a line object' in resp.data
+        assert b'could not be read' not in resp.data
+        assert len(_revs(approved_po)) == before
+
+    # -- an amendment may not leave a PO in a shape approve() refuses ----------
+    #
+    # C1 (final review), Critical. Clicking the red `x` on every row posts an
+    # explicit `[]`. That passes validate_amendment -- nothing is consumed, so the
+    # removal branch allows it -- and left an APPROVED Purchase Order with zero
+    # lines and a 0.00 total, reported to the user as a success, still returned by
+    # billable_pos_for() and still printable. approve() refuses exactly that shape
+    # one second earlier.
+    #
+    # The rule is now ONE predicate (PurchaseOrder.has_approvable_line), called by
+    # approve() and enforced on the RESULT of an amendment, so the two cannot
+    # drift. Both callers are pinned here: the amend direction (this rule is new)
+    # and the approve direction (the rule is old, and the extraction must not have
+    # changed it).
+
+    def test_an_amendment_that_removes_every_line_is_refused(
+            self, client, admin_user, approved_po):
+        # The C1 case the old control test never covered: NO receipts, so no other
+        # guard fires and the emptying reached the database.
+        before = len(_revs(approved_po))
+        resp = self._amend(client, approved_po, line_items=json.dumps([]))
+
+        assert resp.status_code == 200
+        assert b'at least one line with a unit price' in resp.data
+        assert len(_revs(approved_po)) == before, 'a refused amendment must write nothing'
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert len(po.line_items) == 1, 'the amendment emptied an approved PO'
+        assert po.total_amount == Decimal('50.00')
+        assert po.status == 'approved'
+
+    def test_an_amendment_that_strips_the_last_unit_price_is_refused(
+            self, client, admin_user, approved_po):
+        # The other half of approve()'s rule: it demands a line with BOTH a unit
+        # price and an amount above zero, not merely a line. calculate_amounts()
+        # only recomputes when quantity AND unit price are both > 0, so a line can
+        # legitimately keep a stale amount with no price at all.
+        before = len(_revs(approved_po))
+        line_id = approved_po.line_items[0].id
+        resp = self._amend(client, approved_po,
+                           lines={line_id: {'unit_price': '', 'amount': '0'}})
+
+        assert b'at least one line with a unit price' in resp.data
+        assert len(_revs(approved_po)) == before
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert po.line_items[0].unit_price == Decimal('5.00')
+        assert po.total_amount == Decimal('50.00')
+
+    def test_removing_one_of_two_lines_still_succeeds(
+            self, client, admin_user, approved_po):
+        # CONTROL for the two refusals above, asserting the OUTCOME rather than
+        # the path: the new rule must refuse "no priced line left", not "fewer
+        # lines than before". A refusal here would mean the fix over-tightened
+        # into a blanket ban on shrinking a Purchase Order.
+        lines = json.loads(_payload(approved_po))
+        lines.append({'po_item_id': None, 'product_id': None, 'description': 'bolt',
+                      'quantity': '3', 'unit_price': '2.00', 'amount': '6.00',
+                      'vat_category': None, 'vat_rate': '0'})
+        self._amend(client, approved_po, line_items=json.dumps(lines))
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert len(po.line_items) == 2, 'precondition: two lines to remove one from'
+        keep = po.line_items[0].id
+        before = len(_revs(po))
+
+        resp = self._amend(client, po, line_items=json.dumps(
+            [line for line in json.loads(_payload(po)) if line['po_item_id'] == keep]))
+
+        assert b'at least one line with a unit price' not in resp.data
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert [li.id for li in po.line_items] == [keep]
+        assert po.total_amount == Decimal('50.00')
+        assert len(_revs(po)) == before + 1, 'an allowed amendment must be recorded'
+
+    def test_an_amendment_that_zeroes_one_price_but_not_the_last_succeeds(
+            self, client, admin_user, approved_po):
+        # The second control, on the price half of the rule: ONE unpriced line is
+        # fine as long as the order still carries a priced one -- which is exactly
+        # what approve() allows (`any(...)`, not `all(...)`).
+        lines = json.loads(_payload(approved_po))
+        lines.append({'po_item_id': None, 'product_id': None, 'description': 'bolt',
+                      'quantity': '3', 'unit_price': '2.00', 'amount': '6.00',
+                      'vat_category': None, 'vat_rate': '0'})
+        self._amend(client, approved_po, line_items=json.dumps(lines))
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        priced, unpriced = po.line_items[0].id, po.line_items[1].id
+
+        resp = self._amend(client, po,
+                           lines={unpriced: {'unit_price': '', 'amount': '0'}})
+
+        assert b'at least one line with a unit price' not in resp.data
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert {li.id for li in po.line_items} == {priced, unpriced}
+        assert po.total_amount == Decimal('50.00')
+
+    def test_approve_still_refuses_a_po_with_no_priced_line(
+            self, client, admin_user, draft_po):
+        # CONTROL on the OTHER caller of the shared predicate. approve()'s
+        # precondition had no test at all, so extracting it could have changed
+        # approve()'s observable behaviour with nothing to notice.
+        draft_po.line_items[0].unit_price = None
+        draft_po.line_items[0].amount = Decimal('0.00')
+        draft_po.calculate_totals()
+        db.session.commit()
+
+        resp = client.post(f'/purchase-orders/{draft_po.id}/approve',
+                           follow_redirects=True)
+
+        assert resp.status_code == 200
+        assert b'Set a unit price on at least one line' in resp.data
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, draft_po.id)
+        assert po.status == 'draft', 'an unpriced PO was approved'
+        assert _revs(po) == [], 'a refused approval must write no Rev 0'
+
+    def test_approve_still_accepts_a_po_with_a_priced_line(
+            self, client, admin_user, draft_po):
+        # ... and its control, so the test above cannot pass because approve() is
+        # broken outright.
+        resp = client.post(f'/purchase-orders/{draft_po.id}/approve',
+                           follow_redirects=True)
+
+        assert b'Set a unit price on at least one line' not in resp.data
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, draft_po.id)
+        assert po.status == 'approved'
+        assert [r.revision_number for r in _revs(po)] == [0]
 
     # -- gaps the review's surviving mutations exposed -------------------------
 

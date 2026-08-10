@@ -126,6 +126,25 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
                 .filter(ReceivingReportItem.purchase_order_item_id == line.id)
                 .first() is not None)
 
+    def has_approvable_line(self):
+        """True when at least one line carries BOTH a unit price and an amount.
+
+        approve()'s precondition -- and, since an amendment rewrites an already
+        approved order, its postcondition too. Amend must not be able to leave a
+        Purchase Order in a shape approve() would have refused: deleting every row
+        in the amend form posts an explicit `[]`, which validate_amendment allows
+        when nothing has been received (removing an untouched line is legal), and
+        that left an APPROVED order with zero lines and a 0.00 total -- still
+        listed by billable_pos_for(), still printable, reported to the user as a
+        success.
+
+        ONE predicate, called by both routes, on purpose. The same rule typed out
+        twice is precisely how that hole survived a review: the absent-`line_items`
+        door was closed by hand and the explicit-`[]` door beside it was not.
+        """
+        return any((li.unit_price or 0) > 0 and (li.amount or 0) > 0
+                   for li in self.line_items)
+
     def calculate_totals(self):
         """Header totals branch on vat_treatment (mirror Quotation.calculate_totals)."""
         gross = sum((Decimal(str(li.amount or 0)) for li in self.line_items), Decimal('0.00'))

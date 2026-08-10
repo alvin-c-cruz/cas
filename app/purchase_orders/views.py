@@ -561,7 +561,7 @@ def amend(id):
     vendors = _active_vendors()
     form.set_vendor_choices(vendors)
 
-    # Parse the submitted line array ONCE, here, and refuse the two shapes that
+    # Parse the submitted line array ONCE, here, and refuse the three shapes that
     # must never reach the applier:
     #
     #  * key ABSENT. `request.form.get('line_items', '[]')` cannot tell "the
@@ -569,18 +569,29 @@ def amend(id):
     #    dropped the hidden input -- the BUG-DR-EDIT-FALSE-CONFLICT class, which
     #    has already shipped in this codebase once -- reads as a full clear-out
     #    and leaves an APPROVED PO with zero lines and a 0.00 total, a state
-    #    approve() itself refuses, reported as a success. An EXPLICIT '[]' is a
-    #    real submission and still goes to validate_amendment, which refuses it
-    #    on its own terms when anything has been received.
+    #    approve() itself refuses, reported as a success.
     #  * not JSON. json.loads raises out of the view (an unhandled 500), which
     #    contradicts app/amendments/validation.py's contract that a crafted POST
     #    produces messages, not a 500 -- the crafted POST never reaches it.
+    #  * valid JSON that is not an ARRAY. `123`, `true` and `1.5` parse fine and
+    #    then raised TypeError inside parse_submission -- and validate_amendment
+    #    is called below, OUTSIDE the try, so that was a 500 too. `"x"` and
+    #    `{"a": 1}` are iterable and produced one bogus message per character or
+    #    key, and `null` reached the applier as `items or []` and emptied the
+    #    order. json.loads produces a list for every submission this form can
+    #    make; anything else is crafted.
     #
-    # (edit() and sales_orders.amend() share the same two holes; fixing them is
-    # a separate change and deliberately out of scope here.)
+    # An EXPLICIT '[]' is deliberately NOT refused here: it is a real submission
+    # (the user removed every row) and belongs to validate_amendment, which judges
+    # it per line, and then to has_approvable_line(), which judges the RESULT.
+    #
+    # (edit() and sales_orders.amend() share the same holes; fixing them is a
+    # separate change and deliberately out of scope here.)
     stored_items = [li.to_dict() for li in po.line_items]
     submitted_lines = []
     line_items_error = None
+    unreadable = ('The line items could not be read. '
+                  'Reload the page and try again.')
     if request.method == 'POST':
         if 'line_items' not in request.form:
             line_items_error = ('The line items did not reach the server. '
@@ -589,8 +600,11 @@ def amend(id):
             try:
                 submitted_lines = json.loads(request.form.get('line_items') or '[]')
             except ValueError:  # json.JSONDecodeError subclasses ValueError
-                line_items_error = ('The line items could not be read. '
-                                    'Reload the page and try again.')
+                line_items_error = unreadable
+            else:
+                if not isinstance(submitted_lines, list):
+                    submitted_lines = []
+                    line_items_error = unreadable
 
     # On a refusal the form re-renders the RAW submission so the user does not
     # lose their edits -- except when that submission is the thing being refused,
@@ -654,12 +668,32 @@ def amend(id):
             db.session.expire(po, ['line_items'])
             po.calculate_totals()
 
+            # An amendment may not leave the order in a shape approve() would
+            # have refused. Checked on the RESULT, through approve()'s own
+            # predicate, rather than by re-deriving the rule from the submitted
+            # payload: the payload is a list of dicts and the rule is about
+            # PurchaseOrderItem rows, and a second hand-written spelling of a
+            # rule is exactly what let this hole through the first time.
+            # Raising routes it through the ValueError handler below, whose
+            # rollback undoes both the line changes and claim_version's version
+            # bump, leaving the PO byte-identical.
+            if not po.has_approvable_line():
+                raise ValueError(
+                    'A Purchase Order must keep at least one line with a unit '
+                    'price and an amount. This amendment would leave none.')
+
             rev = write_revision(po, current_user.id,
                                  reason=(form.amend_reason.data or '').strip())
             db.session.commit()
 
-            log_update(
+            # action='amend', not 'update': the audit log is where an auditor
+            # separates "somebody edited a draft" from "somebody rewrote an
+            # APPROVED document", and 'update' collapses the two. conflict_message()
+            # reads both actions, so the lost-update message still names an
+            # amender.
+            log_audit(
                 module='purchase_orders',
+                action='amend',
                 record_id=po.id,
                 record_identifier=f'{po.po_number} - {po.vendor_name}',
                 old_values=old_values,
@@ -709,7 +743,10 @@ def approve(id):
     if po.vendor_id is None:
         flash('Set a vendor before approving this Purchase Order.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
-    if not any((li.unit_price or 0) > 0 and (li.amount or 0) > 0 for li in po.line_items):
+    # The same predicate amend() enforces on its RESULT -- see
+    # PurchaseOrder.has_approvable_line. Extracted, not reworded: an amendment
+    # must not be able to undo this check one second after it passed.
+    if not po.has_approvable_line():
         flash('Set a unit price on at least one line before approving this Purchase Order.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
 
@@ -720,7 +757,10 @@ def approve(id):
     # Rev 0 -- the baseline every later amendment is measured against. Written
     # AFTER the status change so the snapshot records the PO as approved, and
     # inside the same transaction so approval and baseline land atomically.
-    write_revision(po, current_user.id)
+    # baseline=True claims revision slot 0; it is the only call in the app that
+    # may, and an amendment that finds no baseline starts at Rev 1 rather than
+    # occupying the slot (see write_revision).
+    write_revision(po, current_user.id, baseline=True)
     db.session.commit()
 
     log_update(module='purchase_orders', record_id=po.id, record_identifier=po.po_number,

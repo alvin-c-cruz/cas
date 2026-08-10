@@ -186,9 +186,19 @@ def _hits(stmts, table):
     return [s for s in stmts if re.search(r'\bFROM\s+' + table + r'\b', s, re.I)]
 
 
-#: Opening tag of one revision entry. The trailing space is what separates it from
-#: its own `so-rev-head` / `so-rev-meta` children.
-_ENTRY_OPEN = '<div class="so-rev '
+#: Opening tag of one revision entry.
+#:
+#: Keyed on `data-revision`, NOT on the class attribute. The first version of this
+#: helper matched `'<div class="so-rev '` -- including a trailing space that exists
+#: only because the template writes `class="so-rev {% if %}so-rev-original{% endif %}"`.
+#: A behaviour-IDENTICAL tidy of that attribute (moving the space inside the `{% if %}`)
+#: made `_entries()` return only the Rev 0 entries, and two tests then failed blaming
+#: the panel for a bug in this helper. Matching on the class prefix without the space
+#: is not an option either: `<div class="so-rev` is also a prefix of this entry's own
+#: `so-rev-head` and `so-rev-meta` children. `data-revision` exists to be a stable
+#: handle and carries the revision number, so it survives any restyling -- including
+#: the `.so-rev*` -> `.doc-rev*` sweep the panel's own comment contemplates.
+_ENTRY_OPEN = '<div data-revision="'
 
 
 def _entries(html):
@@ -222,6 +232,15 @@ def _entries(html):
                     break
         out.append(html[start:j])
         i = j
+
+
+def _entry(html, number):
+    """The one rendered entry for revision *number*, by its stable handle."""
+    matches = [e for e in _entries(html)
+               if e.startswith('%s%d"' % (_ENTRY_OPEN, number))]
+    assert len(matches) == 1, (
+        'expected exactly one entry for Rev %d, found %d' % (number, len(matches)))
+    return matches[0]
 
 
 # ── the panel lists every revision ───────────────────────────────────────────
@@ -269,6 +288,27 @@ class TestThePanelListsEveryRevision:
         assert 'a SALES ORDER reason, which does not' not in html, (
             'a revision of a different document type with the same id leaked in')
         assert 'Rev 5' not in html
+
+    def test_a_document_whose_baseline_slot_is_empty_renders_honestly(
+            self, client, approved_po, admin_user):
+        """M2's user-visible half: an amendment of a document that has no Rev 0
+        is numbered 1, and the baseline slot is left empty rather than filled with
+        post-change state (see tests/unit/test_amendment_service.py).
+
+        The page must therefore show a panel that starts at Rev 1 and claims
+        nothing about an original it does not have. The absence of Rev 0 IS the
+        honest statement: no capture of the approved document exists.
+        """
+        _rev(approved_po, 1, reason='vendor corrected the quantity', user=admin_user)
+
+        html = _detail(client, approved_po)
+
+        assert len(_entries(html)) == 1
+        assert 'Rev 1' in html and 'Rev 0' not in html
+        assert 'vendor corrected the quantity' in html
+        assert _ORIGINAL_CAPTION not in html, (
+            'the panel claimed an original approved order for a document that has '
+            'no baseline revision')
 
     def test_a_po_with_no_revisions_shows_no_panel(self, client, approved_po):
         """Absence, paired with a positive control: the page itself rendered."""
@@ -329,6 +369,24 @@ class TestWhatEachEntrySays:
 
     def test_the_authorizing_reference_is_shown_when_present(
             self, client, approved_po, admin_user):
+        """F3 (Task 6 review): RESERVED, deliberately, for slice 3.
+
+        No production code path can produce this row today. The column exists
+        (`DocumentRevision.authorizing_reference`, migration docrev_0001), the
+        service accepts it as a kwarg, and nothing passes one:
+        `PurchaseOrderAmendForm` has no such field on purpose (forms.py:53-56 --
+        there is no PO analogue of SalesOrderAmendForm's `authorizing_po_number`).
+        The rows below are inserted by this test, and only by this test.
+
+        It is kept rather than deleted because the SO already has the field and
+        slices 3-5 migrate the remaining seven document types onto this shared
+        panel; the render exists so that the first document type to carry one does
+        not have to rediscover it. Deleting the render would be a two-line change;
+        deleting it silently, and finding out in slice 3, would not.
+
+        Read as a spec, not as a regression test: it pins that the panel CAN show
+        an authorising reference, not that any PO ever has one.
+        """
         _rev(approved_po, 0, user=admin_user)
         _rev(approved_po, 1, reason='vendor corrected the quantity', user=admin_user,
              authorizing_reference='VENDOR-LETTER-2026-08-09')
@@ -380,6 +438,33 @@ class TestALiveRev0IsNotAReconstructedOne:
         assert _ORIGINAL_CAPTION not in html, (
             'a reconstructed Rev 0 was captioned as the original approved order')
 
+    def test_a_reason_less_amendment_is_not_captioned_as_the_original(
+            self, client, approved_po, admin_user):
+        """F1 (Task 6 review). The caption's `rev.number == 0` guard was unpinned:
+        mutating `{% elif rev.number == 0 %}` to `{% else %}` left all 13 tests
+        green, and under that one-token change EVERY reason-less revision claims
+        to be the original approved order -- including an amendment.
+
+        It escaped because the fixture population was degenerate: every revision
+        the file created with `number >= 1` also carried a reason, and every
+        reason-less revision it created was Rev 0. This is the missing cell of
+        that table.
+
+        `write_revision(doc, user_id)`'s `reason` defaults to None and is
+        validated nowhere in the service (the >= 10-char rule lives only in
+        PurchaseOrderAmendForm), so one slice-3 route calling it without a reason
+        is all it takes.
+        """
+        _rev(approved_po, 0, reason=None, user=admin_user)
+        _rev(approved_po, 1, reason=None, user=admin_user)
+
+        html = _detail(client, approved_po)
+
+        assert html.count(_ORIGINAL_CAPTION) == 1, (
+            'a reason-less AMENDMENT was captioned as the original approved order')
+        assert _ORIGINAL_CAPTION in _entry(html, 0)
+        assert _ORIGINAL_CAPTION not in _entry(html, 1)
+
     def test_the_two_rev_0_kinds_render_differently_on_the_same_page_shape(
             self, client, db_with_data, branch_manila, vendor_acme, admin_user):
         """Two Rev 0 rows identical in EVERY field except `reason`.
@@ -403,6 +488,55 @@ class TestALiveRev0IsNotAReconstructedOne:
         assert live_entry != back_entry, (
             'a live Rev 0 and a reconstructed Rev 0 render identically -- the '
             'distinction exists in the database and is lost on the page')
+
+
+# ── an empty-string reason is not a reason ───────────────────────────────────
+
+class TestAnEmptyStringReasonIsTreatedAsAbsent:
+    """F2 (Task 6 review), asked for by the Task 6 brief by name and never written.
+
+    Mutating `{% if rev.reason %}` to `{% if rev.reason is not none %}` left all 13
+    tests green, so nothing pinned which of the two the panel means.
+
+    THE DECISION, recorded here because it is a judgement and not a fact: `''` is
+    treated as ABSENT, i.e. today's truthiness test is correct and unchanged. An
+    empty string carries no information -- there is nothing to quote, and rendering
+    a pair of empty quotation marks tells a reader only that somebody's software
+    lost something. `''` is also not reachable from `amend()` (DataRequired +
+    Length(min=10), and DataRequired rejects whitespace-only), so the only way to
+    produce one is a direct service call, where "no reason given" is exactly what
+    happened. Both halves are pinned below so the choice cannot be flipped silently
+    in either direction.
+    """
+
+    def test_an_empty_reason_on_rev_0_still_reads_as_the_original_capture(
+            self, client, approved_po, admin_user):
+        _rev(approved_po, 0, reason='', user=admin_user)
+
+        entry = _entry(_detail(client, approved_po), 0)
+
+        assert _ORIGINAL_CAPTION in entry, (
+            "an empty string is not a reason -- a Rev 0 carrying one is still a "
+            "baseline with nothing recorded against it")
+        assert '&ldquo;' not in entry, (
+            'the panel rendered an empty pair of quotation marks')
+
+    def test_an_empty_reason_on_an_amendment_renders_no_meta_line(
+            self, client, approved_po, admin_user):
+        """The other half, and the one that keeps the caption honest: an
+        amendment with an empty reason must NOT fall through to the Rev 0 caption
+        either. It gets a head line and nothing else -- no quotation marks, and no
+        claim about being the original."""
+        _rev(approved_po, 0, reason=None, user=admin_user)
+        _rev(approved_po, 1, reason='', user=admin_user)
+
+        entry = _entry(_detail(client, approved_po), 1)
+
+        assert '&ldquo;' not in entry, (
+            'the panel rendered an empty pair of quotation marks')
+        assert 'so-rev-meta' not in entry, (
+            'an amendment with nothing recorded rendered a meta line anyway')
+        assert _ORIGINAL_CAPTION not in entry
 
 
 # ── timestamps ───────────────────────────────────────────────────────────────
@@ -470,6 +604,15 @@ class TestTheRevisionsAreFetchedInOneQuery:
 
         The five revisions are spread across three different users so a shared
         identity map cannot silently satisfy the lazy loads.
+
+        F4 (Task 6 review): the count comparison alone rests entirely on
+        `_captured_sql`'s `expire_all()`, one undefended line in a TEST helper --
+        delete it as "cleanup" and the whole guard silently disarms (verified:
+        deleting it, and deleting it together with the view's `joinedload`, both
+        left 13/13 green). So the MECHANISM is asserted as well as the cost. The
+        join assertion holds whatever happens to `expire_all()`, and dies the
+        moment the `joinedload` goes -- which is the change that actually
+        reintroduces the N+1 in production.
         """
         small = _make_po(branch_manila, vendor_acme, '00701')
         large = _make_po(branch_manila, vendor_acme, '00702')
@@ -490,3 +633,10 @@ class TestTheRevisionsAreFetchedInOneQuery:
             '-- the panel is paying per revision.\nextra:\n%s'
             % (len(large_stmts), len(small_stmts),
                '\n'.join(large_stmts[len(small_stmts):])))
+        assert any(re.search(r'LEFT OUTER JOIN\s+users', s, re.I)
+                   for s in _hits(large_stmts, 'document_revisions')), (
+            'the revisions query no longer joins users -- `rev.amended_by` is a '
+            'lazy load again, one query per revision in production. The count '
+            'assertion above cannot see this on its own: it depends on '
+            '_captured_sql expiring the identity map first.\n%s'
+            % '\n'.join(_hits(large_stmts, 'document_revisions')))

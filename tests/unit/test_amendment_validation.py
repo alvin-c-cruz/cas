@@ -83,6 +83,27 @@ class TestValidateAmendment:
         assert any('out of range' in e for e in errors)
         assert not any('could not read' in e for e in errors)
 
+    def test_the_message_formatter_never_raises(self, po):
+        """m3 / Task 3's M1: `_qty()` did `Decimal(str(value))` unguarded, so
+        `_qty(None)` and `_qty(OUT_OF_RANGE)` raised InvalidOperation.
+
+        Every call site is guarded today, so this is unreachable through the
+        route -- but it is a display helper inside a module whose headline promise
+        is that it never raises, and this branch wired three more callers to it.
+        A formatter that can take down the request it was called to explain is the
+        wrong shape whether or not today's callers happen to avoid it.
+        """
+        from app.amendments.validation import OUT_OF_RANGE, _qty
+
+        for value in (None, OUT_OF_RANGE, 'wat', object()):
+            out = _qty(value)
+            assert isinstance(out, str) and out, repr(value)
+        # ... and the normal path is untouched: the DB scale padding is still
+        # stripped, which is the only reason _qty exists.
+        assert _qty(Decimal('4.0000')) == '4'
+        assert _qty(Decimal('-0')) == '0'
+        assert _qty(Decimal('2.5000')) == '2.5'
+
     def test_per_row_keying_blocks_the_sibling_absorption_exploit(self, po):
         # THE regression test. Both lines are the same product; line 1 is fully
         # received. Zeroing it while a sibling absorbs the total must NOT pass.

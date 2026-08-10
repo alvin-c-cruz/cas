@@ -143,7 +143,11 @@ with app.app_context():
         return po
 
     live = make_po('PO-LIVE-0001', 'approved')
-    write_revision(live, user.id)
+    # baseline=True is what approve() passes -- Rev 0 is the baseline SLOT, and
+    # only a baseline write may claim it (an amendment of a document with no
+    # baseline now starts at Rev 1). This seeds the live Rev 0 the migration must
+    # leave alone, so it must be the same call approve() makes.
+    write_revision(live, user.id, baseline=True)
     db.session.commit()
 
     make_po('PO-BACKFILL-0001', 'approved')
@@ -165,7 +169,7 @@ with app.app_context():
     # reproduce. Snapshotting the in-memory Decimals instead would compare the
     # backfill against values no live capture ever sees.
     wide_live = make_po('PO-WIDE-LIVE-0001', 'approved', WIDE_LINE)
-    write_revision(wide_live, user.id)
+    write_revision(wide_live, user.id, baseline=True)
     db.session.commit()
 
     make_po('PO-WIDE-0001', 'approved', WIDE_LINE)

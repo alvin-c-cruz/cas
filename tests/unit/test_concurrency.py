@@ -122,6 +122,30 @@ class TestConflictMessage:
         assert 'NOT saved' in msg
         assert 'reload' in msg.lower()
 
+    def test_names_the_amender_when_the_last_write_was_an_amendment(
+            self, db_session, admin_user):
+        """A post-approval amendment is audited as `amend`, not `update`.
+
+        This message exists to name whoever moved the document out from under the
+        current editor. Reading only `update` rows made it name the person who
+        last edited the DRAFT while silently ignoring the person who rewrote the
+        APPROVED document one minute ago -- the more consequential of the two, and
+        the one whose write actually caused the conflict.
+        """
+        thing = _make_thing()
+        db.session.add(AuditLog(
+            module='_test_versioned_thing',
+            action='amend',
+            record_id=thing.id,
+            user_id=admin_user.id,
+        ))
+        db.session.commit()
+
+        msg = conflict_message('_test_versioned_thing', thing.id)
+
+        assert admin_user.full_name in msg
+        assert 'another user' not in msg
+
     def test_degrades_gracefully_when_no_audit_row_exists(self, db_session):
         """log_audit swallows its own errors, so the row can be absent."""
         thing = _make_thing()

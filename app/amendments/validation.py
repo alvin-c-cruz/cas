@@ -46,7 +46,22 @@ def parse_submission(new_lines, id_key):
     submitted = {}
     errors = []
 
-    for line in (new_lines or []):
+    # `new_lines` is whatever json.loads() made of the POSTed field, so it can be
+    # any JSON value -- not just an array. `for line in (new_lines or [])` raised
+    # TypeError on 123 / true / 1.5, and the PO route calls validate_amendment
+    # OUTSIDE its try block, so that was an unhandled 500 rather than a refusal:
+    # the exact outcome this module's docstring says cannot happen. The two
+    # non-raising shapes were no better -- a string iterated its CHARACTERS and an
+    # object its KEYS, each producing one bogus per-element message. `null` was
+    # worse still: `new_lines or []` swallowed it and every existing line then
+    # fell into the removal branch, which is one of the two doors that emptied an
+    # approved document (the other is an explicit `[]`, a legitimate submission
+    # the DOCUMENT must judge -- see PurchaseOrder.has_approvable_line).
+    if not isinstance(new_lines, list):
+        return submitted, ['Malformed submission: expected a list of lines. '
+                           'Reload the document and try again.']
+
+    for line in new_lines:
         # new_lines comes straight from json.loads(request.form[...]), so it can be
         # any JSON shape at all. Anything that is not an object is malformed input.
         if not isinstance(line, dict):
@@ -106,8 +121,20 @@ def _qty(value):
     received" reads like a formatting bug to the user. Strip the DB scale
     padding to the value's natural precision, same convention as
     app/sales_orders/revisions.py::_s.
+
+    Never raises. Decimal(str(x)) signals InvalidOperation for None, for the
+    OUT_OF_RANGE sentinel and for any unparsed string -- and this is a MESSAGE
+    formatter, called only to explain a refusal the caller has already decided on.
+    Every call site guards its argument today, so the fallback is unreachable; a
+    formatter that can 500 the request it exists to describe is still the wrong
+    shape, in a module whose headline promise is that it does not raise.
     """
-    value = Decimal(str(value))
+    try:
+        value = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return '?'
+    if not value.is_finite():
+        return '?'
     if value == 0:
         value = abs(value)  # Decimal('-0') == Decimal('0') but renders '-0'
     return format(value.normalize(), 'f')
