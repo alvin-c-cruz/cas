@@ -43,3 +43,17 @@ class PurchaseOrderForm(RowVersionFormMixin, FlaskForm):
     @staticmethod
     def vat_treatment_values():
         return VAT_TREATMENTS
+
+
+class PurchaseOrderAmendForm(PurchaseOrderForm):
+    """The PO form plus the reason a post-approval amendment must record.
+
+    Mirrors SalesOrderAmendForm's reason rule (>=10 chars, the same bar cancel()
+    already applies): an approved PO is a commitment to a vendor, so changing it
+    has to say why. There is no PO analogue of SalesOrderAmendForm's
+    authorizing_po_number -- that field records the CUSTOMER's authority for a
+    sell-side change, and on the buy side we are the party issuing the document.
+    """
+    amend_reason = TextAreaField('Reason for amendment', validators=[
+        DataRequired(message='Please provide a reason for this amendment.'),
+        Length(min=10, message='Please provide a reason (at least 10 characters).')])
