@@ -126,6 +126,13 @@ def approved_po_with_receipt(client, approved_po):
     return approved_po
 
 
+#: Sentinel for `_amend(..., key=_OMIT)` -- posts the form with that key REMOVED
+#: rather than blank. An absent key and an empty value are different requests,
+#: and the two bugs pinned below (line_items defaulting to '[]', row_version's
+#: WTForms obj-fallback) are both only reachable through absence.
+_OMIT = object()
+
+
 def _revs(po):
     return (DocumentRevision.query
             .filter_by(document_type='purchase_orders', document_id=po.id)
@@ -355,6 +362,238 @@ class TestPoAmend:
         assert entry.user_id == admin_user.id
         assert 'Rev 1' in (entry.notes or '')
 
+    # -- the role gate is the APPROVE-level gate, not the edit-level one ------
+
+    def _approve_in_db(self, po, user, branch):
+        """Flip *po* to approved without issuing a request, and give *user*
+        access to *branch*.
+
+        Deliberately NOT built on the `approved_po` fixture: that fixture POSTs
+        /approve as admin, and flask_login caches the loaded user on `g` for the
+        life of conftest's session-scoped app context -- so a test that has
+        ALREADY issued a request can never switch roles (verified: the session
+        cookie said viewer while the request still ran as admin). A role test's
+        FIRST request must be made as the role under test.
+
+        The branch assignment matters too: a non-admin with no assigned branch is
+        force-logged-out by the branch-session guard before any view runs, which
+        would "pass" a refusal test for entirely the wrong reason.
+        """
+        po.status = 'approved'
+        user.branches.append(branch)
+        db.session.commit()
+
+    def test_a_staff_user_cannot_amend_an_approved_po(
+            self, client, staff_user, branch_manila, draft_po):
+        # THE critical gate case. `staff` may create and edit a DRAFT PO
+        # (_role_gate admits them) but may NOT approve one (approve() admits only
+        # accountant or full access). Gating amend on the edit-level rule
+        # therefore lets a staff user rewrite an APPROVED PO -- quantity, total,
+        # terms -- one second after somebody else approved it, with the revision
+        # recorded in their name. An approval control that can be bypassed by
+        # amending is not a control. The spec requires the module's existing
+        # APPROVE-level role rule here.
+        #
+        # test_a_viewer_cannot_amend does NOT cover this: `viewer` is refused by
+        # both the loose and the tight rule, so it passes either way.
+        perms = staff_user.get_book_permissions()
+        perms.update({'purchase_orders': True, 'products': True})
+        staff_user.set_book_permissions(perms)
+        self._approve_in_db(draft_po, staff_user, branch_manila)
+        _login(client, staff_user, branch_manila)
+
+        resp = self._amend(client, draft_po,
+                           lines={draft_po.line_items[0].id: {'quantity': '10000'}})
+
+        assert _revs(draft_po) == [], 'a refused amendment must write nothing'
+        assert resp.request.path == '/purchase-orders'
+        assert b'You do not have permission to perform this action.' in resp.data
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, draft_po.id)
+        assert po.line_items[0].quantity == Decimal('10')
+        assert po.total_amount == Decimal('50.00')
+
+    def test_an_accountant_can_amend_an_approved_po(
+            self, client, accountant_user, branch_manila, draft_po):
+        # Control for the test above: the approve-level rule admits `accountant`,
+        # so tightening the gate must not collapse it into "full access only".
+        # Without this, "if current_user.role == 'admin'" would pass every other
+        # test in this file (they all run as admin).
+        self._approve_in_db(draft_po, accountant_user, branch_manila)
+        _login(client, accountant_user, branch_manila)
+        line_id = draft_po.line_items[0].id
+
+        resp = self._amend(client, draft_po, lines={line_id: {'quantity': '25'}})
+
+        assert resp.request.path == f'/purchase-orders/{draft_po.id}'
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, draft_po.id)
+        assert po.line_items[0].quantity == Decimal('25')
+        revs = _revs(po)
+        assert len(revs) == 1
+        assert revs[-1].amended_by_id == accountant_user.id
+
+    # -- an ABSENT line_items key is not an empty line list -------------------
+
+    def test_a_post_that_omits_line_items_entirely_is_refused(
+            self, client, admin_user, approved_po):
+        # request.form.get('line_items', '[]') cannot tell "the field never
+        # arrived" from "the user deleted every line". A POST without the key
+        # therefore reads as a full clear-out and leaves an APPROVED PO with zero
+        # lines and a 0.00 total -- a state approve() itself refuses (it demands
+        # at least one priced line), reported to the user as a success.
+        #
+        # Not theoretical: this repo has already shipped the dropped-hidden-field
+        # bug class once (BUG-DR-EDIT-FALSE-CONFLICT / memory
+        # csrf-only-render-drops-hidden-fields), and the very template that
+        # carries this hidden input is edited by the next task.
+        before = len(_revs(approved_po))
+        resp = self._amend(client, approved_po, line_items=_OMIT)
+
+        assert len(_revs(approved_po)) == before, 'a refused amendment must write nothing'
+        assert b'did not reach the server' in resp.data
+        db.session.expire_all()
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert len(po.line_items) == 1
+        assert po.total_amount == Decimal('50.00')
+
+    def test_an_explicitly_empty_line_items_still_reaches_the_validator(
+            self, client, admin_user, approved_po_with_receipt):
+        # Control for the refusal above: an explicit `[]` IS a real submission and
+        # must be judged by validate_amendment on its own terms, not swallowed by
+        # the absent-key guard. Here the guard that fires is the receipts guard,
+        # with its own actionable message -- so the two cases stay distinguishable
+        # and the fix cannot be over-tightened into "any empty list is malformed".
+        po = approved_po_with_receipt
+        before = len(_revs(po))
+        resp = self._amend(client, po, line_items=json.dumps([]))
+
+        assert b'already received' in resp.data
+        assert b'did not reach the server' not in resp.data
+        assert len(_revs(po)) == before
+
+    def test_a_non_json_line_items_is_refused_not_a_500(
+            self, client, admin_user, approved_po):
+        # app/amendments/validation.py's contract is "a crafted POST must produce
+        # messages, not a 500" -- but a non-JSON body never reaches the validator:
+        # json.loads raises straight out of the view. Every other crafted-but-valid
+        # -JSON shape ({"a": 1}, [1,2,3], [null], "x") is already handled.
+        before = len(_revs(approved_po))
+        resp = self._amend(client, approved_po, line_items='not json at all')
+
+        assert resp.status_code == 200
+        assert b'could not be read' in resp.data
+        assert len(_revs(approved_po)) == before
+        db.session.expire_all()
+        assert len(db.session.get(PurchaseOrder, approved_po.id).line_items) == 1
+
+    # -- gaps the review's surviving mutations exposed -------------------------
+
+    def test_an_amended_quantity_updates_the_header_total_and_the_snapshot(
+            self, client, admin_user, approved_po):
+        # calculate_totals() must run BEFORE write_revision. Without it the LINE
+        # changes (calculate_amounts runs inside the applier) while
+        # subtotal/vat_amount/total_amount stay stale -- and the revision then
+        # freezes a header that contradicts its own lines, permanently, in the
+        # record the whole feature exists to produce. Same failure shape as
+        # posted-je-leg-vs-source-header-invariant.
+        line_id = approved_po.line_items[0].id
+        assert approved_po.total_amount == Decimal('50.00'), 'precondition: 10 x 5.00'
+
+        self._amend(client, approved_po, lines={line_id: {'quantity': '25'}})
+        db.session.expire_all()
+
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert po.line_items[0].amount == Decimal('125.00')
+        assert po.subtotal == Decimal('125.00')
+        assert po.total_amount == Decimal('125.00')
+        snap = json.loads(_revs(po)[-1].snapshot_json)
+        assert Decimal(snap['header']['total_amount']) == Decimal('125.00')
+        assert Decimal(snap['header']['subtotal']) == Decimal('125.00')
+
+    def test_a_changed_header_field_is_applied_and_snapshotted(
+            self, client, admin_user, approved_po):
+        # Every other test posts the fixture's OWN header values back, so the
+        # whole header-application block is vacuous: deleting it outright leaves
+        # the file green. test_po_number_is_not_renumbered pins the exception
+        # (po_number is deliberately not reassigned) while nothing pinned the rule.
+        assert approved_po.payment_terms == 'Net 30'
+        assert approved_po.notes == ''
+
+        self._amend(client, approved_po, payment_terms='Net 60',
+                    notes='vendor moved the delivery window', reference='REF-9')
+        db.session.expire_all()
+
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert po.payment_terms == 'Net 60'
+        assert po.notes == 'vendor moved the delivery window'
+        assert po.reference == 'REF-9'
+        snap = json.loads(_revs(po)[-1].snapshot_json)
+        assert snap['header']['payment_terms'] == 'Net 60'
+        assert snap['header']['notes'] == 'vendor moved the delivery window'
+
+    def test_a_line_id_from_another_po_cannot_be_rewritten(
+            self, client, admin_user, branch_manila, vendor_acme, approved_po):
+        # _apply_amended_po_lines' docstring calls the po.line_items-scoped lookup
+        # a SECURITY property; this makes the claim testable. Swapping that lookup
+        # for a global db.session.get(PurchaseOrderItem, item_id) is a ONE-LINE
+        # change under which this exact POST rewrote the OTHER order's line
+        # (10 -> 77) and emptied this one -- a cross-document write, HTTP 200,
+        # success flash. Under the scoped lookup the foreign id simply falls
+        # through to "not found" and becomes a new line on THIS order.
+        other = _make_draft_po(branch_manila, vendor_acme, '00991')
+        other_line_id = other.line_items[0].id
+        assert other_line_id not in [li.id for li in approved_po.line_items]
+
+        lines = json.loads(_payload(approved_po))
+        lines.append({'po_item_id': other_line_id, 'product_id': None,
+                      'description': 'crafted', 'quantity': '77',
+                      'unit_price': '5.00', 'amount': '385.00',
+                      'vat_category': None, 'vat_rate': '0'})
+        self._amend(client, approved_po, line_items=json.dumps(lines))
+        db.session.expire_all()
+
+        other = db.session.get(PurchaseOrder, other.id)
+        assert [li.id for li in other.line_items] == [other_line_id]
+        assert other.line_items[0].quantity == Decimal('10')
+        assert other.line_items[0].description == 'widget'
+        assert other.line_items[0].purchase_order_id == other.id
+        assert other.total_amount == Decimal('50.00')
+        # ... and the foreign id landed as a NEW line on the amended order.
+        po = db.session.get(PurchaseOrder, approved_po.id)
+        assert len(po.line_items) == 2
+
+    def test_the_amend_form_renders_the_row_version_token(
+            self, client, admin_user, approved_po):
+        # A RENDER assertion, not a POST contract. The route reads the token from
+        # the raw POST body (submitted_version()), so a template that stops
+        # rendering the hidden field posts no token and false-conflicts every
+        # amendment -- and a POST-contract test, which supplies the token itself,
+        # structurally cannot see that. It is exactly why
+        # BUG-DR-EDIT-FALSE-CONFLICT shipped green. Same guard as
+        # tests/integration/test_csrf_only_forms_render_hidden_tokens.py, applied
+        # to the rendered amend GET rather than statically to the template file.
+        resp = client.get(f'/purchase-orders/{approved_po.id}/amend')
+        assert resp.status_code == 200
+        assert b'name="row_version"' in resp.data
+
+    def test_a_post_with_no_row_version_key_is_refused(
+            self, client, admin_user, approved_po):
+        # The fail-open submitted_version() exists to stop: WTForms falls back to
+        # the obj value for a field absent from formdata, so form.row_version.data
+        # would return the PO's CURRENT version and claim_version() would succeed
+        # on a request that never sent a token. test_a_stale_row_version_is_refused
+        # posts an explicit 0, which defeats either spelling -- only an ABSENT key
+        # tells them apart.
+        before = len(_revs(approved_po))
+        resp = self._amend(client, approved_po, row_version=_OMIT,
+                           lines={approved_po.line_items[0].id: {'quantity': '25'}})
+
+        assert len(_revs(approved_po)) == before
+        assert b'changed' in resp.data.lower() or b'conflict' in resp.data.lower()
+        db.session.expire_all()
+        assert db.session.get(PurchaseOrder, approved_po.id).line_items[0].quantity == Decimal('10')
+
     # -- helper -------------------------------------------------------------
     def _amend(self, client, po, lines=None, **overrides):
         data = {
@@ -369,5 +608,7 @@ class TestPoAmend:
             'row_version': po.row_version,
         }
         data.update(overrides)
+        # `key=_OMIT` removes the key entirely -- see the sentinel's comment.
+        data = {k: v for k, v in data.items() if v is not _OMIT}
         return client.post(f'/purchase-orders/{po.id}/amend', data=data,
                            follow_redirects=True)

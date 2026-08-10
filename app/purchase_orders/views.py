@@ -99,8 +99,14 @@ def _parse_and_attach_po_lines(po, lines_json):
         po.line_items.append(li)
 
 
-def _apply_amended_po_lines(po, lines_json):
-    """Update this PO's lines IN PLACE from the submitted JSON.
+def _apply_amended_po_lines(po, items):
+    """Update this PO's lines IN PLACE from the ALREADY-PARSED submitted array.
+
+    Takes the parsed list, not the raw JSON string, so the route parses the
+    submission exactly once -- the same object it handed validate_amendment.
+    Re-parsing here would let the two see different bytes if anything in between
+    ever touched request.form, and it would put a json.loads (a 500 on malformed
+    input) back inside the write path the route has already screened.
 
     Unlike _parse_and_attach_po_lines (which the draft edit path uses after a
     wholesale DELETE of every row), this preserves PurchaseOrderItem.id for every
@@ -125,7 +131,7 @@ def _apply_amended_po_lines(po, lines_json):
     a global query, so it cannot rewrite another order's row. It falls through to
     "not found" and creates a new line on this order instead.
     """
-    items = json.loads(lines_json) if lines_json else []
+    items = items or []
     existing = {item.id: item for item in po.line_items}
     seen = set()
     kept = 0
@@ -157,7 +163,12 @@ def _apply_amended_po_lines(po, lines_json):
     # Iterate the PRE-LOOP `existing` snapshot, never the live collection: a row
     # appended above can be autoflushed (and so assigned an id) mid-loop, and its
     # id was never added to `seen`, so a sweep over the LIVE collection would
-    # delete the line the user just added -- silently, with a success flash.
+    # target the line the user just added. Today that does not fail silently --
+    # db.session.delete() on the freshly-appended instance raises
+    # InvalidRequestError ("is not persisted"), which the route's generic handler
+    # turns into a lost amendment behind a generic error flash. Loud, but still a
+    # lost amendment, and only an accident of instance state away from the silent
+    # deletion it would otherwise be.
     for item_id, item in existing.items():
         if item_id not in seen:
             po.line_items.remove(item)
@@ -167,10 +178,27 @@ def _apply_amended_po_lines(po, lines_json):
 # ── role gate + helpers ───────────────────────────────────────────────────────
 
 def _role_gate():
+    """EDIT-level rule: who may create or edit a DRAFT Purchase Order."""
     if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(url_for('purchase_orders.list_po'))
     return None
+
+
+def _has_approve_level_role():
+    """APPROVE-level rule: who may change a Purchase Order that is already approved.
+
+    Strictly narrower than _role_gate() -- `staff` is admitted there and refused
+    here. Shared by approve(), cancel() and amend() so the three cannot drift:
+    an amendment rewrites quantities and totals on an approved document, so
+    gating it on the edit-level rule would let a staff user who cannot approve a
+    PO rewrite one the moment somebody else did (10 -> 10000, 50.00 ->
+    5,000,000.00, revision recorded in their name). An approval control that can
+    be bypassed by amending one second later is not a control.
+
+    Predicate, not a gate: each caller keeps its own message and redirect.
+    """
+    return current_user.role == 'accountant' or current_user.has_full_access
 
 
 def _get_po_or_404(id):
@@ -474,9 +502,13 @@ def edit(id):
 def amend(id):
     """Post-approval amendment. Mirrors edit(), but the PO keeps its status and
     every save appends a DocumentRevision."""
-    gate = _role_gate()
-    if gate:
-        return gate
+    # APPROVE-level gate, deliberately NOT _role_gate(). See
+    # _has_approve_level_role(): amending rewrites an already-approved document,
+    # so it is gated on who may approve, not on who may edit a draft. The message
+    # and redirect stay _role_gate()'s -- only the admitted set is narrower.
+    if not _has_approve_level_role():
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(url_for('purchase_orders.list_po'))
 
     po = _get_po_or_404(id)
     if po.status == 'draft':
@@ -490,18 +522,53 @@ def amend(id):
     vendors = _active_vendors()
     form.set_vendor_choices(vendors)
 
-    restore_items = ([li.to_dict() for li in po.line_items]
-                     if request.method == 'GET'
-                     else json.loads(request.form.get('line_items', '[]') or '[]'))
+    # Parse the submitted line array ONCE, here, and refuse the two shapes that
+    # must never reach the applier:
+    #
+    #  * key ABSENT. `request.form.get('line_items', '[]')` cannot tell "the
+    #    field never arrived" from "the user deleted every line", so a POST that
+    #    dropped the hidden input -- the BUG-DR-EDIT-FALSE-CONFLICT class, which
+    #    has already shipped in this codebase once -- reads as a full clear-out
+    #    and leaves an APPROVED PO with zero lines and a 0.00 total, a state
+    #    approve() itself refuses, reported as a success. An EXPLICIT '[]' is a
+    #    real submission and still goes to validate_amendment, which refuses it
+    #    on its own terms when anything has been received.
+    #  * not JSON. json.loads raises out of the view (an unhandled 500), which
+    #    contradicts app/amendments/validation.py's contract that a crafted POST
+    #    produces messages, not a 500 -- the crafted POST never reaches it.
+    #
+    # (edit() and sales_orders.amend() share the same two holes; fixing them is
+    # a separate change and deliberately out of scope here.)
+    stored_items = [li.to_dict() for li in po.line_items]
+    submitted_lines = []
+    line_items_error = None
+    if request.method == 'POST':
+        if 'line_items' not in request.form:
+            line_items_error = ('The line items did not reach the server. '
+                                'Reload the page and try again.')
+        else:
+            try:
+                submitted_lines = json.loads(request.form.get('line_items') or '[]')
+            except ValueError:  # json.JSONDecodeError subclasses ValueError
+                line_items_error = ('The line items could not be read. '
+                                    'Reload the page and try again.')
+
+    # On a refusal the form re-renders the RAW submission so the user does not
+    # lose their edits -- except when that submission is the thing being refused,
+    # where the stored lines are the only usable starting point.
+    restore_items = (stored_items if request.method == 'GET' or line_items_error
+                     else submitted_lines)
 
     def _render():
         return render_template('purchase_orders/form.html', form=form, po=po,
                                amend_mode=True, line_items=restore_items,
                                vendors=vendors, **_common_form_ctx())
 
-    if form.validate_on_submit():
-        submitted_lines = json.loads(request.form.get('line_items', '[]') or '[]')
+    if line_items_error:
+        flash(line_items_error, 'error')
+        return _render()
 
+    if form.validate_on_submit():
         # Validate BEFORE claiming the version. claim_version's conditional
         # UPDATE increments row_version as a side effect, so claiming first would
         # leave a pending write behind on a refusal that then just re-renders.
@@ -543,7 +610,7 @@ def amend(id):
             # UPDATE IN PLACE -- do NOT delete-and-rebuild the way edit() does.
             # See _apply_amended_po_lines: a rebuild strands every
             # ReceivingReportItem.purchase_order_item_id, silently.
-            _apply_amended_po_lines(po, request.form.get('line_items', '[]'))
+            _apply_amended_po_lines(po, submitted_lines)
             db.session.flush()
             db.session.expire(po, ['line_items'])
             po.calculate_totals()
@@ -594,7 +661,7 @@ def amend(id):
 def approve(id):
     """Draft -> approved. No journal entry -- a PO posts nothing."""
     po = _get_po_or_404(id)
-    if not (current_user.role == 'accountant' or current_user.has_full_access):
+    if not _has_approve_level_role():
         flash('You do not have permission to approve Purchase Orders.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
     if po.status != 'draft':
@@ -628,7 +695,7 @@ def approve(id):
 def cancel(id):
     """Non-terminal PO -> cancelled. Captures a reason from the custom modal form."""
     po = _get_po_or_404(id)
-    if not (current_user.role == 'accountant' or current_user.has_full_access):
+    if not _has_approve_level_role():
         flash('You do not have permission to cancel Purchase Orders.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
     if po.accounts_payable_id is not None:
