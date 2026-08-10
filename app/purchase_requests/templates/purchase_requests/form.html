@@ -49,9 +49,24 @@
     PRODUCTS.forEach(p => { o += `<option value="${p.id}"${p.id==sel?' selected':''}>${p.code} - ${p.name}</option>`; });
     return o;
   }
+  // Line identity. BOTH halves of the fallback are load-bearing:
+  //   * `id`          -- the FIRST render, where lines come from to_dict().
+  //   * `pr_item_id`  -- a RE-RENDER after a refusal, where the form replays the
+  //                      submitted payload, which carries pr_item_id and no id.
+  // With only the `id` half the SECOND submit after any refusal loses every line
+  // identity, so the applier rebuilds the whole requisition and two revision
+  // snapshots end up sharing no row identity. Verified live on the PO form.
+  function prItemIdOf(d) {
+    return d.id != null ? d.id : (d.pr_item_id != null ? d.pr_item_id : null);
+  }
+
   function addRow(d) {
     d = d || {};
     const tr = document.createElement('tr');
+    const prItemId = prItemIdOf(d);
+    // Guarded: an unconditional write stores the string "null" for a hand-added
+    // row, which the applier would then try to resolve as an id.
+    if (prItemId != null) tr.dataset.prItemId = prItemId;
     tr.innerHTML =
       `<td><select class="form-control pr-product">${productOptions(d.product_id)}</select></td>`
     + `<td><input class="form-control pr-desc" value="${(d.description||'').replace(/"/g,'&quot;')}"></td>`
@@ -70,6 +85,7 @@
     const rows = [];
     document.querySelectorAll('#prBody tr').forEach(tr => {
       rows.push({
+        pr_item_id: tr.dataset.prItemId != null ? tr.dataset.prItemId : null,
         product_id: tr.querySelector('.pr-product').value || null,
         description: tr.querySelector('.pr-desc').value || null,
         quantity: tr.querySelector('.pr-qty').value || null,

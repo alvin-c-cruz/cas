@@ -27,6 +27,8 @@ from decimal import Decimal
 
 import pytest
 
+from tests.integration import _line_identity_js as _js
+
 from app import db
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 
@@ -173,140 +175,26 @@ def _post_amend(client, po, **overrides):
 # missing observes nothing and turns the suite green for the wrong reason. Same
 # rule tests/integration/test_po_rev0_backfill.py states for its subprocesses.
 
-_JS_DRIVER = r'''
-'use strict';
-// Minimal DOM shim: enough for the PO form's line JS, nothing more.
-// argv[2] = file holding the form's extracted <script> body
-// argv[3] = the id of the hidden input the serialiser is EXPECTED to write
-// argv[4] = number of hand-added rows to click in via the "+ Add line" handler
-const fs = require('fs');
-const vm = require('vm');
-
-const src = fs.readFileSync(process.argv[2], 'utf8');
-const hiddenId = process.argv[3];
-const handAdded = parseInt(process.argv[4] || '0', 10);
-
-const rows = [];
-const byId = {};
-const handlers = {};
-
-function cell() { return { value: '', textContent: '0', selectedOptions: [] }; }
-
-function element(id) {
-  if (!byId[id]) {
-    byId[id] = {
-      id: id,
-      value: '',
-      addEventListener: function (ev, fn) { handlers[id + ':' + ev] = fn; },
-      appendChild: function (tr) { rows.push(tr); }
-    };
-  }
-  return byId[id];
-}
-
-const document = {
-  createElement: function () {
-    return {
-      // A real DOMStringMap coerces every value to a string; so does this, or the
-      // test would see 1 where a browser sees "1".
-      dataset: new Proxy({}, {
-        set: function (t, k, v) { t[k] = String(v); return true; }
-      }),
-      innerHTML: '',
-      querySelector: function () { return cell(); },
-      remove: function () {}
-    };
-  },
-  getElementById: element,
-  querySelectorAll: function () { return rows; },
-  addEventListener: function () {}
-};
-
-vm.runInNewContext(src, { document: document, console: console });
-
-for (let i = 0; i < handAdded; i++) {
-  const add = handlers['addLineBtn:click'];
-  if (!add) { console.error('the form never wired the + Add line button'); process.exit(3); }
-  add({});
-}
-
-const submit = handlers['poForm:submit'];
-if (!submit) { console.error('the form never registered a submit handler'); process.exit(2); }
-submit({});
-process.stdout.write(JSON.stringify({ rows: rows.length, posted: element(hiddenId).value }));
-'''
-
-
-def _node():
-    exe = shutil.which('node')
-    if exe is None:
-        pytest.fail(
-            'node is not on PATH. This test EXECUTES the PO form\'s line-identity '
-            'JS -- the only layer in the suite that can observe a rewritten guard '
-            '(see the module comment). It fails rather than skips on purpose: a '
-            'silent skip here would make the suite green while the identity chain '
-            'is broken. Install node, or delete this test deliberately and say so.')
-    return exe
-
-
-#: the hidden input the submit handler writes the serialised lines into.
-_LINE_ITEMS_INPUT_RE = re.compile(r'<input[^>]*name="line_items"[^>]*>')
+#: Executed via the shared harness -- see tests/integration/_line_identity_js.py
+#: for the DOM shim, what it buys, and why node is required rather than skipped.
+#: It was extracted there when the Purchase Request form became its second
+#: consumer; duplicating the shim per document is the same bet that left the PO
+#: and SO validators drifting apart until a separate change reconciled them.
+_MARKER = 'poItemIdOf'
+_FORM_ID = 'poForm'
 
 
 def _line_items_input(html):
-    m = _LINE_ITEMS_INPUT_RE.search(html)
-    assert m is not None, 'the line_items hidden input is no longer rendered'
-    return m.group(0)
+    return _js.line_items_input(html)
 
 
 def _line_items_input_id(html):
-    tag = _line_items_input(html)
-    m = re.search(r'id="([^"]+)"', tag)
-    assert m is not None, (
-        f'the line_items hidden input carries no id: {tag} -- the submit handler '
-        'reaches it with getElementById, so without an id nothing can be written '
-        'to it and the form posts its static value="[]"')
-    return m.group(1)
-
-
-def _form_script(html):
-    """The form's own <script> body, lifted out of the real rendered page."""
-    for m in re.finditer(r'<script[^>]*>(.*?)</script>', html, re.DOTALL):
-        if 'poItemIdOf' in m.group(1):
-            return m.group(1)
-    raise AssertionError(
-        'the PO form no longer emits a script defining poItemIdOf -- the line '
-        'identity mapping is gone, or it moved to a static asset (in which case '
-        'this harness must be pointed at that file instead of silently passing)')
+    return _js.line_items_input_id(html)
 
 
 def _serialise_lines(tmp_path, html, hand_added=0):
-    """Run the form's real JS and return the line array its submit handler posts.
-
-    The hidden input's id is read out of the RENDERED HTML and handed to the
-    driver, so a JS handle that no longer matches the input it is meant to fill
-    (a rename on one side only) produces an empty write and fails here.
-    """
-    script = tmp_path / 'po_form.js'
-    script.write_text(_form_script(html), encoding='utf-8')
-    driver = tmp_path / 'driver.js'
-    driver.write_text(_JS_DRIVER, encoding='utf-8')
-
-    proc = subprocess.run(
-        [_node(), str(driver), str(script), _line_items_input_id(html),
-         str(hand_added)],
-        capture_output=True, text=True, timeout=120)
-    assert proc.returncode == 0, (
-        f'executing the PO form JS failed (exit {proc.returncode}).\n'
-        f'stdout: {proc.stdout}\nstderr: {proc.stderr}')
-
-    out = json.loads(proc.stdout)
-    assert out['posted'], (
-        'the submit handler wrote nothing into the hidden input '
-        f'id="{_line_items_input_id(html)}" -- the JS and the rendered input no '
-        'longer name the same element, so a real browser posts the static '
-        'value="[]" and an approved PO is emptied to zero lines')
-    return json.loads(out['posted'])
+    return _js.serialise_lines(tmp_path, html, marker=_MARKER, form_id=_FORM_ID,
+                               hand_added=hand_added)
 
 
 # -- the three fields a POST-based test structurally cannot see ------------

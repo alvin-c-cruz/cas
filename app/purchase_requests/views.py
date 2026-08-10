@@ -56,26 +56,117 @@ def _common_form_ctx():
     }
 
 
-def _parse_and_attach_pr_lines(pr, lines_json):
-    """Attach requisition lines. A line needs a Product OR a free-text description; no pricing."""
-    def _int(v):
-        try:
-            return int(v) if v and str(v).strip() not in ('', 'null') else None
-        except (ValueError, TypeError):
-            return None
+def _pr_int(v):
+    try:
+        return int(v) if v and str(v).strip() not in ('', 'null') else None
+    except (ValueError, TypeError):
+        return None
 
-    def _dec(v):
-        try:
-            return Decimal(str(v)) if v not in (None, '', 'null') else None
-        except (InvalidOperation, TypeError):
-            return None
+
+def _pr_dec(v):
+    try:
+        return Decimal(str(v)) if v not in (None, '', 'null') else None
+    except (InvalidOperation, TypeError):
+        return None
+
+
+def _pr_line_fields(d):
+    """The five submitted values a requisition line carries, coerced.
+
+    Shared by the rebuild parser (create / draft edit) and the in-place applier
+    (amend) so the two can never disagree about how a submitted row is read --
+    the drift that let the equivalent hole survive on the Purchase Order side.
+    Returns (product_id, description, quantity, uom_id, uom_text).
+    """
+    return (
+        _pr_int(d.get('product_id')),
+        (d.get('description') or '').strip() or None,
+        _pr_dec(d.get('quantity')),
+        _pr_int(d.get('uom_id')),
+        (d.get('uom_text') or None),
+    )
+
+
+def _apply_amended_pr_lines(pr, items):
+    """Update this requisition's lines IN PLACE from the already-parsed submission.
+
+    Takes the PARSED list, not a JSON string: the amend route parses once and
+    hands the same object to the validator and to this function.
+
+    WHY IN PLACE, when a rebuild strands nothing here. PO and SO must preserve
+    line ids because a rebuild orphans ReceivingReportItem.purchase_order_item_id
+    (and the SO delivery equivalents) with SQLite FK enforcement off. **PR has no
+    such child** -- nothing declares a purchase_request_item_id, and conversion
+    COPIES lines into a draft PO rather than pointing at them. The reason is
+    narrower: PurchaseRequestItem.id is what lines two revision snapshots up row
+    by row. `_parse_and_attach_pr_lines` appends fresh rows, so a rebuild would
+    renumber every line on every amendment and leave Rev 0 and Rev 1 sharing no
+    identity even for rows nobody touched.
+
+    SECURITY: the lookup is scoped to THIS requisition's own line_items. A
+    pr_item_id belonging to a DIFFERENT PR is never resolved against a global
+    query, so it cannot rewrite another requisition's row -- it falls through to
+    "not found" and becomes a new line here. Slice 2's review demonstrated the
+    global-lookup version live on the PO side, rewriting another order's line and
+    emptying the target.
+    """
+    items = items or []
+    existing = {item.id: item for item in pr.line_items}
+    seen = set()
+    kept = 0
+
+    for idx, d in enumerate(items, start=1):
+        product_id, description, qty, uom_id, uom_text = _pr_line_fields(d)
+        if product_id is None and description is None and qty is None:
+            continue  # blank trailing line
+        if product_id is None and description is None:
+            raise ValueError(f'Line {idx}: enter a product or a description.')
+
+        item = existing.get(_pr_int(d.get('pr_item_id')))
+        if item is None:
+            item = PurchaseRequestItem(purchase_request_id=pr.id)
+            pr.line_items.append(item)
+        else:
+            seen.add(item.id)
+
+        kept += 1
+        item.line_number = kept
+        item.product_id = product_id
+        item.description = description
+        item.quantity = qty
+        item.unit_of_measure_id = uom_id
+        item.uom_text = uom_text
+
+    # NO minimum-line rule here, deliberately. This function APPLIES; the amend
+    # route JUDGES the applied result with pr.has_requested_line() (task 1's
+    # predicate, which is also what the create/edit parser's own rule restates).
+    # Enforcing it in both places is the drift that let the same hole survive its
+    # first fix on the Purchase Order side: the rule was closed by hand in one
+    # spot and left open in the other, with a control test that only exercised
+    # the closed one. One rule, one place, judged on the RESULT.
+
+    # Iterate the PRE-LOOP snapshot, never the live collection: a row appended
+    # above may have been assigned an id by an autoflush, and it was never added
+    # to `seen`, so sweeping the live collection would delete the line the user
+    # just added.
+    for item_id, item in existing.items():
+        if item_id not in seen:
+            pr.line_items.remove(item)
+            db.session.delete(item)
+
+
+def _parse_and_attach_pr_lines(pr, lines_json):
+    """Attach requisition lines. A line needs a Product OR a free-text description; no pricing.
+
+    REBUILD path -- create and draft edit only. The amend route uses
+    _apply_amended_pr_lines, which preserves line ids.
+    """
+    _int, _dec = _pr_int, _pr_dec
 
     items = json.loads(lines_json) if lines_json else []
     kept = 0
     for idx, d in enumerate(items, start=1):
-        product_id = _int(d.get('product_id'))
-        description = (d.get('description') or '').strip() or None
-        qty = _dec(d.get('quantity'))
+        product_id, description, qty, uom_id, uom_text = _pr_line_fields(d)
         if product_id is None and description is None and qty is None:
             continue  # blank line
         if product_id is None and description is None:
@@ -83,8 +174,7 @@ def _parse_and_attach_pr_lines(pr, lines_json):
         kept += 1
         pr.line_items.append(PurchaseRequestItem(
             line_number=kept, product_id=product_id, description=description,
-            quantity=qty, unit_of_measure_id=_int(d.get('uom_id')),
-            uom_text=(d.get('uom_text') or None)))
+            quantity=qty, unit_of_measure_id=uom_id, uom_text=uom_text))
     if kept == 0:
         raise ValueError('Add at least one requested item.')
 
