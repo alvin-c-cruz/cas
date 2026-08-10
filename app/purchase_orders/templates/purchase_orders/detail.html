@@ -13,6 +13,17 @@
     {% if can_write and po.status == 'draft' %}
     <a href="{{ url_for('purchase_orders.edit', id=po.id) }}" class="btn btn-secondary btn-sm">Edit</a>
     {% endif %}
+    {# Amend: the APPROVE-level role rule, not can_write. `can_approve` above is
+       the template spelling of views.py::_has_approve_level_role(), which
+       amend() itself uses -- a button gated on can_write would render a control
+       that refuses on click for every staff user (the delete_approved_email
+       shape, in the opposite direction). The status list is read off
+       PurchaseOrder.AMEND_STATUSES rather than retyped, so the button and the
+       route cannot drift apart. A draft is EDITED, not amended: amend() bounces
+       one straight back to edit(). #}
+    {% if can_approve and po.status in po.AMEND_STATUSES %}
+    <a href="{{ url_for('purchase_orders.amend', id=po.id) }}" class="btn btn-primary btn-sm">Amend</a>
+    {% endif %}
   </div>
 </div>
 

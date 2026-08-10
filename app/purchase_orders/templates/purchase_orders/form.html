@@ -7,14 +7,23 @@
   <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary btn-sm">Back to list</a>
 </div>
 
+{# Amend mode posts to amend(), NOT edit(): edit() refuses anything that is not a
+   draft, so leaving the action unbranched would render a form that can never be
+   saved. Mirrors sales_orders/form.html, which reaches the same result by having
+   no action at all (it posts back to whichever URL served it). #}
 <form method="POST" id="poForm"
-      action="{{ url_for('purchase_orders.edit', id=po.id) if po else url_for('purchase_orders.create') }}">
+      action="{% if amend_mode %}{{ url_for('purchase_orders.amend', id=po.id) }}{% elif po %}{{ url_for('purchase_orders.edit', id=po.id) }}{% else %}{{ url_for('purchase_orders.create') }}{% endif %}">
   {{ form.hidden_tag() }}
   <input type="hidden" name="line_items" id="lineItemsJson" value="[]">
 
   <div class="card"><div class="card-body">
     <div class="form-grid">
-      <div class="form-group">{{ form.po_number.label }} {{ form.po_number(class="form-control") }}</div>
+      {# An amendment revises an order, it does not renumber it -- amend() already
+         declines to reassign po_number, so an editable box would silently discard
+         whatever the user typed. #}
+      <div class="form-group">{{ form.po_number.label }}
+        {% if amend_mode %}{{ form.po_number(class="form-control", readonly=true) }}
+        {% else %}{{ form.po_number(class="form-control") }}{% endif %}</div>
       <div class="form-group">{{ form.order_date.label }} {{ form.order_date(class="form-control") }}</div>
       <div class="form-group">{{ form.expected_date.label }} {{ form.expected_date(class="form-control") }}</div>
       <div class="form-group">{{ form.vendor_id.label }} {{ form.vendor_id(class="form-control") }}</div>
@@ -39,6 +48,21 @@
     </div>
     <button type="button" class="btn btn-secondary btn-sm" id="addLineBtn">+ Add line</button>
   </div></div>
+
+  {% if amend_mode %}
+  {# amend() flashes form.errors on a failed validation POST -- that flash is the
+     SINGLE channel for an amend_reason refusal. Do NOT also render per-field
+     errors here, or one refusal is shown twice. Same rule as the SO form. #}
+  <div class="card"><div class="card-body">
+    <div class="alert alert-info">
+      This Purchase Order is approved. Saving creates a new revision.
+    </div>
+    <div class="form-group">
+      {{ form.amend_reason.label }} <span class="required">*</span>
+      {{ form.amend_reason(class="form-control", rows=2) }}
+    </div>
+  </div></div>
+  {% endif %}
 
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">{{ 'Update' if po else 'Save' }}</button>
@@ -65,9 +89,31 @@
     });
     return o;
   }
+  {# Line identity, carried across BOTH renders. The validator and the applier
+     (app/amendments/validation.py, views.py::_apply_amended_po_lines) key on
+     po_item_id, so a row that loses its identity reads as "line removed, line
+     added" -- refused outright the moment any receipt exists against the PO.
+
+     BOTH halves of the fallback are load-bearing:
+       * PurchaseOrderItem.to_dict() emits `id` and no po_item_id -- that is the
+         FIRST render, lines loaded from the DB;
+       * the raw SUBMITTED payload carries po_item_id and no `id` -- that is the
+         re-render after a refusal, which amend() replays verbatim so the user
+         does not lose their edits.
+     With only the first half, the SECOND submit after any refusal silently turns
+     a correction into a delete-everything-and-re-add.
+
+     Deliberately a Jinja comment, not a JS one: a `//` comment is emitted into
+     the response body, where it would satisfy the render assertions in
+     tests/integration/test_po_amend_ui.py without any code behind it. #}
+  function poItemIdOf(d) {
+    return d.id != null ? d.id : (d.po_item_id != null ? d.po_item_id : null);
+  }
   function addRow(d) {
     d = d || {};
     const tr = document.createElement('tr');
+    const poItemId = poItemIdOf(d);
+    if (poItemId != null) tr.dataset.poItemId = poItemId;
     tr.innerHTML =
       `<td><select class="form-control po-product">${productOptions(d.product_id)}</select></td>`
     + `<td><input class="form-control po-desc" value="${(d.description||'').replace(/"/g,'&quot;')}"></td>`
@@ -95,6 +141,7 @@
       const vatSel = tr.querySelector('.po-vat');
       const rate = vatSel.selectedOptions[0] ? (vatSel.selectedOptions[0].dataset.rate || 0) : 0;
       rows.push({
+        po_item_id: tr.dataset.poItemId || null,
         product_id: tr.querySelector('.po-product').value || null,
         description: tr.querySelector('.po-desc').value || null,
         quantity: tr.querySelector('.po-qty').value || null,
