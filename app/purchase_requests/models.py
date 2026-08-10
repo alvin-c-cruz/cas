@@ -5,13 +5,50 @@ posts no journal entry.
 A requisition records WHAT is needed (product / UoM / qty / description) and WHY (reason) --
 NO vendor and NO price. On approval it converts into a *draft* Purchase Order where the buyer
 adds the vendor and prices (mirror of quotations.accept -> draft SO)."""
+from decimal import Decimal
+
 from app import db
+from app.amendments.mixins import Amendable
 from app.utils import ph_now
 from app.utils.concurrency import RowVersioned
 
 
-class PurchaseRequest(RowVersioned, db.Model):
+class PurchaseRequest(Amendable, RowVersioned, db.Model):
     __tablename__ = 'purchase_requests'
+
+    DOCUMENT_TYPE = 'purchase_requests'
+
+    SNAPSHOT_HEADER_FIELDS = (
+        'pr_number', 'request_date', 'reason', 'status', 'branch_id',
+        # purchase_order_id IS live state -- convert() writes it (views.py:371)
+        # and it is the only record of what this requisition became. Omitting it
+        # was slice 1's first defect, in its PO equivalent (accounts_payable_id):
+        # the snapshot then cannot say whether the document was ever consumed.
+        'purchase_order_id',
+        # Provenance: Rev 0 is "the PR as originally approved", so losing who
+        # moved it through each state makes that snapshot incomplete. PR has a
+        # longer state history than PO -- submitted and rejected as well.
+        'submitted_by_id', 'submitted_at',
+        'approved_by_id', 'approved_at',
+        'rejected_by_id', 'rejected_at', 'reject_reason',
+        'cancelled_by_id', 'cancelled_at', 'cancel_reason',
+    )
+
+    SNAPSHOT_LINE_FIELDS = (
+        'line_number', 'product_id', 'description', 'quantity',
+        'uom_text', 'unit_of_measure_id',
+    )
+
+    #: EMPTY on purpose. PurchaseRequestItem has no unit_price, amount or VAT
+    #: column -- a requisition records WHAT is needed, and the buyer supplies
+    #: pricing at PO conversion. Declaring a money field here would emit a
+    #: *_display key for a value that does not exist.
+    SNAPSHOT_MONEY_FIELDS = ()
+
+    #: Only 'approved'. 'submitted' is past draft but PRE-approval, and the
+    #: spec's trigger is approval. 'converted' is excluded because conversion
+    #: has already produced a draft PO the buyer is pricing -- see is_converted.
+    AMEND_STATUSES = ('approved',)
 
     id = db.Column(db.Integer, primary_key=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True, index=True)
@@ -47,6 +84,82 @@ class PurchaseRequest(RowVersioned, db.Model):
     line_items = db.relationship('PurchaseRequestItem', backref='purchase_request',
                                  lazy='select', cascade='all, delete-orphan',
                                  order_by='PurchaseRequestItem.line_number')
+
+    def is_converted(self):
+        """True once this requisition has produced a Purchase Order.
+
+        PR's whole "already consumed" question, and it is HEADER-level -- unlike
+        PO and SO, where consumption is per line. `convert()` sets `status` and
+        `purchase_order_id` together (views.py:370-371), so either alone would
+        normally do; reading BOTH means a single failed commit that left one of
+        them behind cannot make an already-converted requisition amendable again.
+
+        Amending a converted PR would change nothing downstream: conversion
+        COPIES the lines into a draft PO rather than pointing at them, so the
+        buyer keeps pricing the old numbers while the requisition claims new
+        ones. That is the lie this guard exists to prevent.
+        """
+        return self.status == 'converted' or self.purchase_order_id is not None
+
+    def has_requested_line(self):
+        """True when at least one line names a product OR a description.
+
+        PR's own rule, already enforced on the way IN by
+        `_parse_and_attach_pr_lines` ('Line N: enter a product or a description.'
+        / 'Add at least one requested item.'). Restating it as a method makes it
+        assertable as a POSTcondition, so an amendment can be judged on its
+        APPLIED RESULT rather than by re-deriving the rule from the payload --
+        re-deriving is exactly how the equivalent hole survived its first fix on
+        the Purchase Order side.
+
+        Note this is PR's rule, not PO's `has_approvable_line` (unit price AND
+        amount) nor SO's `has_usable_line` (product AND amount > 0). A
+        requisition legitimately carries neither price nor amount.
+        """
+        for line in self.line_items:
+            if line.product_id is not None:
+                return True
+            if (line.description or '').strip():
+                return True
+        return False
+
+    # -- the shared validator's document hooks --------------------------------
+    # PR is the first adopter with NO CHILDREN. Nothing in the app declares a
+    # purchase_request_item_id; the only downstream edge is the header-level
+    # purchase_order_id. Both hooks are therefore constant, and deliberately so:
+    # they are what let the shared validator run against PR unchanged, which is
+    # the answer slices 4-5 need before AP/CD/RR/DR adopt it.
+
+    child_document_label = 'Purchase Order'
+
+    def consumed_qty(self, line):
+        """Always zero -- nothing can consume part of a requisition line."""
+        return Decimal('0')
+
+    def has_any_child_reference(self, line):
+        """Always False -- no table carries a purchase_request_item_id.
+
+        Contrast PO, where this is status-agnostic and strictly wider than the
+        quantity floor because deleting a referenced line strands a
+        ReceivingReportItem FK with SQLite FK enforcement off. PR has no such
+        child, so a line may always be removed on this axis.
+        """
+        return False
+
+    def snapshot_line_extras(self, line):
+        return {
+            'product_code': line.product.code if line.product else None,
+            'product_name': line.product.name if line.product else None,
+            'uom_code': (line.unit_of_measure.code if line.unit_of_measure
+                         else line.uom_text),
+        }
+
+    def snapshot_header_extras(self):
+        return {
+            'branch_name': self.branch.name if self.branch else None,
+            'purchase_order_number': (self.purchase_order.po_number
+                                      if self.purchase_order else None),
+        }
 
     def to_dict(self):
         return {'id': self.id, 'pr_number': self.pr_number, 'status': self.status,
