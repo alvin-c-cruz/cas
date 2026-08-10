@@ -20,6 +20,8 @@ produces), never on a POST contract. That is the whole point of the file:
 """
 import json
 import re
+import shutil
+import subprocess
 from datetime import date
 from decimal import Decimal
 
@@ -104,6 +106,12 @@ def approved_po(db_with_data, branch_manila, vendor_acme):
     return po
 
 
+#: The amend-mode banner. Asserted verbatim in both directions (present in amend
+#: mode, absent on the draft-edit form), so a reworded banner is a deliberate
+#: two-line change rather than something that can silently disappear.
+_AMEND_BANNER = 'This Purchase Order is approved. Saving creates a new revision.'
+
+
 #: `const EXISTING = [...];` -- the line array the form hands its JS. Non-greedy to
 #: the first `];`, which is safe because the array holds only flat objects.
 _EXISTING_RE = re.compile(r'const EXISTING\s*=\s*(\[.*?\]);', re.DOTALL)
@@ -137,6 +145,170 @@ def _post_amend(client, po, **overrides):
     return client.post(f'/purchase-orders/{po.id}/amend', data=data)
 
 
+# -- executing the form's own JS ------------------------------------------
+#
+# Everything above is a SOURCE-SHAPE assertion: it proves a string is present in
+# the response, not that a browser round-trips the line identity. That gap is not
+# theoretical -- an adversarial review mutated the dataset guard to
+# `if (poItemId != null && d.id != null)`, which leaves EVERY source token this
+# file asserts intact, and all the text-level tests stayed green while every
+# existing line began posting as a NEW line on the second submit (a
+# delete-and-recreate that strands ReceivingReportItem.purchase_order_item_id).
+#
+# So the chain below is EXECUTED. The form's real <script> block is lifted out of
+# the real rendered response and run in node against a minimal DOM shim; the test
+# then reads what the submit handler actually serialised into the hidden input.
+#
+# What this buys and what it does not:
+#   * BUYS: poItemIdOf -> the addRow guard -> tr.dataset -> the submit serialiser
+#     -> the hidden input, executed as written, against the two payload shapes the
+#     app really renders. Any rewrite of the guard, the fallback, the dataset key,
+#     the serialised key or the target element id changes the OUTPUT.
+#   * DOES NOT BUY: real DOM semantics. The shim's cells return empty values, so
+#     only the line IDENTITY is observed here -- not quantities, VAT lookup,
+#     Choices.js, event wiring or native form validation. Those still need the
+#     pre-merge /ui-test browser pass (see the review's browser list).
+#
+# node is REQUIRED, never skipped: a test that quietly skips when its runtime is
+# missing observes nothing and turns the suite green for the wrong reason. Same
+# rule tests/integration/test_po_rev0_backfill.py states for its subprocesses.
+
+_JS_DRIVER = r'''
+'use strict';
+// Minimal DOM shim: enough for the PO form's line JS, nothing more.
+// argv[2] = file holding the form's extracted <script> body
+// argv[3] = the id of the hidden input the serialiser is EXPECTED to write
+// argv[4] = number of hand-added rows to click in via the "+ Add line" handler
+const fs = require('fs');
+const vm = require('vm');
+
+const src = fs.readFileSync(process.argv[2], 'utf8');
+const hiddenId = process.argv[3];
+const handAdded = parseInt(process.argv[4] || '0', 10);
+
+const rows = [];
+const byId = {};
+const handlers = {};
+
+function cell() { return { value: '', textContent: '0', selectedOptions: [] }; }
+
+function element(id) {
+  if (!byId[id]) {
+    byId[id] = {
+      id: id,
+      value: '',
+      addEventListener: function (ev, fn) { handlers[id + ':' + ev] = fn; },
+      appendChild: function (tr) { rows.push(tr); }
+    };
+  }
+  return byId[id];
+}
+
+const document = {
+  createElement: function () {
+    return {
+      // A real DOMStringMap coerces every value to a string; so does this, or the
+      // test would see 1 where a browser sees "1".
+      dataset: new Proxy({}, {
+        set: function (t, k, v) { t[k] = String(v); return true; }
+      }),
+      innerHTML: '',
+      querySelector: function () { return cell(); },
+      remove: function () {}
+    };
+  },
+  getElementById: element,
+  querySelectorAll: function () { return rows; },
+  addEventListener: function () {}
+};
+
+vm.runInNewContext(src, { document: document, console: console });
+
+for (let i = 0; i < handAdded; i++) {
+  const add = handlers['addLineBtn:click'];
+  if (!add) { console.error('the form never wired the + Add line button'); process.exit(3); }
+  add({});
+}
+
+const submit = handlers['poForm:submit'];
+if (!submit) { console.error('the form never registered a submit handler'); process.exit(2); }
+submit({});
+process.stdout.write(JSON.stringify({ rows: rows.length, posted: element(hiddenId).value }));
+'''
+
+
+def _node():
+    exe = shutil.which('node')
+    if exe is None:
+        pytest.fail(
+            'node is not on PATH. This test EXECUTES the PO form\'s line-identity '
+            'JS -- the only layer in the suite that can observe a rewritten guard '
+            '(see the module comment). It fails rather than skips on purpose: a '
+            'silent skip here would make the suite green while the identity chain '
+            'is broken. Install node, or delete this test deliberately and say so.')
+    return exe
+
+
+#: the hidden input the submit handler writes the serialised lines into.
+_LINE_ITEMS_INPUT_RE = re.compile(r'<input[^>]*name="line_items"[^>]*>')
+
+
+def _line_items_input(html):
+    m = _LINE_ITEMS_INPUT_RE.search(html)
+    assert m is not None, 'the line_items hidden input is no longer rendered'
+    return m.group(0)
+
+
+def _line_items_input_id(html):
+    tag = _line_items_input(html)
+    m = re.search(r'id="([^"]+)"', tag)
+    assert m is not None, (
+        f'the line_items hidden input carries no id: {tag} -- the submit handler '
+        'reaches it with getElementById, so without an id nothing can be written '
+        'to it and the form posts its static value="[]"')
+    return m.group(1)
+
+
+def _form_script(html):
+    """The form's own <script> body, lifted out of the real rendered page."""
+    for m in re.finditer(r'<script[^>]*>(.*?)</script>', html, re.DOTALL):
+        if 'poItemIdOf' in m.group(1):
+            return m.group(1)
+    raise AssertionError(
+        'the PO form no longer emits a script defining poItemIdOf -- the line '
+        'identity mapping is gone, or it moved to a static asset (in which case '
+        'this harness must be pointed at that file instead of silently passing)')
+
+
+def _serialise_lines(tmp_path, html, hand_added=0):
+    """Run the form's real JS and return the line array its submit handler posts.
+
+    The hidden input's id is read out of the RENDERED HTML and handed to the
+    driver, so a JS handle that no longer matches the input it is meant to fill
+    (a rename on one side only) produces an empty write and fails here.
+    """
+    script = tmp_path / 'po_form.js'
+    script.write_text(_form_script(html), encoding='utf-8')
+    driver = tmp_path / 'driver.js'
+    driver.write_text(_JS_DRIVER, encoding='utf-8')
+
+    proc = subprocess.run(
+        [_node(), str(driver), str(script), _line_items_input_id(html),
+         str(hand_added)],
+        capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, (
+        f'executing the PO form JS failed (exit {proc.returncode}).\n'
+        f'stdout: {proc.stdout}\nstderr: {proc.stderr}')
+
+    out = json.loads(proc.stdout)
+    assert out['posted'], (
+        'the submit handler wrote nothing into the hidden input '
+        f'id="{_line_items_input_id(html)}" -- the JS and the rendered input no '
+        'longer name the same element, so a real browser posts the static '
+        'value="[]" and an approved PO is emptied to zero lines')
+    return json.loads(out['posted'])
+
+
 # -- the three fields a POST-based test structurally cannot see ------------
 
 class TestAmendFormRendersItsFields:
@@ -151,7 +323,19 @@ class TestAmendFormRendersItsFields:
         # amend() refuses a POST whose `line_items` key is ABSENT ("did not reach
         # the server"). Drop this input from the render and every amendment made in
         # a real browser is refused -- with the whole pytest suite still green.
-        assert 'name="line_items"' in _amend_get(client, approved_po)
+        html = _amend_get(client, approved_po)
+        assert 'name="line_items"' in html
+        # The NAME is what the server reads; the ID is what the JS writes to
+        # (getElementById('lineItemsJson')). Pinning only the name leaves the
+        # form posting its static value="[]" after an id rename -- which empties
+        # an APPROVED PO. Both halves, plus the coupling between them:
+        # TestPoAmendLineIdentityExecuted
+        # ::test_the_serialiser_writes_into_the_rendered_line_items_input executes
+        # the JS and fails if the two sides stop naming the same element.
+        assert 'id="lineItemsJson"' in html
+        assert _line_items_input_id(html) == 'lineItemsJson'
+        assert "getElementById('lineItemsJson')" in html, (
+            'the submit handler no longer targets the rendered line_items input')
 
     def test_amend_form_renders_the_amend_reason_field(self, client, approved_po):
         # amend_reason is DataRequired + Length(min=10). Without the field there is
@@ -183,6 +367,16 @@ class TestAmendModeShape:
     def test_the_amend_form_submit_button_says_update(self, client, approved_po):
         assert '>Update<' in _amend_get(client, approved_po)
 
+    def test_the_amend_form_warns_that_saving_creates_a_revision(
+            self, client, approved_po):
+        """The banner is the ONLY prose on this page that says the user is
+        amending -- the title, page_title and <h1> all still read "Edit Purchase
+        Order" (deliberate: sales_orders/form.html does the same). Delete it and
+        the amend screen is distinguishable from the ordinary draft-edit screen
+        only by a greyed-out PO number and a reason box, with the whole suite
+        green. It is load-bearing UI, so it is pinned."""
+        assert _AMEND_BANNER in _amend_get(client, approved_po)
+
     def test_the_draft_edit_form_is_untouched_by_amend_mode(self, client, draft_po):
         """The negative control: none of the amend-mode branches may leak into the
         ordinary draft edit form, which still renumbers, still posts to edit(), and
@@ -195,8 +389,51 @@ class TestAmendModeShape:
         assert field is not None, 'po_number input not found in the edit form'
         assert 'readonly' not in field.group(0)
         assert 'name="amend_reason"' not in html
+        assert _AMEND_BANNER not in html
         tag = re.search(r'<form[^>]*id="poForm"[^>]*>', html)
         assert f'action="/purchase-orders/{draft_po.id}/edit"' in tag.group(0)
+
+
+class TestTheServerSideRefusalIsReachableInABrowser:
+    """`amend_reason` renders `required minlength="10"` (WTForms emits both from
+    DataRequired + Length). Without `novalidate` on the form, a browser blocks the
+    submit with a native constraint bubble and the `submit` event never fires --
+    so amend()'s own refusal flash, its re-render, AND the post-refusal line-identity
+    replay (the single most important behaviour on this form) are unreachable by a
+    real user and by the pre-merge browser pass. pytest's test client never sees
+    this: it posts straight past client-side validation.
+
+    `novalidate` is the app-wide convention (40+ forms, including
+    sales_orders/form.html:19, the precedent this task mirrors); purchase_orders is
+    the outlier.
+    """
+
+    def test_the_amend_form_is_novalidate_so_a_refusal_can_reach_the_server(
+            self, client, approved_po):
+        html = _amend_get(client, approved_po)
+        tag = re.search(r'<form[^>]*id="poForm"[^>]*>', html)
+        assert tag is not None, 'the PO form tag was not found'
+        assert 'novalidate' in tag.group(0), (
+            'the amend form re-enabled native constraint validation -- '
+            'amend_reason is required+minlength=10, so the browser now blocks the '
+            'submit and no server-side refusal (and therefore no line-identity '
+            'replay) is reachable outside pytest')
+
+    def test_the_create_and_draft_edit_forms_keep_their_native_validation(
+            self, client, draft_po):
+        """The control. `novalidate` is scoped to amend mode ON PURPOSE: create and
+        draft-edit are two already-shipped browser paths on this same template, and
+        turning their client-side validation off is a behaviour change this task
+        neither needs nor is scoped to make. If someone later hoists `novalidate`
+        onto the bare <form> tag, this dies."""
+        for url in (f'/purchase-orders/{draft_po.id}/edit', '/purchase-orders/create'):
+            resp = client.get(url)
+            assert resp.status_code == 200, url
+            tag = re.search(r'<form[^>]*id="poForm"[^>]*>', resp.data.decode())
+            assert tag is not None, f'the PO form tag was not found on {url}'
+            assert 'novalidate' not in tag.group(0), (
+                f'{url} lost its native client-side validation -- amend mode\'s '
+                'novalidate leaked onto a path that never asked for it')
 
 
 # -- the line-identity mapping (the silent, expensive one) -----------------
@@ -282,6 +519,114 @@ class TestPoAmendLineIdentity:
         assert re.search(r'po_item_id:\s*tr\.dataset\.poItemId', html) is not None, (
             'the submit-time line serialiser no longer emits po_item_id -- an '
             'amendment can no longer update existing lines in place')
+
+    def test_the_dataset_write_guard_is_exactly_the_null_check(
+            self, client, approved_po):
+        """The cheap layer, and a SOURCE-SHAPE PROXY -- it proves the guard reads
+        as written, not that a browser behaves.
+
+        The three assertions above pin that three TOKENS appear; they are blind to
+        what the guard around them TESTS. `if (poItemId != null && d.id != null)`
+        keeps every one of those tokens and still drops the identity of every line
+        on the second submit after any refusal. Pinning the exact expression closes
+        that specific rewrite cheaply and with no runtime dependency.
+
+        The test that actually observes the behaviour is
+        TestPoAmendLineIdentityExecuted below, which runs this JS. If this
+        assertion ever fails on a harmless reformat (`!==`, added spaces), check
+        THAT class is still green and then update the pattern here -- do not delete
+        it.
+        """
+        html = _amend_get(client, approved_po)
+        assert re.search(
+            r'if \(poItemId != null\) tr\.dataset\.poItemId = poItemId;',
+            html) is not None, (
+            'the dataset-write guard is no longer `if (poItemId != null)`. Any '
+            'extra condition here (e.g. `&& d.id != null`) silently restricts the '
+            'identity write to the FIRST render, so every line posts as new after '
+            'a refusal -- refused outright once a receipt exists, and a '
+            'delete-and-recreate when none does')
+
+
+class TestPoAmendLineIdentityExecuted:
+    """The behavioural layer: the form's real JS, executed (see the module comment
+    above `_JS_DRIVER` for exactly what this does and does not prove).
+
+    Everything else in this file asserts on text. These four assert on the array a
+    browser would actually POST.
+    """
+
+    def test_the_first_render_posts_the_stored_line_identity(
+            self, client, approved_po, tmp_path):
+        line_id = approved_po.line_items[0].id
+        posted = _serialise_lines(tmp_path, _amend_get(client, approved_po))
+
+        assert len(posted) == 1
+        assert posted[0]['po_item_id'] == str(line_id), (
+            'the form loaded an existing line from the DB and then posted it '
+            'without its identity -- validate_amendment reads that as "line '
+            'removed, line added"')
+
+    def test_the_re_render_after_a_refusal_still_posts_the_line_identity(
+            self, client, approved_po, tmp_path):
+        """THE regression this whole task exists to prevent, executed.
+
+        Refuse -> fix -> resubmit is the most ordinary sequence a user can produce.
+        The re-render replays the SUBMITTED payload, which carries `po_item_id` and
+        no `id`, so this is the round trip that dies the moment the identity
+        mapping is narrowed to the `id` half.
+        """
+        line_id = approved_po.line_items[0].id
+        submitted = [{'po_item_id': line_id, 'product_id': None,
+                      'description': 'widget', 'quantity': '10',
+                      'unit_price': '5.00', 'amount': '50.00',
+                      'vat_category': None, 'vat_rate': '0'}]
+        resp = _post_amend(client, approved_po, amend_reason='typo',
+                           line_items=json.dumps(submitted))
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'at least 10 characters' in html, (
+            'precondition: this POST must be REFUSED and re-rendered')
+
+        posted = _serialise_lines(tmp_path, html)
+        assert len(posted) == 1
+        assert posted[0]['po_item_id'] == str(line_id), (
+            'the SECOND submit after a refusal lost the line identity: every '
+            'existing line would post as new, turning a correction into a '
+            'delete-everything-and-re-add that strands any '
+            'ReceivingReportItem.purchase_order_item_id pointing at it')
+
+    def test_a_hand_added_line_posts_no_identity_while_the_existing_one_keeps_its_own(
+            self, client, approved_po, tmp_path):
+        """The other direction. A row added during the amendment must post
+        po_item_id null (parse_submission then treats it as a new line); an
+        unconditional dataset write would post the string "null" instead, and a
+        guard that leaks the previous row's id would merge two lines into one."""
+        line_id = approved_po.line_items[0].id
+        posted = _serialise_lines(tmp_path, _amend_get(client, approved_po),
+                                  hand_added=1)
+
+        assert len(posted) == 2
+        assert posted[0]['po_item_id'] == str(line_id)
+        assert posted[1]['po_item_id'] is None, (
+            'a hand-added line posted an identity it does not have: '
+            f'{posted[1]["po_item_id"]!r}')
+
+    def test_the_serialiser_writes_into_the_rendered_line_items_input(
+            self, client, approved_po, tmp_path):
+        """The JS handle and the rendered input must name the SAME element.
+
+        `_serialise_lines` reads the input's id out of the rendered HTML and fails
+        if nothing was written to it, so renaming one side only dies here. That
+        rename is otherwise silent AND destructive: the submit handler throws a
+        TypeError which does NOT cancel the submit, the form posts its static
+        value="[]", amend()'s absent-key guard does not fire (the key IS present),
+        and an approved PO is emptied to zero lines and a 0.00 total -- flashed as
+        a successful amendment with a revision recorded.
+        """
+        posted = _serialise_lines(tmp_path, _amend_get(client, approved_po))
+        assert posted != [], (
+            'the serialiser produced an empty array for a PO that has a line')
 
 
 # -- the detail page's Amend button ----------------------------------------

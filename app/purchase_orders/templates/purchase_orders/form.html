@@ -10,8 +10,19 @@
 {# Amend mode posts to amend(), NOT edit(): edit() refuses anything that is not a
    draft, so leaving the action unbranched would render a form that can never be
    saved. Mirrors sales_orders/form.html, which reaches the same result by having
-   no action at all (it posts back to whichever URL served it). #}
-<form method="POST" id="poForm"
+   no action at all (it posts back to whichever URL served it).
+
+   novalidate in AMEND MODE ONLY: amend_reason renders `required minlength="10"`,
+   so without it a browser blocks the submit with a native bubble and amend()'s
+   server-side refusal -- and the line-identity replay that refusal re-render
+   performs -- can never be reached by a real user. sales_orders/form.html (and
+   40+ other forms here) carry novalidate form-wide; this template is the
+   outlier. Deliberately NOT hoisted onto the bare tag: create and draft-edit are
+   already-shipped browser paths that rely on their client-side validation today,
+   and changing them is outside this task. See
+   tests/integration/test_po_amend_ui.py::TestTheServerSideRefusalIsReachableInABrowser,
+   whose control test pins that create/draft-edit are unchanged. #}
+<form method="POST" id="poForm"{% if amend_mode %} novalidate{% endif %}
       action="{% if amend_mode %}{{ url_for('purchase_orders.amend', id=po.id) }}{% elif po %}{{ url_for('purchase_orders.edit', id=po.id) }}{% else %}{{ url_for('purchase_orders.create') }}{% endif %}">
   {{ form.hidden_tag() }}
   <input type="hidden" name="line_items" id="lineItemsJson" value="[]">
