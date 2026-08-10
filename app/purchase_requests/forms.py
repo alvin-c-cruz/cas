@@ -12,3 +12,16 @@ class PurchaseRequestForm(RowVersionFormMixin, FlaskForm):
     request_date = DateField('Request Date', validators=[
         DataRequired(message='Request date is required.')], format='%Y-%m-%d', default=date.today)
     reason = TextAreaField('Reason / Justification', validators=[Optional()])
+
+
+class PurchaseRequestAmendForm(PurchaseRequestForm):
+    """The PR form plus the reason a post-approval amendment must record.
+
+    Mirrors PurchaseOrderAmendForm's rule (>=10 chars, matching cancel's). The
+    inherited pr_number field is deliberately kept -- the amend template renders
+    it readonly and the route never reassigns it, so the value round-trips for
+    display without becoming editable.
+    """
+    amend_reason = TextAreaField('Reason for amendment', validators=[
+        DataRequired(message='Please provide a reason for this amendment.'),
+        Length(min=10, message='Please provide a reason (at least 10 characters).')])

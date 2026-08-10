@@ -11,8 +11,9 @@ from flask_login import login_required, current_user
 from app import db
 from app.purchase_requests.models import (
     PurchaseRequest, PurchaseRequestItem, generate_pr_number)
-from app.purchase_requests.forms import PurchaseRequestForm
+from app.purchase_requests.forms import PurchaseRequestForm, PurchaseRequestAmendForm
 from app.amendments.service import write_revision
+from app.amendments.validation import validate_amendment
 from app.users.models import User
 from app.settings import AppSettings
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
@@ -341,6 +342,153 @@ def edit(id):
             flash('An error occurred updating the Purchase Request.', 'error')
     return render_template('purchase_requests/form.html', form=form, pr=pr,
                            line_items=restore, **_common_form_ctx())
+
+
+@purchase_requests_bp.route('/purchase-requests/<int:id>/amend', methods=['GET', 'POST'])
+@login_required
+def amend(id):
+    """Post-approval amendment. The PR keeps its status and number; every save
+    appends a DocumentRevision."""
+    pr = _get_pr_or_404(id)
+
+    # APPROVE-level gate, NOT _pr_role_gate(). _pr_role_gate admits `staff`
+    # (it guards create/edit); _approve_gate does not. An amendment rewrites an
+    # already-approved requisition, so it is gated on who may approve one --
+    # gating it on the edit rule is exactly the Critical shipped on the Purchase
+    # Order side, where a staff user who could not approve a PO could rewrite an
+    # approved one.
+    if not _approve_gate():
+        return redirect(url_for('purchase_requests.view', id=id))
+
+    if pr.status == 'draft':
+        flash('A draft Purchase Request is edited, not amended.', 'error')
+        return redirect(url_for('purchase_requests.edit', id=id))
+    if pr.is_converted():
+        # Name the PO. A bare "cannot be amended" leaves the user nowhere to go;
+        # the actionable fact is WHICH order this requisition became, since that
+        # is the document they must change instead.
+        po_number = pr.purchase_order.po_number if pr.purchase_order else None
+        flash('Purchase Request "%s" was already converted to Purchase Order %s. '
+              'Amend that order instead.'
+              % (pr.pr_number, po_number or '(unknown)'), 'error')
+        return redirect(url_for('purchase_requests.view', id=id))
+    if pr.status not in PurchaseRequest.AMEND_STATUSES:
+        flash('A Purchase Request with status "%s" cannot be amended.' % pr.status, 'error')
+        return redirect(url_for('purchase_requests.view', id=id))
+
+    form = PurchaseRequestAmendForm(obj=pr)
+
+    # Parse the payload ONCE and hand the parsed list to both the validator and
+    # the applier, so the two can never disagree about what was submitted.
+    #   * ABSENT key: `.get('line_items', '[]')` cannot tell "the hidden field
+    #     never reached the server" from "the user deleted every row" -- that
+    #     conflation has already shipped in this codebase.
+    #   * UNPARSEABLE or NOT A LIST: json.loads raises, or iterating a scalar
+    #     does, either way a 500 where the contract promises messages.
+    submitted_lines = []
+    line_items_error = None
+    if request.method == 'POST':
+        if 'line_items' not in request.form:
+            line_items_error = ('The line items did not reach the server. '
+                                'Reload the page and try again.')
+        else:
+            try:
+                submitted_lines = json.loads(request.form.get('line_items') or '[]')
+            except ValueError:  # json.JSONDecodeError subclasses ValueError
+                line_items_error = ('The line items could not be read. '
+                                    'Reload the page and try again.')
+            else:
+                if not isinstance(submitted_lines, list):
+                    line_items_error = ('The line items could not be read. '
+                                        'Reload the page and try again.')
+                    submitted_lines = []
+
+    # On a refusal re-render the RAW submission so the user keeps their edits --
+    # except when that submission is the thing being refused, where the stored
+    # lines are the only usable starting point.
+    restore = ([li.to_dict() for li in pr.line_items]
+               if request.method == 'GET' or line_items_error else submitted_lines)
+
+    def _render():
+        return render_template('purchase_requests/form.html', form=form, pr=pr,
+                               amend_mode=True, line_items=restore,
+                               **_common_form_ctx())
+
+    if line_items_error:
+        flash(line_items_error, 'error')
+        return _render()
+
+    if form.validate_on_submit():
+        # Validate BEFORE claiming the version: claim_version's conditional
+        # UPDATE bumps row_version as a side effect, so claiming first would
+        # leave a pending write behind on a refusal that only re-renders.
+        errors = validate_amendment(pr, submitted_lines, 'pr_item_id')
+        if errors:
+            for message in errors:
+                flash(message, 'error')
+            return _render()
+
+        old = model_to_dict(pr, ['pr_number', 'request_date', 'reason', 'status'])
+        try:
+            if not claim_version(PurchaseRequest, pr.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('purchase_requests', pr.id), 'error')
+                return _render()
+
+            # pr_number is deliberately NOT reassigned -- an amendment revises a
+            # requisition, it does not renumber it. request_date and reason are
+            # ordinary editable fields and must not be silently discarded.
+            pr.request_date = form.request_date.data
+            pr.reason = form.reason.data or None
+
+            _apply_amended_pr_lines(pr, submitted_lines)
+            db.session.flush()
+
+            # Judge the APPLIED RESULT, not the payload. Re-deriving the rule
+            # from the submission is how the same hole survived its first fix on
+            # the Purchase Order side. Raising routes this through the ValueError
+            # handler below, whose rollback undoes both the line changes and
+            # claim_version's row_version bump.
+            if not pr.has_requested_line():
+                raise ValueError(
+                    'A Purchase Request must keep at least one item with a '
+                    'product or a description. This amendment would leave none.')
+
+            rev = write_revision(pr, current_user.id,
+                                 reason=(form.amend_reason.data or '').strip())
+            db.session.commit()
+
+            # action='amend', not 'update': the audit log is where an auditor
+            # separates "somebody edited a draft" from "somebody rewrote an
+            # approved requisition". conflict_message() reads both.
+            log_audit(module='purchase_requests', action='amend', record_id=pr.id,
+                      record_identifier=pr.pr_number, old_values=old,
+                      new_values=model_to_dict(
+                          pr, ['pr_number', 'request_date', 'reason', 'status']),
+                      notes='Amended to Rev %s' % rev.revision_number)
+            flash('Purchase Request "%s" amended (Rev %s).'
+                  % (pr.pr_number, rev.revision_number), 'success')
+            return redirect(url_for('purchase_requests.view', id=pr.id))
+
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), 'error')
+            return _render()
+        except Exception as e:
+            db.session.rollback()
+            log_exception(e, severity='ERROR', module='purchase_requests.amend')
+            flash('An error occurred while saving the amendment. Please try again.', 'error')
+
+    elif request.method == 'POST':
+        # A WTForms field-level failure (amend_reason too short) only populates
+        # form.<field>.errors, and this template does not render per-field errors
+        # -- without this the refusal reason vanishes and the response is an
+        # indistinguishable 200.
+        for field_errors in form.errors.values():
+            for message in field_errors:
+                flash(message, 'error')
+
+    return _render()
 
 
 # -- lifecycle -----------------------------------------------------------------
