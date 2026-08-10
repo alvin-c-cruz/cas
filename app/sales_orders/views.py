@@ -165,8 +165,12 @@ def _parse_and_attach_so_lines(so, lines_json):
         so.line_items.append(li)
 
 
-def _apply_amended_so_lines(so, lines_json):
-    """Update this SO's lines IN PLACE from the submitted JSON.
+def _apply_amended_so_lines(so, items):
+    """Update this SO's lines IN PLACE from the already-parsed submission.
+
+    Takes the PARSED list, not the raw JSON string: the route parses once and
+    hands the same object to validate_amendment and to this function, so the
+    validator and the applier can never disagree about what was submitted.
 
     Unlike _parse_and_attach_so_lines (which the draft edit path uses after a
     wholesale delete), this preserves SalesOrderItem.id for every line the user
@@ -183,7 +187,7 @@ def _apply_amended_so_lines(so, lines_json):
     global query, so it cannot rewrite another order's row. It simply falls
     through to "not found" and creates a new line on this order instead.
     """
-    items = json.loads(lines_json) if lines_json else []
+    items = items or []
     existing = {item.id: item for item in so.line_items}
     seen = set()
     kept = 0
@@ -663,18 +667,50 @@ def amend(id):
     form = SalesOrderAmendForm(obj=so, po_required=po_required)
     form.salesperson_id.choices = _salesperson_choices(session.get('selected_branch_id'))
 
+    # Parse the payload ONCE, here, and hand the parsed list to both the
+    # validator and the applier. It used to be parsed three separate times --
+    # once for restore_items, once for validate_amendment, once inside
+    # _apply_amended_so_lines from the raw string -- so the two that matter
+    # could in principle disagree about what was submitted.
+    #
+    #  * ABSENT key: `.get('line_items', '[]')` cannot tell "the hidden field
+    #    never reached the server" from "the user deleted every row". That
+    #    conflation has already shipped once in this codebase
+    #    (BUG-DR-EDIT-FALSE-CONFLICT's family) and it silently empties an order.
+    #  * UNPARSEABLE: json.loads had NO try here at all, so a non-JSON body was
+    #    a 500 -- and on the restore_items line, which runs for every POST,
+    #    before any guard could speak.
+    submitted_lines = []
+    line_items_error = None
+    if request.method == 'POST':
+        if 'line_items' not in request.form:
+            line_items_error = ('The line items did not reach the server. '
+                                'Reload the page and try again.')
+        else:
+            try:
+                submitted_lines = json.loads(request.form.get('line_items') or '[]')
+            except ValueError:  # json.JSONDecodeError subclasses ValueError
+                line_items_error = ('The line items could not be read. '
+                                    'Reload the page and try again.')
+
+    # On a refusal the form re-renders the RAW submission so the user keeps their
+    # edits -- except when that submission is the thing being refused, where the
+    # stored lines are the only usable starting point.
     restore_items = ([item.to_dict() for item in so.line_items]
-                     if request.method == 'GET'
-                     else json.loads(request.form.get('line_items', '[]') or '[]'))
+                     if request.method == 'GET' or line_items_error
+                     or not isinstance(submitted_lines, _LIST)  # NOT `list` -- see _LIST
+                     else submitted_lines)
 
     def _render():
         return render_template('sales_orders/form.html', form=form, so=so,
                                amend_mode=True, line_items=restore_items,
                                **_common_form_ctx())
 
-    if form.validate_on_submit():
-        submitted_lines = json.loads(request.form.get('line_items', '[]') or '[]')
+    if line_items_error:
+        flash(line_items_error, 'error')
+        return _render()
 
+    if form.validate_on_submit():
         errors = validate_amendment(so, submitted_lines)
         if errors:
             for message in errors:
@@ -726,10 +762,24 @@ def amend(id):
             # amendment must not quietly undo it.
             # (It also keeps SalesOrderItem.id stable across revisions, so two
             # snapshots can be lined up by row when a reader compares them.)
-            _apply_amended_so_lines(so, request.form.get('line_items', '[]'))
+            _apply_amended_so_lines(so, submitted_lines)
             db.session.flush()
             db.session.expire(so, ['line_items'])
             so.calculate_totals()
+
+            # Judge the APPLIED RESULT, not the payload. Re-deriving the rule
+            # from the submission is how the same hole survived its first fix on
+            # the Purchase Order side: the absent-`line_items` door was closed by
+            # hand and the explicit-`[]` door beside it was left open, with a
+            # control test that only ever exercised it against an order where an
+            # unrelated guard fired. Raising routes this through the existing
+            # ValueError handler below, whose rollback undoes both the line
+            # changes and claim_version's row_version bump.
+            if not so.has_usable_line():
+                raise ValueError(
+                    'A Sales Order must keep at least one line with a product '
+                    'and an amount greater than zero. This amendment would '
+                    'leave none.')
 
             rev = write_revision(
                 so, current_user.id,

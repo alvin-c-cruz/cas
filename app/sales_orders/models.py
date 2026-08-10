@@ -60,6 +60,35 @@ class SalesOrder(RowVersioned, db.Model):
     line_items = db.relationship('SalesOrderItem', backref='order', lazy='select',
                                  cascade='all, delete-orphan', order_by='SalesOrderItem.line_number')
 
+    def has_usable_line(self):
+        """True when at least one line carries BOTH a product and an amount > 0.
+
+        This is the rule the Sales Order form already states -- `validateForm()`
+        in sales_orders/form.html blocks submission on "Add at least one line
+        item.", then per line on "select a product" and "enter an amount greater
+        than zero". Until now it lived ONLY there, so it bound a user driving the
+        form with JS enabled and nobody else: a crafted POST, or the amend form
+        with every row deleted, posts an explicit `[]` that validate_amendment
+        allows (removing an undelivered line is legal) and left a CONFIRMED order
+        with no lines and a 0.00 total, reported as a success.
+
+        Deliberately mirrors SO's OWN rule rather than the Purchase Order's
+        `has_approvable_line()` (which requires a unit PRICE, borrowed from
+        approve()'s precondition). SO's confirm() has no server-side line
+        precondition at all, so importing PO's stricter rule would be a new
+        business rule rather than a closed guard. The shapes are parallel on
+        purpose: one predicate, called from the route, judging the APPLIED
+        RESULT -- re-deriving the rule from the payload is exactly how the PO
+        hole survived its first fix.
+        """
+        for line in self.line_items:
+            if line.product_id is None:
+                continue
+            amount = line.amount
+            if amount is not None and Decimal(str(amount)) > 0:
+                return True
+        return False
+
     def calculate_totals(self):
         self.subtotal = sum((Decimal(str(li.amount or 0)) for li in self.line_items), Decimal('0.00'))
         self.vat_amount = sum((Decimal(str(li.vat_amount or 0)) for li in self.line_items), Decimal('0.00'))

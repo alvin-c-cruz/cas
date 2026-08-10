@@ -200,6 +200,20 @@ def validate_amendment(so, new_lines):
     Never raises and never mutates -- the route flashes these and re-renders.
     """
     errors = []
+    # new_lines comes from json.loads(request.form['line_items']) and can be ANY
+    # JSON shape. A scalar (123, true, 1.5) or null is not a line list, and
+    # `for line in (123 or [])` raises TypeError straight out of this function --
+    # a 500, in direct contradiction of the "never raises" contract above. A
+    # string is worse than a crash: it iterates its CHARACTERS, so each one draws
+    # a per-element message and the real problem never gets named.
+    #
+    # Refusing here rather than coercing to [] is the point: [] means "the user
+    # deleted every line", which is a legitimate (if guarded) intent, and a
+    # malformed payload must not be silently read as that intent.
+    if new_lines is not None and not isinstance(new_lines, list):
+        return ['Malformed submission: the line items could not be read. '
+                'Reload the Sales Order and try again.']
+
     # DERIVED, not read off so.sales_invoice_id. That column is written by nothing
     # -- invoicing sets the flag on the Delivery Receipt -- so reading it made all
     # three billed guards below permanently dead, exactly as it did cancel()'s.
