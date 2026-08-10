@@ -12,6 +12,7 @@ from app import db
 from app.purchase_requests.models import (
     PurchaseRequest, PurchaseRequestItem, generate_pr_number)
 from app.purchase_requests.forms import PurchaseRequestForm
+from app.amendments.service import write_revision
 from app.users.models import User
 from app.settings import AppSettings
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
@@ -286,6 +287,13 @@ def approve(id):
     pr.status = 'approved'
     pr.approved_by_id = current_user.id
     pr.approved_at = ph_now()
+    # Rev 0 -- the baseline every later amendment is measured against. Written
+    # AFTER the status assignment so the snapshot records the PR as approved, and
+    # inside the same transaction so approval and baseline land atomically.
+    # baseline=True claims revision slot 0; it is the only call in this module
+    # that may, and an amendment finding no baseline starts at Rev 1 rather than
+    # occupying the slot (see app/amendments/service.py::write_revision).
+    write_revision(pr, current_user.id, baseline=True)
     db.session.commit()
     log_audit(module='purchase_requests', action='approve', record_id=pr.id,
               record_identifier=pr.pr_number, notes='Approved')
