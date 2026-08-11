@@ -29,6 +29,28 @@ class _OutOfRange:
 OUT_OF_RANGE = _OutOfRange()
 
 
+class _Unreadable:
+    """Distinct from None for the same reason OUT_OF_RANGE is.
+
+    None now means the quantity was **legitimately absent** -- the key was
+    missing, or empty, or the JSON null. This means the caller sent something
+    that could not be parsed as a number at all.
+
+    Collapsing the two refused an ordinary Purchase Request line: the column is
+    nullable and its create parser keeps a line carrying a product OR a
+    description, so a requisition legitimately recording "Cement, quantity to
+    follow" could not be amended -- not even re-saved unchanged, which the spec
+    requires to be a no-op -- and the refusal claimed the value "could not be
+    read" when it had read perfectly and simply was not there.
+    """
+
+    def __repr__(self):
+        return '<UNREADABLE>'
+
+
+UNREADABLE = _Unreadable()
+
+
 def parse_submission(new_lines, id_key):
     """(submitted, errors) from raw POSTed line JSON.
 
@@ -75,26 +97,42 @@ def parse_submission(new_lines, id_key):
         except (ValueError, TypeError):
             # Unparseable id -- treat as a NEW line rather than raising.
             item_id = None
-        if item_id is None:
-            continue
 
         raw_qty = line.get('quantity')
         try:
             qty = Decimal(str(raw_qty)) if raw_qty not in (None, '', 'null') else None
         except (InvalidOperation, TypeError, ValueError):
-            # Unreadable stays None -- NOT 0. Zero is the most destructive value
-            # here, and the applier writes NULL for the same garbage.
-            qty = None
+            # UNREADABLE, not None and NOT 0. Zero is the most destructive value
+            # here; None now means "legitimately absent", which some documents
+            # allow (see the sentinel's docstring).
+            qty = UNREADABLE
         # Decimal accepts 'NaN'/'Infinity' happily; a later ordered comparison
         # against a quiet NaN signals InvalidOperation -- a 500, not a refusal.
-        if qty is not None and not qty.is_finite():
-            qty = None
+        if qty is not None and qty is not UNREADABLE and not qty.is_finite():
+            # NaN and Infinity parse cleanly and are neither absent nor merely
+            # too large, so they get their own message rather than borrowing the
+            # range one. They must still REFUSE rather than silently null: an
+            # id-less row carrying 'Infinity' used to pass straight through to
+            # the column, and a later ordered comparison against a quiet NaN
+            # signals InvalidOperation -- a 500, not a flashed refusal.
+            errors.append('Quantity %s is not a valid number.' % qty)
+            qty = OUT_OF_RANGE
         # is_finite() does NOT catch this: Decimal('1E+9999') is perfectly finite,
         # merely far larger than the column can hold.
-        elif qty is not None and abs(qty) > MAX_LINE_QUANTITY:
+        elif (qty is not None and qty is not UNREADABLE
+                and abs(qty) > MAX_LINE_QUANTITY):
             errors.append('Quantity %s is out of range (maximum %s).'
                           % (qty, MAX_LINE_QUANTITY))
             qty = OUT_OF_RANGE
+
+        # The range check runs for EVERY row, new ones included, and only then do
+        # id-less rows drop out. It used to `continue` before this point, so a new
+        # line carried no bound at all: {"<id>": null, "quantity": "1E+9999"} was
+        # accepted and stored as Decimal('Infinity'). Once a converted Purchase
+        # Order copies that value, po_line_open_qty returns Infinity - received
+        # forever and the over-receiving guard is permanently satisfied.
+        if item_id is None:
+            continue
 
         if item_id in submitted:
             errors.append('Malformed submission: two lines target the same original '
@@ -176,9 +214,21 @@ def validate_amendment(document, new_lines, id_key):
         new_qty = submitted[line.id]
         if new_qty is OUT_OF_RANGE:
             continue  # already refused above, with its own message
-        if new_qty is None:
+        if new_qty is UNREADABLE:
             errors.append('%s: could not read the submitted quantity. Re-enter it '
                           'and try again.' % label)
+            continue
+        if new_qty is None:
+            # LEGITIMATELY ABSENT. Whether that is allowed is the document's call,
+            # not this module's: a Purchase Order line without a quantity is
+            # meaningless, while a requisition recording "Cement, quantity to
+            # follow" is an ordinary thing to write down. Defaults to required, so
+            # every existing adopter keeps today's behaviour unchanged.
+            if getattr(document, 'LINE_QUANTITY_REQUIRED', True):
+                errors.append('%s: could not read the submitted quantity. Re-enter '
+                              'it and try again.' % label)
+            # Nothing to compare against the floor -- and a document that allows an
+            # absent quantity cannot have consumed one either.
             continue
         if new_qty < consumed:
             errors.append('%s: new quantity %s is below the %s already received.'

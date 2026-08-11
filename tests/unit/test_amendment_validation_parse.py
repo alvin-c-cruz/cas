@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.amendments.validation import (MAX_LINE_QUANTITY, OUT_OF_RANGE,
+from app.amendments.validation import (MAX_LINE_QUANTITY, OUT_OF_RANGE, UNREADABLE,
                                        parse_submission)
 
 
@@ -56,21 +56,34 @@ class TestParseSubmission:
         submitted, errors = parse_submission([{'po_item_id': 'abc', 'quantity': '3'}], 'po_item_id')
         assert submitted == {} and errors == []
 
-    def test_unreadable_quantity_is_None_not_zero(self):
-        # Zero is the most destructive value; never guess it.
+    def test_unreadable_quantity_is_its_own_sentinel_not_zero(self):
+        # Zero is the most destructive value; never guess it. The sentinel changed
+        # from None to UNREADABLE in slice 3: None now means LEGITIMATELY ABSENT,
+        # which some documents allow (Purchase Request lines may carry no
+        # quantity). The rule this test exists for -- never guess zero, and never
+        # let garbage become a comparable Decimal -- is unchanged.
         submitted, _ = parse_submission([{'po_item_id': 1, 'quantity': 'wat'}], 'po_item_id')
-        assert submitted == {1: None}
+        assert submitted == {1: UNREADABLE}
+        assert submitted[1] is not None
+        assert submitted[1] != 0
 
     def test_missing_quantity_is_None(self):
         submitted, _ = parse_submission([{'po_item_id': 1}], 'po_item_id')
         assert submitted == {1: None}
 
-    def test_nan_and_infinity_are_None(self):
+    def test_nan_and_infinity_are_refused_with_their_own_message(self):
         # A later ordered comparison against a quiet NaN signals InvalidOperation,
-        # which in a route is a 500 rather than a flashed refusal.
+        # which in a route is a 500 rather than a flashed refusal -- so these must
+        # never become a comparable Decimal. Slice 3 made them REFUSE rather than
+        # silently null: an id-less row carrying 'Infinity' otherwise reached the
+        # column, and a converted Purchase Order line then reports an infinite
+        # open quantity forever. They are neither absent nor merely too large, so
+        # the message is their own rather than the range one.
         for bad in ('NaN', 'Infinity', '-Infinity'):
-            submitted, _ = parse_submission([{'po_item_id': 1, 'quantity': bad}], 'po_item_id')
-            assert submitted == {1: None}, bad
+            submitted, errors = parse_submission(
+                [{'po_item_id': 1, 'quantity': bad}], 'po_item_id')
+            assert submitted == {1: OUT_OF_RANGE}, bad
+            assert errors and 'not a valid number' in errors[0], bad
 
     def test_out_of_range_is_its_own_sentinel_with_its_own_message(self):
         # Decimal('1E+9999') IS finite -- is_finite() does not catch it.

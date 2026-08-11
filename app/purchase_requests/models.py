@@ -45,6 +45,14 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
     #: *_display key for a value that does not exist.
     SNAPSHOT_MONEY_FIELDS = ()
 
+    #: PR lines may legitimately carry no quantity: the column is nullable and
+    #: _parse_and_attach_pr_lines keeps a line that names a product OR a
+    #: description. Without this the shared validator refused every such line as
+    #: "could not read the submitted quantity" -- a requisition recording
+    #: "Cement, quantity to follow" could not be amended at all, not even
+    #: re-saved unchanged.
+    LINE_QUANTITY_REQUIRED = False
+
     #: Only 'approved'. 'submitted' is past draft but PRE-approval, and the
     #: spec's trigger is approval. 'converted' is excluded because conversion
     #: has already produced a draft PO the buyer is pricing -- see is_converted.

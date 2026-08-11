@@ -21,6 +21,15 @@ class Amendable:
     #: Header money columns that also get a *_display form.
     SNAPSHOT_MONEY_FIELDS = ()
 
+    #: May a line legitimately carry NO quantity? Defaults to False -- a line
+    #: without one is meaningless on an order document, and every adopter before
+    #: Purchase Request had a NOT-NULL-in-practice quantity. PR is the exception:
+    #: its column is nullable and its create parser keeps a line on a product OR
+    #: a description, so "Cement, quantity to follow" is an ordinary requisition.
+    #: The shared validator reads this to tell an ABSENT quantity (allowed here)
+    #: from an UNREADABLE one (never allowed).
+    LINE_QUANTITY_REQUIRED = True
+
     def snapshot_line_extras(self, line):
         """Resolved, human-facing values for a line (FK names, display money).
 
