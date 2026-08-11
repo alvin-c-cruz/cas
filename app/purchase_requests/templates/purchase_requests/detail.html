@@ -13,6 +13,16 @@
     {% if can_write and pr.status == 'draft' %}
     <a href="{{ url_for('purchase_requests.edit', id=pr.id) }}" class="btn btn-secondary btn-sm">Edit</a>
     {% endif %}
+    {# Amend: the APPROVE-level rule (`can_approve`), NOT `can_write`. can_write
+       admits staff, and gating this button on it would show a staff user a
+       control the route then refuses -- the delete_approved_email shape. The
+       status list is read off PurchaseRequest.AMEND_STATUSES rather than
+       retyped, so button and route cannot drift apart; is_converted() is checked
+       too because a converted requisition keeps producing nothing downstream and
+       the route refuses it by naming the order it became. #}
+    {% if can_approve and pr.status in pr.AMEND_STATUSES and not pr.is_converted() %}
+    <a href="{{ url_for('purchase_requests.amend', id=pr.id) }}" class="btn btn-primary btn-sm">Amend</a>
+    {% endif %}
   </div>
 </div>
 
@@ -97,4 +107,51 @@
 </div>
 {% endfor %}
 {% endif %}
+
+{% if revisions %}
+{# Revision history. REUSES the Sales Order panel's .so-rev* rules from style.css
+   rather than adding new ones: they are document-agnostic (a left rule, a
+   heading, a meta line, all on design tokens), and renaming them to .doc-rev
+   would edit style.css and force a ?v=N bump in every template that loads it.
+   No PR revision viewer route exists, so there is no "view full request" link. #}
+<div class="card"><div class="card-body">
+  <h3>Revision history</h3>
+  {% for rev in revisions %}
+  {# data-revision is a STABLE HANDLE, not decoration: the panel's tests bound
+     each entry to compare one against another, and keying that off the class
+     attribute coupled them to a trailing space produced by the conditional class
+     below -- a behaviour-identical tidy then made the helper silently return a
+     subset while tests failed blaming the panel. #}
+  <div data-revision="{{ rev.number }}" class="so-rev {% if rev.number == 0 %}so-rev-original{% endif %}">
+    <div class="so-rev-head">
+      Rev {{ rev.number }} &middot;
+      {{ rev.amended_at.strftime('%b %d, %Y %H:%M') }} &middot;
+      {{ rev.amended_by or 'system' }}
+    </div>
+    {# The reason branch is FIRST. Captioning anything that carries a reason as
+       the baseline would be an affirmative false claim about a document users
+       make decisions on.
+
+       UNLIKE the Purchase Order panel, PR has NO backfilled Rev 0 and therefore
+       no reconstruction to disclose: every purchase_requests table in every
+       client DB and backup held ZERO rows when this shipped (measured, slice 3
+       task 2), so no pre-existing approved requisition needed a baseline and no
+       backfill migration was written. If one is ever added, it must carry its
+       own disclosure in `reason` and this branch will render it verbatim --
+       never retyped, so a reworded migration cannot leave this page asserting
+       something it no longer writes.
+
+       An EMPTY reason is treated as no reason (truthiness, not `is not none`):
+       there is nothing to quote, and a bare pair of quotation marks tells a
+       reader only that something was lost. #}
+    {% if rev.reason %}
+    <div class="so-rev-meta">&ldquo;{{ rev.reason }}&rdquo;</div>
+    {% elif rev.number == 0 %}
+    <div class="so-rev-meta">Original approved request</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div></div>
+{% endif %}
+
 {% endblock %}

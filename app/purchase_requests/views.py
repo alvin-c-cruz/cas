@@ -8,10 +8,13 @@ from flask import (Blueprint, render_template, redirect, url_for, flash,
                    request, session, abort, current_app)
 from flask_login import login_required, current_user
 
+from sqlalchemy.orm import joinedload
+
 from app import db
 from app.purchase_requests.models import (
     PurchaseRequest, PurchaseRequestItem, generate_pr_number)
 from app.purchase_requests.forms import PurchaseRequestForm, PurchaseRequestAmendForm
+from app.amendments.models import DocumentRevision
 from app.amendments.service import write_revision
 from app.amendments.validation import validate_amendment
 from app.users.models import User
@@ -295,12 +298,46 @@ def create():
                            line_items=[], **_common_form_ctx())
 
 
+def _revision_panel_rows(pr):
+    """Rows for the detail page's revision-history panel, newest first.
+
+    ONE query, and one `joinedload` rather than a lazy `amended_by` per row --
+    a relationship access behind a Jinja expression would render an identical
+    page while paying a query per revision, invisible to anyone reading the view.
+
+    `document_type` is part of the filter, not decoration: `document_id` is a
+    plain Integer pointing at eight different tables, so PR id 1 and Purchase
+    Order id 1 are the same number and only the type separates them.
+
+    Flattened to plain dicts so the template cannot reach a relationship at all.
+    """
+    revisions = (DocumentRevision.query
+                 .options(joinedload(DocumentRevision.amended_by))
+                 .filter_by(document_type=PurchaseRequest.DOCUMENT_TYPE,
+                            document_id=pr.id)
+                 .order_by(DocumentRevision.revision_number.desc())
+                 .all())
+    return [{
+        'number': r.revision_number,
+        # Already Philippine local time: amended_at defaults to ph_now() and is
+        # stored on a naive DateTime column, so the offset is dropped on the way
+        # in. Formatting is left to the template's strftime -- passing it through
+        # format_ph_datetime() would treat this naive PH value as UTC and shift
+        # it forward eight hours.
+        'amended_at': r.amended_at,
+        'amended_by': r.amended_by.username if r.amended_by else None,
+        'reason': r.reason,
+    } for r in revisions]
+
+
 @purchase_requests_bp.route('/purchase-requests/<int:id>')
 @login_required
 def view(id):
     pr = _get_pr_or_404(id)
     created_by_user = db.session.get(User, pr.created_by_id) if pr.created_by_id else None
-    return render_template('purchase_requests/detail.html', pr=pr, created_by_user=created_by_user)
+    return render_template('purchase_requests/detail.html', pr=pr,
+                           created_by_user=created_by_user,
+                           revisions=_revision_panel_rows(pr))
 
 
 @purchase_requests_bp.route('/purchase-requests/<int:id>/edit', methods=['GET', 'POST'])
