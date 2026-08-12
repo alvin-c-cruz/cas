@@ -23,9 +23,21 @@
     "reason": null,
     "waived": false
   },
+  "3c68a4ab6e538401d1e694c49f63a1a5fbfd87a5": {
+    "branch": "feat/amendment-slice2",
+    "date": "2026-08-10",
+    "reason": null,
+    "waived": false
+  },
   "3d6acecc7190513c32727ca3d1e30f61b14ff4de": {
     "branch": "fix/so-create-error-keeps-lines",
     "date": "2026-08-05",
+    "reason": null,
+    "waived": false
+  },
+  "3fbf46a0ad362cf607b770ade6e98515f7ddf363": {
+    "branch": "feat/amendment-slice3",
+    "date": "2026-08-12",
     "reason": null,
     "waived": false
   },
@@ -92,6 +104,12 @@
   "aad2b98ccb11e0b88be9d21ad4e03fb5ca391bb9": {
     "branch": "fix/ca-staff-management-nav",
     "date": "2026-08-05",
+    "reason": null,
+    "waived": false
+  },
+  "b9964f3bcaafa95c36e4c45f496a29041644ea60": {
+    "branch": "feat/amendment-slice3",
+    "date": "2026-08-11",
     "reason": null,
     "waived": false
   },
