@@ -1,4 +1,9 @@
 {# Inline "Add Product" quick-add modal for transaction forms. #}
+{# Resolved once: the select, the empty-state notice and the submit button's
+   disabled state all key off the same list. #}
+{% set _pqa_needs_category = module_enabled('product_categories') %}
+{% set _pqa_categories = active_product_categories() if _pqa_needs_category else [] %}
+{% set _pqa_blocked = _pqa_needs_category and not _pqa_categories %}
 <div id="productQuickAddOverlay"
      style="display:none; position:fixed; inset:0; background:var(--backdrop);
             z-index:1200; align-items:flex-start; justify-content:center; overflow:auto; padding:32px 16px;">
@@ -21,6 +26,36 @@
       <input type="hidden" name="default_unit_of_measure_id" value="">
       <input type="hidden" name="default_account_id" value="">
 
+      {# Category, ONLY when the product_categories module is on -- which is
+         exactly when products.create swaps category_id to DataRequired. Without
+         this field that requirement was unsatisfiable, so every "+ Add Product"
+         on every transaction form failed with "Category is required." and no way
+         to supply one. Rendered as a real select (not a hidden blank, as the UOM
+         and account fields above are) precisely because it is mandatory.
+         When the module is off the view relaxes it back to Optional(), so the
+         field is omitted rather than shown-but-empty. #}
+      {% if _pqa_needs_category %}
+        {% if _pqa_categories %}
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label" for="pqa_category">Category <span style="color:var(--alert-error-text);">*</span></label>
+        <select id="pqa_category" name="category_id" class="form-control" required>
+          <option value="">&mdash; Select &mdash;</option>
+          {% for c in _pqa_categories %}
+          <option value="{{ c.id }}">{{ c.code }}: {{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+        {% else %}
+      {# A required select with nothing in it is a dead end: the user can fill
+         every field and still be refused, with no way to comply. Say so, and
+         disable Create rather than let them find out from a server error. #}
+      <div class="alert alert-info" style="margin-bottom:12px;">
+        A category is required for new products, but none have been set up yet.
+        Add one under Product Categories first.
+      </div>
+        {% endif %}
+      {% endif %}
+
       <div class="form-row-2" style="margin-bottom:12px;">
         <div class="form-group">
           <label class="form-label" for="pqa_code">Code <span style="color:var(--alert-error-text);">*</span></label>
@@ -40,7 +75,8 @@
 
       <div style="display:flex; gap:12px; justify-content:flex-end;">
         <button type="button" id="productQuickAddCancel" class="btn btn-secondary">Cancel</button>
-        <button type="submit" id="productQuickAddSubmit" class="btn btn-primary">Create</button>
+        <button type="submit" id="productQuickAddSubmit" class="btn btn-primary"
+                {% if _pqa_blocked %}disabled{% endif %}>Create</button>
       </div>
     </form>
   </div>

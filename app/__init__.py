@@ -142,6 +142,15 @@ def create_app(config_name=None):
     app.jinja_env.globals['module_enabled'] = module_enabled
     app.jinja_env.globals['build_sidebar'] = build_sidebar
 
+    # products/_quick_add_modal.html needs the category list to render its select.
+    # A global, not seven context additions: the partial is included by AP, SI,
+    # CDV, CRV, SO, Quotations and PR, and threading `product_categories` through
+    # every one of their view contexts is exactly the kind of drift that leaves
+    # one form silently broken. Safe to cache/expose -- ProductCategory.to_dict is
+    # column-only and the template reads id/code/name, never a relationship.
+    from app.utils.cache_helpers import get_active_product_categories
+    app.jinja_env.globals['active_product_categories'] = get_active_product_categories
+
     from app.users.utils import role_label
     app.jinja_env.filters['role_label'] = role_label
 
