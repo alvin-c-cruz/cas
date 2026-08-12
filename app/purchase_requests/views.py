@@ -544,7 +544,11 @@ def submit(id):
     pr.submitted_by_id = current_user.id
     pr.submitted_at = ph_now()
     db.session.commit()
-    log_audit(module='purchase_requests', action='update', record_id=pr.id,
+    # action='submit', not 'update': the audit log's Actions filter is built from
+    # the DISTINCT actions present, so a lifecycle event logged as a generic
+    # update is both unfilterable and visually identical to an ordinary edit --
+    # the real event was readable only by opening View Details.
+    log_audit(module='purchase_requests', action='submit', record_id=pr.id,
               record_identifier=pr.pr_number, notes='Submitted')
     flash(f'Purchase Request "{pr.pr_number}" submitted for approval.', 'success')
     return redirect(url_for('purchase_requests.view', id=id))
@@ -594,7 +598,8 @@ def reject(id):
     pr.rejected_at = ph_now()
     pr.reject_reason = reason
     db.session.commit()
-    log_audit(module='purchase_requests', action='update', record_id=pr.id,
+    # action='reject' -- same reason as submit() above.
+    log_audit(module='purchase_requests', action='reject', record_id=pr.id,
               record_identifier=pr.pr_number, notes=f'Rejected: {reason}')
     flash(f'Purchase Request "{pr.pr_number}" rejected.', 'warning')
     return redirect(url_for('purchase_requests.view', id=id))
@@ -618,7 +623,8 @@ def cancel(id):
     pr.cancelled_at = ph_now()
     pr.cancel_reason = reason
     db.session.commit()
-    log_audit(module='purchase_requests', action='update', record_id=pr.id,
+    # action='cancel' -- same reason as submit() above.
+    log_audit(module='purchase_requests', action='cancel', record_id=pr.id,
               record_identifier=pr.pr_number, notes=f'Cancelled: {reason}')
     flash(f'Purchase Request "{pr.pr_number}" cancelled.', 'warning')
     return redirect(url_for('purchase_requests.view', id=id))
@@ -672,6 +678,7 @@ def print_pr(id):
     company = {'name': AppSettings.get_setting('company_name', ''),
                'address': AppSettings.get_setting('company_address', ''),
                'tin': AppSettings.get_setting('company_tin', '')}
+
     return render_template('purchase_requests/print.html', pr=pr, company=company,
                            printed_at=ph_now())
 
