@@ -105,6 +105,64 @@ def _accountant_or_full_access():
     return current_user.role == 'accountant' or current_user.has_full_access
 
 
+# ---------------------------------------------------------------------------
+# Purchase Request printout signatories
+# ---------------------------------------------------------------------------
+# Company-level, NOT per requisition: on the paper form the same three people
+# sign every one. Stored as plain AppSettings rows, so no model change and no
+# migration -- consistent with this module's docstring.
+#
+# Free text on purpose. The signatories are whoever the company designates and
+# are frequently NOT CAS users, so deriving them from created_by/submitted_by/
+# approved_by is wrong -- it printed "System Administrator" three times on a
+# requisition that one admin happened to create, submit and approve.
+PR_SIGNATORY_SLOTS = (1, 2, 3)
+PR_SIGNATORY_DEFAULT_ROLES = ('Prepared by', 'Noted by', 'Approved by')
+
+
+def get_pr_signatories():
+    """[(role, name), ...] for the PR printout.
+
+    A blank name is meaningful: it prints an empty ruled line to sign by hand,
+    which is what an unconfigured instance should produce -- never a placeholder.
+    """
+    out = []
+    for slot, default_role in zip(PR_SIGNATORY_SLOTS, PR_SIGNATORY_DEFAULT_ROLES):
+        role = (AppSettings.get_setting(f'pr_sig{slot}_role') or '').strip() or default_role
+        name = (AppSettings.get_setting(f'pr_sig{slot}_name') or '').strip()
+        out.append((role, name))
+    return out
+
+
+@company_settings_bp.route('/print-signatories', methods=['POST'])
+@login_required
+def save_pr_signatories():
+    if not _accountant_or_full_access():
+        flash('Only Accountants and Administrators can change the signatories.', 'error')
+        return redirect(url_for('dashboard.index'))
+
+    saved = {}
+    for slot, default_role in zip(PR_SIGNATORY_SLOTS, PR_SIGNATORY_DEFAULT_ROLES):
+        name = (request.form.get(f'pr_sig{slot}_name') or '').strip()[:100]
+        role = (request.form.get(f'pr_sig{slot}_role') or '').strip()[:60] or default_role
+        AppSettings.set_setting(f'pr_sig{slot}_name', name, updated_by=current_user.username)
+        AppSettings.set_setting(f'pr_sig{slot}_role', role, updated_by=current_user.username)
+        saved[f'pr_sig{slot}'] = f'{role}: {name}'
+
+    log_audit(module='company_settings', action='update', record_id=None,
+              record_identifier='pr_print_signatories', new_values=saved,
+              user_id=current_user.id)
+    flash('Signatories saved.', 'success')
+
+    # Return to the requisition that was on screen. The id is posted and passed
+    # through url_for rather than redirecting to a submitted URL, so this cannot
+    # be turned into an open redirect.
+    pr_id = request.form.get('pr_id', type=int)
+    if pr_id:
+        return redirect(url_for('purchase_requests.print_pr', id=pr_id))
+    return redirect(url_for('company_settings.edit_settings'))
+
+
 # NOTE: this blueprint is registered with url_prefix='/settings' (see
 # app/__init__.py), so the route string below is '/control-accounts' --
 # it resolves to the full path '/settings/control-accounts', matching the

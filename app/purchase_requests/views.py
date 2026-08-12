@@ -679,7 +679,17 @@ def print_pr(id):
                'address': AppSettings.get_setting('company_address', ''),
                'tin': AppSettings.get_setting('company_tin', '')}
 
+    # Company-level free text, NOT derived from created_by/submitted_by/
+    # approved_by: the designated signatories are often not CAS users at all, and
+    # deriving them printed "System Administrator" three times whenever one admin
+    # created, submitted and approved the same requisition.
+    from app.company_settings.views import get_pr_signatories
+    signatories = get_pr_signatories()
+    can_edit_signatories = (current_user.role == 'accountant'
+                            or current_user.has_full_access)
     return render_template('purchase_requests/print.html', pr=pr, company=company,
+                           signatories=signatories,
+                           can_edit_signatories=can_edit_signatories,
                            printed_at=ph_now())
 
 

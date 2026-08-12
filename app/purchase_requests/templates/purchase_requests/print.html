@@ -4,44 +4,219 @@
   <meta charset="utf-8">
   <title>Purchase Request {{ pr.pr_number }}</title>
   <style>
-    body { font-family: Arial, sans-serif; color: #111; margin: 24px; font-size: 12px; }
-    h1 { font-size: 18px; margin: 0 0 4px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
-    td.num, th.num { text-align: right; }
-    .meta div { margin: 2px 0; }
-    @media print { .no-print { display: none; } }
+    /* Print geometry. Without an explicit @page the browser uses its own default
+       margins, which differ per browser and per OS -- the reason a printout that
+       looked right on screen came out shifted on paper. */
+    @page { size: A4 portrait; margin: 14mm 12mm; }
+
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000;
+           margin: 24px; }
+
+    /* --- letterhead ------------------------------------------------------ */
+    .letterhead { display: flex; align-items: center; gap: 14px;
+                  border-bottom: 2px solid #000; padding-bottom: 10px; }
+    .letterhead img { max-height: 56px; max-width: 180px; object-fit: contain; }
+    .company-name { font-size: 15px; font-weight: 700; letter-spacing: .3px; }
+    .company-sub { font-size: 10px; color: #333; margin-top: 2px; }
+
+    .doc-title { text-align: center; font-size: 14px; font-weight: 700;
+                 letter-spacing: 1.5px; text-transform: uppercase; margin: 14px 0 10px; }
+
+    /* --- header meta box -------------------------------------------------- */
+    table.meta { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    table.meta th, table.meta td { border: 1px solid #000; padding: 4px 6px;
+                                   font-size: 10.5px; vertical-align: top; }
+    table.meta th { background: #f0f0f0; text-align: left; font-weight: 700;
+                    width: 110px; white-space: nowrap; }
+
+    /* --- line items ------------------------------------------------------- */
+    table.lines { width: 100%; border-collapse: collapse; }
+    table.lines th, table.lines td { border: 1px solid #000; padding: 4px 6px; }
+    table.lines th { background: #eee; text-align: left; font-size: 10px;
+                     text-transform: uppercase; letter-spacing: .3px; }
+    table.lines td.num, table.lines th.num { text-align: right; }
+    table.lines td.idx, table.lines th.idx { text-align: center; width: 28px; }
+    /* Zebra striping survives print only with print-color-adjust (below). */
+    table.lines tbody tr:nth-child(even) { background: #fafafa; }
+
+    /* --- signatures ------------------------------------------------------- */
+    .sig-row { margin-top: 42px; display: flex; justify-content: space-between;
+               gap: 36px; }
+    .sig { flex: 1; text-align: center; }
+    .sig .name { min-height: 16px; font-size: 11px; font-weight: 700;
+                 border-bottom: 1px solid #000; padding: 0 4px 3px; }
+    .sig .role { font-size: 9.5px; color: #333; margin-top: 4px;
+                 text-transform: uppercase; letter-spacing: .4px; }
+
+    .printed { margin-top: 22px; font-size: 9px; color: #666; }
+    .no-print { margin-bottom: 12px; }
+
+    /* --- signatory editor (screen only) ----------------------------------- */
+    /* A real HTML modal, not confirm()/prompt(): JS popups are banned app-wide
+       and a native dialog cannot carry a CSRF token anyway. */
+    .sig-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+                 align-items: flex-start; justify-content: center; padding: 40px 16px;
+                 z-index: 100; }
+    .sig-modal.open { display: flex; }
+    .sig-modal .box { background: #fff; border-radius: 6px; padding: 20px 22px;
+                      width: 100%; max-width: 460px; box-shadow: 0 8px 28px rgba(0,0,0,.25); }
+    .sig-modal h2 { font-size: 15px; margin: 0 0 4px; }
+    .sig-modal .hint { font-size: 11px; color: #555; margin: 0 0 14px; }
+    .sig-modal label { display: block; font-size: 10px; font-weight: 700;
+                       text-transform: uppercase; color: #444; margin-bottom: 3px; }
+    .sig-modal input { width: 100%; box-sizing: border-box; padding: 6px 8px;
+                       font: inherit; border: 1px solid #bbb; border-radius: 4px; }
+    .sig-modal .pair { display: flex; gap: 10px; margin-bottom: 12px; }
+    .sig-modal .pair > div:first-child { flex: 0 0 40%; }
+    .sig-modal .pair > div:last-child { flex: 1; }
+    .sig-modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+    @media print {
+      .no-print { display: none; }
+      body { margin: 0; font-size: 10.5px; }
+      /* Repeat the column headings on every page of a long requisition, and
+         never split a line item across the page break. */
+      table.lines thead { display: table-header-group; }
+      table.lines tr { page-break-inside: avoid; }
+      /* Keep the signature block whole -- three ruled lines orphaned onto their
+         own page is the classic print bug for this layout. */
+      .sig-row { page-break-inside: avoid; }
+      /* Chrome/Edge strip backgrounds by default, which would drop the header
+         shading and the zebra striping and flatten the whole table. */
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style>
 </head>
 <body>
-  <div class="no-print" style="margin-bottom:12px">
+  <div class="no-print">
     <button onclick="window.print()">Print</button>
     <button onclick="window.close()">Close</button>
-  </div>
-  {% if company.name %}<div><strong>{{ company.name }}</strong></div>{% endif %}
-  {% if company.address %}<div>{{ company.address }}</div>{% endif %}
-
-  <h1>PURCHASE REQUEST</h1>
-  <div class="meta">
-    <div><strong>PR #:</strong> {{ pr.pr_number }}</div>
-    <div><strong>Date:</strong> {{ pr.request_date.strftime('%B %d, %Y') if pr.request_date else '' }}</div>
-    {% if pr.reason %}<div><strong>Reason:</strong> {{ pr.reason }}</div>{% endif %}
+    {% if can_edit_signatories %}
+    <button type="button" id="sigModifyBtn">Modify signatories</button>
+    {% endif %}
   </div>
 
-  <table>
-    <thead><tr><th>#</th><th>Item</th><th class="num">Qty</th><th>UoM</th></tr></thead>
+  {# Letterhead. `company_logo` is injected into EVERY template by the
+     inject_company_info context processor, so a standalone print template gets it
+     without extending base.html -- which is the only reason the logo never showed
+     here. It holds the stored FILENAME; the bytes come from the company_settings
+     .logo route, the same one the sidebar uses. Nothing is hardcoded: each client
+     instance uploads its own under Company Settings, and an instance that has not
+     uploaded one simply renders no <img>. #}
+  <div class="letterhead">
+    {% if company_logo %}
+    <img src="{{ url_for('company_settings.logo') }}" alt="{{ company.name }} logo">
+    {% endif %}
+    <div>
+      {% if company.name %}<div class="company-name">{{ company.name }}</div>{% endif %}
+      {% if company.address or company.tin %}
+      <div class="company-sub">
+        {{ company.address }}{% if company.address and company.tin %} &middot; {% endif %}{% if company.tin %}TIN: {{ company.tin }}{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="doc-title">Purchase Request</div>
+
+  <table class="meta">
+    <tr>
+      <th>PR #</th><td>{{ pr.pr_number }}</td>
+      <th>Date</th><td>{{ pr.request_date.strftime('%B %d, %Y') if pr.request_date else '' }}</td>
+    </tr>
+    {% if pr.reason %}
+    <tr><th>Reason</th><td colspan="3">{{ pr.reason }}</td></tr>
+    {% endif %}
+  </table>
+
+  <table class="lines">
+    <thead>
+      <tr>
+        <th class="idx">#</th>
+        <th style="width: 42%;">Item</th>
+        <th class="num" style="width: 12%;">Qty</th>
+        <th style="width: 10%;">UoM</th>
+        <th style="width: 32%;">Remarks</th>
+      </tr>
+    </thead>
     <tbody>
       {% for li in pr.line_items %}
       <tr>
-        <td>{{ li.line_number }}</td>
+        <td class="idx">{{ li.line_number }}</td>
         <td>{{ li.product.name if li.product else li.description }}</td>
         <td class="num">{{ '{:,.4f}'.format(li.quantity) if li.quantity is not none else '-' }}</td>
         <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
+        {# Only when a product carries the Item cell. A line with NO product falls
+           back to `description` for Item, so printing it here too would repeat the
+           same text twice across the row. #}
+        <td>{{ li.description if li.product else '' }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <div class="meta" style="margin-top:24px">Printed {{ printed_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+  {# Signature block, mirroring the three on PhilGen's paper form. A blank name
+     prints an empty ruled line to sign by hand -- correct for an instance that
+     has not set its signatories, and never a placeholder. #}
+  <div class="sig-row">
+    {% for role, name in signatories %}
+    <div class="sig">
+      <div class="name">{{ name }}</div>
+      <div class="role">{{ role }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="printed">Printed {{ printed_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+
+  {% if can_edit_signatories %}
+  <div class="sig-modal no-print" id="sigModal">
+    <div class="box">
+      <h2>Signatories</h2>
+      <p class="hint">Company-wide &mdash; these appear on every printed Purchase
+        Request. Leave a name blank to print an empty line to sign by hand.</p>
+      <form method="POST" action="{{ url_for('company_settings.save_pr_signatories') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {# Posted as an id and rebuilt with url_for on the server, so returning
+           to this page cannot become an open redirect. #}
+        <input type="hidden" name="pr_id" value="{{ pr.id }}">
+        {% for role, name in signatories %}
+        <div class="pair">
+          <div>
+            <label for="sig{{ loop.index }}role">Label</label>
+            <input id="sig{{ loop.index }}role" name="pr_sig{{ loop.index }}_role"
+                   value="{{ role }}" maxlength="60">
+          </div>
+          <div>
+            <label for="sig{{ loop.index }}name">Name</label>
+            <input id="sig{{ loop.index }}name" name="pr_sig{{ loop.index }}_name"
+                   value="{{ name }}" maxlength="100">
+          </div>
+        </div>
+        {% endfor %}
+        <div class="actions">
+          <button type="button" id="sigCancelBtn">Cancel</button>
+          <button type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var modal = document.getElementById('sigModal');
+      var open  = document.getElementById('sigModifyBtn');
+      var close = document.getElementById('sigCancelBtn');
+      if (!modal || !open) return;
+      open.addEventListener('click', function () { modal.classList.add('open'); });
+      close.addEventListener('click', function () { modal.classList.remove('open'); });
+      modal.addEventListener('click', function (e) {
+        if (e.target === modal) modal.classList.remove('open');
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') modal.classList.remove('open');
+      });
+    })();
+  </script>
+  {% endif %}
 </body>
 </html>
