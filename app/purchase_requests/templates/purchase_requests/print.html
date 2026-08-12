@@ -144,7 +144,9 @@
       <tr>
         <td class="idx">{{ li.line_number }}</td>
         <td>{{ li.product.name if li.product else li.description }}</td>
-        <td class="num">{{ '{:,.4f}'.format(li.quantity) if li.quantity is not none else '-' }}</td>
+        {# qty_fmt: whole number for piece UoMs, 4 decimals otherwise -- the same
+           filter SI, SO, DR and Quotations already use. #}
+        <td class="num">{{ li | qty_fmt('-') }}</td>
         <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
         {# Only when a product carries the Item cell. A line with NO product falls
            back to `description` for Item, so printing it here too would repeat the

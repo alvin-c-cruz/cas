@@ -52,7 +52,7 @@
         <tr>
           <td>{{ li.line_number }}</td>
           <td>{{ li.product.name if li.product else li.description }}</td>
-          <td class="text-end">{{ '{:,.4f}'.format(li.quantity) if li.quantity is not none else '-' }}</td>
+          <td class="text-end">{{ li | qty_fmt('-') }}</td>
           <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
         </tr>
         {% endfor %}
