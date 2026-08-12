@@ -149,6 +149,37 @@
     min-width: 320px;
 }
 
+/* ── Purchase Request picker dropdowns ───────────────────────────────────── */
+/* transactions.css tries to compact these with
+   `.choices__list--dropdown .choices__item { padding: 6px 10px }`, but that is
+   specificity (0,2,0) and Choices' own grouped selector
+   `.choices__list[aria-expanded] .choices__item` is (0,3,0) -- so the compact
+   padding LOSES and the stock `padding: 10px 100px 10px 10px; font-size: 14px`
+   wins. Only `white-space: nowrap` (uncontested) applied, which is what forced
+   a horizontal scrollbar and clipped long product names.
+   The `.page-*` prefix is this file's established answer, per the note on the
+   vendor/customer block below: it lifts these to (0,3,0), and equal specificity
+   resolves by load order -- this file loads after choices.min.css, so it wins.
+   Scoped to the PR page on purpose: AP and SI carry the same latent issue, but
+   changing their shipped dropdowns is a separate decision. */
+.page-purchase-request .choices__list--dropdown .choices__item,
+.page-purchase-request .choices__list--dropdown .choices__item--selectable {
+    padding: 6px 10px;
+    font-size: 13px;
+    /* normal, not nowrap: a 40-character product name otherwise scrolls
+       sideways behind a scrollbar instead of simply wrapping. */
+    white-space: normal;
+}
+
+/* ── A card whose only content is the line-item grid ─────────────────────── */
+/* `.card` sets `overflow: hidden` (for its rounded corners), which also clips
+   absolutely-positioned descendants. On AP/SI that never shows, because their
+   card is the whole voucher and a ~340px picker dropdown still falls inside it.
+   A card that holds ONLY the grid ends just below the last row, so the product
+   and UOM dropdowns get sliced off -- they open as an empty white box. Opt such
+   a card out; there is nothing in it that needs clipping. */
+.card--lines { overflow: visible; }
+
 /* ── Line items table ────────────────────────────────────────────────────── */
 #lineItemsTable { border-collapse: collapse; }
 #lineItemsTable thead th {

@@ -2,6 +2,24 @@
 {% block title %}{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Request{% endblock %}
 {% block page_title %}{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Request{% endblock %}
 {% block content %}
+{# Choices' own stylesheet, which this template never loaded. Without it the
+   enhanced picker has no display:none on its dropdown, so the whole option list
+   renders inline and permanently expanded. It went unnoticed while the scripts
+   loaded AFTER the inline block: initSearchSelect did not exist yet, enhancement
+   silently no-op'd, and the plain select looked fine. Accounts Payable loads it
+   the same way. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+{# transactions.css carries the .choices* treatment (inner border, hover/focus,
+   dropdown item states) and .li-btn-action that give the AP/SI grids their look.
+   Its other rules -- .bsr*, .form-main-grid, .left-col-fields -- match nothing
+   in this template and are inert here. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=3">
+{# accounts_payable_form.css is the SHARED line-item grid stylesheet, not an AP
+   private one: Sales Invoice already loads it for exactly this reason. Its
+   #lineItemsTable rules are why this table is named lineItemsTable rather than
+   something PR-specific. A third stylesheet duplicating those rules is how the
+   three documents drift apart. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=9">
 <div class="page-header">
   <h1>{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Request</h1>
   <a href="{{ url_for('purchase_requests.list_pr') }}" class="btn btn-secondary btn-sm">Back to list</a>
@@ -22,29 +40,65 @@
   <input type="hidden" name="line_items" id="prLinesJson" value="[]">
 
   <div class="card"><div class="card-body">
-    <div class="form-grid">
+    {# form-row-2, NOT form-grid: `.form-grid` is not defined in style.css at all,
+       so it rendered as a plain block and stacked these two fields. form-row-2 is
+       the app's established two-up form row (accounts, bank_accounts, and others
+       use it) and carries its own tokens/gap. #}
+    <div class="form-row-2">
+      <div class="form-group">{{ form.request_date.label }} {{ form.request_date(class="form-control") }}</div>
       <div class="form-group">{{ form.pr_number.label }}
         {# An amendment revises a requisition, it does not renumber it. The route
            never reassigns pr_number either -- this is the visible half of that. #}
         {% if amend_mode %}{{ form.pr_number(class="form-control", readonly=true) }}
         {% else %}{{ form.pr_number(class="form-control") }}{% endif %}</div>
-      <div class="form-group">{{ form.request_date.label }} {{ form.request_date(class="form-control") }}</div>
     </div>
     <div class="form-group">{{ form.reason.label }} {{ form.reason(class="form-control", rows=2) }}</div>
   </div></div>
 
-  <div class="card"><div class="card-body">
+  {# card--lines: this card holds ONLY the grid, so it ends just below the last
+     row and `.card`'s own `overflow: hidden` would slice the picker dropdowns
+     off. AP/SI never hit this because their card is the entire voucher. #}
+  <div class="card card--lines page-purchase-request"><div class="card-body">
     <h3>Requested Items</h3>
-    <p class="text-muted">Enter a product (from the catalog) or a free-text description for each item. No prices — the buyer sets those on the Purchase Order.</p>
-    <div class="table-responsive">
-      <table class="table" id="prTable">
+    {# Grid follows the Accounts Payable voucher and Sales Invoice: same table id
+       (so the shared #lineItemsTable rules apply), percentage-width headers,
+       borderless transparent inputs, right-aligned monospace quantity, and the
+       shared .li-btn-action remove button.
+
+       TWO DELIBERATE DIFFERENCES, both owner directives:
+         * No leading "#" row-number column. SI has one, AP does not; AP was
+           chosen.
+         * Remarks sits LAST rather than in AP/SI's leading Description slot.
+       A requisition carries no money, so AP's UP / Amount / VT / WT / Account
+       Title columns have no analogue here. #}
+    {# NO .table-responsive wrapper -- AP and SI both use a plain div, and this is
+       why. `.table-responsive` is `overflow-x: auto`, and a box that scrolls on one
+       axis computes `auto` on the other too, so it becomes a scroll container that
+       clips its children VERTICALLY as well. The Choices dropdown is absolutely
+       positioned and needs ~339px it does not have (the wrapper is only as tall as
+       the table, 63px), so the product/UOM lists opened as an empty white box with
+       all 549 options present in the DOM but painted nowhere.
+       style.css's own note on the rule says as much: it is scoped to card-bodies
+       holding a data table "so form cards with dropdown menus are unaffected". #}
+    <div>
+      <table class="table" id="lineItemsTable">
         <thead>
-          <tr><th>Product</th><th>Description</th><th>Qty</th><th>UoM</th><th></th></tr>
+          <tr>
+            <th style="width: 34%;">Product</th>
+            {# 12%, not AP's 6%: quantity is Numeric(15, 4) and renders
+               comma-grouped, so "1,250.5555" needs ~95px or it clips. AP can
+               afford 6% only because ten columns are competing for the width;
+               four columns leave the room to show the number in full. #}
+            <th style="width: 12%; text-align: right;">Qty</th>
+            <th style="width: 10%;">UOM</th>
+            <th style="width: 40%;">Remarks</th>
+            <th style="width: 4%;"></th>
+          </tr>
         </thead>
-        <tbody id="prBody"></tbody>
+        <tbody id="lineItemsBody"></tbody>
       </table>
     </div>
-    <button type="button" class="btn btn-secondary btn-sm" id="addLineBtn">+ Add item</button>
+    <button type="button" class="btn btn-secondary" id="addLineBtn">+ Add Line Item</button>
   </div></div>
 
   {% if amend_mode %}
@@ -68,14 +122,75 @@
   </div>
 </form>
 
+{# Quick-add modals, exactly as AP/SI/CDV/CRV include them. Each partial is
+   self-contained (its own overlay, form and error box) and posts by XHR to
+   products.create / units_of_measure.create. #}
+{% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}
+{% if module_enabled('units_of_measure') %}{% include "units_of_measure/_quick_add_modal.html" %}{% endif %}
+
+{# Choices + search-select must load BEFORE the inline script: addRow() runs
+   during it, and an unenhanced select is what you get if initSearchSelect is
+   not defined yet. Accounts Payable loads them first for the same reason. #}
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='transaction-utils.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
+{% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=1"></script>{% endif %}
+{% if module_enabled('units_of_measure') %}<script src="{{ url_for('static', filename='uom-quick-add.js') }}?v=1"></script>{% endif %}
 <script>
   const PRODUCTS = {{ products | tojson }};
+  const UNITS    = {{ units | tojson }};
   const EXISTING = {{ line_items | tojson }};
 
+  // The quick-add option only makes sense when the master module is on -- with
+  // it off there is no list to add to and products.create is not reachable.
+  const productMasterOn = {{ module_enabled('products') | tojson }};
+  const uomMasterOn     = {{ module_enabled('units_of_measure') | tojson }};
+
+  // Sentinel option values. They live in the <select> like any other option, so
+  // the submit serialiser has to refuse them explicitly -- see its guard.
+  const ADD_PRODUCT = '__add_product__';
+  const ADD_UOM     = '__add_uom__';
+
+  // escHtml comes from transaction-utils.js, as it does in AP and SI. The old
+  // hand-rolled `.replace(/"/g, '&quot;')` escaped the quote only, so a code or
+  // name containing & or < rendered mangled.
   function productOptions(sel) {
-    let o = '<option value="">-- none --</option>';
-    PRODUCTS.forEach(p => { o += `<option value="${p.id}"${p.id==sel?' selected':''}>${p.code} - ${p.name}</option>`; });
+    let o = '<option value="">—</option>';
+    PRODUCTS.forEach(p => {
+      o += `<option value="${p.id}"${p.id==sel?' selected':''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`;
+    });
     return o;
+  }
+  function uomOptions(sel) {
+    let o = '<option value="">—</option>';
+    UNITS.forEach(u => {
+      o += `<option value="${u.id}"${u.id==sel?' selected':''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`;
+    });
+    return o;
+  }
+
+  // AP and SI render quantity as a comma-grouped TEXT input (amtFmt/amtFocus/
+  // qtyBlur), not a spinner. Those two helpers cannot be reused verbatim here:
+  //   * amtFocus/amtFmt are fixed at 2 decimals, but PurchaseRequestItem.quantity
+  //     is Numeric(15, 4) -- reusing them would silently round 0.5555 to 0.56 on
+  //     the way in AND on the way out.
+  //   * qtyBlur calls updateLineItem()/updateDerivedAmount(), the AP/SI line-state
+  //     machinery. This form has none: it serialises straight off the DOM at
+  //     submit, because a requisition has no amounts to recompute.
+  // So: same look and same keystroke behaviour, at the column's real precision.
+  function prQtyFmt(n) {
+    const v = Number(n);
+    if (!isFinite(v)) return '';
+    return v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  }
+  function prQtyFocus(el) {
+    const n = parseFloat(el.value.replace(/,/g, ''));
+    el.value = isFinite(n) ? String(n) : '';
+    el.select();
+  }
+  function prQtyBlur(el) {
+    const n = parseFloat(el.value.replace(/,/g, ''));
+    el.value = isFinite(n) ? prQtyFmt(n) : '';
   }
   // Line identity. BOTH halves of the fallback are load-bearing:
   //   * `id`          -- the FIRST render, where lines come from to_dict().
@@ -95,35 +210,131 @@
     // Guarded: an unconditional write stores the string "null" for a hand-added
     // row, which the applier would then try to resolve as an id.
     if (prItemId != null) tr.dataset.prItemId = prItemId;
+    // Cell markup mirrors AP/SI line-for-line: the same inline
+    // `border:none; background:transparent` on the inputs, the same
+    // `text-align:right; font-family:var(--mono)` quantity, the same
+    // `padding-left:0` on the free-text cell, and the shared .li-btn-action
+    // remove button (transactions.css) rather than a btn-danger "x".
+    // The pr-* CLASS NAMES are unchanged -- the submit serialiser and the amend
+    // line-identity tests read rows by those classes, not by column position.
     tr.innerHTML =
       `<td><select class="form-control pr-product">${productOptions(d.product_id)}</select></td>`
-    + `<td><input class="form-control pr-desc" value="${(d.description||'').replace(/"/g,'&quot;')}"></td>`
-    + `<td><input class="form-control pr-qty" type="number" step="0.0001" value="${d.quantity ?? ''}"></td>`
-    + `<td><input class="form-control pr-uom" value="${(d.uom_text||d.uom_display||'').replace(/"/g,'&quot;')}"></td>`
-    + `<td><button type="button" class="btn btn-sm btn-danger pr-del">x</button></td>`;
-    document.getElementById('prBody').appendChild(tr);
-    const sel = tr.querySelector('.pr-product');
-    if (sel && typeof initSearchSelect === 'function') {
-      initSearchSelect(sel);
+    + `<td><input type="text" class="form-control pr-qty"`
+    + ` style="text-align:right; font-family:var(--mono); border:none; background:transparent;"`
+    + ` value="${d.quantity != null ? prQtyFmt(d.quantity) : ''}"`
+    + ` onfocus="prQtyFocus(this)" onblur="prQtyBlur(this)"></td>`
+    + `<td><select class="form-control pr-uom">${uomOptions(d.unit_of_measure_id)}</select></td>`
+    + `<td><input type="text" class="form-control pr-desc"`
+    + ` style="border:none; background:transparent; padding-left:0;"`
+    + ` value="${escHtml(d.description || '')}"></td>`
+    + `<td style="text-align:center;">`
+    + `<button type="button" class="li-btn-action pr-del" title="Remove line">\u{1F5D1}</button></td>`;
+    document.getElementById('lineItemsBody').appendChild(tr);
+    enhance(tr);
+  }
+
+  // initSearchSelect's own `addAction` is used rather than AP's hand-rolled
+  // `__add_product__` <option> + change-listener. It pins the action to the top
+  // of the list AND re-injects a clickable fallback when the search filter would
+  // drop it -- i.e. when you have typed a name that matches nothing, which is
+  // exactly the moment you want to add one. It also restores the previously
+  // selected value afterwards, so cancelling the modal does not blank the cell.
+  function enhance(tr) {
+    if (typeof initSearchSelect !== 'function') return;
+
+    // The addAction blocks are gated in JINJA, not at runtime: with the module
+    // off there is no modal in the DOM and products.create is unreachable, so
+    // emitting a handler that offers to open one is dead weight.
+    // NOTE: do not name the add-action labels in a comment here. A JS comment is
+    // served in the response body, so it defeats the module-gating absence tests
+    // in test_pr_form_quick_add.py -- which is exactly how this comment first
+    // failed them.
+    const prodSel = tr.querySelector('.pr-product');
+    if (prodSel && !prodSel.closest('.choices')) {
+      const prodC = initSearchSelect(prodSel, {
+        {% if module_enabled('products') %}
+        addAction: {
+          value: ADD_PRODUCT,
+          label: '+ Add Product',
+          onSelect: function () {
+            openProductModal(null, function (p) {
+              PRODUCTS.push(p);          // so LATER rows list it too
+              // Raw text, NOT escHtml'd: initSearchSelect runs Choices with
+              // allowHTML:false, which escapes once itself. Pre-escaping here
+              // renders "A &amp; B" literally -- verified with a product named
+              // "Probe Unit A & B", which displays correctly this way.
+              prodC.setChoices([{value: String(p.id), label: p.code + ': ' + p.name}],
+                               'value', 'label', false);
+              prodC.setChoiceByValue(String(p.id));
+            });
+          },
+        },
+        {% endif %}
+      });
+    }
+
+    const uomSel = tr.querySelector('.pr-uom');
+    if (uomSel && !uomSel.closest('.choices')) {
+      const uomC = initSearchSelect(uomSel, {
+        {% if module_enabled('units_of_measure') %}
+        addAction: {
+          value: ADD_UOM,
+          label: '+ Add UOM',
+          onSelect: function () {
+            openUomModal(null, function (u) {
+              UNITS.push(u);
+              uomC.setChoices([{value: String(u.id), label: u.code + ': ' + u.name}],
+                              'value', 'label', false);
+              uomC.setChoiceByValue(String(u.id));
+            });
+          },
+        },
+        {% endif %}
+      });
     }
   }
-  document.addEventListener('click', e => { if (e.target.classList.contains('pr-del')) e.target.closest('tr').remove(); });
+
+  document.addEventListener('click', e => {
+    if (e.target.classList.contains('pr-del')) e.target.closest('tr').remove();
+  });
   document.getElementById('addLineBtn').addEventListener('click', () => addRow());
   document.getElementById('prForm').addEventListener('submit', () => {
     const rows = [];
-    document.querySelectorAll('#prBody tr').forEach(tr => {
+    // The add-action sentinels are real <option> values sitting in the selects.
+    // initSearchSelect restores the prior value after firing onSelect, so they
+    // should never be current at submit time -- but if one ever were (modal
+    // dismissed mid-flight, a future refactor), '__add_product__' would be
+    // POSTed where an integer id belongs. Refuse them here rather than trust it.
+    const realValue = v => (!v || v === ADD_PRODUCT || v === ADD_UOM) ? null : v;
+    document.querySelectorAll('#lineItemsBody tr').forEach(tr => {
       rows.push({
         pr_item_id: tr.dataset.prItemId != null ? tr.dataset.prItemId : null,
-        product_id: tr.querySelector('.pr-product').value || null,
+        product_id: realValue(tr.querySelector('.pr-product').value),
         description: tr.querySelector('.pr-desc').value || null,
-        quantity: tr.querySelector('.pr-qty').value || null,
-        uom_text: tr.querySelector('.pr-uom').value || null,
+        // Commas stripped: the field is now a comma-GROUPED text input (AP/SI
+        // convention), so "1,250" would otherwise reach the server verbatim and
+        // fail to parse as a quantity.
+        quantity: tr.querySelector('.pr-qty').value.replace(/,/g, '').trim() || null,
+        // uom_id, NOT uom_text: .pr-uom is now a picker off the UoM master, so
+        // its value is a units_of_measure id. Sending it as uom_text would write
+        // the id string into a free-text column and lose the FK entirely.
+        // _parse_and_attach_pr_lines reads uom_id -> unit_of_measure_id, and
+        // to_dict()'s uom_display prefers the related code over uom_text.
+        uom_id: realValue(tr.querySelector('.pr-uom').value),
       });
     });
     document.getElementById('prLinesJson').value = JSON.stringify(rows);
   });
-  (EXISTING && EXISTING.length ? EXISTING : []).forEach(addRow);
+  // Start with one blank row so the grid is usable on first load -- a bare
+  // "+ Add item" button over an empty table reads as "there is nothing to fill
+  // in". A blank row costs nothing on submit: _parse_and_attach_pr_lines skips
+  // a line with no product, description AND quantity, and still raises
+  // 'Add at least one requested item.' if that leaves none.
+  // Quick-add wiring must exist before the first row is enhanced: each row's
+  // addAction closure calls openProductModal/openUomModal, which these define.
+  if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
+  if (uomMasterOn     && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
+
+  (EXISTING && EXISTING.length ? EXISTING : [{}]).forEach(addRow);
 </script>
-<script src="{{ url_for('static', filename='choices.min.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
 {% endblock %}
