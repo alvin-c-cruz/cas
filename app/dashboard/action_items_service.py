@@ -22,17 +22,67 @@ from app.permission_requests.models import PermissionChangeRequest
 
 
 def _draft_sources():
-    """(label, icon, Model, document-number attr, edit-url template)."""
+    """(label, icon, Model, document-number attr, edit-url template, module key).
+
+    The module key is None for a CORE module -- one every instance has, which is
+    why the original four needed no gate at all. An OPTIONAL module must name its
+    key: `purchase_requests` ships default_enabled=False and per_user=True, so
+    without a gate Action Items would report requisitions from a module the
+    instance never enabled, or that this user cannot open, and link to an edit
+    route the module guard then refuses. Action Items must never be a side
+    channel around a gate the rest of the app enforces.
+    """
     from app.accounts_payable.models import AccountsPayable
     from app.cash_disbursements.models import CashDisbursementVoucher
     from app.cash_receipts.models import CashReceiptVoucher
+    from app.purchase_requests.models import PurchaseRequest
     from app.sales_invoices.models import SalesInvoice
     return [
-        ('Accounts Payable', '🧾', AccountsPayable, 'ap_number', '/accounts-payable/{id}/edit'),
-        ('Cash Disbursement', '💸', CashDisbursementVoucher, 'cdv_number', '/cash-disbursements/{id}/edit'),
-        ('Cash Receipt', '💰', CashReceiptVoucher, 'crv_number', '/cash-receipts/{id}/edit'),
-        ('Sales Invoice', '📄', SalesInvoice, 'invoice_number', '/sales-invoices/{id}/edit'),
+        # Ordered along the Procure-to-Pay chain, as MODULE_REGISTRY is.
+        ('Purchase Request', '📝', PurchaseRequest, 'pr_number', '/purchase-requests/{id}/edit', 'purchase_requests'),
+        ('Accounts Payable', '🧾', AccountsPayable, 'ap_number', '/accounts-payable/{id}/edit', None),
+        ('Cash Disbursement', '💸', CashDisbursementVoucher, 'cdv_number', '/cash-disbursements/{id}/edit', None),
+        ('Cash Receipt', '💰', CashReceiptVoucher, 'crv_number', '/cash-receipts/{id}/edit', None),
+        ('Sales Invoice', '📄', SalesInvoice, 'invoice_number', '/sales-invoices/{id}/edit', None),
     ]
+
+
+def _visible_draft_sources(user):
+    """Draft sources this user may actually see, optional modules gated.
+
+    can_access_module(), NOT module_enabled(): the former checks the instance
+    package gate AND the per-user book permission (admins bypass the latter),
+    which is the same pair every guarded route applies.
+    """
+    from app.users.module_access import can_access_module
+    return [src for src in _draft_sources()
+            if src[5] is None or can_access_module(user, src[5])]
+
+
+def _user_display(user_id):
+    """Full name for a user id, or an em dash."""
+    if not user_id:
+        return '—'
+    from app import db
+    from app.users.models import User
+    user = db.session.get(User, user_id)
+    return user.full_name if user else '—'
+
+
+def _creator_name(doc):
+    """Who to chase about this draft.
+
+    Four of the five source models declare a `created_by` relationship;
+    PurchaseRequest declares only the `created_by_id` COLUMN, which is why its
+    own detail view resolves the user by hand. Without this fallback a PR row
+    renders 'by —' while every sibling row names someone, and the column stops
+    meaning anything. Adding the missing relationship to the model is the
+    tidier fix, but that is a models.py change and needs sign-off.
+    """
+    creator = getattr(doc, 'created_by', None)
+    if creator is not None:
+        return creator.full_name
+    return _user_display(getattr(doc, 'created_by_id', None))
 
 
 def _draft_query(Model, user, branch_id):
@@ -49,7 +99,7 @@ def gather_draft_items(user, branch_id):
     if not user or user.role == 'viewer' or not branch_id:
         return []
     items = []
-    for label, icon, Model, num_attr, edit_tmpl in _draft_sources():
+    for label, icon, Model, num_attr, edit_tmpl, _key in _visible_draft_sources(user):
         for doc in _draft_query(Model, user, branch_id).order_by(Model.id.desc()).all():
             created = getattr(doc, 'created_at', None)
             items.append({
@@ -57,10 +107,64 @@ def gather_draft_items(user, branch_id):
                 'icon': icon,
                 'id': getattr(doc, num_attr, None) or '#{}'.format(doc.id),
                 'desc': 'Unposted draft — continue editing to post it.',
-                'by': doc.created_by.full_name if getattr(doc, 'created_by', None) else '—',
+                'by': _creator_name(doc),
                 'when': created.strftime('%Y-%m-%d %H:%M') if created else '—',
                 'state': 'Draft',
                 'editUrl': edit_tmpl.format(id=doc.id),
+            })
+    return items
+
+
+def _document_approval_sources():
+    """(label, icon, Model, number attr, review-url template, module key).
+
+    DOCUMENT approvals, as distinct from the master-data change requests below.
+    Action Items had no notion of these at all: submitting a requisition removed
+    it from Drafts (which filters status='draft') and nothing picked it up, so
+    the one state that actually needs somebody's attention was the one state the
+    page could not see.
+    """
+    from app.purchase_requests.models import PurchaseRequest
+    return [
+        ('Purchase Request', '📝', PurchaseRequest, 'pr_number',
+         '/purchase-requests/{id}', 'purchase_requests'),
+    ]
+
+
+def _can_approve_documents(user):
+    """Mirrors purchase_requests.views._approve_gate.
+
+    The audience is the APPROVER, not everyone with module access: submitting is
+    open to staff, but approving is accountant/full-access only. An item the
+    reader cannot action is noise on the page that exists to say "do this".
+    """
+    return bool(user) and (user.has_full_access or user.role == 'accountant')
+
+
+def gather_document_approval_items(user, branch_id):
+    """Submitted documents awaiting this user's approval, in the current branch."""
+    if not user or not branch_id or not _can_approve_documents(user):
+        return []
+    from app.users.module_access import can_access_module
+
+    items = []
+    for label, icon, Model, num_attr, url_tmpl, key in _document_approval_sources():
+        if key and not can_access_module(user, key):
+            continue
+        docs = (Model.query.filter_by(status='submitted', branch_id=branch_id)
+                .order_by(Model.id.desc()).all())
+        for doc in docs:
+            submitted_at = getattr(doc, 'submitted_at', None)
+            items.append({
+                'type': label,
+                'icon': icon,
+                'id': getattr(doc, num_attr, None) or '#{}'.format(doc.id),
+                'desc': 'Submitted for approval.',
+                'by': _user_display(getattr(doc, 'submitted_by_id', None)),
+                'when': submitted_at.strftime('%Y-%m-%d %H:%M') if submitted_at else '—',
+                'state': 'Submitted',
+                'reason': None,
+                'reviewUrl': url_tmpl.format(id=doc.id),
             })
     return items
 
@@ -196,9 +300,15 @@ def count_action_items(user, branch_id):
         return 0
     n = 0
     if branch_id:
-        for _label, _icon, Model, _num, _edit in _draft_sources():
+        # _visible_draft_sources, same as the list: gating one path and not the
+        # other gives a badge that counts an item the page refuses to show.
+        for _label, _icon, Model, _num, _edit, _key in _visible_draft_sources(user):
             n += _draft_query(Model, user, branch_id).count()
         n += len(gather_incoming_transfer_items(user, branch_id))
+        # Documents awaiting approval. Counted here as well as listed, or the
+        # badge says 1 while the page shows 2 -- the same list/badge divergence
+        # the draft sources guard against.
+        n += len(gather_document_approval_items(user, branch_id))
     if user.has_full_access or user.role == 'accountant':
         n += AccountChangeRequest.query.filter_by(status='pending').count()
         n += VATCategoryChangeRequest.query.filter_by(status='pending').count()

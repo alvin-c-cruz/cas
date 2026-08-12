@@ -2,7 +2,9 @@ import json
 import calendar
 from flask import Blueprint, render_template, redirect, url_for, jsonify, request, session, flash
 from flask_login import login_required, current_user
-from app.dashboard.action_items_service import gather_draft_items, gather_approval_items, gather_incoming_transfer_items
+from app.dashboard.action_items_service import (gather_draft_items, gather_approval_items,
+                                                gather_incoming_transfer_items,
+                                                gather_document_approval_items)
 from datetime import datetime
 from app.utils import ph_now
 from app.accounts.approval_models import AccountChangeRequest
@@ -111,7 +113,11 @@ def action_items():
 
     branch_id = session.get('selected_branch_id')
     draft_items = gather_draft_items(current_user, branch_id) + gather_incoming_transfer_items(current_user, branch_id)
-    approval_items = gather_approval_items(current_user)
+    # Documents awaiting approval share the "For Approval" panel with master-data
+    # change requests: both answer "what is waiting on me?", and the panel's
+    # action_row macro already renders a Review link from reviewUrl.
+    approval_items = (gather_document_approval_items(current_user, branch_id)
+                      + gather_approval_items(current_user))
     return render_template('dashboard/action_items.html',
                            draft_items=draft_items, approval_items=approval_items)
 
@@ -125,6 +131,7 @@ def get_action_items():
     branch_id = session.get('selected_branch_id')
     items = (gather_draft_items(current_user, branch_id)
              + gather_incoming_transfer_items(current_user, branch_id)
+             + gather_document_approval_items(current_user, branch_id)
              + gather_approval_items(current_user))
     return jsonify(items)
 

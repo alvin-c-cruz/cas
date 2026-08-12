@@ -45,7 +45,9 @@
     <div class="card-header">
         <div>
             <div class="card-title">For Approval</div>
-            <div class="card-sub">{{ approval_items|length }} pending change request{{ 's' if approval_items|length != 1 else '' }}</div>
+            {# "item", not "change request": this panel now also carries submitted
+               DOCUMENTS awaiting approval, not just master-data change requests. #}
+            <div class="card-sub">{{ approval_items|length }} item{{ 's' if approval_items|length != 1 else '' }} awaiting approval</div>
         </div>
     </div>
     {% if approval_items %}
