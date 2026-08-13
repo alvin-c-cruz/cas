@@ -29,6 +29,11 @@ purchase_requests_bp = Blueprint('purchase_requests', __name__, template_folder=
 
 VALID_PR_STATUSES = {'draft', 'submitted', 'approved', 'rejected', 'converted', 'cancelled'}
 
+# The printed requisition pads to this many line rows so every sheet is the same
+# shape -- the signature block lands in the same place and the spare ruled rows
+# give somewhere to add an item by hand. A MINIMUM, never a cap.
+PRINT_MIN_ROWS = 20
+
 
 # -- gates ---------------------------------------------------------------------
 
@@ -690,6 +695,7 @@ def print_pr(id):
     return render_template('purchase_requests/print.html', pr=pr, company=company,
                            signatories=signatories,
                            can_edit_signatories=can_edit_signatories,
+                           PRINT_MIN_ROWS=PRINT_MIN_ROWS,
                            printed_at=ph_now())
 
 

@@ -38,6 +38,10 @@
     table.lines td.idx, table.lines th.idx { text-align: center; width: 28px; }
     /* Zebra striping survives print only with print-color-adjust (below). */
     table.lines tbody tr:nth-child(even) { background: #fafafa; }
+    /* Filler rows keep the grid a fixed height. An empty <td> collapses, so the
+       height is set here rather than padded with &nbsp; in the markup -- which
+       would put a real character into a cell that must read as blank. */
+    table.lines tbody tr.filler td { height: 17px; }
 
     /* --- signatures ------------------------------------------------------- */
     .sig-row { margin-top: 42px; display: flex; justify-content: space-between;
@@ -153,6 +157,16 @@
            same text twice across the row. #}
         <td>{{ li.description if li.product else '' }}</td>
       </tr>
+      {% endfor %}
+      {# Pad to a fixed grid so the sheet is the same shape whatever the
+         requisition holds: the signature block lands in the same place every
+         time, and the spare ruled rows give somewhere to add an item by hand.
+
+         A MINIMUM, never a cap -- a requisition with more than PRINT_MIN_ROWS
+         lines prints all of them. Truncating to a tidy page would hide ordered
+         items from the person signing for them. #}
+      {% for _ in range(PRINT_MIN_ROWS - pr.line_items|length) %}
+      <tr class="filler"><td class="idx"></td><td></td><td></td><td></td><td></td></tr>
       {% endfor %}
     </tbody>
   </table>
