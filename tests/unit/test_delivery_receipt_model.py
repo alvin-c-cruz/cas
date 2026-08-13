@@ -64,7 +64,7 @@ def test_qty_fmt_renders_delivered_quantity(db_session, main_branch):
     dr = _dr(db_session, so, li, main_branch.id, '4', 'draft')
     item = dr.line_items[0]
     assert item.quantity == Decimal('4')
-    assert format_line_qty(item) == '4.0000'
+    assert format_line_qty(item) == '4'
 
 
 def test_exclude_dr_id_leaves_that_dr_out_of_committed_sum(db_session, main_branch):

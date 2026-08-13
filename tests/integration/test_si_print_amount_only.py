@@ -83,8 +83,9 @@ def test_si_print_blanks_qty_uom_on_amount_only(client, db_session, accountant_u
     # Both lines present.
     assert 'ITEMIZED-WIDGET' in html
     assert 'AMOUNTONLY-ELECTRICITY' in html
-    # Itemized line shows its qty + uom.
-    assert '2.0000' in html
+    # Itemized line shows its qty + uom. Anchored to the cell -- a bare '2'
+    # appears throughout the markup and would assert nothing.
+    assert '<td class="amount">2</td>' in html
     assert 'kg' in html
     # The amount-only line must NOT introduce a fabricated qty of 0 / 1.
     # (qty_fmt returns the em-dash blank for a None quantity.)
@@ -99,5 +100,6 @@ def test_si_detail_blanks_qty_uom_on_amount_only(client, db_session, accountant_
     html = resp.data.decode('utf-8', 'replace')
     assert 'ITEMIZED-WIDGET' in html
     assert 'AMOUNTONLY-ELECTRICITY' in html
-    assert '2.0000' in html
+    # Anchored to the cell (see the print test above).
+    assert '<td style="text-align:right; font-family:var(--mono);">2</td>' in html
     assert 'kg' in html

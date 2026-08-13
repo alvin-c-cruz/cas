@@ -660,8 +660,15 @@ def test_detail_lists_every_revision_with_reason_and_po(
     # the line-items table reflects the post-amendment state: the line was
     # updated IN PLACE (Task 6), so the amended quantity renders and the
     # superseded original does not linger anywhere on the page.
-    assert '7,000.0000' in html
-    assert '3,000.0000' not in html
+    # Compared as whole CELL values, not substrings. With trailing zeros now
+    # trimmed, a bare '3,000' would also match the money figure '3,000.00',
+    # so the negative assertion would fail for the wrong reason -- the 4dp
+    # form used to make a quantity unmistakable on its own.
+    import re
+    qty_cells = [m.strip() for m in
+                 re.findall(r'<td[^>]*var\(--mono\)[^>]*>\s*([^<]*?)\s*</td>', html)]
+    assert '7,000' in qty_cells
+    assert '3,000' not in qty_cells
 
 
 def test_detail_has_no_revision_panel_when_never_amended_beyond_rev0(

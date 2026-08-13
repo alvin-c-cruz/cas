@@ -122,7 +122,7 @@ def test_print_renders_summary_and_has_no_peso_glyph(client, db_session, admin_u
     # quotations; only the Total remains (BUG-QUOTE-SUBTOTAL-SHOWN).
     assert 'Subtotal' not in body
     assert 'Total' in body
-    assert '2.0000' in body                   # quantity actually renders
+    assert '<td class="amount">2</td>' in body   # quantity actually renders
     assert '₱' not in body                    # no peso glyph on the printout
 
 

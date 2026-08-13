@@ -340,7 +340,9 @@ def test_print_renders_lines_and_has_no_currency_glyph(client, db_session, admin
     assert dr.dr_number in body and 'Widget' in body
     # The delivered quantity must actually render -- qty_fmt returns '' for a line
     # item that does not expose `quantity`, which would leave the column blank.
-    assert '3.0000' in body
+    # Anchored to the cell, not a bare '3': a lone digit occurs all over an
+    # HTML page, so the loose form would pass with the column blank.
+    assert '<td class="text-right">3</td>' in body
     assert '₱' not in body     # no peso glyph on a delivery document
 
 

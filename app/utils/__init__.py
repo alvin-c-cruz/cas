@@ -8,36 +8,29 @@ from app.utils_helpers import PHT, ph_now, ph_datetime, utc_to_pht, format_ph_da
 __all__ = ['PHT', 'ph_now', 'ph_datetime', 'utc_to_pht', 'format_ph_datetime', 'end_of_month',
            'format_line_qty']
 
-_PCS_NAMES = ('pieces', 'piece', 'pc', 'pcs')
-_PCS_CODES = ('PC', 'PCS', 'PCE')
-
-
 def format_line_qty(item, blank=''):
-    """Display a line item's quantity: whole number when the UoM is pieces
-    (Pieces/piece/pcs), otherwise 4 decimals. `blank` is returned when qty is None.
-    Duck-typed for any line item exposing quantity / unit_of_measure / uom_text.
+    """Display a line item's quantity as entered: no trailing zeros, up to the
+    column's 4 decimal places. `blank` is returned when qty is None. Duck-typed
+    for any line item exposing quantity / unit_of_measure / uom_text.
 
-    A piece quantity that is NOT whole keeps its decimals. '{:,.0f}' ROUNDS, so
-    1.5 PCS printed as "2" and 0.25 PCS as "0" -- silently misstating a quantity
-    on a document someone acts on. You cannot have a quarter of a piece by
-    accident: if a fraction was entered, it was meant, and rounding it away is
-    worse than the tidy display it buys. Trailing zeros are trimmed so it reads
-    as entered (1.5, not 1.5000).
+        12       -> '12'          (not '12.0000')
+        1.5      -> '1.5'         (not '1.5000')
+        1250.5555-> '1,250.5555'
+        0.25     -> '0.25'
+
+    The UoM is deliberately NOT consulted. This used to special-case pieces --
+    whole for PC/PCS/PCE, 4 decimals for everything else -- which was wrong twice
+    over. It ROUNDED (1.5 PCS printed as "2", 0.25 PCS as "0", misstating a
+    quantity on a document people act on), and it left every other unit reading
+    "12.0000 KG" when there was no decimal to show. A quantity should read the
+    way it was entered whatever the unit, so there is no list of unit codes to
+    keep in step with a client's master data.
+
+    Trailing-zero stripping is safe on the formatted string because '.4f' always
+    emits a decimal point, so rstrip('0') can never eat a significant zero from
+    the integer part: '20.0000' -> '20.' -> '20'.
     """
     q = getattr(item, 'quantity', None)
     if q is None:
         return blank
-    uom = getattr(item, 'unit_of_measure', None)
-    name = ((getattr(uom, 'name', None) if uom else None) or getattr(item, 'uom_text', None) or '').strip().lower()
-    code = ((getattr(uom, 'code', None) if uom else None) or '').strip().upper()
-    is_pcs = name in _PCS_NAMES or code in _PCS_CODES
-    if not is_pcs:
-        return '{:,.4f}'.format(q)
-
-    # Decimal, not float: the column is Numeric(15, 4) and a float round-trip
-    # can make an exact value look fractional.
-    from decimal import Decimal
-    d = q if isinstance(q, Decimal) else Decimal(str(q))
-    if d == d.to_integral_value():
-        return '{:,.0f}'.format(q)
     return '{:,.4f}'.format(q).rstrip('0').rstrip('.')
