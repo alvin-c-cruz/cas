@@ -46,14 +46,14 @@ PRINT_MIN_ROWS = 25
 
 def _pr_role_gate():
     if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
-        flash('You do not have permission to manage Purchase Requests.', 'error')
+        flash('You do not have permission to manage Purchase Requisitions.', 'error')
         return redirect(url_for('purchase_requests.list_pr'))
     return None
 
 
 def _approve_gate():
     if not (current_user.has_full_access or current_user.role == 'accountant'):
-        flash('Only an approver (accountant/admin) can approve Purchase Requests.', 'error')
+        flash('Only an approver (accountant/admin) can approve Purchase Requisitions.', 'error')
         return False
     return True
 
@@ -276,7 +276,7 @@ def create():
     if form.validate_on_submit():
         pr_number = (form.pr_number.data or '').strip()
         if PurchaseRequest.query.filter(PurchaseRequest.pr_number == pr_number).first():
-            flash('Purchase Request number already exists.', 'error')
+            flash('Purchase Requisition number already exists.', 'error')
             return render_template('purchase_requests/form.html', form=form, pr=None,
                                    line_items=[], **_common_form_ctx())
         try:
@@ -291,7 +291,7 @@ def create():
             log_create(module='purchase_requests', record_id=pr.id,
                        record_identifier=pr.pr_number,
                        new_values=model_to_dict(pr, ['pr_number', 'request_date', 'status']))
-            flash(f'Purchase Request "{pr.pr_number}" created.', 'success')
+            flash(f'Purchase Requisition "{pr.pr_number}" created.', 'success')
             return redirect(url_for('purchase_requests.view', id=pr.id))
         except ValueError as e:
             db.session.rollback(); flash(str(e), 'error')
@@ -301,7 +301,7 @@ def create():
             db.session.rollback()
             current_app.logger.error('Error creating purchase request', exc_info=True)
             log_exception(e, severity='ERROR', module='purchase_requests.create')
-            flash('An error occurred creating the Purchase Request.', 'error')
+            flash('An error occurred creating the Purchase Requisition.', 'error')
 
     if request.method == 'GET':
         form.pr_number.data = generate_pr_number()
@@ -360,7 +360,7 @@ def edit(id):
         return gate
     pr = _get_pr_or_404(id)
     if pr.status != 'draft':
-        flash('Only a draft Purchase Request can be edited.', 'error')
+        flash('Only a draft Purchase Requisition can be edited.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     form = PurchaseRequestForm(obj=pr)
     restore = ([li.to_dict() for li in pr.line_items] if request.method == 'GET'
@@ -381,14 +381,14 @@ def edit(id):
             db.session.commit()
             log_update(module='purchase_requests', record_id=pr.id, record_identifier=pr.pr_number,
                        old_values=old, new_values=model_to_dict(pr, ['pr_number', 'request_date', 'status']))
-            flash(f'Purchase Request "{pr.pr_number}" updated.', 'success')
+            flash(f'Purchase Requisition "{pr.pr_number}" updated.', 'success')
             return redirect(url_for('purchase_requests.view', id=pr.id))
         except ValueError as e:
             db.session.rollback(); flash(str(e), 'error')
         except Exception as e:
             db.session.rollback()
             log_exception(e, severity='ERROR', module='purchase_requests.edit')
-            flash('An error occurred updating the Purchase Request.', 'error')
+            flash('An error occurred updating the Purchase Requisition.', 'error')
     return render_template('purchase_requests/form.html', form=form, pr=pr,
                            line_items=restore, **_common_form_ctx())
 
@@ -410,19 +410,19 @@ def amend(id):
         return redirect(url_for('purchase_requests.view', id=id))
 
     if pr.status == 'draft':
-        flash('A draft Purchase Request is edited, not amended.', 'error')
+        flash('A draft Purchase Requisition is edited, not amended.', 'error')
         return redirect(url_for('purchase_requests.edit', id=id))
     if pr.is_converted():
         # Name the PO. A bare "cannot be amended" leaves the user nowhere to go;
         # the actionable fact is WHICH order this requisition became, since that
         # is the document they must change instead.
         po_number = pr.purchase_order.po_number if pr.purchase_order else None
-        flash('Purchase Request "%s" was already converted to Purchase Order %s. '
+        flash('Purchase Requisition "%s" was already converted to Purchase Order %s. '
               'Amend that order instead.'
               % (pr.pr_number, po_number or '(unknown)'), 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     if pr.status not in PurchaseRequest.AMEND_STATUSES:
-        flash('A Purchase Request with status "%s" cannot be amended.' % pr.status, 'error')
+        flash('A Purchase Requisition with status "%s" cannot be amended.' % pr.status, 'error')
         return redirect(url_for('purchase_requests.view', id=id))
 
     form = PurchaseRequestAmendForm(obj=pr)
@@ -500,7 +500,7 @@ def amend(id):
             # claim_version's row_version bump.
             if not pr.has_requested_line():
                 raise ValueError(
-                    'A Purchase Request must keep at least one item with a '
+                    'A Purchase Requisition must keep at least one item with a '
                     'product or a description. This amendment would leave none.')
 
             rev = write_revision(pr, current_user.id,
@@ -515,7 +515,7 @@ def amend(id):
                       new_values=model_to_dict(
                           pr, ['pr_number', 'request_date', 'reason', 'status']),
                       notes='Amended to Rev %s' % rev.revision_number)
-            flash('Purchase Request "%s" amended (Rev %s).'
+            flash('Purchase Requisition "%s" amended (Rev %s).'
                   % (pr.pr_number, rev.revision_number), 'success')
             return redirect(url_for('purchase_requests.view', id=pr.id))
 
@@ -550,7 +550,7 @@ def submit(id):
     if gate:
         return gate
     if pr.status != 'draft':
-        flash('Only a draft Purchase Request can be submitted.', 'error')
+        flash('Only a draft Purchase Requisition can be submitted.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     pr.status = 'submitted'
     pr.submitted_by_id = current_user.id
@@ -562,7 +562,7 @@ def submit(id):
     # the real event was readable only by opening View Details.
     log_audit(module='purchase_requests', action='submit', record_id=pr.id,
               record_identifier=pr.pr_number, notes='Submitted')
-    flash(f'Purchase Request "{pr.pr_number}" submitted for approval.', 'success')
+    flash(f'Purchase Requisition "{pr.pr_number}" submitted for approval.', 'success')
     return redirect(url_for('purchase_requests.view', id=id))
 
 
@@ -573,7 +573,7 @@ def approve(id):
     if not _approve_gate():
         return redirect(url_for('purchase_requests.view', id=id))
     if pr.status != 'submitted':
-        flash('Only a submitted Purchase Request can be approved.', 'error')
+        flash('Only a submitted Purchase Requisition can be approved.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     pr.status = 'approved'
     pr.approved_by_id = current_user.id
@@ -588,7 +588,7 @@ def approve(id):
     db.session.commit()
     log_audit(module='purchase_requests', action='approve', record_id=pr.id,
               record_identifier=pr.pr_number, notes='Approved')
-    flash(f'Purchase Request "{pr.pr_number}" approved. Convert it to a Purchase Order.', 'success')
+    flash(f'Purchase Requisition "{pr.pr_number}" approved. Convert it to a Purchase Order.', 'success')
     return redirect(url_for('purchase_requests.view', id=id))
 
 
@@ -599,7 +599,7 @@ def reject(id):
     if not _approve_gate():
         return redirect(url_for('purchase_requests.view', id=id))
     if pr.status != 'submitted':
-        flash('Only a submitted Purchase Request can be rejected.', 'error')
+        flash('Only a submitted Purchase Requisition can be rejected.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     reason = (request.form.get('reject_reason') or '').strip()
     if len(reason) < 10:
@@ -613,7 +613,7 @@ def reject(id):
     # action='reject' -- same reason as submit() above.
     log_audit(module='purchase_requests', action='reject', record_id=pr.id,
               record_identifier=pr.pr_number, notes=f'Rejected: {reason}')
-    flash(f'Purchase Request "{pr.pr_number}" rejected.', 'warning')
+    flash(f'Purchase Requisition "{pr.pr_number}" rejected.', 'warning')
     return redirect(url_for('purchase_requests.view', id=id))
 
 
@@ -624,7 +624,7 @@ def cancel(id):
     if not _approve_gate():
         return redirect(url_for('purchase_requests.view', id=id))
     if pr.status in ('converted', 'cancelled', 'rejected'):
-        flash('This Purchase Request can no longer be cancelled.', 'error')
+        flash('This Purchase Requisition can no longer be cancelled.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     reason = (request.form.get('cancel_reason') or '').strip()
     if len(reason) < 10:
@@ -638,7 +638,7 @@ def cancel(id):
     # action='cancel' -- same reason as submit() above.
     log_audit(module='purchase_requests', action='cancel', record_id=pr.id,
               record_identifier=pr.pr_number, notes=f'Cancelled: {reason}')
-    flash(f'Purchase Request "{pr.pr_number}" cancelled.', 'warning')
+    flash(f'Purchase Requisition "{pr.pr_number}" cancelled.', 'warning')
     return redirect(url_for('purchase_requests.view', id=id))
 
 
@@ -651,7 +651,7 @@ def convert(id):
     if not _approve_gate():
         return redirect(url_for('purchase_requests.view', id=id))
     if pr.status != 'approved':
-        flash('Only an approved Purchase Request can be converted to a Purchase Order.', 'error')
+        flash('Only an approved Purchase Requisition can be converted to a Purchase Order.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     # Import inside the function to avoid an import cycle at module load.
     from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem, generate_po_number
@@ -673,13 +673,13 @@ def convert(id):
         db.session.commit()
         log_audit(module='purchase_requests', action='convert', record_id=pr.id,
                   record_identifier=pr.pr_number, notes=f'Converted -> {po.po_number}')
-        flash(f'Purchase Request "{pr.pr_number}" converted to draft Purchase Order '
+        flash(f'Purchase Requisition "{pr.pr_number}" converted to draft Purchase Order '
               f'"{po.po_number}". Add the vendor and prices.', 'success')
         return redirect(url_for('purchase_orders.view', id=po.id))
     except Exception as e:
         db.session.rollback()
         log_exception(e, severity='ERROR', module='purchase_requests.convert')
-        flash('An error occurred converting the Purchase Request.', 'error')
+        flash('An error occurred converting the Purchase Requisition.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
 
 
@@ -722,7 +722,7 @@ def export_excel():
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
     return export_to_excel(data=rows, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
                            filename=f'purchase_requests_{timestamp}.xlsx',
-                           title='Purchase Requests Report')
+                           title='Purchase Requisitions Report')
 
 
 @purchase_requests_bp.route('/purchase-requests/export/csv')

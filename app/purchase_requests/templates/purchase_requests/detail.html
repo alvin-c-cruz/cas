@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Purchase Request {{ pr.pr_number }}{% endblock %}
-{% block page_title %}Purchase Request — {{ pr.pr_number }}{% endblock %}
+{% block title %}Purchase Requisition {{ pr.pr_number }}{% endblock %}
+{% block page_title %}Purchase Requisition — {{ pr.pr_number }}{% endblock %}
 {% block content %}
 {% set can_write = current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
 {% set can_approve = current_user.role == 'accountant' or current_user.has_full_access %}
 
 <div class="page-header">
-  <h1>Purchase Request {{ pr.pr_number }}</h1>
+  <h1>Purchase Requisition {{ pr.pr_number }}</h1>
   <div>
     <a href="{{ url_for('purchase_requests.list_pr') }}" class="btn btn-secondary btn-sm">Back</a>
     <a href="{{ url_for('purchase_requests.print_pr', id=pr.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
@@ -87,8 +87,8 @@
   {% endif %}
 </div></div>
 
-{% for m in [('rejectModal','purchase_requests.reject','reject_reason','Reject Purchase Request'),
-             ('cancelModal','purchase_requests.cancel','cancel_reason','Cancel Purchase Request')] %}
+{% for m in [('rejectModal','purchase_requests.reject','reject_reason','Reject Purchase Requisition'),
+             ('cancelModal','purchase_requests.cancel','cancel_reason','Cancel Purchase Requisition')] %}
 <div id="{{ m[0] }}" class="modal-overlay" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
   <div class="card" style="max-width:480px;width:90%"><div class="card-body">
     <h3>{{ m[3] }}</h3>

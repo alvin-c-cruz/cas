@@ -55,7 +55,7 @@ MODULE_REGISTRY = [
      'endpoints': ('sales_memos.debit_',)},
     # ── Purchases Area (optional — per-company configurable) ───────────────
     # Ordered along the Procure-to-Pay chain (PR -> PO -> RR -> Bill -> Pay).
-    {'key': 'purchase_requests', 'label': 'Purchase Requests', 'section': 'Transactions',
+    {'key': 'purchase_requests', 'label': 'Purchase Requisitions', 'section': 'Transactions',
      'area': 'Purchases', 'group': 'Documents',
      'optional': True, 'depends_on': ['purchase_orders'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('purchase_requests.',)},

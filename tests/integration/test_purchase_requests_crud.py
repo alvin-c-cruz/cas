@@ -82,13 +82,13 @@ def test_page_title_not_dashboard(client, accountant_user, main_branch, db_sessi
     pr = PurchaseRequest.query.first()
 
     list_body = client.get('/purchase-requests').data.decode('utf-8')
-    assert 'Purchase Requests' in list_body
+    assert 'Purchase Requisitions' in list_body
 
     detail_body = client.get(f'/purchase-requests/{pr.id}').data.decode('utf-8')
-    assert f'Purchase Request — {pr.pr_number}' in detail_body
+    assert f'Purchase Requisition — {pr.pr_number}' in detail_body
 
     create_body = client.get('/purchase-requests/create').data.decode('utf-8')
-    assert 'Enter Purchase Request' in create_body
+    assert 'Enter Purchase Requisition' in create_body
 
 
 def test_detail_page_shows_created_by(client, accountant_user, main_branch, db_session):

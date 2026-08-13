@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Purchase Requests{% endblock %}
-{% block page_title %}Purchase Requests{% endblock %}
+{% block title %}Purchase Requisitions{% endblock %}
+{% block page_title %}Purchase Requisitions{% endblock %}
 {% block content %}
 
 <div class="pb-summary-grid">
@@ -57,7 +57,7 @@
                class="btn btn-secondary btn-sm">Export Excel</a>
             <a href="{{ url_for('purchase_requests.export_csv_route', status=status_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">📄 Export CSV</a>
-            <a href="{{ url_for('purchase_requests.create') }}" class="btn btn-primary btn-sm">+ Enter Purchase Request</a>
+            <a href="{{ url_for('purchase_requests.create') }}" class="btn btn-primary btn-sm">+ Enter Purchase Requisition</a>
         </div>
     </div>
     <div class="card-body">

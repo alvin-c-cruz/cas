@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Request{% endblock %}
-{% block page_title %}{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Request{% endblock %}
+{% block title %}{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Requisition{% endblock %}
+{% block page_title %}{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Requisition{% endblock %}
 {% block content %}
 {# Choices' own stylesheet, which this template never loaded. Without it the
    enhanced picker has no display:none on its dropdown, so the whole option list
@@ -21,7 +21,7 @@
    three documents drift apart. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=9">
 <div class="page-header">
-  <h1>{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Request</h1>
+  <h1>{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Requisition</h1>
   <a href="{{ url_for('purchase_requests.list_pr') }}" class="btn btn-secondary btn-sm">Back to list</a>
 </div>
 
@@ -107,7 +107,7 @@
      errors here, or one refusal is shown twice. #}
   <div class="card"><div class="card-body">
     <div class="alert alert-info">
-      This Purchase Request is approved. Saving creates a new revision.
+      This Purchase Requisition is approved. Saving creates a new revision.
     </div>
     <div class="form-group">
       {{ form.amend_reason.label }} <span class="required">*</span>

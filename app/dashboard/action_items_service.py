@@ -39,7 +39,7 @@ def _draft_sources():
     from app.sales_invoices.models import SalesInvoice
     return [
         # Ordered along the Procure-to-Pay chain, as MODULE_REGISTRY is.
-        ('Purchase Request', '📝', PurchaseRequest, 'pr_number', '/purchase-requests/{id}/edit', 'purchase_requests'),
+        ('Purchase Requisition', '📝', PurchaseRequest, 'pr_number', '/purchase-requests/{id}/edit', 'purchase_requests'),
         ('Accounts Payable', '🧾', AccountsPayable, 'ap_number', '/accounts-payable/{id}/edit', None),
         ('Cash Disbursement', '💸', CashDisbursementVoucher, 'cdv_number', '/cash-disbursements/{id}/edit', None),
         ('Cash Receipt', '💰', CashReceiptVoucher, 'crv_number', '/cash-receipts/{id}/edit', None),
@@ -126,7 +126,7 @@ def _document_approval_sources():
     """
     from app.purchase_requests.models import PurchaseRequest
     return [
-        ('Purchase Request', '📝', PurchaseRequest, 'pr_number',
+        ('Purchase Requisition', '📝', PurchaseRequest, 'pr_number',
          '/purchase-requests/{id}', 'purchase_requests'),
     ]
 

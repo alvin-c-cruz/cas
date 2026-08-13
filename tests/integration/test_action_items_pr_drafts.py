@@ -59,7 +59,7 @@ class TestDraftPurchaseRequestInActionItems:
         resp = client.get('/action-items')
         assert resp.status_code == 200
         assert PR_NUMBER.encode() in resp.data
-        assert b'Purchase Request' in resp.data
+        assert b'Purchase Requisition' in resp.data
 
     def test_draft_pr_counted_in_badge(self, db_session, admin_user, main_branch):
         from app.dashboard.action_items_service import count_action_items

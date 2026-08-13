@@ -95,7 +95,7 @@ def test_sidebar_shows_and_hides_pr_link(client, accountant_user, main_branch, d
     from app.utils.cache_helpers import clear_module_config_cache
     _login(client, accountant_user, main_branch)
     body = client.get('/dashboard').data
-    assert b'/purchase-requests' in body and b'Purchase Requests' in body
+    assert b'/purchase-requests' in body and b'Purchase Requisitions' in body
     AppSettings.set_setting('module_enabled:purchase_requests', '0')
     db_session.commit(); clear_module_config_cache()
     assert b'/purchase-requests' not in client.get('/dashboard').data
@@ -106,8 +106,10 @@ def test_print_renders(client, accountant_user, main_branch, db_session):
     pr = _make_pr(db_session, main_branch)
     resp = client.get(f'/purchase-requests/{pr.id}/print')
     assert resp.status_code == 200
-    # The heading is uppercased by CSS (text-transform), so the MARKUP now reads
-    # "Purchase Request". Anchored to the doc-title div -- the <title> tag also
-    # contains that text, so a bare substring would pass with the heading gone.
-    assert b'<div class="doc-title">Purchase Request</div>' in resp.data
+    # The heading is uppercased by CSS (text-transform), so the MARKUP reads in
+    # title case. Anchored to the doc-title div -- the <title> tag carries the
+    # document name too, so a bare substring would pass with the heading gone.
+    # The printout alone says "Form": it IS the form, where the app's other
+    # surfaces name the record.
+    assert b'<div class="doc-title">Purchase Requisition Form</div>' in resp.data
     assert bytes(pr.pr_number, 'utf-8') in resp.data
