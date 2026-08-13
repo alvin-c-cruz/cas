@@ -100,3 +100,26 @@ class TestLongRequisitionIsNeverTruncated:
         assert len(_body_rows(html)) == n
         assert html.count('<tr class="filler">') == 0
         assert f'ITEM-{n}' in html
+
+
+class TestPageGeometry:
+    """US Letter portrait, 0.5in margins. Without an explicit @page the browser
+    applies its own defaults, which differ per browser and per OS -- so a sheet
+    that looked right on one machine came out shifted on another."""
+
+    def test_page_is_letter_portrait_with_half_inch_margins(self, client, db_session,
+                                                            admin_user, main_branch):
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'GEO-1')
+        assert '@page { size: 8.5in 11in; margin: 0.5in; }' in html
+
+    def test_screen_preview_is_held_to_the_printable_width(self, client, db_session,
+                                                           admin_user, main_branch):
+        """8.5in less two 0.5in margins. The columns looked too wide only because
+        the body stretched to the browser viewport, which no paper matches."""
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'GEO-2')
+        assert 'width: 7.5in; margin: 0.5in auto;' in html
+
+    def test_print_releases_that_width_so_the_sheet_is_not_inset_twice(
+            self, client, db_session, admin_user, main_branch):
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'GEO-3')
+        assert 'body { width: auto; margin: 0;' in html

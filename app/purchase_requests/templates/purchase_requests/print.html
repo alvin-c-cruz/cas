@@ -4,13 +4,18 @@
   <meta charset="utf-8">
   <title>Purchase Request {{ pr.pr_number }}</title>
   <style>
-    /* Print geometry. Without an explicit @page the browser uses its own default
-       margins, which differ per browser and per OS -- the reason a printout that
-       looked right on screen came out shifted on paper. */
-    @page { size: A4 portrait; margin: 14mm 12mm; }
+    /* Print geometry: US Letter portrait, half-inch margins all round. Stated in
+       inches rather than `letter portrait` so the intent is unambiguous to any
+       engine. Without an explicit @page the browser applies its own defaults,
+       which differ per browser and per OS. */
+    @page { size: 8.5in 11in; margin: 0.5in; }
 
     body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000;
-           margin: 24px; }
+           /* On SCREEN, hold the body to the printable width (8.5in - 2 x 0.5in)
+              so the preview is the sheet rather than the browser window. The
+              columns only looked too wide because they were stretching to a
+              1340px viewport that no paper will ever match. */
+           width: 7.5in; margin: 0.5in auto; }
 
     /* --- letterhead ------------------------------------------------------ */
     .letterhead { display: flex; align-items: center; gap: 14px;
@@ -77,7 +82,9 @@
 
     @media print {
       .no-print { display: none; }
-      body { margin: 0; font-size: 10.5px; }
+      /* @page owns the margins now; the screen-preview width would otherwise
+         inset the sheet a second time. */
+      body { width: auto; margin: 0; font-size: 10.5px; }
       /* Repeat the column headings on every page of a long requisition, and
          never split a line item across the page break. */
       table.lines thead { display: table-header-group; }
