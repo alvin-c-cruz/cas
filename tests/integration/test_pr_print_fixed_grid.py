@@ -123,3 +123,32 @@ class TestPageGeometry:
             self, client, db_session, admin_user, main_branch):
         html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'GEO-3')
         assert 'body { width: auto; margin: 0;' in html
+
+
+class TestColumnAlignment:
+    """Headings centred over their columns; Qty and UoM data centred too.
+
+    Asserted on the CELL CLASSES as well as the rules -- a stylesheet rule for
+    `td.qty` proves nothing if no cell carries the class.
+    """
+
+    def test_all_column_headings_are_centred(self, client, db_session, admin_user, main_branch):
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'ALIGN-1')
+        assert 'table.lines th { background: #eee; text-align: center;' in html
+
+    def test_qty_and_uom_cells_are_centred(self, client, db_session, admin_user, main_branch):
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'ALIGN-2')
+        assert 'table.lines td.qty, table.lines td.uom { text-align: center; }' in html
+
+    def test_the_cells_actually_carry_those_classes(self, client, db_session,
+                                                    admin_user, main_branch):
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'ALIGN-3')
+        assert '<td class="qty">' in html
+        assert '<td class="uom">' in html
+
+    def test_qty_is_no_longer_right_aligned(self, client, db_session, admin_user, main_branch):
+        """The old rule right-aligned Qty via class="num". Both the rule and the
+        class must be gone, or one of them silently wins later."""
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'ALIGN-4')
+        assert 'td.num' not in html
+        assert 'class="num"' not in html

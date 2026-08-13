@@ -37,9 +37,14 @@
     /* --- line items ------------------------------------------------------- */
     table.lines { width: 100%; border-collapse: collapse; }
     table.lines th, table.lines td { border: 1px solid #000; padding: 4px 6px; }
-    table.lines th { background: #eee; text-align: left; font-size: 10px;
+    /* Every column heading is centred over its column. */
+    table.lines th { background: #eee; text-align: center; font-size: 10px;
                      text-transform: uppercase; letter-spacing: .3px; }
-    table.lines td.num, table.lines th.num { text-align: right; }
+    /* Qty and UoM are short tokens -- a two-character code or a one-digit count
+       adrift at the left or right edge of its column reads as a stray mark. The
+       class is `qty`, not `num`: these are no longer right-aligned figures and a
+       name that says otherwise invites the next edit to "restore" it. */
+    table.lines td.qty, table.lines td.uom { text-align: center; }
     table.lines td.idx, table.lines th.idx { text-align: center; width: 28px; }
     /* Zebra striping survives print only with print-color-adjust (below). */
     table.lines tbody tr:nth-child(even) { background: #fafafa; }
@@ -145,7 +150,7 @@
       <tr>
         <th class="idx">#</th>
         <th style="width: 42%;">Item</th>
-        <th class="num" style="width: 12%;">Qty</th>
+        <th style="width: 12%;">Qty</th>
         <th style="width: 10%;">UoM</th>
         <th style="width: 32%;">Remarks</th>
       </tr>
@@ -157,8 +162,8 @@
         <td>{{ li.product.name if li.product else li.description }}</td>
         {# qty_fmt: whole number for piece UoMs, 4 decimals otherwise -- the same
            filter SI, SO, DR and Quotations already use. #}
-        <td class="num">{{ li | qty_fmt('-') }}</td>
-        <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
+        <td class="qty">{{ li | qty_fmt('-') }}</td>
+        <td class="uom">{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
         {# Only when a product carries the Item cell. A line with NO product falls
            back to `description` for Item, so printing it here too would repeat the
            same text twice across the row. #}
