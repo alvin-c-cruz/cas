@@ -106,4 +106,8 @@ def test_print_renders(client, accountant_user, main_branch, db_session):
     pr = _make_pr(db_session, main_branch)
     resp = client.get(f'/purchase-requests/{pr.id}/print')
     assert resp.status_code == 200
-    assert b'PURCHASE REQUEST' in resp.data and bytes(pr.pr_number, 'utf-8') in resp.data
+    # The heading is uppercased by CSS (text-transform), so the MARKUP now reads
+    # "Purchase Request". Anchored to the doc-title div -- the <title> tag also
+    # contains that text, so a bare substring would pass with the heading gone.
+    assert b'<div class="doc-title">Purchase Request</div>' in resp.data
+    assert bytes(pr.pr_number, 'utf-8') in resp.data

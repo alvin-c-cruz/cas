@@ -32,7 +32,14 @@ VALID_PR_STATUSES = {'draft', 'submitted', 'approved', 'rejected', 'converted', 
 # The printed requisition pads to this many line rows so every sheet is the same
 # shape -- the signature block lands in the same place and the spare ruled rows
 # give somewhere to add an item by hand. A MINIMUM, never a cap.
-PRINT_MIN_ROWS = 20
+#
+# The printable area is 10in (11in less two 0.5in margins) = 960 CSS px and each
+# row is ~26px. 25 rows fills the sheet while leaving the signature block real
+# breathing room above it -- the footer is pinned to the bottom of the page, so
+# rows and signatures are no longer competing for the same space. Overflowing to
+# a second page is the failure that matters, because it orphans the signatures;
+# under-filling costs nothing.
+PRINT_MIN_ROWS = 25
 
 
 # -- gates ---------------------------------------------------------------------

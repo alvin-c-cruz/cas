@@ -15,7 +15,12 @@
               so the preview is the sheet rather than the browser window. The
               columns only looked too wide because they were stretching to a
               1340px viewport that no paper will ever match. */
-           width: 7.5in; margin: 0.5in auto; }
+           width: 7.5in; margin: 0.5in auto;
+           /* The sheet is a column at least one printable page tall, so the
+              footer's `margin-top: auto` can push the signatures to the bottom
+              edge instead of trailing whatever the table happens to end at. */
+           display: flex; flex-direction: column; min-height: 10in;
+           box-sizing: border-box; }
 
     /* --- letterhead ------------------------------------------------------ */
     .letterhead { display: flex; align-items: center; gap: 14px;
@@ -54,8 +59,11 @@
     table.lines tbody tr.filler td { height: 17px; }
 
     /* --- signatures ------------------------------------------------------- */
-    .sig-row { margin-top: 42px; display: flex; justify-content: space-between;
-               gap: 36px; }
+    /* Pinned to the bottom of the page: the signatures sit in the same place on
+       a 3-line requisition and a 25-line one, with the slack above them rather
+       than squeezed under the last row. */
+    .sheet-footer { margin-top: auto; padding-top: 28px; }
+    .sig-row { display: flex; justify-content: space-between; gap: 36px; }
     .sig { flex: 1; text-align: center; }
     .sig .name { min-height: 16px; font-size: 11px; font-weight: 700;
                  border-bottom: 1px solid #000; padding: 0 4px 3px; }
@@ -177,8 +185,8 @@
          A MINIMUM, never a cap -- a requisition with more than PRINT_MIN_ROWS
          lines prints all of them. Truncating to a tidy page would hide ordered
          items from the person signing for them. #}
-      {% for _ in range(PRINT_MIN_ROWS - pr.line_items|length) %}
-      <tr class="filler"><td class="idx"></td><td></td><td></td><td></td><td></td></tr>
+      {% for i in range(pr.line_items|length + 1, PRINT_MIN_ROWS + 1) %}
+      <tr class="filler"><td class="idx">{{ i }}</td><td></td><td></td><td></td><td></td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -186,6 +194,7 @@
   {# Signature block, mirroring the three on PhilGen's paper form. A blank name
      prints an empty ruled line to sign by hand -- correct for an instance that
      has not set its signatories, and never a placeholder. #}
+  <div class="sheet-footer">
   <div class="sig-row">
     {% for role, name in signatories %}
     <div class="sig">
@@ -196,6 +205,7 @@
   </div>
 
   <div class="printed">Printed {{ printed_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+  </div>
 
   {% if can_edit_signatories %}
   <div class="sig-modal no-print" id="sigModal">

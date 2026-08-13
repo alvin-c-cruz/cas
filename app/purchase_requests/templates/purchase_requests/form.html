@@ -329,7 +329,10 @@
   // "+ Add item" button over an empty table reads as "there is nothing to fill
   // in". A blank row costs nothing on submit: _parse_and_attach_pr_lines skips
   // a line with no product, description AND quantity, and still raises
-  // 'Add at least one requested item.' if that leaves none.
+  // its minimum-line error if that leaves none.
+  // NOTE: do not quote that message verbatim here. A JS comment is served in the
+  // response body, so it satisfies the absence assertion in test_pr_amend.py's
+  // TestMalformedPayload -- which is exactly how this comment broke it.
   // Quick-add wiring must exist before the first row is enhanced: each row's
   // addAction closure calls openProductModal/openUomModal, which these define.
   if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();

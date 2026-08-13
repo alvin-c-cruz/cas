@@ -64,12 +64,24 @@ class TestGridIsPaddedToAFixedHeight:
         html = _print_with_lines(client, db_session, admin_user, main_branch, 3, 'GRID-3')
         assert len(_body_rows(html)) == PRINT_MIN_ROWS
 
-    def test_padding_rows_carry_no_data(self, client, db_session, admin_user, main_branch):
-        """Filler must be blank -- not a repeated last line, and not numbered,
-        which would imply a line exists."""
+    def test_padding_rows_carry_no_data_but_keep_their_number(
+            self, client, db_session, admin_user, main_branch):
+        """Filler rows keep the running row number (owner directive) and are
+        otherwise blank -- never a repeated last line."""
         html = _print_with_lines(client, db_session, admin_user, main_branch, 3, 'GRID-B')
         assert html.count('<tr class="filler">') == PRINT_MIN_ROWS - 3
-        assert '<tr class="filler"><td class="idx"></td><td></td><td></td><td></td><td></td></tr>' in html
+        # The first filler continues the sequence, and the last one closes it.
+        assert '<tr class="filler"><td class="idx">4</td><td></td><td></td><td></td><td></td></tr>' in html
+        assert f'<tr class="filler"><td class="idx">{PRINT_MIN_ROWS}</td>' in html
+
+    def test_numbering_is_continuous_across_real_and_filler_rows(
+            self, client, db_session, admin_user, main_branch):
+        """Every number from 1..PRINT_MIN_ROWS appears exactly once in the # column,
+        with no gap and no repeat where the real lines stop."""
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 3, 'GRID-SEQ')
+        body = re.search(r'<table class="lines">.*?<tbody>(.*?)</tbody>', html, re.S).group(1)
+        idx = [int(m) for m in re.findall(r'<td class="idx">(\d+)</td>', body)]
+        assert idx == list(range(1, PRINT_MIN_ROWS + 1))
 
     def test_real_lines_still_render(self, client, db_session, admin_user, main_branch):
         """Control: padding must not displace the actual items."""
@@ -152,3 +164,32 @@ class TestColumnAlignment:
         html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'ALIGN-4')
         assert 'td.num' not in html
         assert 'class="num"' not in html
+
+
+class TestFooterSitsAtTheBottom:
+    """The signature block is pinned to the foot of the sheet, not trailing the
+    last table row -- so it lands identically on a 3-line and a 25-line
+    requisition, with the slack above it."""
+
+    def test_footer_wraps_signatures_and_printed_line(self, client, db_session,
+                                                      admin_user, main_branch):
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'FOOT-1')
+        footer = re.search(r'<div class="sheet-footer">(.*?)</div>\s*(?:<div class="sig-modal|</body>)',
+                           html, re.S)
+        assert footer, 'sheet-footer wrapper not found'
+        assert 'sig-row' in footer.group(1)
+        assert 'Printed' in footer.group(1)
+
+    def test_footer_is_pushed_down_not_spaced_by_a_fixed_margin(self, client, db_session,
+                                                                admin_user, main_branch):
+        """margin-top: auto is what pins it. A fixed margin would drift with the
+        row count, which is the behaviour this replaced."""
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'FOOT-2')
+        assert '.sheet-footer { margin-top: auto;' in html
+
+    def test_sheet_is_a_full_page_tall_column(self, client, db_session,
+                                              admin_user, main_branch):
+        """Without a min-height there is no slack for margin-top: auto to consume,
+        and the footer would sit directly under the table again."""
+        html = _print_with_lines(client, db_session, admin_user, main_branch, 2, 'FOOT-3')
+        assert 'display: flex; flex-direction: column; min-height: 10in;' in html

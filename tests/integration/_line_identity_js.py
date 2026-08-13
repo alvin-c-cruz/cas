@@ -35,6 +35,7 @@ missing observes nothing and turns the suite green for the wrong reason. Same
 rule tests/integration/test_po_rev0_backfill.py states for its subprocesses.
 """
 import json
+import pathlib
 import re
 import shutil
 import subprocess
@@ -52,7 +53,13 @@ _JS_DRIVER = r'''
 const fs = require('fs');
 const vm = require('vm');
 
-const src = fs.readFileSync(process.argv[2], 'utf8');
+// The form's inline script calls helpers that the page loads from
+// static/transaction-utils.js (escHtml, amtFmt...). Load the REAL file rather
+// than restating them here: a shim copy silently diverges from the browser, and
+// the whole point of this harness is to execute what the browser executes.
+// argv[7] = path to transaction-utils.js
+const utilsSrc = process.argv[7] ? fs.readFileSync(process.argv[7], 'utf8') : '';
+const src = [utilsSrc, fs.readFileSync(process.argv[2], 'utf8')].join(';\n');
 const hiddenId = process.argv[3];
 const handAdded = parseInt(process.argv[4] || '0', 10);
 const formId = process.argv[5];
@@ -171,9 +178,15 @@ def serialise_lines(tmp_path, html, *, marker, form_id,
     driver = tmp_path / 'driver.js'
     driver.write_text(_JS_DRIVER, encoding='utf-8')
 
+    # Real file, resolved from this test module -- not a copy. If it moves, the
+    # driver fails loudly rather than running against a stale duplicate.
+    utils = (pathlib.Path(__file__).resolve().parents[2]
+             / 'app' / 'static' / 'transaction-utils.js')
+    assert utils.is_file(), f'transaction-utils.js not found at {utils}'
+
     proc = subprocess.run(
         [node_or_fail(marker), str(driver), str(script), line_items_input_id(html),
-         str(hand_added), form_id, add_button_id],
+         str(hand_added), form_id, add_button_id, str(utils)],
         capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, (
         f'executing the {form_id} JS failed (exit {proc.returncode}).\n'
