@@ -75,6 +75,29 @@ class TestFractionsAreKept:
         assert format_line_qty(_Line(Decimal('2.2500'), 'BOX')) == '2.25'
 
 
+class TestTheUnitIsIgnoredEntirely:
+    """Absorbed from the older tests/unit/test_qty_format.py, which split its
+    cases into "pieces" and "non-pieces". That distinction no longer exists, so
+    these assert the opposite: the same number formats identically however the
+    unit is spelled, named, or absent."""
+
+    @pytest.mark.parametrize('kwargs', [
+        {'uom_code': 'PCS'}, {'uom_code': 'pcs'}, {'uom_code': 'KG'},
+    ])
+    def test_unit_code_case_and_value_make_no_difference(self, kwargs):
+        line = _Line(Decimal('2'), kwargs['uom_code'])
+        assert format_line_qty(line) == '2'
+
+    @pytest.mark.parametrize('text', ['piece', 'Pieces', 'Kilogram', 'Liter', None])
+    def test_free_text_unit_makes_no_difference(self, text):
+        assert format_line_qty(_Line(Decimal('5'), None, uom_text=text)) == '5'
+
+    def test_a_fraction_formats_the_same_for_kg_and_pcs(self):
+        assert (format_line_qty(_Line(Decimal('2.5'), 'KG'))
+                == format_line_qty(_Line(Decimal('2.5'), 'PCS'))
+                == '2.5')
+
+
 class TestBlank:
 
     def test_none_quantity_returns_the_blank(self):
