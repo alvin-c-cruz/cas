@@ -7,9 +7,10 @@
 
 <div class="content-header">
     <div class="search-box">
-        <form method="get" action="{{ url_for('employees.list_employees') }}">
+        <form method="get" action="{{ url_for('employees.list_employees') }}" class="search-form">
             <input type="text" name="q" value="{{ search_query or '' }}"
                    placeholder="Search by employee no. or name..." class="search-input">
+            <button type="submit" class="btn btn-primary">Search</button>
         </form>
     </div>
     <div class="page-actions" style="display: flex; gap: 8px;">
@@ -118,11 +119,17 @@
 
 .search-box {
     flex: 1;
-    max-width: 400px;
+    max-width: 480px;
+}
+
+.search-form {
+    display: flex;
+    gap: 8px;
 }
 
 .search-input {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     padding: 10px 15px;
     border: 1px solid var(--border);
     border-radius: 6px;
