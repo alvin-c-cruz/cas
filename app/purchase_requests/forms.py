@@ -21,7 +21,10 @@ class PurchaseRequestForm(RowVersionFormMixin, FlaskForm):
     # form-level validator: a requisition must never be REFUSED for carrying
     # both, it just resolves to ASAP.
     date_needed_asap = BooleanField('ASAP')
-    reason = TextAreaField('Reason / Justification', validators=[Optional()])
+    # Labelled Note, stored as `reason`. The column keeps its name -- renaming
+    # it would mean a migration, and touching SNAPSHOT_HEADER_FIELDS, the audit
+    # payloads and the export columns, for a change the user only ever reads.
+    reason = TextAreaField('Note', validators=[Optional()])
 
 
 class PurchaseRequestAmendForm(PurchaseRequestForm):

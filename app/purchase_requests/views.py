@@ -730,7 +730,13 @@ def print_pr(id):
 # -- export routes -----------------------------------------------------------------
 
 _EXPORT_COLUMNS = ['pr_number', 'request_date', 'date_needed', 'date_needed_asap', 'reason', 'purchase_order.po_number', 'status']
-_EXPORT_HEADERS = ['PR #', 'Request Date', 'Reason', 'Converted PO #', 'Status']
+# MUST stay index-for-index with _EXPORT_COLUMNS -- they are two parallel
+# lists handed to export_to_excel as separate arguments, so nothing forces
+# them to agree. date_needed and date_needed_asap were added to the columns
+# without headers, leaving every label after Request Date describing the
+# wrong column. test_pr_note_label_and_export.py now asserts the pairing.
+_EXPORT_HEADERS = ['PR #', 'Request Date', 'Date Needed', 'ASAP', 'Note',
+                   'Converted PO #', 'Status']
 
 
 @purchase_requests_bp.route('/purchase-requests/export/excel')
