@@ -1,9 +1,21 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if po else 'Enter' }} Purchase Order{% endblock %}
-{% block page_title %}{{ 'Edit' if po else 'Enter' }} Purchase Order{% endblock %}
+{% block title %}{{ 'Amend' if amend_mode else ('Edit' if po else 'Enter') }} Purchase Order{% endblock %}
+{% block page_title %}{{ 'Amend' if amend_mode else ('Edit' if po else 'Enter') }} Purchase Order{% endblock %}
 {% block content %}
+{# The three stylesheets the AP/SI/PR line-item convention depends on. This form
+   loaded NONE of them, which is why its pickers were raw <select>s: without
+   choices.min.css an enhanced picker has no display:none on its dropdown, and
+   without the other two the grid has none of the shared treatment. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+{# transactions.css carries the .choices* treatment and the .bsr* totals rows
+   used by the summary panel below. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=3">
+{# accounts_payable_form.css is the SHARED line-item grid stylesheet (AP, SI, SO,
+   Quotation and PR all load it). Its #lineItemsTable rules are why this table is
+   named lineItemsTable rather than the old po-private lineTable. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=10">
 <div class="page-header">
-  <h1>{{ 'Edit' if po else 'Enter' }} Purchase Order</h1>
+  <h1>{{ 'Amend' if amend_mode else ('Edit' if po else 'Enter') }} Purchase Order</h1>
   <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary btn-sm">Back to list</a>
 </div>
 
@@ -28,36 +40,84 @@
   <input type="hidden" name="line_items" id="lineItemsJson" value="[]">
 
   <div class="card"><div class="card-body">
-    <div class="form-grid">
-      {# An amendment revises an order, it does not renumber it -- amend() already
-         declines to reassign po_number, so an editable box would silently discard
-         whatever the user typed. #}
+    {# form-row-2/-3, NOT form-grid: `.form-grid` is not defined in style.css at
+       all, so it rendered as a plain block and stacked all seven header fields
+       full-width down the page. The Purchase Requisition form had the identical
+       bug and was moved to the same real classes. Receiving Reports still
+       carries the dead class. #}
+    <div class="form-row-3">
       <div class="form-group">{{ form.po_number.label }}
+        {# An amendment revises an order, it does not renumber it -- amend() already
+           declines to reassign po_number, so an editable box would silently discard
+           whatever the user typed. #}
         {% if amend_mode %}{{ form.po_number(class="form-control", readonly=true) }}
         {% else %}{{ form.po_number(class="form-control") }}{% endif %}</div>
       <div class="form-group">{{ form.order_date.label }} {{ form.order_date(class="form-control") }}</div>
       <div class="form-group">{{ form.expected_date.label }} {{ form.expected_date(class="form-control") }}</div>
-      <div class="form-group">{{ form.vendor_id.label }} {{ form.vendor_id(class="form-control") }}</div>
-      <div class="form-group">{{ form.vat_treatment.label }} {{ form.vat_treatment(class="form-control") }}</div>
-      <div class="form-group">{{ form.payment_terms.label }} {{ form.payment_terms(class="form-control") }}</div>
+    </div>
+    <div class="form-row-2">
+      {# picker-field: this select becomes a Choices control, and transactions.css
+         renders every .choices__inner as a transparent 28px in-grid box. Without
+         this class the Vendor field renders as bare text with no border beside
+         the ordinary selects next to it. #}
+      <div class="form-group picker-field">{{ form.vendor_id.label }} {{ form.vendor_id(class="form-control", id="vendorSelect") }}</div>
       <div class="form-group">{{ form.reference.label }} {{ form.reference(class="form-control") }}</div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group">{{ form.vat_treatment.label }} {{ form.vat_treatment(class="form-control", id="vatTreatment") }}</div>
+      <div class="form-group">{{ form.payment_terms.label }} {{ form.payment_terms(class="form-control") }}</div>
     </div>
     <div class="form-group">{{ form.notes.label }} {{ form.notes(class="form-control", rows=2) }}</div>
   </div></div>
 
-  <div class="card"><div class="card-body">
+  {# card--lines: this card holds only the grid and the summary, so `.card`'s own
+     `overflow: hidden` would slice the picker dropdowns off its bottom edge.
+     AP/SI never hit this because their card is the entire voucher. #}
+  <div class="card card--lines page-purchase-order"><div class="card-body">
     <h3>Line Items</h3>
     <p class="text-muted">Enter a product (goods) or a free-text description (services) on each line.</p>
-    <div class="table-responsive">
-      <table class="table" id="lineTable">
+    {# NO .table-responsive wrapper. `.table-responsive` is `overflow-x: auto`,
+       and a box that scrolls on one axis computes `auto` on the other too, so it
+       clips its children VERTICALLY as well. The Choices dropdown is absolutely
+       positioned and needs far more height than the wrapper has, so the product
+       list opens as an empty white box with every option in the DOM but painted
+       nowhere. This is exactly what it did on the Purchase Requisition form. #}
+    <div>
+      <table class="table" id="lineItemsTable">
         <thead>
-          <tr><th>Product</th><th>Description</th><th>Qty</th><th>Unit Price</th><th>VAT</th>
-              <th class="text-end">Amount</th><th></th></tr>
+          <tr>
+            <th style="width: 24%;">Product</th>
+            <th style="width: 19%;">Description</th>
+            <th style="width: 8%; text-align: right;">Qty</th>
+            <th style="width: 9%;">UOM</th>
+            <th style="width: 11%; text-align: right;">Unit Price</th>
+            <th style="width: 8%;">VAT</th>
+            <th style="width: 16%; text-align: right;">Amount</th>
+            <th style="width: 5%;"></th>
+          </tr>
         </thead>
-        <tbody id="lineBody"></tbody>
+        <tbody id="lineItemsBody"></tbody>
       </table>
     </div>
-    <button type="button" class="btn btn-secondary btn-sm" id="addLineBtn">+ Add line</button>
+    <button type="button" class="btn btn-secondary" id="addLineBtn">+ Add Line Item</button>
+
+    {# Totals. The form previously showed NONE, so a buyer could not see what an
+       order came to without saving it. Rows mirror PurchaseOrder.calculate_totals
+       exactly, including its branch on vat_treatment -- see recalcTotals(). #}
+    <div class="ap-summary-panel">
+      <div class="bsr">
+        <span class="bsr-label" id="grossLabel">Gross Amount</span>
+        <span id="subtotalDisplay" class="bsr-amt">0.00</span>
+      </div>
+      <div class="bsr bsr--sep">
+        <span class="bsr-label" id="vatLabel">Less: Input VAT</span>
+        <span id="vatDisplay" class="bsr-amt">0.00</span>
+      </div>
+      <div class="bsr bsr--total">
+        <span class="bsr-label bsr-label--total">Total Amount</span>
+        <span id="totalDisplay" class="bsr-amt">0.00</span>
+      </div>
+    </div>
   </div></div>
 
   {% if amend_mode %}
@@ -81,25 +141,89 @@
   </div>
 </form>
 
+{# Quick-add modals, exactly as AP/SI/PR include them. Each partial is
+   self-contained (its own overlay, form and error box) and posts by XHR. #}
+{% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}
+{% if module_enabled('units_of_measure') %}{% include "units_of_measure/_quick_add_modal.html" %}{% endif %}
+
+{# Choices + search-select must load BEFORE the inline script: addRow() runs
+   during it, and an unenhanced select is what you get if initSearchSelect is not
+   defined yet. The old template loaded no scripts at all. #}
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='transaction-utils.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
+{% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=1"></script>{% endif %}
+{% if module_enabled('units_of_measure') %}<script src="{{ url_for('static', filename='uom-quick-add.js') }}?v=1"></script>{% endif %}
 <script>
   const PRODUCTS = {{ products | tojson }};
+  const UNITS    = {{ units | tojson }};
   const VATCATS  = {{ vat_categories | tojson }};
   const EXISTING = {{ line_items | tojson }};
 
+  // The quick-add option only makes sense when the master module is on -- with
+  // it off there is no list to add to and the create route is not reachable.
+  const productMasterOn = {{ module_enabled('products') | tojson }};
+  const uomMasterOn     = {{ module_enabled('units_of_measure') | tojson }};
+
+  // Sentinel option values. They live in the <select> like any other option, so
+  // the submit serialiser has to refuse them explicitly -- see its guard.
+  const ADD_PRODUCT = '__add_product__';
+  const ADD_UOM     = '__add_uom__';
+
+  const STANDARD_VAT_RATE = 12;   // mirrors models.STANDARD_VAT_RATE
+
+  // escHtml comes from transaction-utils.js, as in AP/SI/PR. The old hand-rolled
+  // `.replace(/"/g, '&quot;')` escaped the quote only, so a product code or
+  // description containing & or < rendered mangled.
   function vatOptions(sel) {
     let o = '<option value="">--</option>';
     VATCATS.forEach(v => {
-      o += `<option value="${v.code}" data-rate="${v.rate || v.percentage || 0}"${v.code===sel?' selected':''}>${v.code}</option>`;
+      const rate = v.rate || v.percentage || 0;
+      o += `<option value="${escHtml(v.code)}" data-rate="${rate}"${v.code===sel?' selected':''}>${escHtml(v.code)}</option>`;
     });
     return o;
   }
   function productOptions(sel) {
-    let o = '<option value="">-- none --</option>';
+    let o = '<option value="">—</option>';
     PRODUCTS.forEach(p => {
-      o += `<option value="${p.id}"${p.id==sel?' selected':''}>${p.code} - ${p.name}</option>`;
+      o += `<option value="${p.id}"${p.id==sel?' selected':''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`;
     });
     return o;
   }
+  function uomOptions(sel) {
+    let o = '<option value="">—</option>';
+    UNITS.forEach(u => {
+      o += `<option value="${u.id}"${u.id==sel?' selected':''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`;
+    });
+    return o;
+  }
+
+  // Quantity is Numeric(15, 4), so transaction-utils' amtFmt/amtFocus cannot be
+  // reused for it -- they are fixed at 2 decimals and would silently round
+  // 0.5555 to 0.56 both ways. Unit price and amount ARE Numeric(15, 2), so those
+  // use amtFmt directly. (amtBlur is NOT reused: it calls updateLineItem, the
+  // AP/SI line-state machinery this form does not have.)
+  function poQtyFmt(n) {
+    const v = Number(n);
+    if (!isFinite(v)) return '';
+    return v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  }
+  function poNumFocus(el) {
+    const n = parseFloat(el.value.replace(/,/g, ''));
+    el.value = isFinite(n) ? String(n) : '';
+    el.select();
+  }
+  function poQtyBlur(el) {
+    const n = parseFloat(el.value.replace(/,/g, ''));
+    el.value = isFinite(n) ? poQtyFmt(n) : '';
+    recalcRow(el.closest('tr'));
+  }
+  function poPriceBlur(el) {
+    const n = parseFloat(el.value.replace(/,/g, ''));
+    el.value = isFinite(n) ? amtFmt(n) : '';
+    recalcRow(el.closest('tr'));
+  }
+
   {# Line identity, carried across BOTH renders. The validator and the applier
      (app/amendments/validation.py, views.py::_apply_amended_po_lines) key on
      po_item_id, so a row that loses its identity reads as "line removed, line
@@ -120,50 +244,234 @@
   function poItemIdOf(d) {
     return d.id != null ? d.id : (d.po_item_id != null ? d.po_item_id : null);
   }
+
   function addRow(d) {
     d = d || {};
     const tr = document.createElement('tr');
     const poItemId = poItemIdOf(d);
+    // Guarded: an unconditional write stores the string "null" for a hand-added
+    // row, which the applier would then try to resolve as an id.
     if (poItemId != null) tr.dataset.poItemId = poItemId;
+    // A legacy line may carry uom_text with no unit_of_measure_id (free text
+    // typed before the UoM master existed, or imported). The picker cannot
+    // represent that, so the original text rides along on the row and is posted
+    // back verbatim whenever no picker value is chosen -- otherwise opening such
+    // a PO and saving would erase the unit.
+    if (d.uom_text) tr.dataset.uomText = d.uom_text;
+    // Cell markup mirrors AP/SI: borderless transparent inputs, right-aligned
+    // monospace numerics, and the shared .li-btn-action remove button.
+    // The po-* CLASS NAMES are unchanged -- the submit serialiser and the amend
+    // line-identity tests read rows by those classes, not by column position.
     tr.innerHTML =
       `<td><select class="form-control po-product">${productOptions(d.product_id)}</select></td>`
-    + `<td><input class="form-control po-desc" value="${(d.description||'').replace(/"/g,'&quot;')}"></td>`
-    + `<td><input class="form-control po-qty" type="number" step="0.0001" value="${d.quantity ?? ''}"></td>`
-    + `<td><input class="form-control po-price" type="number" step="0.01" value="${d.unit_price ?? ''}"></td>`
+    + `<td><input type="text" class="form-control po-desc"`
+    + ` style="border:none; background:transparent; padding-left:0;"`
+    + ` value="${escHtml(d.description || '')}"></td>`
+    + `<td><input type="text" class="form-control po-qty"`
+    + ` style="text-align:right; font-family:var(--mono); border:none; background:transparent;"`
+    + ` value="${d.quantity != null ? poQtyFmt(d.quantity) : ''}"`
+    + ` onfocus="poNumFocus(this)" onblur="poQtyBlur(this)"></td>`
+    + `<td><select class="form-control po-uom">${uomOptions(d.unit_of_measure_id)}</select></td>`
+    + `<td><input type="text" class="form-control po-price"`
+    + ` style="text-align:right; font-family:var(--mono); border:none; background:transparent;"`
+    + ` value="${d.unit_price != null ? amtFmt(d.unit_price) : ''}"`
+    + ` onfocus="poNumFocus(this)" onblur="poPriceBlur(this)"></td>`
     + `<td><select class="form-control po-vat">${vatOptions(d.vat_category)}</select></td>`
-    + `<td class="text-end po-amount">${(d.amount ?? 0)}</td>`
-    + `<td><button type="button" class="btn btn-sm btn-danger po-del">x</button></td>`;
-    document.getElementById('lineBody').appendChild(tr);
-    recalc(tr);
+    + `<td class="po-amount" style="text-align:right; font-family:var(--mono);">${amtFmt(d.amount || 0)}</td>`
+    + `<td style="text-align:center;">`
+    + `<button type="button" class="li-btn-action po-del" title="Remove line">\u{1F5D1}</button></td>`;
+    document.getElementById('lineItemsBody').appendChild(tr);
+    enhance(tr);
+    recalcRow(tr);
   }
-  function recalc(tr) {
-    const q = parseFloat(tr.querySelector('.po-qty').value) || 0;
-    const p = parseFloat(tr.querySelector('.po-price').value) || 0;
-    if (q > 0 && p > 0) tr.querySelector('.po-amount').textContent = (q * p).toFixed(2);
+
+  // initSearchSelect's own `addAction` is used rather than a hand-rolled
+  // sentinel <option> + change-listener: it pins the action to the top of the
+  // list AND re-injects a clickable fallback when the search filter would drop
+  // it -- i.e. when you have typed a name that matches nothing, which is exactly
+  // when you want to add one. It also restores the previously selected value
+  // afterwards, so cancelling the modal does not blank the cell.
+  function enhance(tr) {
+    // Returns before touching the DOM when the enhancer is absent -- which is
+    // also what lets the line-identity node harness run this script unchanged.
+    if (typeof initSearchSelect !== 'function') return;
+
+    // The addAction blocks are gated in JINJA, not at runtime: with the module
+    // off there is no modal in the DOM and the create route is unreachable, so
+    // emitting a handler that offers to open one is dead weight.
+    // NOTE: do not name the add-action labels in a comment here. A JS comment is
+    // served in the response body, so it would defeat any module-gating absence
+    // test -- which is exactly how the equivalent comment broke the PR form's.
+    const prodSel = tr.querySelector('.po-product');
+    if (prodSel && !prodSel.closest('.choices')) {
+      const prodC = initSearchSelect(prodSel, {
+        {% if module_enabled('products') %}
+        addAction: {
+          value: ADD_PRODUCT,
+          label: '+ Add Product',
+          onSelect: function () {
+            openProductModal(null, function (p) {
+              PRODUCTS.push(p);          // so LATER rows list it too
+              // Raw text, NOT escHtml'd: initSearchSelect runs Choices with
+              // allowHTML:false, which escapes once itself. Pre-escaping here
+              // renders "A &amp; B" literally.
+              prodC.setChoices([{value: String(p.id), label: p.code + ': ' + p.name}],
+                               'value', 'label', false);
+              prodC.setChoiceByValue(String(p.id));
+            });
+          },
+        },
+        {% endif %}
+      });
+    }
+
+    const uomSel = tr.querySelector('.po-uom');
+    if (uomSel && !uomSel.closest('.choices')) {
+      const uomC = initSearchSelect(uomSel, {
+        {% if module_enabled('units_of_measure') %}
+        addAction: {
+          value: ADD_UOM,
+          label: '+ Add UOM',
+          onSelect: function () {
+            openUomModal(null, function (u) {
+              UNITS.push(u);
+              uomC.setChoices([{value: String(u.id), label: u.code + ': ' + u.name}],
+                              'value', 'label', false);
+              uomC.setChoiceByValue(String(u.id));
+            });
+          },
+        },
+        {% endif %}
+      });
+    }
   }
-  document.addEventListener('input', e => { if (e.target.closest('#lineTable')) recalc(e.target.closest('tr')); });
+
+  // amount = qty x unit_price, rounded to 2dp -- the same rule as
+  // PurchaseOrderItem.calculate_amounts, so what the buyer reads on screen is
+  // what the server stores. A row with either side missing keeps whatever amount
+  // it already had (a service line may carry an amount with no qty/price).
+  function recalcRow(tr) {
+    if (!tr) return;
+    const qEl = tr.querySelector('.po-qty');
+    const pEl = tr.querySelector('.po-price');
+    const aEl = tr.querySelector('.po-amount');
+    if (!qEl || !pEl || !aEl) return;
+    const q = parseFloat(String(qEl.value).replace(/,/g, ''));
+    const p = parseFloat(String(pEl.value).replace(/,/g, ''));
+    if (isFinite(q) && isFinite(p) && q > 0 && p > 0) {
+      aEl.textContent = amtFmt(Math.round(q * p * 100) / 100);
+    }
+    recalcTotals();
+  }
+
+  // Mirrors PurchaseOrder.calculate_totals, branch for branch:
+  //   inclusive  -> subtotal = gross; VAT extracted per line; total = gross
+  //   exclusive  -> subtotal = gross; VAT = gross x 12%;      total = gross + VAT
+  //   zero_rated -> subtotal = gross; VAT = 0;                total = gross
+  // The labels change with it, because "Less: Input VAT" is simply wrong on an
+  // exclusive order where the VAT is added on top.
+  function recalcTotals() {
+    const trEl = document.getElementById('vatTreatment');
+    const treatment = (trEl && trEl.value) || 'inclusive';
+    let gross = 0, vat = 0;
+    document.querySelectorAll('#lineItemsBody tr').forEach(tr => {
+      const aEl = tr.querySelector('.po-amount');
+      const amt = parseFloat(String(aEl ? aEl.textContent : '0').replace(/,/g, '')) || 0;
+      gross += amt;
+      const vatSel = tr.querySelector('.po-vat');
+      const rate = parseFloat(vatSel && vatSel.selectedOptions && vatSel.selectedOptions[0]
+                              ? (vatSel.selectedOptions[0].dataset.rate || 0) : 0) || 0;
+      if (rate > 0) vat += amt - Math.round(amt / (1 + rate / 100) * 100) / 100;
+    });
+
+    let total = gross, vatShown = vat, grossLabel = 'Gross Amount', vatLabel = 'Less: Input VAT';
+    if (treatment === 'exclusive') {
+      vatShown = Math.round(gross * STANDARD_VAT_RATE) / 100;
+      total = gross + vatShown;
+      grossLabel = 'Net Amount';
+      vatLabel = 'Add: Input VAT';
+    } else if (treatment === 'zero_rated') {
+      vatShown = 0;
+      vatLabel = 'VAT (zero-rated)';
+    }
+
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    set('grossLabel', grossLabel);
+    set('vatLabel', vatLabel);
+    set('subtotalDisplay', amtFmt(gross));
+    set('vatDisplay', amtFmt(vatShown));
+    set('totalDisplay', amtFmt(total));
+  }
+
+  document.addEventListener('input', e => {
+    if (e.target.closest && e.target.closest('#lineItemsTable')) recalcRow(e.target.closest('tr'));
+  });
+  document.addEventListener('change', e => {
+    if (e.target.id === 'vatTreatment') recalcTotals();
+    else if (e.target.closest && e.target.closest('#lineItemsTable')) recalcRow(e.target.closest('tr'));
+  });
   document.addEventListener('click', e => {
-    if (e.target.classList.contains('po-del')) e.target.closest('tr').remove();
+    if (e.target.classList.contains('po-del')) { const tr = e.target.closest('tr'); tr.remove(); recalcTotals(); }
   });
   document.getElementById('addLineBtn').addEventListener('click', () => addRow());
   document.getElementById('poForm').addEventListener('submit', () => {
     const rows = [];
-    document.querySelectorAll('#lineBody tr').forEach(tr => {
+    // The add-action sentinels are real <option> values sitting in the selects.
+    // initSearchSelect restores the prior value after firing onSelect, so they
+    // should never be current at submit time -- but if one ever were (modal
+    // dismissed mid-flight, a future refactor), '__add_product__' would be POSTed
+    // where an integer id belongs. Refuse them here rather than trust it.
+    const realValue = v => (!v || v === ADD_PRODUCT || v === ADD_UOM) ? null : v;
+    // Commas stripped: qty, price and amount are now comma-GROUPED text (AP/SI
+    // convention), so "1,250.00" would otherwise reach the server verbatim and
+    // fail to parse.
+    const num = v => String(v == null ? '' : v).replace(/,/g, '').trim() || null;
+    document.querySelectorAll('#lineItemsBody tr').forEach(tr => {
       const vatSel = tr.querySelector('.po-vat');
-      const rate = vatSel.selectedOptions[0] ? (vatSel.selectedOptions[0].dataset.rate || 0) : 0;
+      const rate = vatSel && vatSel.selectedOptions && vatSel.selectedOptions[0]
+                   ? (vatSel.selectedOptions[0].dataset.rate || 0) : 0;
+      const uomId = realValue(tr.querySelector('.po-uom').value);
       rows.push({
         po_item_id: tr.dataset.poItemId || null,
-        product_id: tr.querySelector('.po-product').value || null,
+        product_id: realValue(tr.querySelector('.po-product').value),
         description: tr.querySelector('.po-desc').value || null,
-        quantity: tr.querySelector('.po-qty').value || null,
-        unit_price: tr.querySelector('.po-price').value || null,
-        amount: tr.querySelector('.po-amount').textContent || '0',
+        quantity: num(tr.querySelector('.po-qty').value),
+        unit_price: num(tr.querySelector('.po-price').value),
+        amount: num(tr.querySelector('.po-amount').textContent) || '0',
+        // uom_id is the UoM master FK. _assign_po_line_fields has always read
+        // both this and uom_text -- the form simply never sent either, so every
+        // draft edit and every amendment silently wiped the unit off every line,
+        // including on a PO converted from a requisition that had one.
+        uom_id: uomId,
+        // Only when no FK was chosen, so a picked unit never gets shadowed by a
+        // stale free-text string.
+        uom_text: uomId ? null : (tr.dataset.uomText || null),
         vat_category: vatSel.value || null,
         vat_rate: rate,
       });
     });
     document.getElementById('lineItemsJson').value = JSON.stringify(rows);
   });
-  (EXISTING && EXISTING.length ? EXISTING : []).forEach(addRow);
+
+  // Quick-add wiring must exist before the first row is enhanced: each row's
+  // addAction closure calls openProductModal/openUomModal, which these define.
+  if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
+  if (uomMasterOn     && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
+
+  // The vendor picker gets the same treatment as the line pickers -- a plain
+  // <select> against 150 vendors is unusable. No addAction: creating a vendor
+  // mid-order needs more fields than a quick-add modal carries.
+  if (typeof initSearchSelect === 'function') {
+    const vSel = document.getElementById('vendorSelect');
+    if (vSel && !vSel.closest('.choices')) initSearchSelect(vSel);
+  }
+
+  // Start with one blank row so the grid is usable on first load -- a bare
+  // "+ Add Line Item" button over an empty table reads as "there is nothing to
+  // fill in". A blank row costs nothing on submit: _assign_po_line_fields
+  // returns False for a line with no product, description, amount, qty AND
+  // price, so it is skipped rather than saved or rejected.
+  (EXISTING && EXISTING.length ? EXISTING : [{}]).forEach(addRow);
+  recalcTotals();
 </script>
 {% endblock %}

@@ -160,15 +160,42 @@
    The `.page-*` prefix is this file's established answer, per the note on the
    vendor/customer block below: it lifts these to (0,3,0), and equal specificity
    resolves by load order -- this file loads after choices.min.css, so it wins.
-   Scoped to the PR page on purpose: AP and SI carry the same latent issue, but
-   changing their shipped dropdowns is a separate decision. */
+   Scoped to the PR and PO pages on purpose: AP and SI carry the same latent
+   issue, but changing their shipped dropdowns is a separate decision. */
 .page-purchase-request .choices__list--dropdown .choices__item,
-.page-purchase-request .choices__list--dropdown .choices__item--selectable {
+.page-purchase-request .choices__list--dropdown .choices__item--selectable,
+.page-purchase-order .choices__list--dropdown .choices__item,
+.page-purchase-order .choices__list--dropdown .choices__item--selectable {
     padding: 6px 10px;
     font-size: 13px;
     /* normal, not nowrap: a 40-character product name otherwise scrolls
        sideways behind a scrollbar instead of simply wrapping. */
     white-space: normal;
+}
+
+/* ── A Choices picker used as a HEADER field, not inside the line grid ───── */
+/* transactions.css styles EVERY .choices__inner as a compact in-grid control:
+   28px tall, transparent background, transparent border, all `!important`. That
+   is right for a picker sitting in a table cell, and wrong for one sitting in a
+   form row next to ordinary .form-control selects -- the field renders as bare
+   text with no box at all, which is what the reworked Purchase Order header did
+   to its Vendor picker.
+   Restores .form-control's own metrics (style.css:786) so the two match. The
+   !important flags are not decoration: they are answering transactions.css's,
+   which would otherwise win on equal specificity by load order. */
+.picker-field .choices__inner {
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    background: white !important;
+}
+.picker-field .choices.is-focused .choices__inner,
+.picker-field .choices.is-open .choices__inner {
+    border-color: var(--blue) !important;
+    border-radius: 6px !important;
 }
 
 /* ── A card whose only content is the line-item grid ─────────────────────── */
