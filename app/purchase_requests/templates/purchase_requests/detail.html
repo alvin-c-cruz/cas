@@ -47,14 +47,20 @@
   <h3>Requested Items</h3>
   <div class="table-responsive">
     <table class="table">
-      <thead><tr><th>#</th><th>Item</th><th class="text-end">Qty</th><th>UoM</th></tr></thead>
+      <thead><tr><th>#</th><th>Item</th><th class="text-end">Qty</th><th>UoM</th><th>Remarks</th></tr></thead>
       <tbody>
         {% for li in pr.line_items %}
         <tr>
           <td>{{ li.line_number }}</td>
+          {# Item / Remarks split EXACTLY as print.html does it: with a product,
+             Item is the product and Remarks the free text; with no product the
+             free text IS the item, so Remarks is left blank rather than
+             repeating it. Without the second cell a line carrying both -- which
+             is the ordinary shape here -- showed its remarks nowhere at all. #}
           <td>{{ li.product.name if li.product else li.description }}</td>
           <td class="text-end">{{ li | qty_fmt('-') }}</td>
           <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
+          <td>{{ li.description if li.product else '' }}</td>
         </tr>
         {% endfor %}
       </tbody>
