@@ -11,6 +11,11 @@ class PurchaseRequestForm(RowVersionFormMixin, FlaskForm):
         DataRequired(message='PR number is required.'), Length(max=50)])
     request_date = DateField('Request Date', validators=[
         DataRequired(message='Request date is required.')], format='%Y-%m-%d', default=date.today)
+    # Optional and deliberately NOT checked against request_date -- owner
+    # directive, matching PurchaseOrder.expected_date. A requestor who does not
+    # yet know when the goods are wanted must still be able to raise the
+    # requisition.
+    date_needed = DateField('Date Needed', validators=[Optional()], format='%Y-%m-%d')
     reason = TextAreaField('Reason / Justification', validators=[Optional()])
 
 

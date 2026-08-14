@@ -44,8 +44,12 @@
        so it rendered as a plain block and stacked these two fields. form-row-2 is
        the app's established two-up form row (accounts, bank_accounts, and others
        use it) and carries its own tokens/gap. #}
-    <div class="form-row-2">
+    <div class="form-row-3">
       <div class="form-group">{{ form.request_date.label }} {{ form.request_date(class="form-control") }}</div>
+      {# When the goods are wanted BY. Optional and unvalidated against
+         request_date -- owner directive; a requestor who does not yet know must
+         still be able to raise the requisition. #}
+      <div class="form-group">{{ form.date_needed.label }} {{ form.date_needed(class="form-control") }}</div>
       <div class="form-group">{{ form.pr_number.label }}
         {# An amendment revises a requisition, it does not renumber it. The route
            never reassigns pr_number either -- this is the visible half of that. #}

@@ -284,13 +284,14 @@ def create():
                 branch_id=session.get('selected_branch_id'),
                 pr_number=pr_number,
                 request_date=form.request_date.data,
+                date_needed=form.date_needed.data,
                 reason=form.reason.data or None,
                 status='draft', created_by_id=current_user.id)
             _parse_and_attach_pr_lines(pr, request.form.get('line_items', '[]'))
             db.session.add(pr); db.session.commit()
             log_create(module='purchase_requests', record_id=pr.id,
                        record_identifier=pr.pr_number,
-                       new_values=model_to_dict(pr, ['pr_number', 'request_date', 'status']))
+                       new_values=model_to_dict(pr, ['pr_number', 'request_date', 'date_needed', 'status']))
             flash(f'Purchase Requisition "{pr.pr_number}" created.', 'success')
             return redirect(url_for('purchase_requests.view', id=pr.id))
         except ValueError as e:
@@ -367,7 +368,7 @@ def edit(id):
                else json.loads(request.form.get('line_items', '[]') or '[]'))
 
     if form.validate_on_submit():
-        old = model_to_dict(pr, ['pr_number', 'request_date', 'status'])
+        old = model_to_dict(pr, ['pr_number', 'request_date', 'date_needed', 'status'])
         try:
             if not claim_version(PurchaseRequest, pr.id, submitted_version()):
                 db.session.rollback()
@@ -375,12 +376,13 @@ def edit(id):
                 return render_template('purchase_requests/form.html', form=form, pr=pr,
                                        line_items=restore, **_common_form_ctx())
             pr.request_date = form.request_date.data
+            pr.date_needed = form.date_needed.data
             pr.reason = form.reason.data or None
             pr.line_items.clear()
             _parse_and_attach_pr_lines(pr, request.form.get('line_items', '[]'))
             db.session.commit()
             log_update(module='purchase_requests', record_id=pr.id, record_identifier=pr.pr_number,
-                       old_values=old, new_values=model_to_dict(pr, ['pr_number', 'request_date', 'status']))
+                       old_values=old, new_values=model_to_dict(pr, ['pr_number', 'request_date', 'date_needed', 'status']))
             flash(f'Purchase Requisition "{pr.pr_number}" updated.', 'success')
             return redirect(url_for('purchase_requests.view', id=pr.id))
         except ValueError as e:
@@ -477,7 +479,7 @@ def amend(id):
                 flash(message, 'error')
             return _render()
 
-        old = model_to_dict(pr, ['pr_number', 'request_date', 'reason', 'status'])
+        old = model_to_dict(pr, ['pr_number', 'request_date', 'date_needed', 'reason', 'status'])
         try:
             if not claim_version(PurchaseRequest, pr.id, submitted_version()):
                 db.session.rollback()
@@ -485,9 +487,11 @@ def amend(id):
                 return _render()
 
             # pr_number is deliberately NOT reassigned -- an amendment revises a
-            # requisition, it does not renumber it. request_date and reason are
-            # ordinary editable fields and must not be silently discarded.
+            # requisition, it does not renumber it. request_date, date_needed and
+            # reason are ordinary editable fields and must not be silently
+            # discarded.
             pr.request_date = form.request_date.data
+            pr.date_needed = form.date_needed.data
             pr.reason = form.reason.data or None
 
             _apply_amended_pr_lines(pr, submitted_lines)
@@ -708,7 +712,7 @@ def print_pr(id):
 
 # -- export routes -----------------------------------------------------------------
 
-_EXPORT_COLUMNS = ['pr_number', 'request_date', 'reason', 'purchase_order.po_number', 'status']
+_EXPORT_COLUMNS = ['pr_number', 'request_date', 'date_needed', 'reason', 'purchase_order.po_number', 'status']
 _EXPORT_HEADERS = ['PR #', 'Request Date', 'Reason', 'Converted PO #', 'Status']
 
 

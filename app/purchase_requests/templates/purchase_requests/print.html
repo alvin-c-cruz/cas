@@ -148,6 +148,12 @@
       <th>PR #</th><td>{{ pr.pr_number }}</td>
       <th>Date</th><td>{{ pr.request_date.strftime('%B %d, %Y') if pr.request_date else '' }}</td>
     </tr>
+    {# Always rendered, even when blank: on the printed form this is a ruled box
+       someone fills in by hand if the requestor left it empty. #}
+    <tr>
+      <th>Date Needed</th>
+      <td colspan="3">{{ pr.date_needed.strftime('%B %d, %Y') if pr.date_needed else '' }}</td>
+    </tr>
     {% if pr.reason %}
     <tr><th>Reason</th><td colspan="3">{{ pr.reason }}</td></tr>
     {% endif %}

@@ -19,7 +19,10 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
     DOCUMENT_TYPE = 'purchase_requests'
 
     SNAPSHOT_HEADER_FIELDS = (
-        'pr_number', 'request_date', 'reason', 'status', 'branch_id',
+        # date_needed belongs here for the same reason request_date does: an
+        # amendment that moves the date the goods are wanted by is a real change
+        # to the document, and a revision that omits it cannot say what altered.
+        'pr_number', 'request_date', 'date_needed', 'reason', 'status', 'branch_id',
         # purchase_order_id IS live state -- convert() writes it (views.py:371)
         # and it is the only record of what this requisition became. Omitting it
         # was slice 1's first defect, in its PO equivalent (accounts_payable_id):
@@ -64,6 +67,12 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
 
     pr_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
     request_date = db.Column(db.Date, nullable=False, index=True)
+    #: When the goods are wanted BY -- distinct from request_date, which is when
+    #: the requisition was raised. Nullable and unvalidated by owner directive
+    #: (2026-08-14): it matches the paper form, and mirrors
+    #: PurchaseOrder.expected_date, which is also optional and unchecked.
+    #: Nullable is not a preference -- requisitions already exist that have none.
+    date_needed = db.Column(db.Date, nullable=True)
     reason = db.Column(db.Text)
 
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
@@ -172,6 +181,7 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
     def to_dict(self):
         return {'id': self.id, 'pr_number': self.pr_number, 'status': self.status,
                 'request_date': self.request_date.isoformat() if self.request_date else None,
+                'date_needed': self.date_needed.isoformat() if self.date_needed else None,
                 'purchase_order_id': self.purchase_order_id,
                 'purchase_order_number': self.purchase_order.po_number if self.purchase_order else None}
 
