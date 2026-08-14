@@ -62,7 +62,11 @@ def printed(client, db_session, admin_user, main_branch):
 class TestRemarksColumn:
 
     def test_column_heading_present(self, printed):
-        assert b'>Remarks<' in printed
+        # Heading renamed to "Purpose/Remarks" (owner directive 2026-08-14, with
+        # the column order). Updated rather than loosened to a substring match:
+        # `b'Remarks' in printed` would also pass if the heading were dropped and
+        # the word survived only in a comment or another cell.
+        assert b'>Purpose/Remarks<' in printed
 
     def test_remark_prints_for_a_product_line(self, printed):
         assert REMARK.encode() in printed
