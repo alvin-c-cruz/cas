@@ -1,7 +1,7 @@
 """Form for Purchase Request -- a thin requisition (mirror QuotationForm, minus pricing)."""
 from datetime import date
 from flask_wtf import FlaskForm
-from wtforms import DateField, TextAreaField, StringField
+from wtforms import DateField, TextAreaField, StringField, BooleanField
 from wtforms.validators import DataRequired, Length, Optional
 from app.utils.concurrency import RowVersionFormMixin
 
@@ -16,6 +16,11 @@ class PurchaseRequestForm(RowVersionFormMixin, FlaskForm):
     # yet know when the goods are wanted must still be able to raise the
     # requisition.
     date_needed = DateField('Date Needed', validators=[Optional()], format='%Y-%m-%d')
+    # Wanted immediately, no specific date. Mutually exclusive with
+    # date_needed -- the views clear the date when this is set. NOT a
+    # form-level validator: a requisition must never be REFUSED for carrying
+    # both, it just resolves to ASAP.
+    date_needed_asap = BooleanField('ASAP')
     reason = TextAreaField('Reason / Justification', validators=[Optional()])
 
 

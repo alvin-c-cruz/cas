@@ -152,7 +152,10 @@
        someone fills in by hand if the requestor left it empty. #}
     <tr>
       <th>Date Needed</th>
-      <td colspan="3">{{ pr.date_needed.strftime('%B %d, %Y') if pr.date_needed else '' }}</td>
+      <td colspan="3">
+        {%- if pr.date_needed_asap %}ASAP
+        {%- elif pr.date_needed %}{{ pr.date_needed.strftime('%B %d, %Y') }}
+        {%- endif %}</td>
     </tr>
     {% if pr.reason %}
     <tr><th>Reason</th><td colspan="3">{{ pr.reason }}</td></tr>

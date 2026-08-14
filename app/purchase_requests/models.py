@@ -22,7 +22,8 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
         # date_needed belongs here for the same reason request_date does: an
         # amendment that moves the date the goods are wanted by is a real change
         # to the document, and a revision that omits it cannot say what altered.
-        'pr_number', 'request_date', 'date_needed', 'reason', 'status', 'branch_id',
+        'pr_number', 'request_date', 'date_needed', 'date_needed_asap', 'reason',
+        'status', 'branch_id',
         # purchase_order_id IS live state -- convert() writes it (views.py:371)
         # and it is the only record of what this requisition became. Omitting it
         # was slice 1's first defect, in its PO equivalent (accounts_payable_id):
@@ -73,6 +74,14 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
     #: PurchaseOrder.expected_date, which is also optional and unchecked.
     #: Nullable is not a preference -- requisitions already exist that have none.
     date_needed = db.Column(db.Date, nullable=True)
+    #: ASAP -- wanted immediately, no specific date. MUTUALLY EXCLUSIVE with
+    #: date_needed: setting this clears that, so one row can never carry two
+    #: answers to the same question (a printout reading ASAP while a report
+    #: sorts the row by a stale date). Enforced in the views, not by a DB
+    #: constraint, because SQLite CHECK constraints here would need a table
+    #: rebuild on every future column add.
+    date_needed_asap = db.Column(db.Boolean, nullable=False, default=False,
+                                 server_default='0')
     reason = db.Column(db.Text)
 
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
@@ -182,6 +191,7 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
         return {'id': self.id, 'pr_number': self.pr_number, 'status': self.status,
                 'request_date': self.request_date.isoformat() if self.request_date else None,
                 'date_needed': self.date_needed.isoformat() if self.date_needed else None,
+                'date_needed_asap': bool(self.date_needed_asap),
                 'purchase_order_id': self.purchase_order_id,
                 'purchase_order_number': self.purchase_order.po_number if self.purchase_order else None}
 

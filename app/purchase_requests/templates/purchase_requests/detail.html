@@ -30,7 +30,12 @@
   <div class="detail-grid">
     <div><strong>Status:</strong> <span class="badge">{{ pr.status }}</span></div>
     <div><strong>Request Date:</strong> {{ pr.request_date.strftime('%b %d, %Y') if pr.request_date else '' }}</div>
-    <div><strong>Date Needed:</strong> {{ pr.date_needed.strftime('%b %d, %Y') if pr.date_needed else '—' }}</div>
+    {# ASAP wins because the two are mutually exclusive -- _assign_date_needed
+       clears the date whenever ASAP is set, so this branch can never hide one. #}
+    <div><strong>Date Needed:</strong>
+      {% if pr.date_needed_asap %}ASAP
+      {% elif pr.date_needed %}{{ pr.date_needed.strftime('%b %d, %Y') }}
+      {% else %}—{% endif %}</div>
     {% if pr.purchase_order %}
     <div><strong>Purchase Order:</strong>
       <a href="{{ url_for('purchase_orders.view', id=pr.purchase_order_id) }}">{{ pr.purchase_order.po_number }}</a></div>

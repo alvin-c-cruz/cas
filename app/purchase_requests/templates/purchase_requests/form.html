@@ -48,8 +48,19 @@
       <div class="form-group">{{ form.request_date.label }} {{ form.request_date(class="form-control") }}</div>
       {# When the goods are wanted BY. Optional and unvalidated against
          request_date -- owner directive; a requestor who does not yet know must
-         still be able to raise the requisition. #}
-      <div class="form-group">{{ form.date_needed.label }} {{ form.date_needed(class="form-control") }}</div>
+         still be able to raise the requisition.
+
+         ASAP is the alternative to a date, not an extra qualifier on one: the
+         script below clears and disables the date box while it is ticked, and
+         _assign_date_needed enforces the same rule server-side, where it counts. #}
+      <div class="form-group">{{ form.date_needed.label }}
+        <div style="display:flex; align-items:center; gap:10px;">
+          {{ form.date_needed(class="form-control", id="dateNeeded") }}
+          <label style="display:flex; align-items:center; gap:5px; white-space:nowrap; margin:0; font-weight:600;">
+            {{ form.date_needed_asap(id="dateNeededAsap") }} ASAP
+          </label>
+        </div>
+      </div>
       <div class="form-group">{{ form.pr_number.label }}
         {# An amendment revises a requisition, it does not renumber it. The route
            never reassigns pr_number either -- this is the visible half of that. #}
@@ -343,5 +354,28 @@
   if (uomMasterOn     && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
 
   (EXISTING && EXISTING.length ? EXISTING : [{}]).forEach(addRow);
+</script>
+{# Deliberately a SEPARATE <script> from the one above. tests/integration/
+   _line_identity_js.py lifts out the script that defines prItemIdOf and executes
+   it in a minimal DOM shim -- whose elements have no .style, so this toggle
+   threw there and failed four line-identity tests. The toggle is presentation
+   and has nothing to do with line identity; keeping it out of that block is the
+   fix, not a defensive guard inside it. #}
+<script>
+  // ASAP and a specific date are alternatives, so the date box greys out while
+  // ASAP is ticked. Presentation only -- _assign_date_needed applies the same
+  // rule on the server, which is what a POST carrying both actually hits.
+  (function () {
+    const asap = document.getElementById('dateNeededAsap');
+    const dateEl = document.getElementById('dateNeeded');
+    if (!asap || !dateEl) return;
+    function sync() {
+      dateEl.disabled = asap.checked;
+      if (asap.checked) dateEl.value = '';
+      dateEl.style.opacity = asap.checked ? '0.5' : '';
+    }
+    asap.addEventListener('change', sync);
+    sync();   // an edit render arrives with the box already ticked
+  })();
 </script>
 {% endblock %}
