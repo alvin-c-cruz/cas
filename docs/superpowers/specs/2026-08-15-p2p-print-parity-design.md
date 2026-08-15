@@ -135,9 +135,25 @@ an unfiltered dump is the plausible failure and the reason this surface exists.
 **`*_print_form` setting** — `pr_print_form`, `po_print_form`, `rr_print_form`; each `current` or
 `preprinted`; the print route renders accordingly. Mirrors the existing eight.
 
-**`*_print_access` gating** — the Print button's visibility is settings-driven, as in the other
-families. Two requirements: the button is shown when allowed and **hidden when not**, and a
-**direct GET of the print URL respects the same gate**. A hidden button is not access control.
+**Gating — corrected from the design discussion.** I said there that the other families gate the
+Print button behind a `*_print_access` setting and that PR/PO/RR should match "for consistency".
+That premise was wrong: `*_print_access` exists on the six **posting** vouchers (`apv`, `cd`,
+`cd_check`, `cr`, `sv`, `payslip`) where "do not print an unposted voucher" is the concern, and
+**SO, DR and JV — the closest analogues to these documents — have none.** Consistency argues
+against adding it.
+
+So:
+
+- **All three use `*_print_form` with three values**, exactly as SO does: `current` (standard
+  printable form), `preprinted` (data-only overlay for the client's stationery), and `hidden`
+  (printing disabled). `hidden` is the off switch; no second setting is needed for it.
+- **PO additionally gets `po_print_access`**, on its own merits rather than for consistency: the PO
+  is the one P2P document that leaves the company, and a *draft* PO sent to a supplier is a real
+  commercial problem. Default `approved_only`. PR and RR are internal and need no equivalent.
+
+Wherever a gate exists, two requirements hold: the button is shown when allowed and **hidden when
+not**, and a **direct GET of the print URL respects the same gate**. A hidden button is not access
+control.
 
 **Jargon consistency:** list, detail, form and print must all use the same name for the document.
 
