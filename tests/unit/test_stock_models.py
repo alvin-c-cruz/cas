@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 from app import db
 from app.stock_adjustments.models import StockMovement, StockBalance, MOVEMENT_TYPES
 
@@ -22,6 +23,7 @@ def test_stock_movement_is_persistable(db_session, product_tracked, branch_main)
                        movement_type='adjustment', quantity=Decimal('5.0000'),
                        unit_cost=Decimal('4.00'), balance_qty_after=Decimal('5.0000'),
                        balance_avg_cost_after=Decimal('4.00'), balance_value_after=Decimal('20.00'),
-                       source_document_type='stock_adjustment', source_document_id=1)
+                       source_document_type='stock_adjustment', source_document_id=1,
+                       movement_date=date.today())
     db.session.add(mv); db.session.commit()
     assert mv.id is not None

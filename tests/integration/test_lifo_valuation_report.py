@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from app import db
 from app.settings import AppSettings
@@ -32,7 +32,7 @@ def test_lifo_valuation_report_shows_current_tab_layers(client, db_session, admi
     mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
                        quantity=D('5'), unit_cost=D('7.50'), balance_qty_after=D('5'),
                        balance_avg_cost_after=D('7.50'), balance_value_after=D('37.50'),
-                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+                       movement_date=datetime(2026, 1, 1).date(), created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
     db.session.add(mv); db.session.commit()
 
     _login(client, admin_user, branch_main)
@@ -60,7 +60,7 @@ def test_lifo_valuation_report_ambiguous_branch_does_not_silently_pick_one(
     mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
                        quantity=D('5'), unit_cost=D('9.99'), balance_qty_after=D('5'),
                        balance_avg_cost_after=D('9.99'), balance_value_after=D('49.95'),
-                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+                       movement_date=datetime(2026, 1, 1).date(), created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
     db.session.add(mv); db.session.commit()
 
     _login(client, admin_user, branch_main)
@@ -88,12 +88,12 @@ def test_lifo_valuation_report_cogs_tab_shows_variance(client, db_session, admin
     receipt = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
                             quantity=D('5'), unit_cost=D('4.00'), balance_qty_after=D('5'),
                             balance_avg_cost_after=D('4.00'), balance_value_after=D('20.00'),
-                            created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+                            movement_date=datetime(2026, 1, 1).date(), created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
     db.session.add(receipt); db.session.commit()
     issue = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='issue',
                           quantity=D('-2'), unit_cost=D('4.00'), balance_qty_after=D('3'),
                           balance_avg_cost_after=D('4.00'), balance_value_after=D('12.00'),
-                          created_at=datetime(2026, 2, 1), created_by_id=admin_user.id)
+                          movement_date=datetime(2026, 2, 1).date(), created_at=datetime(2026, 2, 1), created_by_id=admin_user.id)
     db.session.add(issue); db.session.commit()
 
     _login(client, admin_user, branch_main)
@@ -113,7 +113,7 @@ def test_lifo_valuation_report_export_excel(client, db_session, admin_user, bran
     mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
                        quantity=D('5'), unit_cost=D('4.00'), balance_qty_after=D('5'),
                        balance_avg_cost_after=D('4.00'), balance_value_after=D('20.00'),
-                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+                       movement_date=datetime(2026, 1, 1).date(), created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
     db.session.add(mv); db.session.commit()
 
     _login(client, admin_user, branch_main)
@@ -138,12 +138,12 @@ def test_lifo_valuation_report_export_excel_honors_as_of(client, db_session, adm
     early = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
                           quantity=D('5'), unit_cost=D('3.00'), balance_qty_after=D('5'),
                           balance_avg_cost_after=D('3.00'), balance_value_after=D('15.00'),
-                          created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+                          movement_date=datetime(2026, 1, 1).date(), created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
     db.session.add(early); db.session.commit()
     later = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
                           quantity=D('5'), unit_cost=D('11.11'), balance_qty_after=D('10'),
                           balance_avg_cost_after=D('7.06'), balance_value_after=D('70.55'),
-                          created_at=datetime(2026, 6, 1), created_by_id=admin_user.id)
+                          movement_date=datetime(2026, 6, 1).date(), created_at=datetime(2026, 6, 1), created_by_id=admin_user.id)
     db.session.add(later); db.session.commit()
 
     _login(client, admin_user, branch_main)
@@ -173,7 +173,7 @@ def test_lifo_valuation_report_export_links_hidden_when_branch_ambiguous(
     mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
                        quantity=D('5'), unit_cost=D('2.00'), balance_qty_after=D('5'),
                        balance_avg_cost_after=D('2.00'), balance_value_after=D('10.00'),
-                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+                       movement_date=datetime(2026, 1, 1).date(), created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
     db.session.add(mv); db.session.commit()
 
     _login(client, admin_user, branch_main)
@@ -197,12 +197,12 @@ def test_lifo_valuation_report_cogs_export_excel(client, db_session, admin_user,
     receipt = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
                             quantity=D('5'), unit_cost=D('4.00'), balance_qty_after=D('5'),
                             balance_avg_cost_after=D('4.00'), balance_value_after=D('20.00'),
-                            created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+                            movement_date=datetime(2026, 1, 1).date(), created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
     db.session.add(receipt); db.session.commit()
     issue = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='issue',
                           quantity=D('-2'), unit_cost=D('4.00'), balance_qty_after=D('3'),
                           balance_avg_cost_after=D('4.00'), balance_value_after=D('12.00'),
-                          created_at=datetime(2026, 2, 1), created_by_id=admin_user.id)
+                          movement_date=datetime(2026, 2, 1).date(), created_at=datetime(2026, 2, 1), created_by_id=admin_user.id)
     db.session.add(issue); db.session.commit()
 
     _login(client, admin_user, branch_main)

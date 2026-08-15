@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 import pytest
 from app import db
 from app.utils import ph_now
@@ -51,7 +52,8 @@ def test_apply_receive_creates_one_lot(db_session, product_specific_id, branch_m
     mv = StockMovement(product_id=product_specific_id.id, branch_id=branch_main.id,
                        movement_type='receipt', quantity=D('10'), unit_cost=D('5.00'),
                        balance_qty_after=D('10'), balance_avg_cost_after=D('5.00'),
-                       balance_value_after=D('50.00'), created_by_id=admin_user.id)
+                       balance_value_after=D('50.00'), created_by_id=admin_user.id,
+                       movement_date=date.today(), created_at=ph_now())
     db.session.add(mv); db.session.commit()
     lot = specific_id_apply_receive(product_specific_id.id, branch_main.id, D('10'), D('5.00'),
                                     'Job Order #7', mv, mv.created_at)
@@ -66,7 +68,8 @@ def test_apply_receive_blank_reference_stores_none(db_session, product_specific_
     mv = StockMovement(product_id=product_specific_id.id, branch_id=branch_main.id,
                        movement_type='receipt', quantity=D('5'), unit_cost=D('2.00'),
                        balance_qty_after=D('5'), balance_avg_cost_after=D('2.00'),
-                       balance_value_after=D('10.00'), created_by_id=admin_user.id)
+                       balance_value_after=D('10.00'), created_by_id=admin_user.id,
+                       movement_date=date.today(), created_at=ph_now())
     db.session.add(mv); db.session.commit()
     lot = specific_id_apply_receive(product_specific_id.id, branch_main.id, D('5'), D('2.00'),
                                     '', mv, mv.created_at)
@@ -82,7 +85,8 @@ def test_apply_consume_decrements_lot_and_records_consumption(db_session, produc
     mv = StockMovement(product_id=product_specific_id.id, branch_id=branch_main.id,
                        movement_type='issue', quantity=D('-4'), unit_cost=D('5.00'),
                        balance_qty_after=D('6'), balance_avg_cost_after=D('5.00'),
-                       balance_value_after=D('30.00'), created_by_id=admin_user.id)
+                       balance_value_after=D('30.00'), created_by_id=admin_user.id,
+                       movement_date=date.today(), created_at=ph_now())
     db.session.add(mv); db.session.commit()
     specific_id_apply_consume(lot, D('4'), mv)
     db.session.commit()

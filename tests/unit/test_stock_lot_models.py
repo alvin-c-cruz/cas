@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 from app import db
 from app.utils import ph_now
 from app.stock_adjustments.models import StockLot, StockLotConsumption, StockMovement
@@ -24,7 +25,8 @@ def test_stock_lot_consumption_round_trip(db_session, product_tracked, branch_ma
     mv = StockMovement(product_id=product_tracked.id, branch_id=branch_main.id,
                        movement_type='issue', quantity=D('-3'), unit_cost=D('5.00'),
                        balance_qty_after=D('7'), balance_avg_cost_after=D('5.00'),
-                       balance_value_after=D('35.00'), created_by_id=admin_user.id)
+                       balance_value_after=D('35.00'), created_by_id=admin_user.id,
+                       movement_date=date.today(), created_at=ph_now())
     db.session.add(mv); db.session.commit()
     consumption = StockLotConsumption(movement_id=mv.id, lot_id=lot.id,
                                       qty_consumed=D('3'), unit_cost_at_consumption=D('5.00'))

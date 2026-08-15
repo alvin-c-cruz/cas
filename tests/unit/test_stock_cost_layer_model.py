@@ -1,5 +1,6 @@
 # tests/unit/test_stock_cost_layer_model.py
 from decimal import Decimal
+from datetime import date
 from app import db
 from app.stock_adjustments.models import StockCostLayer, StockLayerConsumption, StockMovement
 
@@ -36,7 +37,7 @@ def test_stock_layer_consumption_create_and_relationships(db_session, product_fi
         product_id=product_fifo.id, branch_id=branch_main.id, movement_type='issue',
         quantity=Decimal('-6.0000'), unit_cost=Decimal('5.00'),
         balance_qty_after=Decimal('4.0000'), balance_avg_cost_after=Decimal('5.00'),
-        balance_value_after=Decimal('20.00'), created_at=db.func.now())
+        balance_value_after=Decimal('20.00'), movement_date=date.today(), created_at=db.func.now())
     db.session.add(mv); db.session.flush()
     consumption = StockLayerConsumption(
         movement_id=mv.id, layer_id=layer.id,

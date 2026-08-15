@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 from app import db
 from app.utils import ph_now
 from app.stock_adjustments.fifo import (fifo_apply_receive, fifo_apply_consume,
@@ -8,14 +9,17 @@ from app.stock_adjustments.models import StockCostLayer, StockLayerConsumption, 
 D = Decimal
 
 
-def _movement(product_id, branch_id, qty, unit_cost):
+def _movement(product_id, branch_id, qty, unit_cost, created_at=None, movement_date=None):
     # unit_cost=None is passed for consumption movements in the brief's test
     # calls below (the FIFO cost comes from the layer plan, not this field),
     # but StockMovement.unit_cost is NOT NULL -- default to 0 in that case.
+    if created_at is None:
+        created_at = ph_now()
     mv = StockMovement(product_id=product_id, branch_id=branch_id, movement_type='receipt',
                        quantity=D(qty), unit_cost=D(unit_cost) if unit_cost is not None else D('0'),
                        balance_qty_after=D('0'), balance_avg_cost_after=D('0'),
-                       balance_value_after=D('0'), created_at=ph_now())
+                       balance_value_after=D('0'), movement_date=movement_date or created_at.date(),
+                       created_at=created_at)
     db.session.add(mv); db.session.flush()
     return mv
 

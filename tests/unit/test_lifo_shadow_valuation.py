@@ -9,10 +9,11 @@ from app.stock_adjustments.models import StockMovement
 D = Decimal
 
 
-def _mv(product_id, branch_id, qty, unit_cost, created_at):
+def _mv(product_id, branch_id, qty, unit_cost, created_at, movement_date=None):
     mv = StockMovement(product_id=product_id, branch_id=branch_id, movement_type='receipt' if D(qty) > 0 else 'issue',
                        quantity=D(qty), unit_cost=D(unit_cost) if unit_cost is not None else D('0'),
                        balance_qty_after=D('0'), balance_avg_cost_after=D('0'), balance_value_after=D('0'),
+                       movement_date=movement_date or created_at.date(),
                        created_at=created_at)
     db.session.add(mv)
     db.session.flush()
