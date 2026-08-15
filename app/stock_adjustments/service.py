@@ -9,6 +9,7 @@ UPDATE ... WHERE id=? AND row_version=? (optimistic-lock-conditional-update).
 The movement's balance_*_after snapshot is computed from the balance read that
 WON the race, inside the retry loop -- a retry means the prior read was stale.
 """
+from datetime import datetime, time
 from decimal import Decimal
 from app import db
 from app.utils import ph_now
@@ -142,15 +143,20 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                 created_at=ph_now(), created_by_id=actor.id)
             db.session.add(mv)
             db.session.flush()
+            # Layers and lots are ordered/reported by "when received", which is the
+            # DOCUMENT's date, not the moment Approve was clicked. Midnight keeps the
+            # DateTime column's type while carrying only the precision the user gave;
+            # same-date ties fall to the autoincrement id, which is insertion order.
+            effective_at = datetime.combine(movement_date, time.min)
             if is_fifo:
                 if delta_qty > ZERO:
-                    fifo_apply_receive(product.id, branch_id, delta_qty, move_unit_cost, mv, mv.created_at)
+                    fifo_apply_receive(product.id, branch_id, delta_qty, move_unit_cost, mv, effective_at)
                 else:
                     fifo_apply_consume(fifo_plan, mv)
             elif is_specific_id:
                 if delta_qty > ZERO:
                     specific_id_apply_receive(product.id, branch_id, delta_qty, move_unit_cost,
-                                              lot_reference, mv, mv.created_at)
+                                              lot_reference, mv, effective_at)
                 else:
                     specific_id_apply_consume(specific_lot, -delta_qty, mv)
             db.session.expire(bal, ['row_version', 'quantity_on_hand', 'average_unit_cost', 'total_value'])

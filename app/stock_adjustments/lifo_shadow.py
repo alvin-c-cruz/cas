@@ -37,9 +37,12 @@ def _replay(product_id, branch_id, end_date=None):
     """
     query = StockMovement.query.filter_by(product_id=product_id, branch_id=branch_id)
     if end_date is not None:
-        end_inclusive = datetime.combine(end_date, time.max)
-        query = query.filter(StockMovement.created_at <= end_inclusive)
-    movements = query.order_by(StockMovement.created_at, StockMovement.id).all()
+        query = query.filter(StockMovement.movement_date <= end_date)
+    # created_at and id are TIEBREAKS only: two movements on the same business
+    # date fall back to posting order, which is what insertion order means here.
+    movements = query.order_by(StockMovement.movement_date,
+                               StockMovement.created_at,
+                               StockMovement.id).all()
 
     stack = []          # list of dicts; index -1 is the LIFO top (most recently pushed)
     cogs_lines = []
@@ -49,7 +52,7 @@ def _replay(product_id, branch_id, end_date=None):
         qty = Decimal(mv.quantity)
         if qty > ZERO:
             cost = Decimal(mv.unit_cost)
-            stack.append({'qty': qty, 'unit_cost': cost, 'received_at': mv.created_at})
+            stack.append({'qty': qty, 'unit_cost': cost, 'received_at': mv.movement_date})
             last_cost = cost
         elif qty < ZERO:
             need = -qty

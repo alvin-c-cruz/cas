@@ -3,6 +3,7 @@ reads -- they never write to the database. Apply functions (Task 3) do the
 actual writes and must only be called after post_movement's balance claim
 for that attempt has already succeeded (see service.py's Global Constraint
 on plan-then-apply ordering)."""
+from datetime import datetime, time
 from decimal import Decimal
 from app.stock_adjustments.costing import QTY_Q, MONEY_Q, ZERO
 from app.stock_adjustments.models import StockCostLayer
@@ -92,7 +93,7 @@ def fifo_apply_consume(plan, movement):
     for layer, qty in plan:
         if layer.id is None:
             if layer.received_at is None:
-                layer.received_at = movement.created_at
+                layer.received_at = datetime.combine(movement.movement_date, time.min)
             db.session.add(layer)
             db.session.flush()
         layer.remaining_qty = (Decimal(layer.remaining_qty) - qty).quantize(QTY_Q)
