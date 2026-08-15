@@ -74,3 +74,74 @@ def _has_committed_reference(pr_item, exclude_po_id=None):
     if exclude_po_id is not None:
         q = q.filter(PurchaseOrder.id != exclude_po_id)
     return q.first() is not None
+
+
+#: Requisition statuses whose lines may be pulled onto a purchase order.
+PULLABLE_PR = ('approved', 'partially_converted')
+
+
+def assert_within_open_qty(pr_item, qty, idx, exclude_po_id=None):
+    """Refuse to order more of a requisition line than remains open.
+
+    Enforced HERE, at save, rather than by the picker's `max` attribute -- a
+    POST bypasses the input entirely. *idx* is the submitted line's 1-based
+    position, used only in the message.
+
+    An unquantified requisition line has no ceiling, so there is nothing to
+    check.
+    """
+    open_qty = pr_line_open_qty(pr_item, exclude_po_id)
+    if open_qty is None:
+        return None
+    if Decimal(str(qty or 0)) > open_qty:
+        label = (pr_item.product.name if pr_item.product
+                 else (pr_item.description or 'this item'))
+        raise ValueError(
+            f'Line {idx}: only {open_qty} of {label} remain unordered.')
+    return None
+
+
+def open_lines_for_branch(branch_id, exclude_po_id=None):
+    """Every still-open requisition line in *branch_id*, for the PO picker.
+
+    Quantities are returned as STRINGS, not floats: they are Numeric(15, 4) and
+    round-tripping them through float would misreport 0.5555 in the very
+    column the buyer types into.
+    """
+    from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
+    prs = (PurchaseRequest.query
+           .filter(PurchaseRequest.branch_id == branch_id,
+                   PurchaseRequest.status.in_(PULLABLE_PR))
+           .order_by(PurchaseRequest.request_date.asc(), PurchaseRequest.id.asc())
+           .all())
+    out = []
+    for pr in prs:
+        for li in pr.line_items:
+            if not pr_line_is_open(li, exclude_po_id):
+                continue
+            open_qty = pr_line_open_qty(li, exclude_po_id)
+            out.append({
+                'pr_item_id': li.id,
+                'pr_id': pr.id,
+                'pr_number': pr.pr_number,
+                'date_needed': pr.date_needed.isoformat() if pr.date_needed else None,
+                'date_needed_asap': bool(pr.date_needed_asap),
+                'product_id': li.product_id,
+                'product_code': li.product.code if li.product else None,
+                'product_name': li.product.name if li.product else None,
+                'description': li.description,
+                'uom_id': li.unit_of_measure_id,
+                'uom_code': (li.unit_of_measure.code if li.unit_of_measure
+                             else li.uom_text),
+                'requested': _qty_str(li.quantity),
+                'ordered': _qty_str(pr_line_ordered_qty(li, exclude_po_id)),
+                'open': _qty_str(open_qty),
+            })
+    return out
+
+
+def _qty_str(v):
+    """Numeric(15, 4) as a trimmed string: '20', '12.5', '' for None."""
+    if v is None:
+        return ''
+    return '{:f}'.format(Decimal(str(v)).normalize())
