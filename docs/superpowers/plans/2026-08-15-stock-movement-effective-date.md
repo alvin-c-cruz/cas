@@ -1089,12 +1089,30 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                   lot_id=None, lot_reference=None, *, movement_date):
 ```
 
-Delete the now-dead default block added in Task 2:
+Replace the now-dead default block added in Task 2:
 
 ```python
     if movement_date is None:
         movement_date = ph_now().date()
 ```
+
+with an explicit refusal:
+
+```python
+    if movement_date is None:
+        raise ValueError(
+            'post_movement requires movement_date. A caller that cannot name the '
+            'business-effective date has not decided what the movement means; '
+            'defaulting to today is the bug this parameter exists to prevent.')
+```
+
+**Why a raise rather than just deleting the block** (added during execution, from the Task 2
+review): making the parameter keyword-only-required stops an *omitted* argument, but not an
+explicitly-passed `movement_date=None` — and a caller that looked up a document date and got
+`None` back would pass exactly that. With the block simply deleted, such a call still fails,
+but opaquely: `None < date` raises `TypeError` inside the backdating guard, or the insert dies
+on the NOT NULL constraint, neither of which names the real mistake. The raise turns that into
+one clear sentence at the point of the error.
 
 Update the docstring line that called the default temporary — it no longer is:
 
