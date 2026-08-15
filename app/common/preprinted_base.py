@@ -105,9 +105,16 @@ TEXT_DEFAULT_FONT_SIZE = 10
 
 
 def _clamp(value, lo, hi, fallback):
+    """Coerce `value` into lo..hi, falling back to `fallback` on anything unusable.
+
+    OverflowError is caught alongside TypeError/ValueError because Python's JSON
+    reader parses `1e999` (and the bare `Infinity` token) into a float infinity,
+    which `round()` refuses to convert to an int. That is valid JSON reaching a
+    sanitiser that must never raise -- see `sanitize_layout`.
+    """
     try:
         n = int(round(float(value)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return fallback
     return max(lo, min(hi, n))
 
@@ -140,12 +147,26 @@ def _clean_columns(raw, default_columns):
     per-key defaults all arrive inside `default_columns`, so the allow-list is
     derived from the defaults.
 
-    - unknown keys are dropped (a stored layout can never inject a column),
+    - a key that is not a plain string is dropped, like any other unknown key.
+      This is load-bearing, not defensive tidiness: `defaults` is a DICT, so
+      `key in defaults` HASHES the key, and a stored/POSTed
+      `{"columns": [{"key": [1]}]}` -- valid JSON -- would raise
+      `TypeError: unhashable type: 'list'` straight out of the sanitiser.
+      `get_layout` swallows that, but `save_layout` has no guard, so an
+      authenticated POST would 500. `_clean_extras` tests membership against a
+      LIST (`==`, never hashes) and is immune by construction; this function is
+      made to match it,
+    - other unknown keys are dropped too (a stored layout can never inject a
+      column),
     - x/width are clamped, `visible` is coerced to bool,
     - first-seen input order is kept, then ANY known column the input omitted is
       appended at its default -- the column-level forward-compat case: a release
       that adds a column must still print it for a client whose stored JSON
       predates it,
+    - a key repeated in the input resolves to its FIRST occurrence, for BOTH its
+      values and its position. Values and ordering are built in one pass over one
+      dict so the two can never disagree (they previously did: last-wins values
+      at a first-wins position),
     - the result is ALWAYS a list (a stored/declared dict iterates as bare string
       keys in Jinja and silently renders `left:px;width:px`), capped at
       MAX_COLUMNS, and always built from FRESH dicts so a caller mutating the
@@ -156,18 +177,18 @@ def _clean_columns(raw, default_columns):
     """
     default_columns = default_columns if isinstance(default_columns, list) else []
     defaults = {c['key']: c for c in default_columns
-                if isinstance(c, dict) and c.get('key') is not None}
+                if isinstance(c, dict) and isinstance(c.get('key'), str)}
     column_keys = list(defaults)
     raw = raw[:MAX_COLUMNS] if isinstance(raw, list) else []
-    by_key = {c.get('key'): c for c in raw
-              if isinstance(c, dict) and c.get('key') in defaults}
-    # keep first-seen order, then append any known column the input omitted
-    seen, order = set(), []
-    for k in [c['key'] for c in raw
-              if isinstance(c, dict) and c.get('key') in defaults] + column_keys:
-        if k not in seen:
-            seen.add(k)
-            order.append(k)
+    by_key = {}
+    for c in raw:
+        if not isinstance(c, dict):
+            continue
+        k = c.get('key')
+        if isinstance(k, str) and k in defaults and k not in by_key:
+            by_key[k] = c
+    # first-seen input order, then any known column the input omitted
+    order = list(by_key) + [k for k in column_keys if k not in by_key]
     out = []
     for k in order[:MAX_COLUMNS]:
         src = by_key.get(k) or {}
@@ -194,11 +215,18 @@ def _clean_line_items(raw_li, default_li):
 
 
 def _clean_extras(raw, field_keys):
-    """Duplicated field copies: each references a field_keys key + its own position/style."""
+    """Duplicated field copies: each references a field_keys key + its own position/style.
+
+    The `isinstance(..., str)` guard mirrors `_clean_columns`. Membership here is
+    tested against a LIST, so an unhashable key would NOT raise -- but the two
+    siblings sanitise the same user-supplied `key` slot and must not differ in
+    which payloads they accept.
+    """
     raw = raw if isinstance(raw, list) else []
     out = []
     for e in raw[:MAX_EXTRAS]:
-        if not isinstance(e, dict) or e.get('key') not in field_keys:
+        if not isinstance(e, dict) or not isinstance(e.get('key'), str) \
+                or e['key'] not in field_keys:
             continue
         out.append({
             'key': e['key'],
@@ -242,6 +270,80 @@ def _texts_defaults(default_layout):
     ]
 
 
+def _check_num(box, prop, lo, hi, where):
+    """Declared numeric prop must be PRESENT, numeric, and already in range.
+
+    Presence alone is not enough. `_clamp`'s fallback arm returns the declared
+    value untouched when the stored value is unparseable, and that arm is not
+    itself clamped -- so a declared `'w': 'wide'` reaches the template as
+    `width:widepx`, and `'x': None` as `left:Nonepx`. A declared `'x': 99999`
+    survives every clamp for the same reason. Those are the exact defect this
+    validator exists to close, one level down.
+
+    `bool` is excluded explicitly: `isinstance(True, int)` is True in Python, so
+    a declared `'x': True` would otherwise pass a bare numeric check and print at
+    x=1.
+    """
+    if prop not in box:
+        raise ValueError(f'{where} is missing {prop!r}')
+    v = box[prop]
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise ValueError(f'{where}[{prop!r}] is {v!r}; must be a number in {lo}..{hi}')
+    if not lo <= v <= hi:   # also rejects nan and +/-inf
+        raise ValueError(f'{where}[{prop!r}] is {v!r}; must be in {lo}..{hi}')
+
+
+def _check_bool(box, prop, where, required=True):
+    """Declared bool prop must be PRESENT (unless optional) and an actual bool."""
+    if prop not in box:
+        if required:
+            raise ValueError(f'{where} is missing {prop!r}')
+        return
+    if not isinstance(box[prop], bool):
+        raise ValueError(f'{where}[{prop!r}] is {box[prop]!r}; must be a bool')
+
+
+def _validate_default_texts(d):
+    """Validate `default_layout['texts']` in whichever of its two shapes it takes.
+
+    The bare `{text_key: str}` map is normalised into full boxes by
+    `_texts_defaults`, so nothing there can be missing. The full-box LIST form is
+    passed through UNCHANGED, straight into `clean_texts`, which does
+    `{e['id']: e for e in defaults}` and then subscripts `base['text']`,
+    `base['x']`, `base['y']`, `base['fontSize']`, `base['bold']`, `base['hidden']`
+    in `_merge_text`. A list entry missing any of those is a KeyError -- and
+    `get_layout`'s unset branch sits OUTSIDE its try/except, so that is an
+    uncaught 500 on the print page, which is where the designer that could fix
+    the layout lives. Validating here is what makes `get_layout`'s "the defaults
+    path cannot itself raise" comment true.
+    """
+    texts = d.get('texts')
+    if texts is None:
+        return
+    where0 = "default_layout['texts']"
+    if isinstance(texts, dict):
+        for k, v in texts.items():
+            if v is not None and not isinstance(v, str):
+                raise ValueError(f'{where0}[{k!r}] is {v!r}; must be a string')
+        return
+    if not isinstance(texts, list):
+        raise ValueError(f'{where0} is {texts!r}; must be a {{id: str}} map or a box list')
+    for i, box in enumerate(texts):
+        where = f'{where0}[{i}]'
+        if not isinstance(box, dict):
+            raise ValueError(f'{where} is {box!r}; must be a dict')
+        if not isinstance(box.get('id'), str) or not box['id']:
+            raise ValueError(f"{where} is missing a string 'id'")
+        where = f'{where0}[{box["id"]!r}]'
+        if not isinstance(box.get('text'), str):
+            raise ValueError(f"{where} is missing a string 'text'")
+        _check_num(box, 'x', SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, where)
+        _check_num(box, 'y', 0, CANVAS_H, where)
+        _check_num(box, 'fontSize', FONT_MIN, FONT_MAX, where)
+        _check_bool(box, 'bold', where)
+        _check_bool(box, 'hidden', where)
+
+
 def _validate_default_layout(field_keys, d):
     """Raise ValueError if a module's declared defaults could not render.
 
@@ -278,27 +380,37 @@ def _validate_default_layout(field_keys, d):
         box = fields.get(k)
         if not isinstance(box, dict):
             raise ValueError(f"default_layout['fields'][{k!r}] is missing")
-        for prop in ('x', 'y', 'w', 'fontSize', 'bold'):
-            if prop not in box:
-                raise ValueError(f"default_layout['fields'][{k!r}] is missing {prop!r}")
+        where = f"default_layout['fields'][{k!r}]"
+        _check_num(box, 'x', SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, where)
+        _check_num(box, 'y', 0, CANVAS_H, where)
+        _check_num(box, 'w', WIDTH_MIN, WIDTH_MAX, where)
+        _check_num(box, 'fontSize', FONT_MIN, FONT_MAX, where)
+        _check_bool(box, 'bold', where)
+        _check_bool(box, 'hidden', where, required=False)
 
     line_items = d.get('lineItems')
     if not isinstance(line_items, dict):
         raise ValueError("default_layout['lineItems'] must be a dict")
-    for prop in ('y', 'rowHeight', 'fontSize', 'bold'):
-        if prop not in line_items:
-            raise ValueError(f"default_layout['lineItems'] is missing {prop!r}")
+    where = "default_layout['lineItems']"
+    _check_num(line_items, 'y', 0, CANVAS_H, where)
+    _check_num(line_items, 'rowHeight', ROW_MIN, ROW_MAX, where)
+    _check_num(line_items, 'fontSize', FONT_MIN, FONT_MAX, where)
+    _check_bool(line_items, 'bold', where)
 
     columns = line_items.get('columns')
     if isinstance(columns, list):
         for i, col in enumerate(columns):
-            if not isinstance(col, dict) or col.get('key') is None:
+            # a non-STRING key is rejected, not merely a missing one: `_clean_columns`
+            # builds its allow-list as a dict keyed on these, so an unhashable
+            # declared key raises at build time instead of naming itself here.
+            if not isinstance(col, dict) or not isinstance(col.get('key'), str) or not col['key']:
                 raise ValueError(f"default_layout['lineItems']['columns'][{i}] needs a 'key'")
-            for prop in ('x', 'width'):
-                if prop not in col:
-                    raise ValueError(
-                        f"default_layout['lineItems']['columns'][{col['key']!r}] "
-                        f"is missing {prop!r}")
+            where = f"default_layout['lineItems']['columns'][{col['key']!r}]"
+            _check_num(col, 'x', 0, CANVAS_W, where)
+            _check_num(col, 'width', WIDTH_MIN, WIDTH_MAX, where)
+            _check_bool(col, 'visible', where, required=False)
+
+    _validate_default_texts(d)
 
 
 def build_layout_api(setting_key, field_keys, default_layout, audit_module, audit_identifier):
@@ -331,8 +443,22 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
                 ],
             },
             'extras': [],
-            'texts': {text_key: str, ...} or a full box list (see _texts_defaults),
+            'texts': {text_key: str, ...}       # the usual form; positions come
+                                                # from TEXT_DEFAULT_XS/_Y
+                     or [                       # or the FULL box list, in which
+                        {'id': str, 'text': str,    # case EVERY key shown is
+                         'x': int, 'y': int,        # REQUIRED on every entry --
+                         'fontSize': int,           # clean_texts subscripts all
+                         'bold': bool,              # of them, so a partial entry
+                         'hidden': bool},           # is a KeyError, not a
+                        ...                         # caught fallback
+                     ],
         }
+
+    Every numeric prop above must be an actual number (not a numeric string, not
+    a bool) and must ALREADY be inside the range its sanitizer would clamp it to
+    -- `_clamp`'s fallback arm returns the declared value untouched, so an
+    out-of-range or unparseable declaration is never clamped, it just prints.
 
     Raises ValueError, naming the offending key, if any of that is wrong.
     """
@@ -375,6 +501,12 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
         """Current sanitized layout for a branch (defaults if unset or corrupt)."""
         stored = AppSettings.get_setting(_layout_key(branch_id))
         if not stored:
+            # NOTE this branch sits OUTSIDE the try below on purpose, and is only
+            # safe because `_validate_default_layout` has already proven that
+            # sanitizing the declaration cannot raise -- every value the
+            # sanitizer and `clean_texts` subscript is checked for presence, type
+            # AND range at build time. Weaken that validator and this line
+            # becomes an uncaught 500 on the print page.
             return sanitize_layout(copy.deepcopy(default_layout))
         try:
             return sanitize_layout(json.loads(stored))
@@ -382,8 +514,8 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
             # ANY failure reading a stored layout must degrade to the defaults.
             # A narrower except is not fail-safe: the print page hosts the
             # designer, so a raise here leaves that branch with no UI to fix its
-            # own layout with. The defaults path below cannot itself raise --
-            # `default_layout` is validated at build time.
+            # own layout with. The defaults path below cannot itself raise, for
+            # the reason given above.
             return sanitize_layout(copy.deepcopy(default_layout))
 
     def save_layout(raw, username, branch_id=None):
