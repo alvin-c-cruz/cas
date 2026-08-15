@@ -534,11 +534,21 @@ class TestPurchaseRequisition:
             assert money not in pr_pl.COLUMN_KEYS
             assert money not in pr_pl.FIELD_KEYS
 
-    def test_every_field_and_column_has_a_label(self):
-        for k in pr_pl.FIELD_KEYS:
-            assert k in pr_pl.FIELD_LABELS
-        for k in pr_pl.COLUMN_KEYS:
-            assert k in pr_pl.COLUMN_LABELS
+    def test_every_label_is_exactly_right(self):
+        """Membership is not enough -- these are user-visible strings on a printed
+        document, so a typo ships silently. Assert the VALUES, not `k in LABELS`.
+        (Task 3 shipped with the membership-only form and a review caught it; the
+        same weakness was about to be cloned here for both PR and RR.)"""
+        assert pr_pl.FIELD_LABELS == {
+            'pr_number': 'PR No.', 'request_date': 'Request Date',
+            # 'Note', NOT 'Reason' -- commit 7d1e3d9b renamed this label on the
+            # requisition and the printed form must use the module's own word.
+            'date_needed': 'Date Needed', 'reason': 'Note', 'branch': 'Branch',
+        }
+        assert pr_pl.COLUMN_LABELS == {
+            'line_number': '#', 'product': 'Product', 'description': 'Description',
+            'quantity': 'Qty', 'uom': 'UOM',
+        }
 
 
 class TestReceivingReport:
@@ -554,11 +564,70 @@ class TestReceivingReport:
         assert rr_pl.COLUMN_KEYS == ['line_number', 'product', 'description',
                                      'ordered_qty', 'received_quantity', 'uom']
 
-    def test_every_field_and_column_has_a_label(self):
-        for k in rr_pl.FIELD_KEYS:
-            assert k in rr_pl.FIELD_LABELS
-        for k in rr_pl.COLUMN_KEYS:
-            assert k in rr_pl.COLUMN_LABELS
+    def test_every_label_is_exactly_right(self):
+        assert rr_pl.FIELD_LABELS == {
+            'rr_number': 'RR No.', 'receipt_date': 'Receipt Date',
+            'vendor_name': 'Vendor', 'po_number': 'PO No.', 'remarks': 'Remarks',
+        }
+        assert rr_pl.COLUMN_LABELS == {
+            'line_number': '#', 'product': 'Product', 'description': 'Description',
+            'ordered_qty': 'Ordered', 'received_quantity': 'Received', 'uom': 'UOM',
+        }
+
+
+class TestNoLabelCarriesACurrencySymbol:
+    """CAS prints no currency symbol in a column header. Enforce the convention
+    rather than describing it in a comment -- a comment is checked by nobody."""
+
+    @pytest.mark.parametrize('mod', ['pr_pl', 'rr_pl'])
+    def test_no_currency_glyph_in_any_label(self, mod):
+        pl = {'pr_pl': pr_pl, 'rr_pl': rr_pl}[mod]
+        for labels in (pl.FIELD_LABELS, pl.COLUMN_LABELS):
+            for key, text in labels.items():
+                for glyph in ('₱', '$', '&#8369;'):
+                    assert glyph not in text, f'{mod}.{key} carries {glyph!r}'
+
+
+class TestTheDefaultGeometryIsPinned:
+    """Nothing else regresses a coordinate edit. `build_layout_api` validates
+    RANGE at import time, so an out-of-bounds box never reaches a test -- but two
+    individually-valid boxes parked on top of each other is invisible to it.
+
+    Derive the comparisons from the declaration; do not hardcode their results.
+
+    NOTE the constant names: Task 3 established `DEFAULT_<DOC>_PREPRINTED_LAYOUT`,
+    so these are `DEFAULT_PR_PREPRINTED_LAYOUT` and `DEFAULT_RR_PREPRINTED_LAYOUT`.
+    There is no generic `DEFAULT_LAYOUT` alias -- parametrise over the layout dicts
+    themselves rather than trying to reach one through the module.
+    """
+
+    LAYOUTS = [pr_pl.DEFAULT_PR_PREPRINTED_LAYOUT, rr_pl.DEFAULT_RR_PREPRINTED_LAYOUT]
+
+    @pytest.mark.parametrize('layout', LAYOUTS)
+    def test_columns_tile_without_overlapping(self, layout):
+        from app.common import preprinted_base as base
+        cols = sorted(layout['lineItems']['columns'], key=lambda c: c['x'])
+        for left, right in zip(cols, cols[1:]):
+            assert left['x'] + left['width'] <= right['x'], \
+                f"{left['key']} overlaps {right['key']}"
+        last = cols[-1]
+        assert last['x'] + last['width'] <= base.CANVAS_W - base.SAFE_MARGIN
+
+    @pytest.mark.parametrize('layout', LAYOUTS)
+    def test_no_two_fields_on_the_same_row_overlap(self, layout):
+        boxes = layout['fields']
+        by_row = {}
+        for key, b in boxes.items():
+            by_row.setdefault(b['y'], []).append((b['x'], b['x'] + b['w'], key))
+        for y, row in by_row.items():
+            row.sort()
+            for (_, lend, lkey), (rstart, _, rkey) in zip(row, row[1:]):
+                assert lend <= rstart, f'{lkey} overlaps {rkey} at y={y}'
+
+    @pytest.mark.parametrize('layout', LAYOUTS)
+    def test_every_field_prints_by_default(self, layout):
+        for key, b in layout['fields'].items():
+            assert b['hidden'] is False, f'{key} is hidden by default'
 
 
 class TestTheyDoNotShareIdentity:
@@ -606,7 +675,9 @@ printed form must use the same word the rest of the module does.
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `venv/Scripts/python.exe -m pytest tests/unit/test_pr_rr_preprinted_layout.py -q --no-cov`
-Expected: PASS, 10 passed.
+Expected: PASS. Do not chase an exact count — several tests are parametrised over the two
+modules, so pytest reports more test ids than there are `def test_` lines. Count what you get and
+confirm zero failures instead.
 
 - [ ] **Step 5: Commit**
 
