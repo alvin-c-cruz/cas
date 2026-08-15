@@ -195,7 +195,8 @@ def reverse_document_movements(source_document_type, source_document_id, actor, 
             mv, _ = post_movement(
                 product, orig.branch_id, 'adjustment', -Decimal(orig.quantity),
                 Decimal(orig.unit_cost), source_document_type, source_document_id,
-                f'Reversal of movement {orig.id}', actor, journal_entry_id=journal_entry_id)
+                f'Reversal of movement {orig.id}', actor, journal_entry_id=journal_entry_id,
+                movement_date=ph_now().date())
         reversals.append(mv)
     return reversals
 
@@ -252,6 +253,7 @@ def _reverse_fifo_movement(orig, actor, journal_entry_id):
                 quantity=reversal_qty.quantize(Decimal('0.0001')), unit_cost=Decimal(orig.unit_cost),
                 balance_qty_after=new_qty, balance_avg_cost_after=new_avg, balance_value_after=new_value,
                 source_document_type=orig.source_document_type, source_document_id=orig.source_document_id,
+                movement_date=ph_now().date(),
                 journal_entry_id=journal_entry_id, reason=f'Reversal of movement {orig.id}',
                 created_at=ph_now(), created_by_id=actor.id)
             db.session.add(mv)
@@ -331,6 +333,7 @@ def _reverse_specific_id_movement(orig, actor, journal_entry_id):
                 quantity=reversal_qty.quantize(Decimal('0.0001')), unit_cost=Decimal(orig.unit_cost),
                 balance_qty_after=new_qty, balance_avg_cost_after=new_avg, balance_value_after=new_value,
                 source_document_type=orig.source_document_type, source_document_id=orig.source_document_id,
+                movement_date=ph_now().date(),
                 journal_entry_id=journal_entry_id, reason=f'Reversal of movement {orig.id}',
                 created_at=ph_now(), created_by_id=actor.id)
             db.session.add(mv)
@@ -428,7 +431,8 @@ def approve_adjustment(adjustment, actor):
         mv, went_negative = post_movement(
             product, adjustment.branch_id, 'adjustment', qty, in_cost,
             'stock_adjustment', adjustment.id, line.note, actor, journal_entry_id=je.id,
-            lot_id=line.lot_id, lot_reference=line.lot_reference)
+            lot_id=line.lot_id, lot_reference=line.lot_reference,
+            movement_date=adjustment.adjustment_date)
         if went_negative:
             warnings.append(product.code)
         if qty > ZERO:   # stock in: Dr inventory / Cr offset

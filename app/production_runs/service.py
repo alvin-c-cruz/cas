@@ -223,7 +223,7 @@ def close_run(run, actor):
         mv, _went_negative = post_movement(
             product, run.branch_id, 'production', transferred_units, per_eu,
             'production_run', run.id, f'{run.run_number} transferred to finished goods',
-            actor, journal_entry_id=je.id)
+            actor, journal_entry_id=je.id, movement_date=ph_now().date())
         # The movement's OWN unit_cost, not per_eu -- they differ for a standard-costed
         # product, and the stock ledger's figure is what Inventory must be debited.
         inventory_amount = (transferred_units * Decimal(str(mv.unit_cost))).quantize(MONEY)

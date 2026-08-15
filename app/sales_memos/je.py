@@ -157,7 +157,7 @@ def post_memo_je(memo, user_id, actor=None):
             mv, _went_negative = post_movement(
                 li.product, memo.branch_id, 'sales_return', qty, current_avg,
                 'sales_memo', memo.id, f'{memo.memo_number} return: {li.product.code}',
-                actor, journal_entry_id=je.id)
+                actor, journal_entry_id=je.id, movement_date=memo.memo_date)
             cogs_net += abs(Decimal(str(mv.quantity))) * Decimal(str(mv.unit_cost))
         if cogs_net > 0:
             add(inv_account.id, f'Inventory returned: {memo.memo_number}', cogs_net, Decimal('0.00'))

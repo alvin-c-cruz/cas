@@ -97,7 +97,8 @@ def consume_materials(source_document, lines, actor):
         mv, went_negative = post_movement(
             product, source_document.branch_id, 'material_issue', -Decimal(str(quantity)), None,
             source_document_type, source_document.id,
-            f'{reference} material issue: {product.code}', actor, journal_entry_id=je.id)
+            f'{reference} material issue: {product.code}', actor, journal_entry_id=je.id,
+            movement_date=ph_now().date())
         if went_negative:
             warnings.append(product.code)
         amount = (abs(Decimal(str(mv.quantity))) * Decimal(str(mv.unit_cost))).quantize(Decimal('0.01'))
@@ -138,7 +139,7 @@ def produce_finished_goods(source_document, product_id, quantity, unit_cost, act
     mv, _went_negative = post_movement(
         product, source_document.branch_id, 'production', Decimal(str(quantity)), Decimal(str(unit_cost)),
         source_document_type, source_document.id, f'{reference} production: {product.code}',
-        actor, journal_entry_id=je.id)
+        actor, journal_entry_id=je.id, movement_date=ph_now().date())
     amount = (Decimal(str(mv.quantity)) * Decimal(str(mv.unit_cost))).quantize(Decimal('0.01'))
     _add_line(je, 1, inv_account.id, f'{product.code} produced', amount, ZERO)
     _add_line(je, 2, wip_account.id, f'{product.code} relieved from WIP', ZERO, amount)

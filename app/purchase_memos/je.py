@@ -180,7 +180,7 @@ def post_purchase_memo_je(memo, user_id, actor=None):
             mv, went_negative = post_movement(
                 li.product, memo.branch_id, 'purchase_return', -qty, None,
                 'purchase_memo', memo.id, f'{memo.memo_number} return: {li.product.code}',
-                actor, journal_entry_id=je.id)
+                actor, journal_entry_id=je.id, movement_date=memo.memo_date)
             if went_negative:
                 warnings.append(li.product.code)
             # Value the Cr Inventory leg at the movement's OWN current-average

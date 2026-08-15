@@ -57,7 +57,8 @@ def post_dr_delivery(dr, actor):
     for li in tracked_lines:
         mv, went_negative = post_movement(
             li.product, dr.branch_id, 'issue', -Decimal(str(li.delivered_quantity)), None,
-            'delivery_receipt', dr.id, f'DR {dr.dr_number}', actor, journal_entry_id=je.id)
+            'delivery_receipt', dr.id, f'DR {dr.dr_number}', actor, journal_entry_id=je.id,
+            movement_date=dr.delivery_date)
         if went_negative:
             warnings.append(li.product.code)
         amount = (abs(Decimal(str(mv.quantity))) * Decimal(str(mv.unit_cost))).quantize(Decimal('0.01'))

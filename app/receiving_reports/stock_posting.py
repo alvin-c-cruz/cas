@@ -71,7 +71,8 @@ def post_rr_receipt(rr, actor):
         net_amount = (Decimal(str(li.received_quantity)) * net_unit_cost).quantize(Decimal('0.01'))
         mv, _went_negative = post_movement(
             li.product, rr.branch_id, 'receipt', Decimal(str(li.received_quantity)), net_unit_cost,
-            'receiving_report', rr.id, f'RR {rr.rr_number}', actor, journal_entry_id=je.id)
+            'receiving_report', rr.id, f'RR {rr.rr_number}', actor, journal_entry_id=je.id,
+            movement_date=rr.receipt_date)
         li.stock_movement_id = mv.id
         _add_line(je, n, inv_account.id, f'{li.product.code} received', net_amount, ZERO); n += 1
         _add_line(je, n, grni_account.id, f'{li.product.code} accrued', ZERO, net_amount); n += 1

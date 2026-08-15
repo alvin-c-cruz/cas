@@ -182,7 +182,8 @@ def complete_work_order_batch(wo, batch_qty, actor):
 
     mv, _went_negative = post_movement(
         product, wo.branch_id, 'production', batch_qty, wo.actual_unit_cost,
-        'work_order', wo.id, f'{wo.wo_number} completion batch', actor, journal_entry_id=je.id)
+        'work_order', wo.id, f'{wo.wo_number} completion batch', actor, journal_entry_id=je.id,
+        movement_date=ph_now().date())
 
     inventory_amount = (batch_qty * wo.actual_unit_cost).quantize(Decimal('0.01'))
     material_amount = (batch_qty * material_unit_cost).quantize(Decimal('0.01'))
