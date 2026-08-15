@@ -696,8 +696,8 @@ git commit -m "feat(pr,rr): pre-printed layout declarations"
 
 **Interfaces:**
 - Consumes: nothing (browser-side).
-- Produces: a global `initPreprintedDesigner(config)` where `config` is
-  `{saveUrl, fieldLabels, columnLabels, canEdit}`.
+- Produces: a global `initPreprintedDesigner({ saveUrl })` — **one required key**. See the
+  note under Task 6 for why the other three keys this plan originally listed do not exist.
 
 - [ ] **Step 1: Build the shared core**
 
@@ -711,7 +711,7 @@ document-specific reference with a value read from a `config` object:
 // replaces differed by ~19 lines each -- the save URL and some element ids.
 // Everything else (drag, clamp, snap, font/paper/date controls, save) is shared.
 function initPreprintedDesigner(config) {
-  // config: { saveUrl, fieldLabels, columnLabels, canEdit }
+  // config: { saveUrl }  -- required; returns false and surfaces a notice without it.
 ```
 
 Copy `app/static/css/so_preprinted_designer.css` (15 lines) to
@@ -914,14 +914,35 @@ Copy `app/sales_orders/templates/sales_orders/print_preprinted.html` (157 lines)
 <link rel="stylesheet" href="{{ url_for('static', filename='css/preprinted_designer.css') }}?v=1">
 <script src="{{ url_for('static', filename='js/preprinted_designer.js') }}?v=1"></script>
 <script>
-  initPreprintedDesigner({
-    saveUrl: '{{ url_for("purchase_orders.save_print_layout") }}',
-    fieldLabels: {{ field_labels | tojson }},
-    columnLabels: {{ col_labels | tojson }},
-    canEdit: {{ can_edit_layout | tojson }}
-  });
+  initPreprintedDesigner({ saveUrl: '{{ url_for("purchase_orders.save_print_layout") }}' });
 </script>
 ```
+
+**The config has exactly ONE key.** An earlier draft of this plan specified
+`{saveUrl, fieldLabels, columnLabels, canEdit}`; three of those were invented. `saveUrl` was the
+only document-specific value in the entire 431-line SO designer. Labels already ride on each
+element's `data-label`, so a `fieldLabels` map would be a second source of truth that can disagree
+with the DOM; and `canEdit` is a server decision this template already enforces by choosing whether
+to render `#editLayoutBtn` at all — a client flag could only contradict it. `saveUrl` is
+**required**: without it `initPreprintedDesigner` returns `false`, shows the notice banner and
+disables the Edit button, rather than silently discarding a user's rearrangement at Save.
+
+**The `field()` macro MUST emit `width` — the copied SO macro does not.**
+`sales_orders/print_preprinted.html:57-61` renders only `left`, `top`, `font-size` and
+`font-weight`. Copy it unchanged and the declared `w` never reaches the page or the save payload,
+so the per-field widths that `preprinted_base` makes **mandatory at import** (and that Tasks 3-4
+declare as 500/200/150) become decorative. Add it:
+
+```jinja
+{% macro field(key, value, iso='') %}
+  {% set f = layout.fields[key] %}
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"{% if iso %} data-date="{{ iso }}"{% endif %}
+       style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.w }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
+{% endmacro %}
+```
+
+Assert it: a render test on the GET must find `width:` inside the `data-el="po_no"` element, and a
+save round-trip must return `w` unchanged. Without both, this silently regresses to the SO shape.
 
 Match the approved Task 1 mockup for placement and chrome.
 
@@ -1054,7 +1075,15 @@ Expected: FAIL on the new PR/RR classes only; the PO classes stay green.
 - [ ] **Step 3: Create both templates and wire both routes**
 
 Mirror Task 6 exactly for each module. Both `print_preprinted.html` files load the same shared
-`preprinted_designer.js`/`.css` with `?v=1`.
+`preprinted_designer.js`/`.css` with `?v=1`, call `initPreprintedDesigner({ saveUrl })` with that
+module's own save route as the **only** key, and — like Task 6 — their `field()` macro **must emit
+`width:{{ f.w }}px`**, which the copied SO macro does not. Same render assertion applies.
+
+**RR's column keys do not match the model's attribute names — map them explicitly.** `COLUMN_KEYS`
+declares `ordered_qty` and `uom`, but the derived surface is `ordered_quantity` (in `to_dict()`) and
+`uom_text` / `unit_of_measure` (properties) — `app/receiving_reports/models.py:104-106,113-114`. A
+typo in that mapping is caught by nothing that exists today, so assert each derived column renders a
+real value on the GET, not merely that the element is present.
 
 For RR, resolve the derived columns through the relationship rather than the line:
 
