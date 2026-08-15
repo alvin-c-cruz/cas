@@ -9,13 +9,16 @@
   <h1>Purchase Order {{ po.po_number }}</h1>
   <div>
     <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary btn-sm">Back</a>
-    {# Print: the SAME two guards purchase_orders.print_po() applies, so the page
-       cannot offer a button the route will refuse (the delete_approved_email
-       shape). This is presentation only -- the route enforces both itself, because
-       a direct GET never renders this template. Mirrors
-       sales_invoices/detail.html:109 and accounts_payable/detail.html:111. #}
+    {# Print: the SAME three guards purchase_orders.print_po() applies -- print form,
+       cancelled (never printable, at any setting), and the DEFAULT-DENY draft check
+       (the exemption needs an exact 'draft_and_approved') -- so the page cannot offer
+       a button the route will refuse (the delete_approved_email shape). This is
+       presentation only; the route enforces all three itself, because a direct GET
+       never renders this template. Mirrors sales_invoices/detail.html:109-111 and
+       accounts_payable/detail.html:111-113. #}
     {% if po_print_form != 'hidden'
-       and not (po_print_access == 'approved_only' and po.status == 'draft') %}
+       and po.status != 'cancelled'
+       and (po.status != 'draft' or po_print_access == 'draft_and_approved') %}
     <a href="{{ url_for('purchase_orders.print_po', id=po.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
     {% endif %}
     {% if can_write and po.status == 'draft' %}

@@ -891,10 +891,25 @@ def print_po(id):
     if po_print_form == 'hidden':
         flash('Purchase Order printing is not enabled.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
-    # A DRAFT purchase order must not reach a supplier. Enforced HERE, not only by
-    # hiding the button -- a direct GET bypasses the template entirely.
+    # Enforced HERE, not only by hiding the button -- a direct GET bypasses the
+    # template entirely.
+    #
+    # A CANCELLED purchase order is NEVER printable, at any setting: neither print
+    # surface shows status (print.html carries no status text and the overlay is
+    # data-only by design), so a printed cancelled PO is indistinguishable on paper
+    # from a live order at the supplier's end. Every sibling excludes cancelled in
+    # BOTH branches of its gate -- sales_invoices/detail.html:110-111,
+    # accounts_payable/detail.html:112-113, cash_disbursements/detail.html:77-78.
+    if po.status == 'cancelled':
+        flash('A cancelled Purchase Order cannot be printed.', 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
+    # DRAFT is the only status po_print_access governs, and the check is DEFAULT-DENY:
+    # the exemption needs an exact 'draft_and_approved' match, so an unrecognised or
+    # stale stored value (e.g. a 'posted_only' left by the shared PRINT_ACCESS_CHOICES)
+    # refuses rather than opens. Matches sales_invoices/views.py:1401-1403 and
+    # cash_disbursements/views.py:1354-1355.
     po_print_access = AppSettings.get_setting('po_print_access', 'approved_only')
-    if po_print_access == 'approved_only' and po.status == 'draft':
+    if po.status == 'draft' and po_print_access != 'draft_and_approved':
         flash('A draft Purchase Order cannot be printed. Approve it first.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
     company = {

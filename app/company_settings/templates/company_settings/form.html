@@ -208,6 +208,13 @@
                 {{ render_field(form.cd_print_access) }}
                 {{ render_field(form.cd_check_print_access) }}
                 {{ render_field(form.cr_print_access) }}
+                {# purchase_orders is optional (default_enabled=False) -- gated like its
+                   po_print_form sibling below. Its choices are PO-specific (approved /
+                   draft_and_approved): a PO posts nothing, so the shared
+                   PRINT_ACCESS_CHOICES cannot express its gate. #}
+                {% if module_states.purchase_orders %}
+                {{ render_field(form.po_print_access) }}
+                {% endif %}
                 {% if module_states.payroll %}
                 {{ render_field(form.payslip_print_access) }}
                 {% endif %}

@@ -86,6 +86,30 @@ def approved_po(db_with_data, branch_manila, vendor_acme):
     return po
 
 
+@pytest.fixture
+def cancelled_po(db_with_data, branch_manila, vendor_acme):
+    """`cancelled` is a real member of VALID_PO_STATUSES and purchase_orders.cancel()
+    is a live route -- this is not a hypothetical state."""
+    po = _make_draft_po(branch_manila, vendor_acme, '00996')
+    po.status = 'cancelled'
+    db.session.commit()
+    return po
+
+
+def _grant_po_access(user, branch, db_session):
+    """Give a non-full-access user the module permission and the PO's branch.
+
+    Without BOTH, enforce_module_access / validate_branch_session redirect before the
+    view under test ever runs, and the assertion would 'pass' on a 302 that says
+    nothing about what it claims to check (memory feedback-outer-gate-masks-inner-guard)."""
+    perms = user.get_book_permissions()
+    perms.update({'purchase_orders': True, 'products': True})
+    user.set_book_permissions(perms)
+    if branch not in user.branches:
+        user.branches.append(branch)
+    db_session.commit()
+
+
 def _element(body, key):
     """The full opening tag of the overlay element for *key*, or None."""
     m = re.search(r'<div[^>]*data-el="%s"[^>]*>' % re.escape(key), body)
@@ -175,6 +199,56 @@ class TestPurchaseOrderPrintForm:
         # `data-signatory=&#34;1&#34;`).
         assert body.count('data-signatory="1"') == len(TEXT_KEYS)
         assert 'data-signatory=&#34;' not in body
+
+    def test_every_field_carries_its_designer_label(
+            self, client, db_session, admin_user, branch_manila, approved_po):
+        """preprinted_designer.js:248 builds each element's checkbox caption from
+        `el.dataset.label || key` -- drop data-label from the field() macro and edit
+        mode degrades to raw storage keys ('vendor_tin', 'vat_treatment') in the
+        control panel the user is meant to read. Part of the DOM contract above,
+        which was otherwise unpinned: removing data-label left the suite green."""
+        from app.purchase_orders.preprinted_layout import FIELD_KEYS, FIELD_LABELS
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
+        for key in FIELD_KEYS:
+            tag = _element(body, key)
+            assert tag, f'{key} is not rendered on the overlay'
+            # The declared label, not merely SOME data-label: a macro that emitted
+            # data-label="{{ key }}" would satisfy a bare-presence assertion while
+            # showing exactly the raw keys this contract exists to avoid.
+            assert f'data-label="{FIELD_LABELS[key]}"' in tag, \
+                f'{key} rendered without its declared designer label: {tag}'
+
+    def test_a_non_full_access_user_is_offered_no_edit_layout_button(
+            self, client, db_session, staff_user, branch_manila, approved_po):
+        """`can_edit_layout` is has_full_access (admin/chief accountant) -- the same
+        rule save_print_layout enforces with a 403. Not a security hole on its own,
+        but a staff user shown an 'Edit Layout' button would drag a layout around and
+        discover only at Save that the server refuses it. Mutating the flag to True
+        left the suite green."""
+        _grant_po_access(staff_user, branch_manila, db_session)
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, staff_user, branch_manila)
+        resp = client.get(f'/purchase-orders/{approved_po.id}/print')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # Positive control: the overlay itself rendered -- staff may PRINT.
+        assert 'pp-canvas' in body
+        assert 'id="editLayoutBtn"' not in body
+        assert 'data-can-edit="false"' in body
+
+    def test_a_full_access_user_is_offered_the_edit_layout_button(
+            self, client, db_session, admin_user, branch_manila, approved_po):
+        """The control for the assertion above."""
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
+        assert 'id="editLayoutBtn"' in body
+        assert 'data-can-edit="true"' in body
 
     @pytest.mark.parametrize('stored,printed', [
         ('inclusive', 'VAT Inclusive'),
@@ -298,6 +372,184 @@ class TestPrintAccessGate:
         assert f'/purchase-orders/{approved_po.id}/print' not in body
 
 
+class TestCancelledIsNeverPrintable:
+    """A CANCELLED purchase order must not print at ANY setting -- unlike draft, it is
+    not an axis po_print_access governs.
+
+    Neither print surface shows status: print.html carries no status text and the
+    pre-printed overlay is data-only by design (it prints onto the client's own
+    stationery). So a cancelled PO on paper is indistinguishable from a live order --
+    a buyer cancels PO 00998, prints it, and the supplier ships against it. Every
+    sibling excludes cancelled explicitly in BOTH branches of its gate:
+    sales_invoices/detail.html:110-111, accounts_payable/detail.html:112-113,
+    cash_disbursements/detail.html:77-78, payroll/detail.html:80-81."""
+
+    REFUSAL = b'A cancelled Purchase Order cannot be printed.'
+
+    #: Both directions of the ACCESS setting, plus the unset default. The relaxed
+    #: value is the load-bearing case: it is the one that used to let a cancelled PO
+    #: through, and a strict-only test would pass against the broken code.
+    ACCESS_VALUES = ['approved_only', 'draft_and_approved', None]
+
+    @pytest.mark.parametrize('access', ACCESS_VALUES)
+    def test_a_cancelled_po_is_refused_at_the_route(
+            self, client, db_session, admin_user, branch_manila, cancelled_po, access):
+        if access is not None:
+            AppSettings.set_setting('po_print_access', access)
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/purchase-orders/{cancelled_po.id}/print',
+                          follow_redirects=True)
+        assert b'pp-canvas' not in resp.data
+        assert self.REFUSAL in resp.data
+
+    @pytest.mark.parametrize('access', ACCESS_VALUES)
+    def test_a_cancelled_po_is_refused_even_when_the_form_is_preprinted(
+            self, client, db_session, admin_user, branch_manila, cancelled_po, access):
+        """The reviewer's exact probe: po_print_form='preprinted' returned 200 with
+        `pp-canvas` on a cancelled PO."""
+        if access is not None:
+            AppSettings.set_setting('po_print_access', access)
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/purchase-orders/{cancelled_po.id}/print',
+                          follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'pp-canvas' not in resp.data
+        assert self.REFUSAL in resp.data
+
+    def test_the_cancelled_refusal_is_not_the_draft_wording(
+            self, client, db_session, admin_user, branch_manila, cancelled_po):
+        """'Approve it first' is wrong and unactionable for a cancelled order."""
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/purchase-orders/{cancelled_po.id}/print',
+                          follow_redirects=True)
+        assert TestPrintAccessGate.REFUSAL not in resp.data
+        assert self.REFUSAL in resp.data
+
+    @pytest.mark.parametrize('access', ACCESS_VALUES)
+    def test_the_print_button_is_hidden_on_a_cancelled_detail_page(
+            self, client, db_session, admin_user, branch_manila, cancelled_po, access):
+        if access is not None:
+            AppSettings.set_setting('po_print_access', access)
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/purchase-orders/{cancelled_po.id}')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # Positive control: the page really rendered, so the absence below is not a
+        # 302/404/empty body passing for a hidden button.
+        assert cancelled_po.po_number in body
+        assert f'/purchase-orders/{cancelled_po.id}/print' not in body
+
+
+class TestPrintAccessGateIsDefaultDeny:
+    """The gate's polarity. The exemption requires an EXACT 'draft_and_approved'
+    match; every other stored value -- unrecognised, stale, junk, or absent -- denies.
+
+    The original `== 'approved_only'` spelling was fail-OPEN: any other value opened
+    it (verified: a 'posted_only' left over from the shared PRINT_ACCESS_CHOICES let a
+    draft PO print, 200). Every existing gate in this codebase is written the other
+    way round -- sales_invoices/views.py:1401-1403, cash_disbursements/views.py:1354-1355,
+    cash_receipts/views.py:1317-1318, payroll/views.py:121-122."""
+
+    #: 'posted_only' is the realistic accident (the shared constant's value, which the
+    #: PO control cannot emit but a hand-edited/seeded row could carry); the rest cover
+    #: near-misses and junk. Each must DENY.
+    UNRECOGNISED = ['posted_only', 'draft_and_posted', 'approved', 'draft_and_approve',
+                    'DRAFT_AND_APPROVED', '', 'zzz']
+
+    @pytest.mark.parametrize('stored', UNRECOGNISED)
+    def test_an_unrecognised_stored_value_refuses_a_draft_at_the_route(
+            self, client, db_session, admin_user, branch_manila, draft_po, stored):
+        AppSettings.set_setting('po_print_access', stored)
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/purchase-orders/{draft_po.id}/print', follow_redirects=True)
+        assert b'pp-canvas' not in resp.data
+        assert TestPrintAccessGate.REFUSAL in resp.data
+
+    @pytest.mark.parametrize('stored', UNRECOGNISED)
+    def test_an_unrecognised_stored_value_hides_the_button(
+            self, client, db_session, admin_user, branch_manila, draft_po, stored):
+        """detail.html must invert identically, or the page offers a button the route
+        refuses."""
+        AppSettings.set_setting('po_print_access', stored)
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/purchase-orders/{draft_po.id}').data.decode()
+        assert draft_po.po_number in body
+        assert f'/purchase-orders/{draft_po.id}/print' not in body
+
+    @pytest.mark.parametrize('stored', UNRECOGNISED)
+    def test_an_unrecognised_stored_value_still_allows_an_approved_po(
+            self, client, db_session, admin_user, branch_manila, approved_po, stored):
+        """The control. Without it a gate that refused EVERYTHING -- for any stored
+        value at all -- would satisfy both tests above."""
+        AppSettings.set_setting('po_print_access', stored)
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        assert client.get(f'/purchase-orders/{approved_po.id}/print').status_code == 200
+
+
+class TestPrintAccessDefaultWhenUnset:
+    """The fail-closed DEFAULT -- the only configuration that exists in production.
+
+    Nothing writes po_print_access today (no entry in seed_data.py:725-730 or
+    demo_seed.py:156-161), and every other gate test in this file calls set_setting()
+    first, so the unset path -- the one every real install runs on -- was unexercised:
+    flipping either default site left 23 passed, 0 failures.
+
+    These tests deliberately never touch the key.
+    """
+
+    def test_a_draft_is_refused_when_the_key_is_unset(
+            self, client, db_session, admin_user, branch_manila, draft_po):
+        """Pins the ROUTE's default (purchase_orders/views.py::print_po)."""
+        assert AppSettings.get_setting('po_print_access') is None, \
+            'something wrote the key -- this test no longer exercises the default'
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/purchase-orders/{draft_po.id}/print', follow_redirects=True)
+        assert b'pp-canvas' not in resp.data
+        assert TestPrintAccessGate.REFUSAL in resp.data
+
+    def test_a_draft_is_refused_when_the_key_is_unset_and_the_form_is_preprinted(
+            self, client, db_session, admin_user, branch_manila, draft_po):
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        db_session.commit()
+        assert AppSettings.get_setting('po_print_access') is None
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/purchase-orders/{draft_po.id}/print', follow_redirects=True)
+        assert b'pp-canvas' not in resp.data
+        assert TestPrintAccessGate.REFUSAL in resp.data
+
+    def test_the_print_button_is_hidden_on_a_draft_when_the_key_is_unset(
+            self, client, db_session, admin_user, branch_manila, draft_po):
+        """Pins the SECOND default site (purchase_orders/views.py::view, which reads
+        both settings for the template) -- a separate literal from the route's."""
+        assert AppSettings.get_setting('po_print_access') is None
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/purchase-orders/{draft_po.id}').data.decode()
+        assert draft_po.po_number in body
+        assert f'/purchase-orders/{draft_po.id}/print' not in body
+
+    def test_an_approved_po_still_prints_when_the_key_is_unset(
+            self, client, db_session, admin_user, branch_manila, approved_po):
+        """The control: the default is fail-CLOSED for drafts, not off for everyone."""
+        assert AppSettings.get_setting('po_print_access') is None
+        _login(client, admin_user, branch_manila)
+        assert client.get(f'/purchase-orders/{approved_po.id}/print').status_code == 200
+
+    def test_the_print_button_is_shown_on_an_approved_po_when_the_key_is_unset(
+            self, client, db_session, admin_user, branch_manila, approved_po):
+        """The control for the second default site."""
+        assert AppSettings.get_setting('po_print_access') is None
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/purchase-orders/{approved_po.id}').data.decode()
+        assert f'/purchase-orders/{approved_po.id}/print' in body
+
+
 class TestLayoutSave:
 
     def test_full_access_can_save(self, client, db_session, admin_user, branch_manila):
@@ -333,6 +585,39 @@ class TestLayoutSave:
         db_session.commit()
         _login(client, staff_user, branch_manila)
         assert client.post('/purchase-orders/print-layout', json={}).status_code == 403
+
+
+class TestBothRoutesFollowTheOptionalModuleGate:
+    """purchase_orders is optional (default_enabled=False). enforce_module_access
+    matches by ENDPOINT PREFIX -- the module declares `('purchase_orders.',)` --
+    so both new endpoints are covered only because their names happen to start with
+    it. `purchase_orders.save_print_layout` is a brand-new endpoint riding that
+    coincidence, and nothing pinned it: rename the blueprint or register the layout
+    route on another blueprint and both routes silently open up for a company that
+    never enabled the module."""
+
+    def test_the_print_route_404s_when_the_module_is_off(
+            self, client, db_session, admin_user, branch_manila, approved_po):
+        _set_modules(db_session, purchase_orders=False)
+        _login(client, admin_user, branch_manila)
+        assert client.get(f'/purchase-orders/{approved_po.id}/print').status_code == 404
+
+    def test_the_layout_save_route_404s_when_the_module_is_off(
+            self, client, db_session, admin_user, branch_manila):
+        """Admin -- has_full_access, so a 404 here can only be the module gate, not
+        save_print_layout's own 403."""
+        _set_modules(db_session, purchase_orders=False)
+        _login(client, admin_user, branch_manila)
+        resp = client.post('/purchase-orders/print-layout', json={'paper': 'letter'})
+        assert resp.status_code == 404
+
+    def test_both_routes_are_reachable_when_the_module_is_on(
+            self, client, db_session, admin_user, branch_manila, approved_po):
+        """The control: the 404s above are the module gate, not two dead URLs."""
+        _login(client, admin_user, branch_manila)
+        assert client.get(f'/purchase-orders/{approved_po.id}/print').status_code == 200
+        assert client.post('/purchase-orders/print-layout',
+                           json={'paper': 'letter'}).status_code == 200
 
 
 class TestPoPrintFormSettingRegistration:
@@ -397,3 +682,108 @@ class TestPoPrintFormSettingRegistration:
         assert b'name="po_print_form"' not in body
         # Positive control: the page rendered and its siblings are still there.
         assert b'name="sv_print_form"' in body
+
+
+class TestPoPrintAccessSettingRegistration:
+    """po_print_access shipped with NO UI control at all -- the gate existed, but the
+    only way to relax it was to hand-write an app_settings row. It gets its own
+    PO_PRINT_ACCESS_CHOICES rather than the shared PRINT_ACCESS_CHOICES, whose
+    posted_only/draft_and_posted values carry POSTING semantics: a PO posts nothing,
+    so wiring it to the shared constant would let the UI store a value the route can
+    never act on.
+
+    All three registration parts are proven separately -- a `render_field` with no
+    views.py SETTINGS_KEYS entry renders fine and silently discards every save."""
+
+    VALID_FORM_DATA = TestPoPrintFormSettingRegistration.VALID_FORM_DATA
+
+    def test_the_settings_page_renders_the_control(self, client, db_session,
+                                                   admin_user, main_branch):
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data
+        assert b'name="po_print_access"' in body
+
+    def test_the_control_offers_exactly_the_po_specific_choices(
+            self, client, db_session, admin_user, main_branch):
+        """Not the shared PRINT_ACCESS_CHOICES. `posted_only` in this control would be
+        a fail-open-looking value the route cannot honour, and 'Posted only' is wrong
+        wording for a document that never posts."""
+        from app.company_settings.forms import PO_PRINT_ACCESS_CHOICES
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data.decode()
+        select = re.search(r'<select[^>]*name="po_print_access".*?</select>', body, re.S)
+        assert select, 'the po_print_access control is not rendered'
+        options = re.findall(r'<option[^>]*value="([^"]*)"[^>]*>([^<]*)</option>',
+                             select.group(0))
+        assert options == PO_PRINT_ACCESS_CHOICES, options
+
+    def test_the_shared_print_access_constant_is_untouched(self):
+        """Six existing controls (APV/SI/CDV/check/CRV/payslip) render from it; the PO
+        gate must not have been bought by widening what they offer."""
+        from app.company_settings.forms import PRINT_ACCESS_CHOICES
+        assert PRINT_ACCESS_CHOICES == [
+            ('posted_only', 'Posted only'),
+            ('draft_and_posted', 'Draft and posted'),
+        ]
+
+    def test_the_settings_post_persists_the_chosen_value(self, client, db_session,
+                                                         admin_user, main_branch):
+        """Separate from the render test on purpose: the field renders whether or not
+        views.py lists it, and without the SETTINGS_KEYS entry the POST is discarded
+        in silence."""
+        _login(client, admin_user, main_branch)
+        data = dict(self.VALID_FORM_DATA)
+        data['po_print_access'] = 'draft_and_approved'
+        resp = client.post('/settings', data=data, follow_redirects=True)
+        assert resp.status_code == 200
+        assert AppSettings.get_setting('po_print_access') == 'draft_and_approved'
+
+    def test_a_saved_value_actually_relaxes_the_route(
+            self, client, db_session, admin_user, branch_manila, main_branch, draft_po):
+        """End to end: the control is not decorative -- what the settings page stores
+        is the exact token purchase_orders.print_po() tests for. A saved value that
+        the gate cannot match is the fail-open control this decision replaced."""
+        _login(client, admin_user, main_branch)
+        data = dict(self.VALID_FORM_DATA)
+        data['po_print_access'] = 'draft_and_approved'
+        assert client.post('/settings', data=data,
+                           follow_redirects=True).status_code == 200
+        _login(client, admin_user, branch_manila)
+        assert client.get(f'/purchase-orders/{draft_po.id}/print').status_code == 200
+
+    def test_the_default_saved_value_keeps_the_route_closed(
+            self, client, db_session, admin_user, branch_manila, main_branch, draft_po):
+        """The control for the test above -- and the realistic case: an admin who saves
+        the settings page without touching this control writes the field's default,
+        which must still refuse a draft."""
+        _login(client, admin_user, main_branch)
+        assert client.post('/settings', data=dict(self.VALID_FORM_DATA),
+                           follow_redirects=True).status_code == 200
+        assert AppSettings.get_setting('po_print_access') == 'approved_only'
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/purchase-orders/{draft_po.id}/print', follow_redirects=True)
+        assert TestPrintAccessGate.REFUSAL in resp.data
+
+    def test_the_saved_value_repopulates_the_control(self, client, db_session,
+                                                     admin_user, main_branch):
+        AppSettings.set_setting('po_print_access', 'draft_and_approved')
+        db_session.commit()
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data.decode()
+        select = re.search(r'<select[^>]*name="po_print_access".*?</select>', body, re.S)
+        assert select, 'the po_print_access control is not rendered'
+        chosen = re.findall(r'<option[^>]*\bselected\b[^>]*>', select.group(0))
+        assert chosen == ['<option selected value="draft_and_approved">'], chosen
+
+    def test_the_control_is_hidden_when_the_module_is_disabled(
+            self, client, db_session, admin_user, main_branch):
+        """Gated like its po_print_form sibling
+        (BUG-SETTINGS-DOCPRINT-UNGATED-OPTIONAL-CONTROLS)."""
+        _set_modules(db_session, purchase_orders=False)
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data
+        assert b'name="po_print_access"' not in body
+        # Positive control: the page rendered and the ungated siblings in the SAME
+        # print-access grid are still there.
+        assert b'name="cr_print_access"' in body
+        assert b'name="sv_print_access"' in body

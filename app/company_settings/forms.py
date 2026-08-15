@@ -31,6 +31,17 @@ PRINT_ACCESS_CHOICES = [
     ('draft_and_posted', 'Draft and posted'),
 ]
 
+# A Purchase Order POSTS NOTHING -- it has no journal entry and no 'posted' status
+# (VALID_PO_STATUSES is draft/approved/partially_received/closed/cancelled), so the
+# shared PRINT_ACCESS_CHOICES above -- whose values carry posting semantics -- cannot
+# express its gate. Storing 'posted_only' against po_print_access would be a value
+# purchase_orders.print_po() can never act on. Kept as its OWN constant rather than
+# extended into the shared one, which six existing controls render from.
+PO_PRINT_ACCESS_CHOICES = [
+    ('approved_only',      'Approved POs only'),
+    ('draft_and_approved', 'Drafts and approved POs'),
+]
+
 # On which semi-monthly cutoff the statutory (SSS/PhilHealth/Pag-IBIG)
 # contributions are deducted -- see app/payroll/service.py's
 # _semi_applies_statutory docstring for the exact scaling each value drives.
@@ -137,6 +148,10 @@ class CompanySettingsForm(FlaskForm):
     )
     po_print_form = SelectField(
         'Purchase Order Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
+    )
+    po_print_access = SelectField(
+        'Purchase Order Print Access', choices=PO_PRINT_ACCESS_CHOICES,
+        default='approved_only'
     )
     cd_print_access = SelectField(
         'CDV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
