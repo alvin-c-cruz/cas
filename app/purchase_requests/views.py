@@ -697,16 +697,28 @@ def convert(id):
             po_number=generate_po_number(), branch_id=pr.branch_id,
             order_date=ph_now().date(), status='draft', vat_treatment='inclusive',
             notes='', purchase_request_id=pr.id, created_by_id=current_user.id)
-        for li in pr.line_items:
+        # Built from the SAME open-line query the picker uses, so the shortcut
+        # and the picker can never disagree about what remains to be ordered.
+        # Taking li.quantity here instead would re-order quantities that are
+        # already on another purchase order.
+        from app.purchase_requests.allocation import (
+            open_lines_for_branch, recompute_pr_status)
+        rows = [r for r in open_lines_for_branch(pr.branch_id) if r['pr_id'] == pr.id]
+        if not rows:
+            flash('Every line on this Purchase Requisition is already on a Purchase Order.', 'error')
+            return redirect(url_for('purchase_requests.view', id=id))
+        for n, r in enumerate(rows, start=1):
             po.line_items.append(PurchaseOrderItem(
-                line_number=li.line_number, product_id=li.product_id,
-                description=li.description, quantity=li.quantity,
-                unit_of_measure_id=li.unit_of_measure_id, uom_text=li.uom_text,
-                unit_price=None, amount=Decimal('0'), vat_rate=Decimal('0')))
+                line_number=n, product_id=r['product_id'],
+                description=r['description'],
+                quantity=Decimal(r['open']) if r['open'] else None,
+                unit_of_measure_id=r['uom_id'], uom_text=None,
+                unit_price=None, amount=Decimal('0'), vat_rate=Decimal('0'),
+                source_pr_item_id=r['pr_item_id']))
         po.calculate_totals()
         db.session.add(po); db.session.flush()      # get po.id
-        pr.status = 'converted'
-        pr.purchase_order_id = po.id
+        pr.purchase_order_id = po.id      # back-link to the most recent PO
+        recompute_pr_status(pr)
         db.session.commit()
         log_audit(module='purchase_requests', action='convert', record_id=pr.id,
                   record_identifier=pr.pr_number, notes=f'Converted -> {po.po_number}')

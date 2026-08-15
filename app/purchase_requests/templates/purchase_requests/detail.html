@@ -88,7 +88,7 @@
   </form>
   <button type="button" class="btn btn-secondary" onclick="document.getElementById('rejectModal').style.display='flex'">Reject</button>
   {% endif %}
-  {% if pr.status == 'approved' and can_approve %}
+  {% if pr.status in ['approved', 'partially_converted'] and can_approve %}
   <form method="POST" action="{{ url_for('purchase_requests.convert', id=pr.id) }}" style="display:inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-primary">Convert to Purchase Order</button>
