@@ -36,6 +36,26 @@ The spec covers two independent pieces. This plan is **piece 1 of 2**:
 - **Do not modify the eight existing `preprinted_layout.py` files or their designer JS/CSS.** They are client-facing and pixel-sensitive on real stationery. This plan adds a base alongside them; migrating them is a separate, later decision.
 - Peso sign: literal `₱` (U+20B1), never `&#8369;`.
 
+### Task 2 outcome — binding on every `default_layout` declaration (Tasks 3, 4, 5)
+
+Recorded after Task 2 shipped, because the plan as written would send those tasks into an
+import-time crash. `build_layout_api` now **validates the module's declared `default_layout` and
+raises `ValueError` at import time** on a malformed one. A declaration must satisfy:
+
+- `paper` ∈ `ALLOWED_PAPERS`; `dateFormat` ∈ `ALLOWED_DATE_FORMATS`
+  (**`long`, `medium`, `us`, `eu`, `iso` — there is no `ymd`**); `page.fontFamily` ∈ `ALLOWED_FONTS`
+- `fields` covers every key in that module's `FIELD_KEYS`, and **every field box carries an explicit
+  `w`**. None of the eight existing clones' field boxes carry `w`, so a default block copied from one
+  of them will raise — add the width deliberately rather than letting it default. (Before the
+  validator existed, an omitted `w` silently sanitised to 10px and every value printed clipped, a
+  failure visible only on a physical print.)
+- `lineItems` carries `y`, `rowHeight`, `fontSize`, `bold`; every declared column carries `key`, `x`
+  and `width`.
+
+Also new and public: `MAX_COLUMNS = 40`, `TEXT_DEFAULT_XS`, `TEXT_DEFAULT_Y`,
+`TEXT_DEFAULT_FONT_SIZE`. Signatory defaults are `x = 60 / 340 / 620` at `y = 720`, matching the
+approved mockup.
+
 ## Reference implementation
 
 `app/sales_orders/` is the closest analogue (a non-posting document) and is the pattern to mirror
@@ -156,7 +176,7 @@ FIELD_KEYS = ['doc_no', 'doc_date']
 
 DEFAULT = {
     'paper': 'continuous',
-    'dateFormat': 'ymd',
+    'dateFormat': 'iso',   # MUST be a real DATE_FORMATS key; 'ymd' is not one
     'page': {'fontFamily': base.ALLOWED_FONTS[0]},
     'fields': {
         'doc_no': {'x': 100, 'y': 100, 'w': 200, 'fontSize': 10, 'bold': False, 'hidden': False},
