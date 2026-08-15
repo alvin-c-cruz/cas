@@ -209,6 +209,14 @@ class PurchaseOrderItem(db.Model):
     received_quantity = db.Column(db.Numeric(15, 4), default=0)
     billed_quantity = db.Column(db.Numeric(15, 4), default=0)
 
+    #: The requisition line this PO line was pulled from, if any. Bare Integer,
+    #: not a ForeignKey: SQLite batch add_column cannot emit an unnamed FK
+    #: ("Constraint must have a name") and FK enforcement is off app-wide.
+    #: Same treatment as SalesOrder.quotation_id (migration 29500ade76f8).
+    #: NULL means the line was typed by hand, which is true of every line that
+    #: existed before this feature.
+    source_pr_item_id = db.Column(db.Integer, nullable=True, index=True)
+
     def calculate_amounts(self):
         """Extract VAT from VAT-inclusive amount. Mirrors SalesOrderItem/QuotationItem."""
         if self.quantity is not None and self.unit_price is not None:
