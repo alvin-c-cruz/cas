@@ -27,6 +27,12 @@ class StockMovement(db.Model):
     journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
     reason = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
+    #: The business-effective date this movement belongs to -- the date on the
+    #: SOURCE DOCUMENT, not the wall-clock moment it was posted. Both costing
+    #: engines order by this; created_at is now only an audit/tiebreak value.
+    #: Snapshotted at post time: editing the document's date later does NOT
+    #: re-order an already-posted stack.
+    movement_date = db.Column(db.Date, nullable=False, index=True)
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     product = db.relationship('Product')
