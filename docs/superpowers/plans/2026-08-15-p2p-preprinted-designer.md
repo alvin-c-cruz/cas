@@ -648,6 +648,8 @@ git commit -m "feat(print): shared pre-printed designer JS and CSS"
 **Files:**
 - Create: `app/purchase_orders/templates/purchase_orders/print_preprinted.html`
 - Modify: `app/purchase_orders/views.py` (print route + layout save route)
+- Modify: `app/purchase_orders/models.py` (`VAT_TREATMENT_LABELS` + the `vat_treatment_label`
+  property — derived only; no column, no migration)
 - Test: `tests/integration/test_p2p_preprinted_print.py`
 
 **Interfaces:**
@@ -704,6 +706,32 @@ class TestPurchaseOrderPrintForm:
         assert 'pp-canvas' in body
         for key in FIELD_KEYS:
             assert f'data-el="{key}"' in body, f'{key} is not rendered on the overlay'
+
+    @pytest.mark.parametrize('stored,printed', [
+        ('inclusive', 'VAT Inclusive'),
+        ('exclusive', 'VAT Exclusive'),
+        ('zero_rated', 'Zero-Rated'),
+    ])
+    def test_vat_treatment_prints_its_human_label_not_the_stored_token(
+            self, client, db_session, admin_user, branch_manila, approved_po,
+            stored, printed):
+        """`vat_treatment` is stored as a token ('zero_rated'), which is not
+        something a supplier should read off a printed order. The overlay must
+        print the same wording PurchaseOrderForm's own SelectField shows --
+        form, detail and print must share the document's jargon.
+
+        All three values are exercised on purpose: one case alone would also
+        pass against a template that hardcoded that one label.
+        """
+        import re
+        approved_po.vat_treatment = stored
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
+        cell = re.search(r'data-el="vat_treatment"[^>]*>([^<]*)<', body)
+        assert cell, 'the vat_treatment box is not rendered on the overlay'
+        assert cell.group(1).strip() == printed
 
     def test_hidden_refuses_and_redirects(self, client, db_session, admin_user,
                                           branch_manila, approved_po):
@@ -774,10 +802,10 @@ class TestLayoutSave:
 line 78) and again in `test_po_amend.py`, but they are **module-local fixtures, not in
 `tests/conftest.py`**, so a new test module cannot simply request them.
 
-Copy `_make_draft_po` and both fixtures into your new test module. Note they are built on
-**`branch_manila`**, not `branch_manila` — so use `branch_manila` consistently in this file, including
-in `_login(client, admin_user, branch_manila)`, or the PO will not be visible in the session branch
-and every route will 404. Do not "fix" that by moving the fixtures to conftest; that widens the
+Copy `_make_draft_po` and both fixtures into your new test module. Note they are built on the
+**`branch_manila`** fixture, NOT `main_branch` — so use `branch_manila` consistently in this file,
+including in `_login(client, admin_user, branch_manila)`, or the PO will not be visible in the
+session branch and every route will 404. Do not "fix" that by moving the fixtures to conftest; that widens the
 change into files this task does not own.
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -805,6 +833,41 @@ Copy `app/sales_orders/templates/sales_orders/print_preprinted.html` (157 lines)
 ```
 
 Match the approved Task 1 mockup for placement and chrome.
+
+**`vat_treatment` prints a label, never the stored token.** The column holds `inclusive` /
+`exclusive` / `zero_rated`; printing that raw puts a database token on a supplier-facing document.
+Add the map and a derived read-only property to `app/purchase_orders/models.py`, beside the
+existing `VAT_TREATMENTS` tuple at line 16 (no column, no migration — this is derived state):
+
+```python
+VAT_TREATMENTS = ('inclusive', 'exclusive', 'zero_rated')
+
+# The wording PurchaseOrderForm's SelectField shows (app/purchase_orders/forms.py:25).
+# Form, detail and print must share the document's jargon, so the labels live in ONE
+# place rather than being re-spelled per template.
+VAT_TREATMENT_LABELS = {
+    'inclusive': 'VAT Inclusive',
+    'exclusive': 'VAT Exclusive',
+    'zero_rated': 'Zero-Rated',
+}
+```
+
+and on `PurchaseOrder`:
+
+```python
+    @property
+    def vat_treatment_label(self):
+        """Human wording for the stored token. Falls back to the raw value so an
+        unrecognised token is visible on the page rather than printing blank."""
+        return VAT_TREATMENT_LABELS.get(self.vat_treatment, self.vat_treatment)
+```
+
+The overlay then renders `{{ po.vat_treatment_label }}`, not `{{ po.vat_treatment }}`.
+
+**Scope note:** `purchase_orders/detail.html:36` prints the raw token today
+(`<strong>VAT Treatment:</strong> {{ po.vat_treatment }}`). That is the DETAIL surface, which this
+arc does not own — leave it alone. The property added here is what that sub-project will use when
+it lands; do not widen this task to fix it.
 
 - [ ] **Step 4: Wire the routes**
 
