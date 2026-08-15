@@ -76,6 +76,7 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
     delta_qty = Decimal(delta_qty)
     if movement_date is None:
         movement_date = ph_now().date()
+    _assert_not_backdated_receipt(product, branch_id, movement_date, Decimal(delta_qty))
     bal = _get_or_create_balance(product.id, branch_id)
     is_fifo = (product.costing_method == 'fifo')
     # Unlike FIFO (deliberately app-wide by 2b's own design), specific-ID is
@@ -175,6 +176,50 @@ class FifoLayerConsumedError(ValueError):
     ValueError subclass so every existing generic 'except ValueError'
     call-site pattern already catches it and flashes its message."""
     pass
+
+
+class BackdatedReceiptError(ValueError):
+    """Raised when a receipt is dated before stock has already been issued.
+
+    Inserting that layer would place it behind consumption already posted to the
+    GL, so the COGS on those issues was computed against layers that history now
+    says were not the oldest. The ledger is append-only: refuse rather than
+    silently invalidate a posted figure. A ValueError subclass so every existing
+    generic 'except ValueError' call site already catches it and flashes it.
+    """
+    pass
+
+
+LAYERED_COSTING = ('fifo', 'lifo')
+
+
+def _assert_not_backdated_receipt(product, branch_id, movement_date, delta_qty):
+    """Refuse a receipt dated strictly before the latest consumption on record.
+
+    STRICTLY earlier: within one date, ordering falls to the autoincrement id, so
+    a same-day receipt lands after an issue already posted that day and cannot
+    change what that issue consumed. Blocking same-day would break ordinary
+    catch-up entry for no correctness gain.
+
+    Both sides of the comparison are movement_date. Comparing against the latest
+    consumption's created_at would reintroduce the very defect this fixes, by
+    making the guard depend on posting order again.
+    """
+    if delta_qty <= ZERO:
+        return                      # issues consume what exists; never blocked
+    if (product.costing_method or 'moving_average') not in LAYERED_COSTING:
+        return                      # no layers, no mis-positioned claim
+    latest = db.session.query(db.func.max(StockMovement.movement_date)).filter(
+        StockMovement.product_id == product.id,
+        StockMovement.branch_id == branch_id,
+        StockMovement.quantity < ZERO,
+    ).scalar()
+    if latest is not None and movement_date < latest:
+        raise BackdatedReceiptError(
+            '%s: a receipt dated %s cannot be posted because stock was already '
+            'issued on %s. Date the receipt %s or later, or reverse the later '
+            'issues first.' % (product.code, movement_date.isoformat(),
+                               latest.isoformat(), latest.isoformat()))
 
 
 def reverse_document_movements(source_document_type, source_document_id, actor, journal_entry_id=None):
