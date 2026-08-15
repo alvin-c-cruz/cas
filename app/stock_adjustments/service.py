@@ -88,7 +88,7 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
     is_specific_id = (product.costing_method == 'specific_identification'
                        and source_document_type == 'stock_adjustment')
     if is_fifo:
-        bootstrap_opening_layer_if_needed(product.id, branch_id)
+        bootstrap_opening_layer_if_needed(product.id, branch_id, movement_date)
 
     for _ in range(MAX_ATTEMPTS):
         read_version = bal.row_version

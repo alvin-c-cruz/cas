@@ -6,7 +6,6 @@ to the database, touches post_movement/StockBalance, or affects any GL
 posting. A product's real postings keep using its actual costing_method
 (moving_average fallback for costing_method='lifo', unchanged since 2a-i)."""
 from collections import namedtuple
-from datetime import datetime, time
 from decimal import Decimal
 from app.stock_adjustments.costing import QTY_Q, MONEY_Q, ZERO
 from app.stock_adjustments.models import StockMovement
@@ -68,12 +67,12 @@ def _replay(product_id, branch_id, end_date=None):
                     stack.pop()
             if need > ZERO:
                 total_cost += need * last_cost
-                stack.append({'qty': -need, 'unit_cost': last_cost, 'received_at': mv.created_at})
+                stack.append({'qty': -need, 'unit_cost': last_cost, 'received_at': mv.movement_date})
             actual_cost = (-qty * Decimal(mv.unit_cost)).quantize(MONEY_Q)
             lifo_cost = total_cost.quantize(MONEY_Q)
             lifo_unit_cost = (total_cost / -qty).quantize(MONEY_Q) if qty != ZERO else ZERO
             cogs_lines.append(LifoCogsLine(
-                movement_id=mv.id, date=mv.created_at, quantity=(-qty).quantize(QTY_Q),
+                movement_id=mv.id, date=mv.movement_date, quantity=(-qty).quantize(QTY_Q),
                 lifo_unit_cost=lifo_unit_cost, lifo_cost=lifo_cost,
                 actual_unit_cost=Decimal(mv.unit_cost), actual_cost=actual_cost,
                 variance=(lifo_cost - actual_cost).quantize(MONEY_Q)))
@@ -99,6 +98,4 @@ def lifo_cogs_for_range(product_id, branch_id, start_date, end_date):
     start_date still consumes real stack quantity, it just isn't itself
     returned -- then filters to the requested window."""
     _, cogs_lines = _replay(product_id, branch_id, end_date=end_date)
-    start_dt = datetime.combine(start_date, time.min)
-    end_dt = datetime.combine(end_date, time.max)
-    return [line for line in cogs_lines if start_dt <= line.date <= end_dt]
+    return [line for line in cogs_lines if start_date <= line.date <= end_date]

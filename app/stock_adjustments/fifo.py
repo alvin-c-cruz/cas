@@ -103,14 +103,19 @@ def fifo_apply_consume(plan, movement):
     db.session.flush()
 
 
-def bootstrap_opening_layer_if_needed(product_id, branch_id):
+def bootstrap_opening_layer_if_needed(product_id, branch_id, movement_date):
     """If this product/branch has zero StockCostLayer rows and a nonzero
     current StockBalance, seed one opening layer from that snapshot. No-op
     otherwise. Idempotent (existence-checked) -- safe to call speculatively
     before a balance claim has even been attempted, since the fact it
     records (the CURRENT balance snapshot) doesn't depend on which specific
-    movement is being posted."""
-    from app.utils import ph_now
+    movement is being posted.
+
+    received_at is written at midnight on movement_date, matching every other
+    layer (fifo_apply_receive/fifo_apply_consume) -- this represents stock
+    already on hand, so it must sort FIRST under FIFO's (received_at, id)
+    order. A full ph_now() timestamp here would sort a same-day receipt
+    (written at midnight) ahead of it, letting the newer stock consume first."""
     existing = StockCostLayer.query.filter_by(product_id=product_id, branch_id=branch_id).first()
     if existing is not None:
         return
@@ -120,6 +125,7 @@ def bootstrap_opening_layer_if_needed(product_id, branch_id):
     layer = StockCostLayer(
         product_id=product_id, branch_id=branch_id,
         original_qty=bal.quantity_on_hand, remaining_qty=bal.quantity_on_hand,
-        unit_cost=bal.average_unit_cost, received_at=ph_now(), source_movement_id=None)
+        unit_cost=bal.average_unit_cost,
+        received_at=datetime.combine(movement_date, time.min), source_movement_id=None)
     db.session.add(layer)
     db.session.flush()
