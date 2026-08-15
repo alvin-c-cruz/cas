@@ -48,7 +48,7 @@ def _claim_balance_update(balance_id, read_version, new_qty, new_avg, new_value)
 
 def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                   source_document_type, source_document_id, reason, actor, journal_entry_id=None,
-                  lot_id=None, lot_reference=None):
+                  lot_id=None, lot_reference=None, movement_date=None):
     """Apply one stock movement. Returns (StockMovement, went_negative). Does not commit.
 
     FIFO branch (R-03 2b): plan-only reads happen fresh every retry attempt,
@@ -61,12 +61,20 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
     auto-planning -- the caller (the view layer, informed by the user's own
     lot pick) supplies lot_id up front for a negative delta_qty. Re-validated
     fresh every retry attempt (specific_id_plan_consume re-reads the lot's
-    current remaining_qty), same discipline as FIFO's plan-then-apply."""
+    current remaining_qty), same discipline as FIFO's plan-then-apply.
+
+    movement_date is the BUSINESS-EFFECTIVE date -- the date on the source
+    document, not the posting timestamp. It is the primary sort key for both
+    costing engines. The None default is TEMPORARY scaffolding removed in this
+    change's final task; every real caller passes it explicitly.
+    """
     from app.stock_adjustments.fifo import (fifo_plan_consume, fifo_apply_receive,
                                             fifo_apply_consume, bootstrap_opening_layer_if_needed)
     from app.stock_adjustments.lots import (specific_id_plan_receive, specific_id_plan_consume,
                                             specific_id_apply_receive, specific_id_apply_consume)
     delta_qty = Decimal(delta_qty)
+    if movement_date is None:
+        movement_date = ph_now().date()
     bal = _get_or_create_balance(product.id, branch_id)
     is_fifo = (product.costing_method == 'fifo')
     # Unlike FIFO (deliberately app-wide by 2b's own design), specific-ID is
@@ -129,6 +137,7 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                 quantity=delta_qty.quantize(Decimal('0.0001')), unit_cost=move_unit_cost,
                 balance_qty_after=new_qty, balance_avg_cost_after=new_avg, balance_value_after=new_value,
                 source_document_type=source_document_type, source_document_id=source_document_id,
+                movement_date=movement_date,
                 journal_entry_id=journal_entry_id, reason=reason,
                 created_at=ph_now(), created_by_id=actor.id)
             db.session.add(mv)
