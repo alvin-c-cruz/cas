@@ -1,10 +1,12 @@
 """PurchaseRequest as the third Amendable adopter -- and the ways it is NOT a small PO.
 
-PR is the first adopter with **no children at all**. Nothing in the app carries a
-`purchase_request_item_id`; the only downstream edge is header-level
-(`PurchaseRequest.purchase_order_id` / `PurchaseOrder.purchase_request_id`). That
-makes PR the test that the shared validator generalises to a document whose lines
-can never have been consumed -- an answer slices 4-5 need before AP/CD/RR/DR adopt it.
+PR was originally the first adopter with **no children at all**. Line-level
+allocation gave it one: `PurchaseOrderItem.source_pr_item_id`. The hooks are
+therefore no longer constants, and this module now pins their NEGATIVE half --
+a line no purchase order points at must still report nothing consumed, or the
+validator degenerates into a blanket freeze. The header-level edge
+(`PurchaseRequest.purchase_order_id` / `PurchaseOrder.purchase_request_id`)
+survives as a back-link only, and deliberately proves nothing per line.
 
 It is also the one document whose lines carry no money at all: no unit price, no
 amount, no VAT. The buyer supplies pricing at PO conversion.
@@ -40,16 +42,20 @@ class TestAmendContract:
     def test_document_type_matches_the_audit_module_name(self):
         assert PurchaseRequest.DOCUMENT_TYPE == 'purchase_requests'
 
-    def test_amend_statuses_is_approved_alone(self):
-        assert PurchaseRequest.AMEND_STATUSES == ('approved',)
+    def test_amend_statuses_is_approved_and_partially_converted(self):
+        # 'partially_converted' joined 'approved' with line-level allocation:
+        # the validator's consumed_qty/has_any_child_reference hooks are real
+        # now, so it refuses to shrink or delete an already-ordered line while
+        # still permitting the untouched remainder to be amended.
+        assert PurchaseRequest.AMEND_STATUSES == ('approved', 'partially_converted')
 
     @pytest.mark.parametrize('status', ['draft', 'submitted', 'rejected',
                                         'converted', 'cancelled'])
     def test_every_other_status_is_excluded(self, status):
         # 'submitted' is past draft but PRE-approval, and the spec's trigger is
-        # approval. 'converted' has already produced a draft PO the buyer is
-        # pricing -- amending the requisition afterwards changes nothing
-        # downstream and would be a lie.
+        # approval. 'converted' means every line is consumed -- the only edit
+        # the validator would still allow is ADDING demand to a fully ordered
+        # requisition, which belongs on a new requisition.
         assert status not in PurchaseRequest.AMEND_STATUSES
 
 
@@ -63,13 +69,32 @@ class TestConversionGuard:
         pr = _pr(status='converted')
         assert pr.is_converted() is True
 
-    def test_a_dangling_purchase_order_id_also_marks_it_converted(self, db_session):
-        # convert() sets status AND purchase_order_id together (views.py:370-371),
-        # so this shape should not arise -- which is exactly why the guard reads
-        # both. A guard that trusts only the status would be one failed commit
-        # away from letting an already-converted requisition be amended.
+    def test_a_dangling_purchase_order_id_no_longer_marks_it_converted(self, db_session):
+        # INVERTED by line-level allocation, deliberately. The back-link used to
+        # be the only trace conversion left, because convert() COPIED the lines.
+        # It now sets purchase_order_id on a PARTIAL pull as well, so treating
+        # it as proof of consumption would freeze a requisition that still has
+        # an unordered remainder. Consumption is proven by the PO lines
+        # themselves (source_pr_item_id) -- see the case below.
         pr = _pr(status='approved')
         pr.purchase_order_id = 99
+        db.session.commit()
+        assert pr.is_converted() is False
+
+    def test_every_line_ordered_marks_it_converted(self, db_session):
+        # The replacement evidence: status still 'approved', but nothing is open.
+        from decimal import Decimal
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+        pr = _pr(status='approved')
+        po = PurchaseOrder(po_number='HOOK-PO-1', order_date=date(2026, 8, 15),
+                           status='draft', vat_treatment='inclusive',
+                           branch_id=pr.branch_id)
+        for n, li in enumerate(pr.line_items, start=1):
+            po.line_items.append(PurchaseOrderItem(
+                line_number=n, description=li.description, quantity=li.quantity,
+                unit_price=1, amount=Decimal(str(li.quantity)),
+                source_pr_item_id=li.id))
+        db.session.add(po)
         db.session.commit()
         assert pr.is_converted() is True
 
@@ -99,20 +124,27 @@ class TestUsableLine:
         assert _pr(lines=((None, None, '1'), ('widget', None, '2'))).has_requested_line() is True
 
 
-class TestNoChildren:
-    """The contract that lets the shared validator run against PR unchanged."""
+class TestAnUnreferencedLineIsFree:
+    """The control half of the hooks: they must stay ZERO/False for a line no
+    purchase order points at, or the validator becomes a blanket freeze.
 
-    def test_nothing_is_ever_consumed_from_a_pr_line(self, db_session):
+    These were once absolute ("nothing can ever consume a PR line"). Line-level
+    allocation made them conditional -- PurchaseOrderItem.source_pr_item_id is
+    the per-line child that did not exist then. The positive half lives in
+    tests/integration/test_pr_amend_allocation_guard.py.
+    """
+
+    def test_an_unordered_line_reports_nothing_consumed(self, db_session):
         pr = _pr()
         assert pr.consumed_qty(pr.line_items[0]) == Decimal('0')
 
-    def test_no_child_ever_references_a_pr_line(self, db_session):
+    def test_an_unordered_line_has_no_child_reference(self, db_session):
         pr = _pr()
         assert pr.has_any_child_reference(pr.line_items[0]) is False
 
-    def test_that_holds_for_a_converted_pr_too(self, db_session):
-        # Conversion is HEADER-level: the PO copies the lines, it does not point
-        # at them. So even a converted PR has no per-line reference.
+    def test_a_header_back_link_alone_creates_no_line_reference(self, db_session):
+        # purchase_order_id is HEADER-level and says nothing about which lines
+        # were taken. Only a PO line carrying source_pr_item_id does.
         pr = _pr(status='converted')
         pr.purchase_order_id = 42
         db.session.commit()

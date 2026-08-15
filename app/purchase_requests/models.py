@@ -153,27 +153,33 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
         return False
 
     # -- the shared validator's document hooks --------------------------------
-    # PR is the first adopter with NO CHILDREN. Nothing in the app declares a
-    # purchase_request_item_id; the only downstream edge is the header-level
-    # purchase_order_id. Both hooks are therefore constant, and deliberately so:
-    # they are what let the shared validator run against PR unchanged, which is
-    # the answer slices 4-5 need before AP/CD/RR/DR adopt it.
+    # PR now HAS a per-line child: PurchaseOrderItem.source_pr_item_id. Both
+    # hooks were previously constants above a comment saying no table carries a
+    # purchase_request_item_id; one does now, so both derive from it.
 
     child_document_label = 'Purchase Order'
 
     def consumed_qty(self, line):
-        """Always zero -- nothing can consume part of a requisition line."""
-        return Decimal('0')
+        """How much of this requisition line is already on a purchase order.
+
+        Was hardcoded to zero, above a comment saying nothing can consume part
+        of a requisition. PurchaseOrderItem.source_pr_item_id now can, so the
+        shared amendment validator refuses to shrink a line below what has been
+        ordered against it.
+        """
+        from app.purchase_requests.allocation import pr_line_ordered_qty
+        return pr_line_ordered_qty(line)
 
     def has_any_child_reference(self, line):
-        """Always False -- no table carries a purchase_request_item_id.
+        """Whether any committed purchase-order line points at this line.
 
-        Contrast PO, where this is status-agnostic and strictly wider than the
-        quantity floor because deleting a referenced line strands a
-        ReceivingReportItem FK with SQLite FK enforcement off. PR has no such
-        child, so a line may always be removed on this axis.
+        Strictly wider than the quantity floor, and that matters for an
+        unquantified requisition line: it has no quantity to compare, so this
+        is the only thing standing between it and deletion after it has been
+        ordered.
         """
-        return False
+        from app.purchase_requests.allocation import _has_committed_reference
+        return _has_committed_reference(line)
 
     def snapshot_line_extras(self, line):
         return {
