@@ -17,7 +17,7 @@ from app.posting.control_accounts import get_control_account
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.journal_entries.utils import generate_entry_number
 from app.stock_adjustments.costing import compute_new_balance
-from app.stock_adjustments.models import StockMovement, StockBalance
+from app.stock_adjustments.models import StockMovement, StockBalance, StockLayerConsumption
 
 ZERO = Decimal('0')
 MAX_ATTEMPTS = 5
@@ -92,7 +92,7 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
     is_specific_id = (product.costing_method == 'specific_identification'
                        and source_document_type == 'stock_adjustment')
     if is_fifo:
-        bootstrap_opening_layer_if_needed(product.id, branch_id, movement_date)
+        bootstrap_opening_layer_if_needed(product.id, branch_id)
 
     for _ in range(MAX_ATTEMPTS):
         read_version = bal.row_version
@@ -207,15 +207,30 @@ def _assert_not_backdated_receipt(product, branch_id, movement_date, delta_qty):
     Both sides of the comparison are movement_date. Comparing against the latest
     consumption's created_at would reintroduce the very defect this fixes, by
     making the guard depend on posting order again.
+
+    The floor is restricted to NEGATIVE movements that actually DREW a FIFO
+    layer (an EXISTS against StockLayerConsumption for that movement) -- not
+    every negative movement. This guard exists to protect COGS already
+    computed against specific layers; a movement that drew no layers computed
+    no COGS, so it has nothing to protect. Without this, a void/reversal
+    (itself a negative movement, dated today, that draws no layers) counted
+    as "consumption" and permanently blocked every backdated receipt for that
+    product/branch after a routine void-and-re-enter correction.
     """
     if delta_qty <= ZERO:
         return                      # issues consume what exists; never blocked
     if (product.costing_method or 'moving_average') not in LAYERED_COSTING:
         return                      # no layers, no mis-positioned claim
+    drew_a_layer = (
+        db.session.query(StockLayerConsumption.id)
+        .filter(StockLayerConsumption.movement_id == StockMovement.id)
+        .exists()
+    )
     latest = db.session.query(db.func.max(StockMovement.movement_date)).filter(
         StockMovement.product_id == product.id,
         StockMovement.branch_id == branch_id,
         StockMovement.quantity < ZERO,
+        drew_a_layer,
     ).scalar()
     if latest is not None and movement_date < latest:
         raise BackdatedReceiptError(

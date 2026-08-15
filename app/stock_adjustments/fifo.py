@@ -3,7 +3,7 @@ reads -- they never write to the database. Apply functions (Task 3) do the
 actual writes and must only be called after post_movement's balance claim
 for that attempt has already succeeded (see service.py's Global Constraint
 on plan-then-apply ordering)."""
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal
 from app.stock_adjustments.costing import QTY_Q, MONEY_Q, ZERO
 from app.stock_adjustments.models import StockCostLayer
@@ -88,8 +88,8 @@ def fifo_apply_consume(plan, movement):
     exists at all for this product/branch) is added here -- it carries
     received_at=None from the planning phase (fine there, since it's never
     persisted), which would violate StockCostLayer.received_at's NOT NULL
-    constraint if flushed as-is; backfill it to "now" at the moment it
-    actually becomes real."""
+    constraint if flushed as-is; backfill it to the movement's effective
+    date (midnight) at the moment it actually becomes real."""
     for layer, qty in plan:
         if layer.id is None:
             if layer.received_at is None:
@@ -103,7 +103,7 @@ def fifo_apply_consume(plan, movement):
     db.session.flush()
 
 
-def bootstrap_opening_layer_if_needed(product_id, branch_id, movement_date):
+def bootstrap_opening_layer_if_needed(product_id, branch_id):
     """If this product/branch has zero StockCostLayer rows and a nonzero
     current StockBalance, seed one opening layer from that snapshot. No-op
     otherwise. Idempotent (existence-checked) -- safe to call speculatively
@@ -111,11 +111,22 @@ def bootstrap_opening_layer_if_needed(product_id, branch_id, movement_date):
     records (the CURRENT balance snapshot) doesn't depend on which specific
     movement is being posted.
 
-    received_at is written at midnight on movement_date, matching every other
-    layer (fifo_apply_receive/fifo_apply_consume) -- this represents stock
-    already on hand, so it must sort FIRST under FIFO's (received_at, id)
-    order. A full ph_now() timestamp here would sort a same-day receipt
-    (written at midnight) ahead of it, letting the newer stock consume first."""
+    received_at is the sentinel datetime.min ("older than any real business
+    date"), NOT any movement's effective date. This layer represents stock
+    that was ALREADY on hand before FIFO layer tracking began -- it is
+    definitionally the oldest stock for this product/branch and must sort
+    FIRST under FIFO's (received_at, id) order, no matter what date any
+    later movement carries -- including a backdated one.
+
+    An earlier version dated this layer from movement_date (the movement
+    that happened to trigger the bootstrap). That is unsafe: a later,
+    earlier-dated receipt can still be posted after the opening layer was
+    bootstrapped (the backdate guard only looks at CONSUMPTION, and none
+    exists yet), and that receipt would then sort ahead of the "opening"
+    layer -- an issue would consume the wrong-cost stock first. Reproduced:
+    bootstrap at Feb 1, then a legit Jan 15 receipt, then an issue drew the
+    Jan 15 layer instead of the opening layer. datetime.min guarantees the
+    opening layer can never be out-sorted by any real date."""
     existing = StockCostLayer.query.filter_by(product_id=product_id, branch_id=branch_id).first()
     if existing is not None:
         return
@@ -126,6 +137,6 @@ def bootstrap_opening_layer_if_needed(product_id, branch_id, movement_date):
         product_id=product_id, branch_id=branch_id,
         original_qty=bal.quantity_on_hand, remaining_qty=bal.quantity_on_hand,
         unit_cost=bal.average_unit_cost,
-        received_at=datetime.combine(movement_date, time.min), source_movement_id=None)
+        received_at=datetime.combine(date.min, time.min), source_movement_id=None)
     db.session.add(layer)
     db.session.flush()

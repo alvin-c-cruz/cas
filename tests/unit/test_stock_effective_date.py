@@ -192,6 +192,53 @@ class TestOrderingFollowsTheDocumentDate:
             'represents stock already on hand -- not the same-day receipt (cost '
             '99.00). Consuming the receipt means the opening layer sorted last.')
 
+    def test_fifo_bootstrap_opening_layer_survives_a_later_backdated_receipt(
+            self, db_session, product_fifo, branch_main):
+        """Pins Finding C1 (CRITICAL, reproduced by the final whole-branch
+        review): the opening layer represents stock physically on hand
+        BEFORE FIFO layer tracking began, so it is definitionally the oldest
+        stock and must consume before every other layer for this
+        product/branch -- no matter what date any later movement carries,
+        including a backdated one.
+
+        Reproduced failure sequence: a balance with no layers -> a receipt
+        dated Feb 1 (bootstraps the opening layer, previously dated from
+        WHATEVER movement triggered it -- Feb 1) -> a receipt dated Jan 15
+        (the backdate guard allows it: no consumption exists yet) -> an
+        issue. Before the fix, the issue consumed the Jan 15 layer (cost
+        50.00) instead of the opening layer (cost 1.00), because the
+        trigger-dated opening layer sorted AFTER the Jan 15 receipt.
+        """
+        from app.stock_adjustments.models import StockBalance, StockCostLayer
+        actor = _actor(db_session)
+        bal = StockBalance(product_id=product_fifo.id, branch_id=branch_main.id,
+                           quantity_on_hand=D('10'), average_unit_cost=D('1.00'),
+                           total_value=D('10.00'))
+        db.session.add(bal)
+        db.session.commit()
+        assert StockCostLayer.query.filter_by(product_id=product_fifo.id).count() == 0
+
+        # This receipt TRIGGERS the opening-layer bootstrap (zero layers so far).
+        post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('20.00'),
+                      'test_doc', 1, 'feb receipt', actor, movement_date=date(2026, 2, 1))
+        db.session.commit()
+
+        # Backdated relative to the Feb 1 receipt above -- allowed, since no
+        # consumption exists yet anywhere for this product/branch.
+        post_movement(product_fifo, branch_main.id, 'receipt', D('3'), D('50.00'),
+                      'test_doc', 2, 'backdated jan receipt', actor,
+                      movement_date=date(2026, 1, 15))
+        db.session.commit()
+
+        mv, _ = post_movement(product_fifo, branch_main.id, 'issue', D('-2'), None,
+                              'test_doc', 3, 'issue', actor, movement_date=date(2026, 2, 5))
+        db.session.commit()
+        assert mv.unit_cost == D('1.00'), (
+            'the issue must consume the OPENING layer (cost 1.00, stock already '
+            'on hand before layer tracking began) first -- not the Jan 15 '
+            'backdated receipt (cost 50.00), which would mean the opening '
+            'layer sorted AFTER stock that arrived later in real terms.')
+
     def test_fifo_deficit_fallback_layer_dated_at_movement_effective_date(
             self, db_session, product_fifo, branch_main):
         """Drives fifo_apply_consume's deficit fallback directly: a product

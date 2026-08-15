@@ -10,7 +10,8 @@ from decimal import Decimal
 import pytest
 
 from app import db
-from app.stock_adjustments.service import post_movement, BackdatedReceiptError
+from app.utils import ph_now
+from app.stock_adjustments.service import post_movement, BackdatedReceiptError, reverse_document_movements
 from app.users.models import User
 
 pytestmark = [pytest.mark.unit]
@@ -55,7 +56,7 @@ class TestItBlocks:
 
 
 class TestItsControls:
-    """Four controls. Without them the guard could be a blanket freeze and every
+    """Five controls. Without them the guard could be a blanket freeze and every
     test above would still pass."""
 
     def test_a_same_day_receipt_is_allowed(self, db_session, product_fifo, branch_main):
@@ -99,5 +100,43 @@ class TestItsControls:
         mv, _ = post_movement(product_fifo, branch_main.id, 'receipt', D('10'), D('5.00'),
                               'test_doc', 2, 'earlier, but nothing issued', actor,
                               movement_date=date(2026, 1, 1))
+        db.session.commit()
+        assert mv.id is not None
+
+    def test_a_void_is_never_blocked(self, db_session, product_fifo, branch_main):
+        """Finding S1: the missing 5th control -- exactly the one that would
+        have caught Finding I1. _reverse_fifo_movement writes a void as a
+        NEGATIVE movement dated today. That must NOT count toward the
+        guard's floor, or void-and-re-enter (the standard correction
+        workflow) permanently blocks every backdated receipt for that
+        product/branch afterward, even though nothing was actually issued.
+
+        Finding i folds in here too: a void's movement_date is an explicit
+        design decision -- always TODAY, never backdated to the original
+        (backdating a void would let it rewrite a closed accounting period).
+        """
+        actor = _actor(db_session)
+        original_date = date(2026, 1, 10)
+        orig, _ = post_movement(product_fifo, branch_main.id, 'receipt', D('20'), D('5.00'),
+                                'rr_doc', 10, 'RR original', actor,
+                                movement_date=original_date)
+        db.session.commit()
+
+        reversals = reverse_document_movements('rr_doc', 10, actor)
+        db.session.commit()
+        assert len(reversals) == 1
+        reversal = reversals[0]
+        today = ph_now().date()
+        assert reversal.movement_date == today, 'a void must be dated TODAY'
+        assert reversal.movement_date != original_date, (
+            'a void must never be backdated to the original document date -- '
+            'that would let it rewrite a closed accounting period')
+
+        # Re-enter the corrected receipt at the ORIGINAL date -- the standard
+        # void-and-re-enter correction workflow. Must NOT be refused: nothing
+        # was actually issued, so there is no COGS to protect.
+        mv, _ = post_movement(product_fifo, branch_main.id, 'receipt', D('20'), D('5.50'),
+                              'rr_doc', 11, 'RR corrected', actor,
+                              movement_date=original_date)
         db.session.commit()
         assert mv.id is not None

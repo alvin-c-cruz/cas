@@ -77,7 +77,7 @@ def test_bootstrap_creates_opening_layer_from_current_balance(db_session, produc
     bal = StockBalance(product_id=product_fifo.id, branch_id=branch_main.id,
                        quantity_on_hand=D('12'), average_unit_cost=D('7.50'), total_value=D('90.00'))
     db.session.add(bal); db.session.commit()
-    bootstrap_opening_layer_if_needed(product_fifo.id, branch_main.id, date(2026, 1, 1))
+    bootstrap_opening_layer_if_needed(product_fifo.id, branch_main.id)
     db.session.commit()
     layer = StockCostLayer.query.filter_by(product_id=product_fifo.id).first()
     assert layer is not None
@@ -85,7 +85,10 @@ def test_bootstrap_creates_opening_layer_from_current_balance(db_session, produc
     assert layer.original_qty == D('12')
     assert layer.remaining_qty == D('12')
     assert layer.unit_cost == D('7.50')
-    assert layer.received_at == datetime.combine(date(2026, 1, 1), time.min)
+    # datetime.min sentinel -- "older than any real business date" -- not any
+    # movement's date. See Finding C1: a trigger-derived date let a later
+    # backdated receipt sort ahead of stock that was already on hand.
+    assert layer.received_at == datetime.combine(date.min, time.min)
 
 
 def test_bootstrap_is_noop_when_layers_already_exist(db_session, product_fifo, branch_main):
@@ -93,7 +96,7 @@ def test_bootstrap_is_noop_when_layers_already_exist(db_session, product_fifo, b
                               original_qty=D('3'), remaining_qty=D('3'),
                               unit_cost=D('2.00'), received_at=ph_now())
     db.session.add(existing); db.session.commit()
-    bootstrap_opening_layer_if_needed(product_fifo.id, branch_main.id, date(2026, 1, 1))
+    bootstrap_opening_layer_if_needed(product_fifo.id, branch_main.id)
     db.session.commit()
     assert StockCostLayer.query.filter_by(product_id=product_fifo.id).count() == 1
 
@@ -102,7 +105,7 @@ def test_bootstrap_is_noop_when_balance_is_zero(db_session, product_fifo, branch
     bal = StockBalance(product_id=product_fifo.id, branch_id=branch_main.id,
                        quantity_on_hand=D('0'), average_unit_cost=D('0'), total_value=D('0'))
     db.session.add(bal); db.session.commit()
-    bootstrap_opening_layer_if_needed(product_fifo.id, branch_main.id, date(2026, 1, 1))
+    bootstrap_opening_layer_if_needed(product_fifo.id, branch_main.id)
     db.session.commit()
     assert StockCostLayer.query.filter_by(product_id=product_fifo.id).count() == 0
 
