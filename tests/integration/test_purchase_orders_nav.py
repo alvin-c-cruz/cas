@@ -53,6 +53,13 @@ def test_sidebar_hides_po_link_when_disabled(client, accountant_user, main_branc
 def test_print_renders(client, accountant_user, main_branch, vl_vendor, db_session):
     _login(client, accountant_user, main_branch)
     po = _make_draft_po(db_session, main_branch, vl_vendor)
+    # print_po() now refuses a DRAFT purchase order while po_print_access is
+    # 'approved_only' (its default) -- a draft PO sent to a supplier is a
+    # commercial problem. This test is about the standard form RENDERING, so it
+    # prints an approved order; the gate itself is covered in both directions by
+    # tests/integration/test_p2p_preprinted_print.py::TestPrintAccessGate.
+    po.status = 'approved'
+    db_session.commit()
     resp = client.get(f'/purchase-orders/{po.id}/print')
     assert resp.status_code == 200
     assert b'PURCHASE ORDER' in resp.data and b'PO-2026-07-0200' in resp.data

@@ -226,6 +226,12 @@
                 {% if module_states.delivery_receipts %}
                 {{ render_field(form.dr_print_form) }}
                 {% endif %}
+                {# purchase_orders is optional (default_enabled=False) -- an ungated
+                   control would have zero effect for a company that has not enabled
+                   it (BUG-SETTINGS-DOCPRINT-UNGATED-OPTIONAL-CONTROLS). #}
+                {% if module_states.purchase_orders %}
+                {{ render_field(form.po_print_form) }}
+                {% endif %}
                 {{ render_field(form.cr_print_form) }}
                 {{ render_field(form.ap_print_form) }}
                 {{ render_field(form.cd_print_form) }}

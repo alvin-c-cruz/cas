@@ -14,6 +14,16 @@ from app.amendments.mixins import Amendable
 from app.amendments.snapshot import money
 
 VAT_TREATMENTS = ('inclusive', 'exclusive', 'zero_rated')
+
+# The wording PurchaseOrderForm's SelectField shows (app/purchase_orders/forms.py:25).
+# Form, detail and print must share the document's jargon, so the labels live in ONE
+# place rather than being re-spelled per template.
+VAT_TREATMENT_LABELS = {
+    'inclusive': 'VAT Inclusive',
+    'exclusive': 'VAT Exclusive',
+    'zero_rated': 'Zero-Rated',
+}
+
 STANDARD_VAT_RATE = Decimal('12')
 
 
@@ -105,6 +115,12 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
     AMEND_STATUSES = ('approved', 'partially_received')
 
     child_document_label = 'Receiving Report'
+
+    @property
+    def vat_treatment_label(self):
+        """Human wording for the stored token. Falls back to the raw value so an
+        unrecognised token is visible on the page rather than printing blank."""
+        return VAT_TREATMENT_LABELS.get(self.vat_treatment, self.vat_treatment)
 
     def consumed_qty(self, line):
         """Quantity already committed by non-draft, non-cancelled Receiving Reports."""

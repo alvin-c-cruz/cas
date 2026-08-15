@@ -14,6 +14,10 @@ from sqlalchemy.orm import joinedload
 from app import db
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem, generate_po_number
 from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
+from app.purchase_orders.preprinted_layout import (
+    COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
+from app.common.preprinted_base import (
+    DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
 from app.vendors.models import Vendor
 from app.users.models import User
 from app.settings import AppSettings
@@ -490,6 +494,12 @@ def view(id):
                            created_by_user=created_by_user,
                            approved_by_user=approved_by_user,
                            cancelled_by_user=cancelled_by_user,
+                           # Both settings the Print button is gated on, read HERE
+                           # rather than in the template, so the button and
+                           # print_po()'s own guards read the same two values.
+                           po_print_form=AppSettings.get_setting('po_print_form', 'current'),
+                           po_print_access=AppSettings.get_setting('po_print_access',
+                                                                   'approved_only'),
                            revisions=_revision_panel_rows(po))
 
 
@@ -872,13 +882,54 @@ def cancel(id):
 @purchase_orders_bp.route('/purchase-orders/<int:id>/print')
 @login_required
 def print_po(id):
+    """Print a Purchase Order -- the form is chosen by the `po_print_form` company
+    setting (current = standard printable form . preprinted = data-only overlay for
+    the client's own pre-printed stationery . hidden = printing disabled). Mirrors
+    sales_orders.print_so."""
     po = _get_po_or_404(id)
+    po_print_form = AppSettings.get_setting('po_print_form', 'current')
+    if po_print_form == 'hidden':
+        flash('Purchase Order printing is not enabled.', 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
+    # A DRAFT purchase order must not reach a supplier. Enforced HERE, not only by
+    # hiding the button -- a direct GET bypasses the template entirely.
+    po_print_access = AppSettings.get_setting('po_print_access', 'approved_only')
+    if po_print_access == 'approved_only' and po.status == 'draft':
+        flash('A draft Purchase Order cannot be printed. Approve it first.', 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
     company = {
         'name': AppSettings.get_setting('company_name', ''),
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
+    if po_print_form == 'preprinted':
+        return render_template(
+            'purchase_orders/print_preprinted.html', po=po, company=company,
+            printed_at=ph_now(), layout=get_layout(po.branch_id),
+            can_edit_layout=current_user.has_full_access,
+            col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
+            signatory_ids=TEXT_KEYS,
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     return render_template('purchase_orders/print.html', po=po, company=company, printed_at=ph_now())
+
+
+@purchase_orders_bp.route('/purchase-orders/print-layout', methods=['POST'])
+@login_required
+def save_print_layout():
+    """Persist the pre-printed layout JSON (full-access: admin or Chief Accountant).
+
+    Mirrors sales_orders.save_print_layout: a layout edit changes what prints on a
+    client's real, BIR-registered stationery, so it is deliberately narrower than
+    the module's edit-level role rule."""
+    if not current_user.has_full_access:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    # The layout is per-branch; the print page requires the selected branch to equal
+    # the document's branch, so the session branch is the document's branch.
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
+    return jsonify(ok=True, layout=clean)
 
 
 # ── export routes ────────────────────────────────────────────────────────────

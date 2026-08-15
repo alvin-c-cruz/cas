@@ -135,6 +135,9 @@ class CompanySettingsForm(FlaskForm):
     dr_print_form = SelectField(
         'Delivery Receipt Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
     )
+    po_print_form = SelectField(
+        'Purchase Order Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
+    )
     cd_print_access = SelectField(
         'CDV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
     )
