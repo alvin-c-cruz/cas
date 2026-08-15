@@ -370,6 +370,38 @@ def test_save_posts_expected_payload_to_the_configured_url(designer):
     ]
 
 
+def test_font_comes_from_the_select_not_the_computed_body_stack(designer):
+    """fontFamily must be the <select>'s value -- the SOURCE, not just the string.
+
+    Picking a font and asserting the payload carries it does not pin this: the live
+    preview writes the same value onto the body, so the computed stack then agrees
+    with the select and either read passes. The reads diverge when the user does NOT
+    touch the select. A layout stored with a font that is no longer whitelisted is
+    rendered by the page's own CSS (the real template emits
+    `body { font-family: {{ layout.page.fontFamily }} }`) while the select, built from
+    ALLOWED_FONTS, cannot offer it and shows a whitelisted option instead. Serializing
+    the computed stack in that state re-sends the non-whitelisted string, sanitize_layout
+    rejects it by exact-string match, and the font silently reverts on the next load.
+    A later equal-specificity rule reproduces that divergence here.
+    """
+    page = designer
+    captured = _intercept_save(page)
+    page.add_style_tag(content='body { font-family: "Papyrus", fantasy; }')
+
+    body_font = page.evaluate("() => getComputedStyle(document.body).fontFamily")
+    sel_font = page.evaluate("() => document.getElementById('ppFontFamily').value")
+    assert sel_font == '"Courier New", Courier, monospace'
+    assert body_font != sel_font, 'the two reads must actually diverge here'
+
+    page.click('#editLayoutBtn')          # the font select is deliberately untouched
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+
+    payload = json.loads(captured['body'])
+    assert payload['page']['fontFamily'] == sel_font
+    assert payload['page']['fontFamily'] != body_font
+
+
 def test_hidden_field_and_hidden_column_reach_the_payload(designer):
     page = designer
     captured = _intercept_save(page)
