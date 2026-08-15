@@ -153,20 +153,29 @@ def test_drag_within_bounds_is_not_clamped(designer):
     assert 0 < top < CANVAS_H
 
 
-# --- column drag: the field/column clamp asymmetry --------------------------------
+# --- column drag: columns clamp EXACTLY like fields -------------------------------
+#
+# These two tests were written one commit ago to pin the OPPOSITE behaviour: a column
+# clamped to the bare canvas (0..912) while a field clamped to the printable inset
+# (48..864), so a user could drag a column onto the tractor-feed perforations and the
+# server would persist it there. The owner removed that asymmetry on 2026-08-15 by
+# tightening the SERVER's _clean_columns (and its declaration validator) to the field
+# bound, mirrored here in clampColX. These tests are therefore INVERTED, not deleted --
+# the pairing is kept so the new SYMMETRY is pinned exactly as deliberately as the old
+# asymmetry was, and a later editor cannot quietly restore either one with a green suite.
 
 PRODUCT_COL = '.pp-col[data-col="product"]'
 AMOUNT_COL = '.pp-col[data-col="amount"]'
 
 
-def test_column_clamps_to_the_canvas_where_a_field_clamps_to_the_safe_margin(designer):
-    """The headline asymmetry, pinned from BOTH sides so neither clamp can be swapped.
+def test_column_clamps_at_the_safe_margin_exactly_like_a_field(designer):
+    """The symmetry, pinned from BOTH sides so neither clamp can be swapped.
 
-    A line-item COLUMN may sit flush at x=0 (matching _clean_columns on the server);
-    a FIELD may not go below x=48 (_clean_box). Dragging both to the SAME viewport
-    point must therefore land them on DIFFERENT x. If clampColX were replaced by
-    clampFieldX the column would stop at 48; if clampFieldX were replaced by
-    clampColX the field would reach 0 and then silently jump to 48 on reload.
+    A line-item COLUMN may NOT sit flush at x=0 any more: it stops at SAFE_MARGIN,
+    exactly where a FIELD stops (_clean_columns and _clean_box now share one bound).
+    Dragging both to the SAME viewport point must therefore land them on the SAME x.
+    If clampColX were reverted to the bare canvas the column would reach 0 and then
+    silently jump to 48 on reload -- the defect this change removed.
     """
     page = designer
     page.click('#editLayoutBtn')
@@ -180,9 +189,21 @@ def test_column_clamps_to_the_canvas_where_a_field_clamps_to_the_safe_margin(des
     _drag_to(page, '[data-el="po_no"]', *target)
     field_left, _field_top = _left_top(page, '[data-el="po_no"]')
 
-    assert col_left == 0                  # columns clamp to the bare canvas
-    assert field_left == SAFE_MARGIN      # fields clamp inside the printable inset
-    assert col_left != field_left         # ... and the two clamps are NOT the same one
+    assert col_left == SAFE_MARGIN        # a column clamps inside the printable inset
+    assert field_left == SAFE_MARGIN      # ... and so does a field
+    assert col_left == field_left         # ... i.e. it is ONE clamp, not two
+
+
+def test_column_dragged_past_the_right_edge_clamps_inside_the_canvas(designer):
+    """The other end of the same bound: a column stops at CANVAS_W - SAFE_MARGIN (864),
+    not at the canvas edge (912), so it can never be stored on the right perforations."""
+    page = designer
+    page.click('#editLayoutBtn')
+    _drag_to(page, PRODUCT_COL, 1278, 1198, grab=(0.02, 0.5))
+    left, top = _left_top(page, PRODUCT_COL)
+    assert left == CANVAS_W - SAFE_MARGIN     # 864
+    assert left < CANVAS_W
+    assert top <= CANVAS_H
 
 
 def test_column_drag_within_bounds_is_not_clamped(designer):
@@ -192,7 +213,7 @@ def test_column_drag_within_bounds_is_not_clamped(designer):
     canvas = page.locator('#ppCanvas').bounding_box()
     _drag_to(page, PRODUCT_COL, canvas['x'] + 500, canvas['y'] + 400)
     left, top = _left_top(page, PRODUCT_COL)
-    assert 0 < left < CANVAS_W
+    assert SAFE_MARGIN < left < CANVAS_W - SAFE_MARGIN
     assert 0 < top < CANVAS_H
 
 

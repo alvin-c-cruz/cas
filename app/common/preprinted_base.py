@@ -158,7 +158,15 @@ def _clean_columns(raw, default_columns):
       made to match it,
     - other unknown keys are dropped too (a stored layout can never inject a
       column),
-    - x/width are clamped, `visible` is coerced to bool,
+    - x/width are clamped, `visible` is coerced to bool. A column's x is clamped
+      to SAFE_MARGIN..CANVAS_W - SAFE_MARGIN, i.e. EXACTLY like a field's
+      (`_clean_box`). It used to clamp to the bare canvas (0..CANVAS_W), which
+      let a user drag a column onto the tractor-feed perforations and have the
+      server persist it there, while a field dragged to the same spot was pulled
+      back to the margin. That asymmetry was removed deliberately on 2026-08-15
+      (owner decision: tighten the server, not loosen the client, so what is
+      dragged is what is stored). The declaration validator carries the same
+      bound, so a declared column may not sit in the margin either,
     - first-seen input order is kept, then ANY known column the input omitted is
       appended at its default -- the column-level forward-compat case: a release
       that adds a column must still print it for a client whose stored JSON
@@ -195,7 +203,7 @@ def _clean_columns(raw, default_columns):
         d = defaults[k]
         out.append({
             'key': k,
-            'x': _clamp(src.get('x'), 0, CANVAS_W, d['x']),
+            'x': _clamp(src.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, d['x']),
             'visible': bool(src.get('visible', d.get('visible', True))),
             'width': _clamp(src.get('width'), WIDTH_MIN, WIDTH_MAX, d['width']),
         })
@@ -406,7 +414,7 @@ def _validate_default_layout(field_keys, d):
             if not isinstance(col, dict) or not isinstance(col.get('key'), str) or not col['key']:
                 raise ValueError(f"default_layout['lineItems']['columns'][{i}] needs a 'key'")
             where = f"default_layout['lineItems']['columns'][{col['key']!r}]"
-            _check_num(col, 'x', 0, CANVAS_W, where)
+            _check_num(col, 'x', SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, where)
             _check_num(col, 'width', WIDTH_MIN, WIDTH_MAX, where)
             _check_bool(col, 'visible', where, required=False)
 

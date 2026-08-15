@@ -82,9 +82,18 @@
     let editing = false;
 
     // --- Position clamps (see SAFE_MARGIN above) ---
-    // A FIELD's x is clamped inside the safe margin, matching preprinted_base._clean_box.
-    // A line-item COLUMN's x is clamped to the bare canvas, matching _clean_columns --
-    // the asymmetry is the server's, not this file's.
+    // Fields AND line-item columns clamp x IDENTICALLY, inside the safe margin:
+    // SAFE_MARGIN..canvasWidth - SAFE_MARGIN, matching BOTH preprinted_base._clean_box
+    // and _clean_columns.
+    // There used to be an asymmetry here: a COLUMN clamped to the bare canvas
+    // (0..canvasWidth), mirroring the server's own looser _clean_columns bound, so a
+    // column could be dragged onto the tractor-feed perforations and the server would
+    // PERSIST it there -- while a field dragged to the same point was pulled back to
+    // the margin. Both sides were tightened to the field bound on 2026-08-15 (owner
+    // decision: tighten the server rather than loosen the client, so what is dragged
+    // is what is stored). The asymmetry was REMOVED DELIBERATELY -- it was not lost in
+    // an edit. The two names are kept so the call sites still read "field" vs "column",
+    // but they are ONE clamp now and must stay that way.
     function clampFieldX(x) {
       return Math.max(SAFE_MARGIN, Math.min(canvas.clientWidth - SAFE_MARGIN, x));
     }
@@ -92,7 +101,7 @@
       return Math.max(0, Math.min(canvas.clientHeight, y));
     }
     function clampColX(x) {
-      return Math.max(0, Math.min(canvas.clientWidth, x));
+      return clampFieldX(x);
     }
 
     // --- Save button injected next to Edit ---

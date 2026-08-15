@@ -314,8 +314,71 @@ class TestTheColumnsSanitiser:
             {'key': 'product', 'x': -99999, 'width': 1000000000},
         ]}})
         product = out['lineItems']['columns'][0]
-        assert product['x'] == 0
+        assert product['x'] == base.SAFE_MARGIN
         assert product['width'] == base.WIDTH_MAX
+
+    @pytest.mark.parametrize('sent, stored', [
+        (-99999, base.SAFE_MARGIN),                   # clamped UP to the safe margin
+        (0, base.SAFE_MARGIN),                        # the canvas edge is NOT reachable
+        (10, base.SAFE_MARGIN),                       # inside the tractor-feed margin
+        (47, base.SAFE_MARGIN),                       # one px outside the bound
+        (900, base.CANVAS_W - base.SAFE_MARGIN),      # clamped DOWN inside the right inset
+        (base.CANVAS_W, base.CANVAS_W - base.SAFE_MARGIN),
+        (99999, base.CANVAS_W - base.SAFE_MARGIN),
+    ])
+    def test_a_column_x_clamps_to_the_safe_margin_exactly_like_a_field(
+            self, api_cols, sent, stored):
+        """A COLUMN's x is clamped to SAFE_MARGIN..CANVAS_W - SAFE_MARGIN -- the SAME
+        bound as a field's (`_clean_box`), pinned value-by-value.
+
+        It used to clamp to the bare canvas (0..CANVAS_W), so a user could drag a
+        column onto the tractor-feed perforations and the server would PERSIST it
+        there, while a field dragged to the same point was pulled back to the margin.
+        That asymmetry was removed deliberately on 2026-08-15 (owner decision:
+        tighten the server, not loosen the client). The sibling test below drives the
+        SAME values through a field and asserts an identical result, so neither clamp
+        can be loosened on its own without one of the two going red.
+        """
+        sanitize, _, _ = api_cols
+        cols = sanitize({'lineItems': {'columns': [
+            {'key': 'product', 'x': sent, 'width': 50},
+        ]}})['lineItems']['columns']
+        assert cols[0]['x'] == stored
+
+    @pytest.mark.parametrize('sent, stored', [
+        (-99999, base.SAFE_MARGIN),
+        (0, base.SAFE_MARGIN),
+        (10, base.SAFE_MARGIN),
+        (47, base.SAFE_MARGIN),
+        (900, base.CANVAS_W - base.SAFE_MARGIN),
+        (base.CANVAS_W, base.CANVAS_W - base.SAFE_MARGIN),
+        (99999, base.CANVAS_W - base.SAFE_MARGIN),
+    ])
+    def test_a_field_x_clamps_to_the_same_values_as_a_column(
+            self, api_cols, sent, stored):
+        """The other half of the pairing above: the SAME inputs through `_clean_box`
+        must produce the SAME stored x. Fields and columns behave IDENTICALLY now."""
+        sanitize, _, _ = api_cols
+        out = sanitize({'fields': {'doc_no': {'x': sent}}})
+        assert out['fields']['doc_no']['x'] == stored
+
+    def test_a_column_and_a_field_sent_the_same_x_are_stored_at_the_same_x(self, api_cols):
+        """The pairing stated as one assertion, so the symmetry itself is the subject.
+
+        Written as the direct inversion of the old
+        `test_column_clamps_to_the_canvas_where_a_field_clamps_to_the_safe_margin`
+        e2e/unit pair, which asserted these two values must DIFFER.
+        """
+        sanitize, _, _ = api_cols
+        for sent in (-1, 0, 10, 47, 48, 500, 864, 865, 912, 99999):
+            out = sanitize({
+                'fields': {'doc_no': {'x': sent}},
+                'lineItems': {'columns': [{'key': 'product', 'x': sent, 'width': 50}]},
+            })
+            col_x = out['lineItems']['columns'][0]['x']
+            field_x = out['fields']['doc_no']['x']
+            assert col_x == field_x, f'x={sent} stored as column {col_x} but field {field_x}'
+            assert base.SAFE_MARGIN <= col_x <= base.CANVAS_W - base.SAFE_MARGIN
 
     def test_in_range_column_numbers_survive(self, api_cols):
         """CONTROL: a legitimate column drag must round-trip."""
@@ -362,7 +425,10 @@ class TestTheColumnsSanitiser:
     def test_a_document_declaring_too_many_columns_is_capped(self):
         wide = dict(DEFAULT, lineItems={
             'y': 300, 'rowHeight': 20, 'fontSize': 9, 'bold': False,
-            'columns': [{'key': f'c{i}', 'x': i, 'width': 20}
+            # x starts AT the safe margin: a declared column may no longer sit
+            # inside the tractor-feed inset, so `x: i` (0, 1, 2, ...) would now be
+            # rejected by the declaration validator before the cap is ever reached.
+            'columns': [{'key': f'c{i}', 'x': base.SAFE_MARGIN + i, 'width': 20}
                         for i in range(base.MAX_COLUMNS + 10)],
         })
         sanitize, _, _ = base.build_layout_api('test_wide_layout', FIELD_KEYS, wide,
@@ -585,9 +651,11 @@ class TestTheDeclarationIsValidated:
                                                      columns=[{'x': 1, 'width': 2}])))
 
     def test_a_column_without_a_width_is_rejected(self):
+        # x must be a VALID one (>= SAFE_MARGIN) or the x range check fires first and
+        # this test would pass for the wrong reason.
         with pytest.raises(ValueError, match=r"is missing 'width'"):
             self._build(dict(DEFAULT, lineItems=dict(DEFAULT['lineItems'],
-                                                     columns=[{'key': 'product', 'x': 1}])))
+                                                     columns=[{'key': 'product', 'x': 92}])))
 
     def test_a_column_with_a_non_string_key_is_rejected(self):
         """`_clean_columns` keys its allow-list DICT on these, so an unhashable
@@ -696,7 +764,15 @@ class TestTheDeclarationsTypesAndRangesAreValidated:
 
     @pytest.mark.parametrize('prop, bad', [
         ('x', 'wide'),
-        ('x', 99999),
+        ('x', 99999),                       # past CANVAS_W - SAFE_MARGIN
+        # A declared column's x carries the SAME bound as a declared field's
+        # (see test_an_out_of_range_field_prop_is_rejected's ('x', 10) case). It
+        # used to be 0..CANVAS_W, so a declaration could put a column on the
+        # tractor-feed perforations; tightened 2026-08-15 alongside _clean_columns.
+        ('x', 0),                           # the bare canvas edge is no longer legal
+        ('x', 10),                          # inside the tractor-feed margin
+        ('x', 47),                          # one px outside the bound
+        ('x', 865),                         # one px past CANVAS_W - SAFE_MARGIN
         ('width', 0),
         ('width', 99999),
         ('width', None),
@@ -710,6 +786,15 @@ class TestTheDeclarationsTypesAndRangesAreValidated:
         """CONTROL for the column range checks."""
         sanitize, _, _ = self._build(DEFAULT_WITH_COLUMNS)
         assert [c['key'] for c in sanitize({})['lineItems']['columns']] == COLUMN_KEYS
+
+    @pytest.mark.parametrize('x', [48, 864])
+    def test_a_column_declared_exactly_on_the_bound_builds(self, x):
+        """CONTROL for the tightened x bound: the check must accept its own edges,
+        or every case above would pass with the validator rejecting everything."""
+        col = {'key': 'product', 'x': x, 'width': 300}
+        sanitize, _, _ = self._build(
+            dict(DEFAULT, lineItems=dict(DEFAULT['lineItems'], columns=[col])))
+        assert sanitize({})['lineItems']['columns'][0]['x'] == x
 
 
 class TestTheDeclaredTextsShapeIsValidated:
