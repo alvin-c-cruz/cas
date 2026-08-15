@@ -252,6 +252,9 @@
     // Guarded: an unconditional write stores the string "null" for a hand-added
     // row, which the applier would then try to resolve as an id.
     if (poItemId != null) tr.dataset.poItemId = poItemId;
+    // The requisition line this row was pulled from. Guarded like poItemId: an
+    // unconditional write stores the string "null" for a hand-typed row.
+    if (d.source_pr_item_id != null) tr.dataset.sourcePrItemId = d.source_pr_item_id;
     // A legacy line may carry uom_text with no unit_of_measure_id (free text
     // typed before the UoM master existed, or imported). The picker cannot
     // represent that, so the original text rides along on the row and is posted
@@ -433,6 +436,7 @@
       const uomId = realValue(tr.querySelector('.po-uom').value);
       rows.push({
         po_item_id: tr.dataset.poItemId || null,
+        source_pr_item_id: tr.dataset.sourcePrItemId || null,
         product_id: realValue(tr.querySelector('.po-product').value),
         description: tr.querySelector('.po-desc').value || null,
         quantity: num(tr.querySelector('.po-qty').value),

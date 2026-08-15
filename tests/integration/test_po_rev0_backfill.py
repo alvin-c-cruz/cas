@@ -91,6 +91,25 @@ with app.app_context():
     from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
     from app.amendments.service import write_revision
 
+    # The schema here is pinned at docrev_0001, but these rows are seeded through
+    # TODAY'S ORM -- so every column added to a seeded table by a LATER migration
+    # is in the INSERT and missing from the table, and the seed dies with
+    # "table X has no column named Y". That is a property of the fixture, not of
+    # the change that trips it (source_pr_item_id, pralloc_0001, was simply the
+    # first). Reconcile automatically rather than hand-listing, so the next
+    # column costs nothing. Only the seeded tables need it, and only ADD COLUMN
+    # is possible on SQLite -- which is all a newer model can require.
+    for model in (PurchaseOrder, PurchaseOrderItem):
+        table = model.__table__
+        have = {r[1] for r in db.session.execute(
+            db.text('PRAGMA table_info(%s)' % table.name))}
+        for col in table.columns:
+            if col.name not in have:
+                db.session.execute(db.text(
+                    'ALTER TABLE %s ADD COLUMN %s %s'
+                    % (table.name, col.name, col.type.compile(db.engine.dialect))))
+    db.session.commit()
+
     branch = Branch(code='MNL', name='Manila Branch', is_active=True)
     user = User(username='approver', email='approver@example.com',
                 password_hash='not-a-real-hash', full_name='Ana Approver',
@@ -238,7 +257,14 @@ def _build_db(directory):
     seed.write_text(_SEED_SCRIPT, encoding='utf-8')
     _run([sys.executable, str(seed), str(CAS_ROOT)], db_path, directory)
 
-    _run([sys.executable, '-m', 'flask', 'db', 'upgrade'], db_path, directory)
+    # docrev_0002 explicitly, not `upgrade` to head: this fixture exists to
+    # exercise docrev_0002's backfill, and running every LATER migration too
+    # couples the test to unrelated schema work -- pralloc_0001 would try to add
+    # source_pr_item_id, which the shim above has already added, and fail on a
+    # duplicate column. The module docstring always said docrev_0002; head only
+    # happened to equal it when this was written.
+    _run([sys.executable, '-m', 'flask', 'db', 'upgrade', 'docrev_0002'],
+         db_path, directory)
     return db_path
 
 

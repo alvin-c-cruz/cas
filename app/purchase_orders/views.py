@@ -47,7 +47,7 @@ def _po_line_int(v):
         return None
 
 
-def _assign_po_line_fields(item, d, idx):
+def _assign_po_line_fields(item, d, idx, branch_id=None, exclude_po_id=None):
     """Coerce one submitted line dict onto *item*. A line needs a Product (goods)
     OR a free-text description (services).
 
@@ -83,25 +83,67 @@ def _assign_po_line_fields(item, d, idx):
     item.amount = amount
     item.vat_category = d.get('vat_category') or None
     item.vat_rate = vat_rate
+
+    # Requisition allocation. The id is validated HERE rather than trusted from
+    # the payload: the picker filters by branch and by open quantity, and a
+    # POST bypasses both.
+    src_id = _po_line_int(d.get('source_pr_item_id'))
+    if src_id is None:
+        item.source_pr_item_id = None
+    else:
+        # Do NOT clear item.source_pr_item_id first. On the amend path the row
+        # is already persistent, and the ceiling query below AUTOFLUSHES -- a
+        # pre-emptive None would be written out, dropping this line from its own
+        # SUM and neutering the check by accident. Assign only after it passes.
+        from app.purchase_requests.models import PurchaseRequestItem, PurchaseRequest
+        from app.purchase_requests.allocation import assert_within_open_qty
+        pr_item = db.session.get(PurchaseRequestItem, src_id)
+        if pr_item is None:
+            raise ValueError(f'Line {idx}: the requisition line no longer exists.')
+        pr = db.session.get(PurchaseRequest, pr_item.purchase_request_id)
+        if pr is None or (branch_id is not None and pr.branch_id != branch_id):
+            raise ValueError(f'Line {idx}: that requisition line belongs to another branch.')
+        assert_within_open_qty(pr_item, qty, idx, exclude_po_id=exclude_po_id)
+        item.source_pr_item_id = src_id
+
     item.calculate_amounts()
     return True
 
 
-def _parse_and_attach_po_lines(po, lines_json):
+def _refresh_source_requisitions(po):
+    """Recompute the status of every requisition this PO draws from.
+
+    Called after any write that can change what is ordered -- create, edit,
+    amend and cancel. Idempotent, so calling it twice is harmless and calling
+    it on a PO with no requisition lines does nothing.
+    """
+    from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
+    from app.purchase_requests.allocation import recompute_pr_status
+    ids = {li.source_pr_item_id for li in po.line_items if li.source_pr_item_id}
+    if not ids:
+        return
+    pr_ids = {row.purchase_request_id for row in
+              PurchaseRequestItem.query.filter(PurchaseRequestItem.id.in_(ids)).all()}
+    for pr in PurchaseRequest.query.filter(PurchaseRequest.id.in_(pr_ids)).all():
+        recompute_pr_status(pr)
+
+
+def _parse_and_attach_po_lines(po, lines_json, branch_id=None, exclude_po_id=None):
     """Parse hidden-JSON line array and attach PurchaseOrderItem objects to *po*.
     A line needs a Product (goods) OR a free-text description (services)."""
     items = json.loads(lines_json) if lines_json else []
     kept = 0
     for idx, d in enumerate(items, start=1):
         li = PurchaseOrderItem()
-        if not _assign_po_line_fields(li, d, idx):
+        if not _assign_po_line_fields(li, d, idx, branch_id=branch_id,
+                                      exclude_po_id=exclude_po_id):
             continue  # skip a blank trailing line
         kept += 1
         li.line_number = kept
         po.line_items.append(li)
 
 
-def _apply_amended_po_lines(po, items):
+def _apply_amended_po_lines(po, items, branch_id=None, exclude_po_id=None):
     """Update this PO's lines IN PLACE from the ALREADY-PARSED submitted array.
 
     Takes the parsed list, not the raw JSON string, so the route parses the
@@ -145,7 +187,8 @@ def _apply_amended_po_lines(po, items):
         if is_new:
             item = PurchaseOrderItem(purchase_order_id=po.id)
 
-        if not _assign_po_line_fields(item, d, idx):
+        if not _assign_po_line_fields(item, d, idx, branch_id=branch_id,
+                                      exclude_po_id=exclude_po_id):
             # For an EXISTING item this `continue` leaves it out of `seen`, so
             # the sync loop below deletes it -- an implicit "blank an existing
             # row to remove it" path. It is unreachable in practice only because
@@ -395,9 +438,15 @@ def create():
                 status='draft',
                 created_by_id=current_user.id,
             )
-            _parse_and_attach_po_lines(po, request.form.get('line_items', '[]'))
+            _parse_and_attach_po_lines(po, request.form.get('line_items', '[]'),
+                                       branch_id=session.get('selected_branch_id'))
             po.calculate_totals()
             db.session.add(po)
+            # Flush before recomputing: the requisition's open quantity is a SUM
+            # over PO lines in the DATABASE, so pending lines must be there for
+            # this order to count towards it.
+            db.session.flush()
+            _refresh_source_requisitions(po)
             db.session.commit()
 
             log_create(
@@ -504,10 +553,15 @@ def edit(id):
 
             db.session.execute(db.delete(PurchaseOrderItem)
                                .where(PurchaseOrderItem.purchase_order_id == po.id))
-            _parse_and_attach_po_lines(po, request.form.get('line_items', '[]'))
+            # exclude_po_id: without it this order's own lines count against
+            # itself and an unchanged save fails the ceiling check.
+            _parse_and_attach_po_lines(po, request.form.get('line_items', '[]'),
+                                       branch_id=session.get('selected_branch_id'),
+                                       exclude_po_id=po.id)
             db.session.flush()
             db.session.expire(po, ['line_items'])
             po.calculate_totals()
+            _refresh_source_requisitions(po)
             db.session.commit()
 
             log_update(
@@ -663,7 +717,12 @@ def amend(id):
             # UPDATE IN PLACE -- do NOT delete-and-rebuild the way edit() does.
             # See _apply_amended_po_lines: a rebuild strands every
             # ReceivingReportItem.purchase_order_item_id, silently.
-            _apply_amended_po_lines(po, submitted_lines)
+            # exclude_po_id is genuinely load-bearing HERE, unlike on edit():
+            # this path updates in place, so without it the order's own lines
+            # count against the requisition ceiling and any amendment of a
+            # fully-pulled line is refused.
+            _apply_amended_po_lines(po, submitted_lines, branch_id=po.branch_id,
+                                    exclude_po_id=po.id)
             db.session.flush()
             db.session.expire(po, ['line_items'])
             po.calculate_totals()
@@ -681,6 +740,8 @@ def amend(id):
                 raise ValueError(
                     'A Purchase Order must keep at least one line with a unit '
                     'price and an amount. This amendment would leave none.')
+
+            _refresh_source_requisitions(po)
 
             rev = write_revision(po, current_user.id,
                                  reason=(form.amend_reason.data or '').strip())
@@ -794,6 +855,11 @@ def cancel(id):
     po.cancelled_by_id = current_user.id
     po.cancelled_at = ph_now()
     po.cancel_reason = cancel_reason
+    # The lines are still attached, so this reopens every requisition line the
+    # cancelled order was holding -- no restore step, the sum simply stops
+    # counting a cancelled PO.
+    db.session.flush()
+    _refresh_source_requisitions(po)
     db.session.commit()
 
     log_update(module='purchase_orders', record_id=po.id, record_identifier=po.po_number,

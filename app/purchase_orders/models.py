@@ -248,6 +248,12 @@ class PurchaseOrderItem(db.Model):
             'vat_rate': float(self.vat_rate) if self.vat_rate is not None else 0.0,
             'received_quantity': float(self.received_quantity) if self.received_quantity is not None else 0.0,
             'billed_quantity': float(self.billed_quantity) if self.billed_quantity is not None else 0.0,
+            # Feeds the form's EXISTING payload on a draft edit / amendment.
+            # Omitting it does not error -- addRow simply never sets the dataset
+            # key, the serialiser posts null, and every pulled line is silently
+            # orphaned on the next save, reopening a requisition that is in fact
+            # still on order.
+            'source_pr_item_id': self.source_pr_item_id,
         }
 
 
