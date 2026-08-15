@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="csrf-token" content="harness-csrf-token">
+<title>Shared pre-printed designer harness</title>
+<!--
+  NOT a product page. A standalone stand-in for a document's print_preprinted.html,
+  used by tests/e2e/test_preprinted_designer_shared.py to drive
+  app/static/js/preprinted_designer.js on its own, before any real P2P print page
+  exists. It carries the same element ids, classes and data-* attributes the real
+  templates render (canvas 912x1008, .pp-el fields with data-el/data-label, a
+  .pp-text signatory, a .pp-lineitems band of .pp-col columns, and the pp* controls).
+
+  It deliberately does NOT call initPreprintedDesigner -- each test calls it with the
+  config it wants to exercise (including the no-saveUrl case).
+-->
+<link rel="stylesheet" href="/app/static/css/preprinted_designer.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Courier New", Courier, monospace; color: #111; background: #eee; }
+  .pp-canvas { position: relative; margin: 8px auto; background: #fff; }
+  .pp-el { position: absolute; white-space: nowrap; }
+  .pp-lineitems { white-space: normal; }
+  .pp-col { position: absolute; }
+  .pp-cell { overflow: hidden; white-space: nowrap; }
+  .pp-col-hidden { display: none; }
+  .pp-field-hidden { display: none; }
+  .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
+  .pp-col-controls { max-width: 912px; margin: 0 auto; display: none; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+  .pp-col-controls.pp-show { display: flex; }
+  .pp-toolbar { max-width: 912px; margin: 0 auto; display: flex; gap: 8px; align-items: center; }
+  .btn { padding: 4px 10px; font-size: 13px; cursor: pointer; }
+</style>
+<style id="ppPageStyle">@page { size: 9.5in 10.5in; margin: 0; }</style>
+</head>
+<body data-can-edit="true" data-paper="continuous">
+
+<div class="pp-toolbar screen-only">
+  <button type="button" class="btn btn-print">Print</button>
+  <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
+  <select id="ppPaper" style="display:none;">
+    <option value="continuous" data-w="912" data-h="1008" data-css="9.5in 10.5in" selected>9.5 x 10.5 continuous paper</option>
+    <option value="letter" data-w="816" data-h="1056" data-css="8.5in 11in">Letter 8.5 x 11</option>
+  </select>
+  <select id="ppFontFamily" style="display:none;">
+    <option value="&quot;Courier New&quot;, Courier, monospace" selected>Courier New</option>
+    <option value="Georgia, serif">Georgia</option>
+  </select>
+  <select id="ppDateFormat" style="display:none;" title="Date format">
+    <option value="long" selected>15 August 2026</option>
+    <option value="us">08/15/2026</option>
+  </select>
+</div>
+
+<div id="ppFieldControls" class="pp-col-controls screen-only"></div>
+<div id="ppColControls" class="pp-col-controls screen-only"></div>
+
+<div class="pp-canvas" id="ppCanvas" style="width:912px;height:1008px;">
+  <div class="pp-el" data-el="vendor_name" data-label="Vendor"
+       style="left:60px;top:50px;width:500px;font-size:12px;font-weight:bold;">Alpha Trading Inc</div>
+  <div class="pp-el" data-el="po_no" data-label="PO No."
+       style="left:620px;top:50px;width:200px;font-size:12px;font-weight:bold;">PO-2026-0001</div>
+  <div class="pp-el" data-el="order_date" data-label="Order Date" data-date="2026-08-15"
+       style="left:620px;top:74px;width:200px;font-size:11px;font-weight:normal;">15 August 2026</div>
+  <div class="pp-el pp-text" data-text="preparer" data-label="Preparer" data-signatory="1"
+       style="left:60px;top:720px;font-size:10px;font-weight:normal;">Preparer</div>
+
+  <div class="pp-lineitems" data-el="lineItems" data-rowheight="20">
+    <div class="pp-col" data-col="product" data-label="Product"
+         style="left:120px;top:300px;width:260px;font-size:10px;font-weight:normal;">
+      <div class="pp-cell" style="height:20px;line-height:20px;">P-001 Widget</div>
+    </div>
+    <div class="pp-col" data-col="amount" data-label="Amount"
+         style="left:700px;top:300px;width:120px;font-size:10px;font-weight:normal;">
+      <div class="pp-cell" style="height:20px;line-height:20px;">1,250.00</div>
+    </div>
+  </div>
+</div>
+
+<script src="/app/static/js/preprinted_designer.js"></script>
+</body>
+</html>
