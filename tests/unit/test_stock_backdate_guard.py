@@ -117,6 +117,8 @@ class TestItsControls:
         """
         actor = _actor(db_session)
         original_date = date(2026, 1, 10)
+        today = ph_now().date()  # captured BEFORE the action -- a run straddling
+        # midnight must not compare the reversal's date against a DIFFERENT day.
         orig, _ = post_movement(product_fifo, branch_main.id, 'receipt', D('20'), D('5.00'),
                                 'rr_doc', 10, 'RR original', actor,
                                 movement_date=original_date)
@@ -126,7 +128,6 @@ class TestItsControls:
         db.session.commit()
         assert len(reversals) == 1
         reversal = reversals[0]
-        today = ph_now().date()
         assert reversal.movement_date == today, 'a void must be dated TODAY'
         assert reversal.movement_date != original_date, (
             'a void must never be backdated to the original document date -- '

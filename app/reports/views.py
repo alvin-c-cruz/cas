@@ -2303,7 +2303,8 @@ def fifo_layers_export_excel():
     products, layers = _fifo_layers(product_id, branch_id)
     product = next((p for p in products if p.id == product_id), None)
     rows = [{
-        'received_at': l.received_at.strftime('%Y-%m-%d') if l.received_at else '',
+        'received_at': ('Opening' if l.received_at and l.received_at.year == 1
+                        else (l.received_at.strftime('%Y-%m-%d') if l.received_at else '')),
         'original_qty': l.original_qty,
         'remaining_qty': l.remaining_qty,
         'unit_cost': l.unit_cost,

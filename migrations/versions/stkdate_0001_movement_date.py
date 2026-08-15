@@ -14,7 +14,10 @@ three-step dance SQLite requires for a NOT NULL column on an existing table.
 
 stock_cost_layers.received_at is also normalised to midnight so pre-existing
 layers sort consistently with new ones (which are written as
-datetime.combine(movement_date, time.min)).
+datetime.combine(movement_date, time.min)). A pre-existing opening-balance
+layer (source_movement_id IS NULL, original_qty > 0) is additionally re-dated
+to the datetime.min sentinel, matching bootstrap_opening_layer_if_needed's
+current behaviour for newly-bootstrapped layers.
 """
 import sqlalchemy as sa
 from alembic import op
@@ -40,6 +43,15 @@ def upgrade():
     # consistently against new ones.
     op.execute("UPDATE stock_cost_layers SET received_at = DATE(received_at)")
     op.execute("UPDATE stock_lots SET received_at = DATE(received_at)")
+
+    # Re-date pre-existing opening-balance layers to the sentinel. Before this
+    # change the bootstrap wrote ph_now(), which normalises above to midnight of
+    # whatever date happened to trigger it -- leaving a later-posted but
+    # earlier-dated receipt sorting ahead of the opening stock. original_qty > 0
+    # is load-bearing: virgin zero-cost DEFICIT layers also carry
+    # source_movement_id IS NULL and must NOT be moved.
+    op.execute("UPDATE stock_cost_layers SET received_at = '0001-01-01 00:00:00.000000' "
+               "WHERE source_movement_id IS NULL AND original_qty > 0")
 
 
 def downgrade():

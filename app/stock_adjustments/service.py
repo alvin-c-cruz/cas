@@ -193,7 +193,14 @@ class BackdatedReceiptError(ValueError):
     pass
 
 
-LAYERED_COSTING = ('fifo', 'lifo')
+LAYERED_COSTING = ('fifo',)
+# 'lifo' is deliberately excluded: it is a shadow/internal-reporting replay only
+# (see lifo_shadow.py's _replay) -- it posts moving-average cost to the general
+# ledger and never writes a StockLayerConsumption row. There is no posted COGS
+# computed against a LIFO layer for the backdate guard below to protect, so the
+# guard's EXISTS-against-StockLayerConsumption floor could never fire for a
+# 'lifo' product anyway; this just makes that explicit via an early return
+# instead of an EXISTS query that was always going to find nothing.
 
 
 def _assert_not_backdated_receipt(product, branch_id, movement_date, delta_qty):
