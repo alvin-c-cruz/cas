@@ -136,5 +136,11 @@
     "date": "2026-08-06",
     "reason": null,
     "waived": false
+  },
+  "e724bc126c68ab0bf74db05b0738b0259573b9c6": {
+    "branch": "fix/stock-movement-effective-date",
+    "date": "2026-08-15",
+    "reason": null,
+    "waived": false
   }
 }
