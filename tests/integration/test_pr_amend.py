@@ -185,24 +185,34 @@ class TestStatusGuards:
             'actionable fact is WHICH purchase order this requisition became')
         assert len(_revs(approved_pr)) == before
 
-    def test_an_approved_pr_carrying_a_purchase_order_id_is_also_refused(
+    def test_an_approved_pr_whose_lines_are_all_ordered_is_also_refused(
             self, client, db_session, approved_pr):
         """The half of is_converted() that AMEND_STATUSES cannot cover.
 
-        A PR whose status still reads 'approved' but which already carries a
-        purchase_order_id passes the status guard, so only is_converted()'s FK
-        half refuses it. Without this case, deleting the whole converted guard
-        left every test green (mutation r3) because the status guard caught the
-        ordinary converted PR.
+        A PR whose status still reads 'approved' but whose every line is
+        already on a purchase order passes the status guard, so only
+        is_converted()'s line half refuses it. Without this case, deleting the
+        whole converted guard left every test green (mutation r3) because the
+        status guard caught the ordinary converted PR.
 
-        convert() writes both together, so this shape means a partial write --
-        exactly the state a guard reading only the status would wave through.
+        The EVIDENCE changed with line-level allocation. This used to set only
+        purchase_order_id, because conversion COPIED the lines and the header
+        back-link was the sole trace. Now PO lines carry source_pr_item_id, and
+        the back-link alone is deliberately NOT proof of consumption -- the
+        whole-requisition shortcut sets it on a PARTIAL pull too, where the
+        requisition must stay amendable. So the state that must still be
+        refused is "every line ordered, status not yet caught up".
         """
-        from app.purchase_orders.models import PurchaseOrder
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
         po = PurchaseOrder(po_number='PO-00777', order_date=date(2026, 8, 11),
                            status='draft', vendor_name='ACME',
                            branch_id=approved_pr.branch_id, payment_terms='Net 30',
                            vat_treatment='inclusive')
+        for n, li in enumerate(approved_pr.line_items, start=1):
+            po.line_items.append(PurchaseOrderItem(
+                line_number=n, description=li.description, quantity=li.quantity,
+                unit_price=1, amount=Decimal(str(li.quantity)),
+                source_pr_item_id=li.id))
         db.session.add(po); db.session.commit()
         approved_pr.purchase_order_id = po.id      # status stays 'approved'
         db.session.commit()
@@ -211,6 +221,31 @@ class TestStatusGuards:
         resp = _amend(client, approved_pr)
         assert b'was already converted to Purchase Order PO-00777' in resp.data
         assert len(_revs(approved_pr)) == before
+
+    def test_a_back_link_alone_does_not_freeze_a_partly_ordered_pr(
+            self, client, db_session, approved_pr):
+        """Control on the clause this task REMOVED from is_converted().
+
+        Restoring `or purchase_order_id is not None` would fail here: the
+        shortcut sets the back-link on a partial pull, and freezing the
+        requisition then would strand the unordered remainder.
+        """
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+        line = approved_pr.line_items[0]
+        po = PurchaseOrder(po_number='PO-00778', order_date=date(2026, 8, 11),
+                           status='draft', vendor_name='ACME',
+                           branch_id=approved_pr.branch_id, payment_terms='Net 30',
+                           vat_treatment='inclusive')
+        po.line_items.append(PurchaseOrderItem(
+            line_number=1, description=line.description, quantity=Decimal('4'),
+            unit_price=1, amount=Decimal('4'), source_pr_item_id=line.id))
+        db.session.add(po); db.session.commit()
+        approved_pr.purchase_order_id = po.id
+        db.session.commit()
+
+        assert approved_pr.is_converted() is False
+        resp = _amend(client, approved_pr)
+        assert b'was already converted to Purchase Order' not in resp.data
 
 
 class TestRoleGate:

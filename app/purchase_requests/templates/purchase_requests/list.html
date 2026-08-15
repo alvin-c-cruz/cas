@@ -34,6 +34,7 @@
         <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
         <option value="submitted" {% if status_filter == 'submitted' %}selected{% endif %}>Submitted</option>
         <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+        <option value="partially_converted" {% if status_filter == 'partially_converted' %}selected{% endif %}>Partially Converted</option>
         <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
         <option value="converted" {% if status_filter == 'converted' %}selected{% endif %}>Converted</option>
         <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
@@ -62,7 +63,7 @@
     </div>
     <div class="card-body">
         {% if pr_list %}
-        {% set badge_map = {'draft':'draft','submitted':'submitted','approved':'approved','rejected':'rejected','cancelled':'cancelled','converted':'converted'} %}
+        {% set badge_map = {'draft':'draft','submitted':'submitted','approved':'approved','rejected':'rejected','cancelled':'cancelled','converted':'converted','partially_converted':'submitted'} %}
         <div class="table-wrap">
         <table class="table">
             <thead>

@@ -27,7 +27,8 @@ from app.utils.concurrency import claim_version, conflict_message, submitted_ver
 
 purchase_requests_bp = Blueprint('purchase_requests', __name__, template_folder='templates')
 
-VALID_PR_STATUSES = {'draft', 'submitted', 'approved', 'rejected', 'converted', 'cancelled'}
+VALID_PR_STATUSES = {'draft', 'submitted', 'approved', 'partially_converted',
+                     'rejected', 'converted', 'cancelled'}
 
 # The printed requisition pads to this many line rows so every sheet is the same
 # shape -- the signature block lands in the same place and the spare ruled rows
@@ -671,7 +672,7 @@ def convert(id):
     pr = _get_pr_or_404(id)
     if not _approve_gate():
         return redirect(url_for('purchase_requests.view', id=id))
-    if pr.status != 'approved':
+    if pr.status not in ('approved', 'partially_converted'):
         flash('Only an approved Purchase Requisition can be converted to a Purchase Order.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     # Import inside the function to avoid an import cycle at module load.

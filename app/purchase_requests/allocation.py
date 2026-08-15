@@ -145,3 +145,37 @@ def _qty_str(v):
     if v is None:
         return ''
     return '{:f}'.format(Decimal(str(v)).normalize())
+
+
+#: Statuses recompute_pr_status may move between. A draft, submitted, cancelled
+#: or rejected requisition is left exactly as it is -- ordering against one is
+#: impossible, and resurrecting a cancelled requisition would be a real defect.
+RECOMPUTABLE_PR = ('approved', 'partially_converted', 'converted')
+
+
+def recompute_pr_status(pr):
+    """Set and return the requisition's status from its lines' open state.
+
+    Recompute-from-source: this never reads pr.status to decide the answer, so
+    it is idempotent and self-repairing. A counter-based design cannot make
+    that claim -- one missed decrement is permanent.
+
+    Does NOT commit; the caller owns the transaction.
+    """
+    if pr.status not in RECOMPUTABLE_PR:
+        return pr.status
+    lines = list(pr.line_items)
+    if not lines:
+        pr.status = 'approved'
+        return pr.status
+    open_count = sum(1 for li in lines if pr_line_is_open(li))
+    untouched = sum(1 for li in lines
+                    if pr_line_ordered_qty(li) == Decimal('0')
+                    and not _has_committed_reference(li))
+    if untouched == len(lines):
+        pr.status = 'approved'
+    elif open_count == 0:
+        pr.status = 'converted'
+    else:
+        pr.status = 'partially_converted'
+    return pr.status

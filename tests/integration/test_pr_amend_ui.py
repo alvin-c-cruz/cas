@@ -205,22 +205,50 @@ class TestAmendButton:
         assert approved_pr.pr_number in html
 
 
-    def test_no_amend_button_on_an_approved_pr_that_already_carries_a_po_id(
+    def test_no_amend_button_on_an_approved_pr_whose_lines_are_all_ordered(
             self, client, db_session, approved_pr):
         # The half of is_converted() the STATUS guard cannot cover. Without this
         # case, deleting the button's converted guard changed nothing (mutation
         # u3) because the other converted test also flipped the status.
-        from app.purchase_orders.models import PurchaseOrder
+        #
+        # Evidence updated for line-level allocation: consumption is now proven
+        # by PO lines carrying source_pr_item_id, not by the header back-link
+        # (which the shortcut also sets on a PARTIAL pull -- see the control
+        # below, where the button must REMAIN).
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
         po = PurchaseOrder(po_number='PO-00888', order_date=date(2026, 8, 11),
                            status='draft', vendor_name='ACME',
                            branch_id=approved_pr.branch_id, payment_terms='Net 30',
                            vat_treatment='inclusive')
+        for n, li in enumerate(approved_pr.line_items, start=1):
+            po.line_items.append(PurchaseOrderItem(
+                line_number=n, description=li.description, quantity=li.quantity,
+                unit_price=1, amount=Decimal(str(li.quantity)),
+                source_pr_item_id=li.id))
         db.session.add(po); db.session.commit()
         approved_pr.purchase_order_id = po.id      # status stays 'approved'
         db.session.commit()
         html = _detail(client, approved_pr)
         assert 'Amend' not in html
         assert approved_pr.pr_number in html
+
+    def test_the_amend_button_survives_a_partial_pull(
+            self, client, db_session, approved_pr):
+        # Control: a requisition with an unordered remainder must stay
+        # amendable even though it carries a purchase_order_id back-link.
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+        line = approved_pr.line_items[0]
+        po = PurchaseOrder(po_number='PO-00889', order_date=date(2026, 8, 11),
+                           status='draft', vendor_name='ACME',
+                           branch_id=approved_pr.branch_id, payment_terms='Net 30',
+                           vat_treatment='inclusive')
+        po.line_items.append(PurchaseOrderItem(
+            line_number=1, description=line.description, quantity=Decimal('4'),
+            unit_price=1, amount=Decimal('4'), source_pr_item_id=line.id))
+        db.session.add(po); db.session.commit()
+        approved_pr.purchase_order_id = po.id
+        db.session.commit()
+        assert 'Amend' in _detail(client, approved_pr)
 
 
 # -- the revision history panel ----------------------------------------------

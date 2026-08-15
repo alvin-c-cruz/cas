@@ -57,10 +57,13 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
     #: re-saved unchanged.
     LINE_QUANTITY_REQUIRED = False
 
-    #: Only 'approved'. 'submitted' is past draft but PRE-approval, and the
-    #: spec's trigger is approval. 'converted' is excluded because conversion
-    #: has already produced a draft PO the buyer is pricing -- see is_converted.
-    AMEND_STATUSES = ('approved',)
+    #: 'partially_converted' is amendable because the shared validator now has
+    #: real consumed_qty/has_any_child_reference hooks -- it refuses to shrink
+    #: or delete an already-ordered line while permitting untouched ones.
+    #: 'converted' stays out: every line is consumed, so the only edit the
+    #: validator would allow is ADDING demand to a fully ordered requisition,
+    #: which belongs on a new requisition. Carry-over of current behaviour.
+    AMEND_STATUSES = ('approved', 'partially_converted')
 
     id = db.Column(db.Integer, primary_key=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True, index=True)
@@ -112,20 +115,20 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
                                  order_by='PurchaseRequestItem.line_number')
 
     def is_converted(self):
-        """True once this requisition has produced a Purchase Order.
+        """True once every line has been fully ordered.
 
-        PR's whole "already consumed" question, and it is HEADER-level -- unlike
-        PO and SO, where consumption is per line. `convert()` sets `status` and
-        `purchase_order_id` together (views.py:370-371), so either alone would
-        normally do; reading BOTH means a single failed commit that left one of
-        them behind cannot make an already-converted requisition amendable again.
-
-        Amending a converted PR would change nothing downstream: conversion
-        COPIES the lines into a draft PO rather than pointing at them, so the
-        buyer keeps pricing the old numbers while the requisition claims new
-        ones. That is the lie this guard exists to prevent.
+        Was `status == 'converted' or purchase_order_id is not None`. That
+        breaks under partial allocation: the whole-requisition shortcut sets
+        purchase_order_id even when it pulls only part of the requisition, so
+        the old form would call a half-ordered requisition converted and freeze
+        it against amendment.
         """
-        return self.status == 'converted' or self.purchase_order_id is not None
+        from app.purchase_requests.allocation import pr_line_is_open
+        if self.status == 'converted':
+            return True
+        if not self.line_items:
+            return False
+        return not any(pr_line_is_open(li) for li in self.line_items)
 
     def has_requested_line(self):
         """True when at least one line names a product OR a description.
