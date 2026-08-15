@@ -101,6 +101,42 @@
     </div>
     <button type="button" class="btn btn-secondary" id="addLineBtn">+ Add Line Item</button>
 
+    {# Gated in JINJA, not at runtime: with requisitions off there is no route
+       to call, so emitting a button that would 404 is dead weight. #}
+    {% if module_enabled('purchase_requests') %}
+    <button type="button" class="btn btn-secondary" id="pullPrBtn">+ Pull from Requisitions</button>
+
+    <div id="prPickerModal" class="modal-overlay no-print"
+         style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
+      <div class="card" style="max-width:900px;width:94%;max-height:80vh;overflow:auto">
+        <div class="card-body">
+          <h3>Open Requisition Lines</h3>
+          <p class="text-muted" id="prPickerEmpty" style="display:none">
+            No approved requisition lines are waiting for a purchase order.
+          </p>
+          <table class="table" id="prPickerTable">
+            <thead>
+              <tr>
+                <th style="width:4%;"></th>
+                <th style="width:14%;">PR Number</th>
+                <th style="width:12%;">Needed</th>
+                <th style="width:34%;">Item</th>
+                <th style="width:8%;">Unit</th>
+                <th style="width:10%; text-align:right;">Open</th>
+                <th style="width:12%; text-align:right;">Order Qty</th>
+              </tr>
+            </thead>
+            <tbody id="prPickerBody"></tbody>
+          </table>
+          <div class="form-actions">
+            <button type="button" class="btn btn-primary" id="prPickerAdd">Add Selected</button>
+            <button type="button" class="btn btn-secondary" id="prPickerClose">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     {# Totals. The form previously showed NONE, so a buyer could not see what an
        order came to without saving it. Rows mirror PurchaseOrder.calculate_totals
        exactly, including its branch on vat_treatment -- see recalcTotals(). #}
@@ -478,4 +514,81 @@
   (EXISTING && EXISTING.length ? EXISTING : [{}]).forEach(addRow);
   recalcTotals();
 </script>
+
+{# Deliberately a separate <script> from the line-identity block above:
+   tests/integration/_line_identity_js.py executes that block in a minimal DOM
+   shim, and picker code would throw there on APIs the shim does not provide. #}
+{% if module_enabled('purchase_requests') %}
+<script>
+  (function () {
+    const btn = document.getElementById('pullPrBtn');
+    const modal = document.getElementById('prPickerModal');
+    if (!btn || !modal) return;
+    const body = document.getElementById('prPickerBody');
+    const empty = document.getElementById('prPickerEmpty');
+    const excludePoId = {{ (po.id if po else 0) | tojson }};
+
+    function qtyCell(row) {
+      // Open is blank for an unquantified line -- the buyer types the quantity.
+      return `<input type="text" class="form-control pr-pick-qty"
+                     style="text-align:right;font-family:var(--mono);"
+                     value="${row.open}">`;
+    }
+
+    btn.addEventListener('click', function () {
+      body.innerHTML = '<tr><td colspan="7">Loading...</td></tr>';
+      modal.style.display = 'flex';
+      const url = '/purchase-requests/open-lines'
+                + (excludePoId ? ('?exclude_po_id=' + excludePoId) : '');
+      fetch(url, {credentials: 'same-origin'})
+        .then(r => r.json())
+        .then(d => {
+          const rows = d.lines || [];
+          empty.style.display = rows.length ? 'none' : '';
+          body.innerHTML = rows.map(row => {
+            const item = row.product_name
+              ? escHtml(row.product_code + ': ' + row.product_name)
+              : escHtml(row.description || '');
+            const needed = row.date_needed_asap ? 'ASAP' : escHtml(row.date_needed || '');
+            return `<tr data-row='${escHtml(JSON.stringify(row))}'>`
+                 + `<td><input type="checkbox" class="pr-pick"></td>`
+                 + `<td>${escHtml(row.pr_number)}</td>`
+                 + `<td>${needed}</td>`
+                 + `<td>${item}</td>`
+                 + `<td>${escHtml(row.uom_code || '')}</td>`
+                 + `<td style="text-align:right;">${escHtml(row.open)}</td>`
+                 + `<td>${qtyCell(row)}</td></tr>`;
+          }).join('');
+        })
+        .catch(() => {
+          body.innerHTML = '<tr><td colspan="7">Could not load requisitions -- close and retry.</td></tr>';
+        });
+    });
+
+    document.getElementById('prPickerClose')
+      .addEventListener('click', () => { modal.style.display = 'none'; });
+
+    document.getElementById('prPickerAdd').addEventListener('click', function () {
+      body.querySelectorAll('tr').forEach(tr => {
+        const box = tr.querySelector('.pr-pick');
+        if (!box || !box.checked) return;
+        const row = JSON.parse(tr.dataset.row);
+        const qty = tr.querySelector('.pr-pick-qty').value.replace(/,/g, '').trim();
+        addRow({
+          product_id: row.product_id,
+          description: row.description,
+          quantity: qty || null,
+          unit_of_measure_id: row.uom_id,
+          uom_text: row.uom_code,
+          source_pr_item_id: row.pr_item_id,
+          // Unit price is deliberately absent: a requisition carries no price,
+          // and inventing one here would defeat the PR/PO split.
+        });
+      });
+      modal.style.display = 'none';
+      recalcTotals();
+    });
+  })();
+</script>
+{% endif %}
 {% endblock %}

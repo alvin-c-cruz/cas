@@ -284,6 +284,21 @@ def list_pr():
                            date_to=request.args.get('date_to', ''))
 
 
+@purchase_requests_bp.route('/purchase-requests/open-lines')
+@login_required
+def open_lines():
+    """JSON: requisition lines in this branch still awaiting a purchase order.
+
+    Data source for the PO form's picker. Auto-gated by the purchase_requests
+    module (before_request), so it 404s when the module is off.
+    """
+    from app.purchase_requests.allocation import open_lines_for_branch
+    from flask import jsonify
+    exclude = request.args.get('exclude_po_id', type=int)
+    return jsonify({'lines': open_lines_for_branch(session.get('selected_branch_id'),
+                                                   exclude_po_id=exclude)})
+
+
 @purchase_requests_bp.route('/purchase-requests/create', methods=['GET', 'POST'])
 @login_required
 def create():
