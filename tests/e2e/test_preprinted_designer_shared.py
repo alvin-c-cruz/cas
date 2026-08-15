@@ -27,6 +27,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 
 SAVE_PATH = '/pp-test-save'          # the configured endpoint; nothing in app/ uses it
 SAFE_MARGIN = 48                     # app/common/preprinted_base.py
+COL_WIDTH_MIN = 20                   # app/static/js/preprinted_designer.js
 CANVAS_W, CANVAS_H = 912, 1008
 
 
@@ -79,6 +80,15 @@ def _drag_to(page, selector, to_x, to_y, grab=(0.5, 0.5)):
     """
     box = page.locator(selector).bounding_box()
     page.mouse.move(box['x'] + box['width'] * grab[0], box['y'] + box['height'] * grab[1])
+    page.mouse.down()
+    page.mouse.move(to_x, to_y, steps=6)
+    page.mouse.up()
+
+
+def _drag_from(page, from_x, from_y, to_x, to_y):
+    """Press an exact viewport point and drag to another -- for the column resize
+    handle, which is only the 8px hot-zone at a column's right edge."""
+    page.mouse.move(from_x, from_y)
     page.mouse.down()
     page.mouse.move(to_x, to_y, steps=6)
     page.mouse.up()
@@ -143,6 +153,120 @@ def test_drag_within_bounds_is_not_clamped(designer):
     assert 0 < top < CANVAS_H
 
 
+# --- column drag: the field/column clamp asymmetry --------------------------------
+
+PRODUCT_COL = '.pp-col[data-col="product"]'
+AMOUNT_COL = '.pp-col[data-col="amount"]'
+
+
+def test_column_clamps_to_the_canvas_where_a_field_clamps_to_the_safe_margin(designer):
+    """The headline asymmetry, pinned from BOTH sides so neither clamp can be swapped.
+
+    A line-item COLUMN may sit flush at x=0 (matching _clean_columns on the server);
+    a FIELD may not go below x=48 (_clean_box). Dragging both to the SAME viewport
+    point must therefore land them on DIFFERENT x. If clampColX were replaced by
+    clampFieldX the column would stop at 48; if clampFieldX were replaced by
+    clampColX the field would reach 0 and then silently jump to 48 on reload.
+    """
+    page = designer
+    page.click('#editLayoutBtn')
+    canvas = page.locator('#ppCanvas').bounding_box()
+    assert canvas['x'] > 60, 'harness canvas needs room to its left to drag past the edge'
+    target = (2, canvas['y'] + 320)
+
+    _drag_to(page, PRODUCT_COL, *target)
+    col_left, _col_top = _left_top(page, PRODUCT_COL)
+
+    _drag_to(page, '[data-el="po_no"]', *target)
+    field_left, _field_top = _left_top(page, '[data-el="po_no"]')
+
+    assert col_left == 0                  # columns clamp to the bare canvas
+    assert field_left == SAFE_MARGIN      # fields clamp inside the printable inset
+    assert col_left != field_left         # ... and the two clamps are NOT the same one
+
+
+def test_column_drag_within_bounds_is_not_clamped(designer):
+    """Control: clampColX must not pin every column drag to an edge."""
+    page = designer
+    page.click('#editLayoutBtn')
+    canvas = page.locator('#ppCanvas').bounding_box()
+    _drag_to(page, PRODUCT_COL, canvas['x'] + 500, canvas['y'] + 400)
+    left, top = _left_top(page, PRODUCT_COL)
+    assert 0 < left < CANVAS_W
+    assert 0 < top < CANVAS_H
+
+
+def test_vertical_column_drag_moves_the_whole_band(designer):
+    """Columns share ONE top: a vertical drag moves the band, so rows stay aligned.
+
+    Only the dragged column's x moves. If the top were written to the dragged column
+    alone, that column's rows would print offset from every other column's.
+    """
+    page = designer
+    page.click('#editLayoutBtn')
+    assert _left_top(page, PRODUCT_COL)[1] == 300
+    assert _left_top(page, AMOUNT_COL) == [700, 300]
+
+    canvas = page.locator('#ppCanvas').bounding_box()
+    box = page.locator(PRODUCT_COL).bounding_box()
+    # straight DOWN: same x, so only the band top should change
+    _drag_to(page, PRODUCT_COL, box['x'] + box['width'] / 2, canvas['y'] + 560)
+
+    p_left, p_top = _left_top(page, PRODUCT_COL)
+    a_left, a_top = _left_top(page, AMOUNT_COL)
+    assert p_top != 300, 'the band did not move at all'
+    assert a_top == p_top, 'the undragged column kept the old top -- band split'
+    assert a_left == 700, 'a vertical drag must not move another column sideways'
+    assert abs(p_left - 120) <= 1, 'a vertical drag must not move the dragged column sideways'
+
+
+def _col_width(page, selector):
+    return page.locator(selector).evaluate("e => parseInt(e.style.width)")
+
+
+def test_column_resize_clamps_at_min_width_but_not_before(designer):
+    """The right-edge handle resizes freely down to COL_WIDTH_MIN, then holds."""
+    page = designer
+    page.click('#editLayoutBtn')
+    assert _col_width(page, AMOUNT_COL) == 120
+
+    box = page.locator(AMOUNT_COL).bounding_box()
+    mid_y = box['y'] + box['height'] / 2
+    right = int(box['x'] + box['width'])
+    # control: an in-bounds resize lands where it was dragged (not pinned to a bound)
+    _drag_from(page, right - 2, mid_y, right - 42, mid_y)
+    assert _col_width(page, AMOUNT_COL) == 80
+
+    box = page.locator(AMOUNT_COL).bounding_box()
+    right = int(box['x'] + box['width'])
+    _drag_from(page, right - 2, mid_y, right - 200, mid_y)
+    assert _col_width(page, AMOUNT_COL) == COL_WIDTH_MIN     # floor holds
+
+
+# --- control strips ---------------------------------------------------------------
+
+def _strip_label(page, selector):
+    return page.locator(selector).evaluate("e => e.parentElement.textContent.trim()")
+
+
+def test_control_strips_read_their_labels_from_the_dom_not_the_key(designer):
+    """The designer takes NO fieldLabels/columnLabels config -- it reads data-label.
+
+    That is only a safe simplification if the strips actually render data-label; a
+    designer that fell back to the raw key would show a user "vendor_name"/"po_no".
+    """
+    page = designer
+    page.click('#editLayoutBtn')
+    fields = {k: _strip_label(page, '[data-fieldtoggle="%s"]' % k)
+              for k in ('vendor_name', 'po_no', 'order_date', 'preparer')}
+    assert fields == {'vendor_name': 'Vendor', 'po_no': 'PO No.',
+                      'order_date': 'Order Date', 'preparer': 'Preparer'}
+
+    cols = {k: _strip_label(page, '[data-coltoggle="%s"]' % k)
+            for k in ('product', 'amount')}
+    assert cols == {'product': 'Product', 'amount': 'Amount'}
+
+
 # --- font size band -------------------------------------------------------------
 
 def _font_size(page, selector):
@@ -196,6 +320,15 @@ def test_save_posts_expected_payload_to_the_configured_url(designer):
     page.click('#editLayoutBtn')
     canvas = page.locator('#ppCanvas').bounding_box()
     _drag_to(page, '[data-el="po_no"]', 2, canvas['y'] + 40)   # -> x clamps to 48
+
+    # Move every page-level select OFF its harness default before saving. Asserting
+    # the defaults would pass against a collect() that hardcoded them -- and a paper
+    # or date format that never reaches the payload is restored to the default on the
+    # next page load, silently discarding the user's choice.
+    page.select_option('#ppPaper', 'letter')
+    page.select_option('#ppDateFormat', 'us')
+    page.select_option('#ppFontFamily', 'Georgia, serif')
+
     page.click('#saveLayoutBtn')
     page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
 
@@ -208,9 +341,13 @@ def test_save_posts_expected_payload_to_the_configured_url(designer):
     payload = json.loads(captured['body'])
     assert set(payload) == {'paper', 'dateFormat', 'extras', 'texts',
                             'page', 'fields', 'lineItems'}
-    assert payload['paper'] == 'continuous'
-    assert payload['dateFormat'] == 'long'
-    assert payload['page']['fontFamily'].startswith('"Courier New"')
+    assert payload['paper'] == 'letter'
+    assert payload['dateFormat'] == 'us'
+    # The EXACT ALLOWED_FONTS string from the <select> -- not the computed stack, and
+    # not a prefix of it. sanitize_layout matches fontFamily by exact string against
+    # ALLOWED_FONTS and silently restores the default font for anything else, so a
+    # browser-normalised variant of the same face still loses the user's choice.
+    assert payload['page']['fontFamily'] == 'Georgia, serif'
 
     po = payload['fields']['po_no']
     assert set(po) == {'x', 'y', 'w', 'fontSize', 'bold', 'hidden'}
@@ -261,15 +398,62 @@ def test_save_failure_shows_a_notice_and_no_saved_flag(designer):
     assert page.locator('#layoutSavedFlag').count() == 0
 
 
-def test_missing_save_url_refuses_to_initialise(page, harness_url):
-    """Fail closed: no saveUrl -> no designer at all, rather than an unsaveable one."""
+def test_missing_save_url_refuses_and_says_so(page, harness_url):
+    """Fail closed: no saveUrl -> no designer at all, rather than an unsaveable one.
+
+    Refusing silently is not enough: the template has ALREADY rendered "Edit Layout",
+    so a bare `return false` leaves a live-looking button that does nothing and
+    explains nothing (the only signal being a console.error the user never sees).
+    """
     page.goto(harness_url)
     started = page.evaluate("() => initPreprintedDesigner({})")
     assert started is False
     assert page.locator('#saveLayoutBtn').count() == 0
-    page.click('#editLayoutBtn')
+
+    # user-visible outcome: a notice, and the dead Edit button taken out of reach
+    page.wait_for_selector('#ppNotice', state='visible', timeout=5000)
+    assert 'unavailable' in page.locator('#ppNotice').inner_text().lower()
+    assert page.locator('#editLayoutBtn').is_disabled() is True
+
+    page.locator('#editLayoutBtn').dispatch_event('click')    # still inert if forced
     assert page.locator('#ppCanvas').evaluate(
         "e => e.classList.contains('pp-editing')") is False
+
+
+def test_no_edit_button_means_no_designer(page, harness_url):
+    """Edit permission is the TEMPLATE's decision -- there is no canEdit config key.
+
+    That is only a safe simplification if the designer really refuses when the
+    template withheld #editLayoutBtn; otherwise a read-only viewer's page would grow
+    a Save button (or the init would throw) with no permission check anywhere.
+    """
+    page.goto(harness_url)
+    started = page.evaluate("""url => {
+        document.getElementById('editLayoutBtn').remove();
+        try { return initPreprintedDesigner({ saveUrl: url }); }
+        catch (e) { return 'threw: ' + e.message; }
+    }""", SAVE_PATH)
+    assert started is False
+    assert page.locator('#saveLayoutBtn').count() == 0
+    assert page.locator('#addTextBtn').count() == 0
+    assert page.locator('#ppElemBar').count() == 0
+
+
+def test_second_init_is_refused_and_adds_no_duplicate_controls(designer):
+    """initPreprintedDesigner is a GLOBAL, so a template can call it twice.
+
+    (The eight per-document designers were IIFEs that could only run once.) A second
+    run must not inject a second #saveLayoutBtn / #addTextBtn / #ppElemBar -- every
+    e2e selector and the toolbar wiring assume those ids are unique.
+    """
+    page = designer                       # the fixture already initialised once
+    again = page.evaluate("url => initPreprintedDesigner({ saveUrl: url })", SAVE_PATH)
+    assert again is False
+    for sel in ('#saveLayoutBtn', '#addTextBtn', '#ppElemBar'):
+        assert page.locator(sel).count() == 1, 'duplicate id injected: ' + sel
+
+    page.click('#editLayoutBtn')          # the first init's wiring still works
+    assert page.locator('#saveLayoutBtn').is_visible() is True
 
 
 # --- edit mode off ---------------------------------------------------------------

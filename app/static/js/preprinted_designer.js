@@ -38,10 +38,37 @@
     const canvas = document.getElementById('ppCanvas');
     const editBtn = document.getElementById('editLayoutBtn');
     if (!canvas || !editBtn) return false;
+    // This is a GLOBAL function, so a template can call it twice (the old per-document
+    // IIFE could only ever run once). A second run would inject a second
+    // #saveLayoutBtn / #addTextBtn / #ppElemBar -- duplicate ids that the toolbar
+    // wiring and every e2e selector rely on being unique.
+    if (canvas.dataset.ppInit) return false;
+
+    // --- Non-blocking notice banner (never confirm()/alert()) ---
+    // Declared before the guards below so a refusal can still tell the user.
+    function showNotice(msg) {
+      let n = document.getElementById('ppNotice');
+      if (!n) {
+        n = document.createElement('div');
+        n.id = 'ppNotice';
+        n.className = 'pp-notice screen-only';
+        document.body.appendChild(n);
+      }
+      n.textContent = msg;
+      n.style.display = 'block';
+      clearTimeout(n._t);
+      n._t = setTimeout(() => { n.style.display = 'none'; }, 4000);
+    }
+
     if (!cfg.saveUrl) {
       // Fail closed: an unconfigured designer would let a user rearrange a whole
-      // form and then lose it on Save.
+      // form and then lose it on Save. But the template has already rendered the
+      // Edit button, so ALSO disable it and say why -- a silent console.error
+      // leaves the user clicking a dead control with no explanation.
       if (global.console) console.error('initPreprintedDesigner: config.saveUrl is required');
+      editBtn.disabled = true;
+      editBtn.title = 'Layout editing is unavailable on this page.';
+      showNotice('Layout editing is unavailable on this page.');
       return false;
     }
     const saveUrl = cfg.saveUrl;
@@ -85,21 +112,6 @@
     addTextBtn.textContent = '+ Add text';
     addTextBtn.style.display = 'none';
     saveBtn.after(addTextBtn);
-
-    // --- Non-blocking notice banner (never confirm()/alert()) ---
-    function showNotice(msg) {
-      let n = document.getElementById('ppNotice');
-      if (!n) {
-        n = document.createElement('div');
-        n.id = 'ppNotice';
-        n.className = 'pp-notice screen-only';
-        document.body.appendChild(n);
-      }
-      n.textContent = msg;
-      n.style.display = 'block';
-      clearTimeout(n._t);
-      n._t = setTimeout(() => { n.style.display = 'none'; }, 4000);
-    }
 
     // --- Floating per-element toolbar: font size -/+ and bold ---
     const elBar = document.createElement('div');
@@ -410,7 +422,10 @@
     }
 
     saveBtn.addEventListener('click', async () => {
-      saveBtn.textContent = 'Saving...';
+      // The \u escapes (not the literal glyphs) keep this file ASCII while
+      // rendering the SAME text as the eight per-document designers, so an e2e
+      // copied from one of them still matches.
+      saveBtn.textContent = 'Saving\u2026';
       try {
         const resp = await fetch(saveUrl, {
           method: 'POST',
@@ -424,7 +439,7 @@
             flag.style.display = 'none';
             document.body.appendChild(flag);
           }
-          saveBtn.textContent = 'Saved';
+          saveBtn.textContent = 'Saved \u2713';
           setTimeout(() => { saveBtn.textContent = 'Save Layout'; }, 1500);
         } else {
           saveBtn.textContent = 'Save failed';
@@ -502,6 +517,7 @@
       });
     }
 
+    canvas.dataset.ppInit = '1';   // see the double-init guard at the top
     return true;
   }
 
