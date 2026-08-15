@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2P Pre-printed Designer Mockup — Purchase Order</title>
+<style>
+  /* ============================================================================
+     STANDALONE MOCKUP — no build step, no server, no external requests.
+     Reuses the class vocabulary of the shipped Sales Order pre-printed designer:
+       app/sales_orders/templates/sales_orders/print_preprinted.html
+       app/static/css/so_preprinted_designer.css
+       app/static/js/so_preprinted_designer.js
+       app/sales_orders/preprinted_layout.py  (canvas size, paper sizes, fonts, date formats)
+     so this mockup and the eventual PO template speak the same language:
+     pp-canvas / pp-el / pp-col / data-el / data-label / pp-margin-guide /
+     pp-editing / the body[data-paper] attribute.
+     ========================================================================== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, sans-serif;
+    color: #111;
+    background: #eee;
+  }
+
+  /* --- Page chrome around the canvas (screen-only, never printed) --- */
+  .mockup-header { max-width: 912px; margin: 16px auto 0; padding: 0 4px; }
+  .mockup-header h1 { font-size: 18px; margin-bottom: 4px; }
+  .mockup-header p { font-size: 12px; color: #555; line-height: 1.5; }
+  .mockup-badge {
+    display: inline-block; font-size: 11px; font-weight: bold; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 3px; margin-left: 8px; vertical-align: middle;
+  }
+  .mockup-badge.mode-edit { background: #e8f5e9; color: #2e7d32; border: 1px solid #2e7d32; }
+  .mockup-badge.mode-preview { background: #e3f2fd; color: #1565c0; border: 1px solid #1565c0; }
+
+  .pp-toolbar {
+    max-width: 912px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap;
+    align-items: center; padding: 0 4px;
+  }
+  .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .btn-print { background: #1565c0; color: #fff; }
+  .btn-edit  { background: #2e7d32; color: #fff; }
+  .pp-toolbar select { font-size: 12px; padding: 4px 6px; }
+  .pp-toolbar label { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+
+  .pp-col-controls {
+    max-width: 912px; margin: 8px auto 0; display: none; flex-wrap: wrap; gap: 10px;
+    font-size: 12px; align-items: center; padding: 8px 10px; background: #fff;
+    border: 1px solid #ddd; border-radius: 4px;
+  }
+  .pp-col-controls.pp-show { display: flex; }
+  .pp-col-controls .strip-heading { font-weight: 700; margin-right: 4px; }
+  .pp-col-controls label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; white-space: nowrap; }
+
+  /* --- The canvas itself: a REAL physical size (9.5x10.5in continuous stock
+       @96dpi = 912x1008 CSS px). What is dragged on screen maps 1:1 to what
+       prints. Width/height are set inline so the paper-toggle can resize live. --- */
+  .pp-canvas { position: relative; margin: 16px auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+  .pp-el { position: absolute; white-space: nowrap; }
+  .pp-lineitems { white-space: normal; }
+  .pp-col { position: absolute; }
+  .pp-cell { overflow: hidden; white-space: nowrap; }
+  .pp-amount .pp-cell { text-align: right; }
+
+  /* --- EDIT MODE: outlines + labels so an admin can see and drag each box.
+       This is the whole point of the overlay — in print preview none of this
+       exists, only bare values sitting at coordinates. --- */
+  .pp-canvas.pp-editing { outline: 1px solid #bbb; }
+  .pp-canvas.pp-editing .pp-el { outline: 1px dashed #2e7d32; cursor: move; }
+  .pp-canvas.pp-editing .pp-el:hover { outline: 2px solid #2e7d32; background: rgba(46, 125, 50, .06); }
+  .pp-canvas.pp-editing .pp-col { outline: 1px dashed #2e7d32; cursor: move; }
+  .pp-canvas.pp-editing .pp-col:hover { outline: 2px solid #2e7d32; background: rgba(46, 125, 50, .05); }
+  .pp-canvas.pp-editing .pp-el.pp-dragging,
+  .pp-canvas.pp-editing .pp-col.pp-dragging { outline: 2px solid #1565c0; background: rgba(21, 101, 192, .08); z-index: 5; }
+
+  /* Small floating caption above each box, EDIT MODE ONLY — a deliberate mockup
+     addition over the shipped SO designer (which only shows data-label as an
+     :empty placeholder). A reviewer approving this mockup from a screenshot,
+     without dragging anything, needs to see which box is which at a glance. */
+  .pp-canvas.pp-editing .pp-el::before,
+  .pp-canvas.pp-editing .pp-col::before {
+    content: attr(data-label);
+    position: absolute; left: 0; top: -13px;
+    font-size: 9px; font-family: Arial, sans-serif; font-weight: normal;
+    color: #1565c0; background: #fff; padding: 0 2px; white-space: nowrap;
+  }
+
+  .pp-col-hidden { display: none; }
+  .pp-field-hidden { display: none; }
+  .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
+
+  /* Layout-only signatory texts: dotted outline + editable in edit mode. */
+  .pp-canvas.pp-editing .pp-text { outline: 1px dotted #1565c0; }
+  .pp-canvas.pp-editing .pp-text[contenteditable="true"]:focus { outline: 2px solid #1565c0; background: #fff; cursor: text; }
+
+  /* Screen-only tractor-feed hole guides: 48px (0.5in @96dpi) safe margin on a
+     continuous-stock canvas. Dropped for cut-sheet letter paper. Never printed. */
+  .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
+  body:not([data-paper="continuous"]) .pp-margin-guide { display: none; }
+
+  .screen-only { }
+  @media print {
+    body { background: #fff; }
+    .screen-only { display: none !important; }
+    .pp-canvas { margin: 0; box-shadow: none; }
+  }
+</style>
+<style id="ppPageStyle">@page { size: 9.5in 10.5in; margin: 0; }</style>
+</head>
+<body data-paper="continuous">
+
+<div class="mockup-header screen-only">
+  <h1>P2P Pre-printed Designer — Purchase Order (mockup)
+    <span class="mockup-badge mode-edit" id="modeBadge">EDIT MODE</span>
+  </h1>
+  <p>
+    Standalone review mockup for Task 1 of the P2P pre-printed-designer plan. Purchase Requisition
+    and Receiving Report will reuse the same canvas/field/column mechanics — this shows the richest
+    case (Purchase Order: 10 header fields + a 7-column line-item band). Click <b>"Exit Edit" /
+    "Edit Layout"</b> below to switch between the two states: EDIT MODE (boxes outlined, labels
+    shown, chrome visible) and PRINT PREVIEW (bare values only, positioned to land inside the
+    client's pre-printed PO stationery — no borders, no labels, no chrome). Dummy fields are
+    draggable in edit mode; drag position is not saved anywhere (no backend in a mockup).
+  </p>
+</div>
+
+<div class="pp-toolbar screen-only">
+  <button type="button" class="btn btn-print" onclick="window.print()">Print</button>
+  <button type="button" id="editLayoutBtn" class="btn btn-edit">Exit Edit</button>
+  <select id="ppPaper" title="Paper">
+    <option value="continuous" data-w="912" data-h="1008" data-css="9.5in 10.5in" selected>9.5 x 10.5 continuous paper</option>
+    <option value="letter" data-w="816" data-h="1056" data-css="8.5in 11in">Letter 8.5 x 11</option>
+  </select>
+  <select id="ppFontFamily" title="Font">
+    <optgroup label="Dot-matrix friendly">
+      <option value='"Courier New", Courier, monospace' selected>Courier New</option>
+      <option value='Consolas, "Courier New", monospace'>Consolas</option>
+      <option value='"Lucida Console", Monaco, monospace'>Lucida Console</option>
+    </optgroup>
+    <optgroup label="Standard">
+      <option value='Arial, sans-serif'>Arial</option>
+      <option value='Calibri, Candara, "Segoe UI", sans-serif'>Calibri</option>
+      <option value='Tahoma, Geneva, sans-serif'>Tahoma</option>
+      <option value='"Trebuchet MS", Tahoma, sans-serif'>Trebuchet MS</option>
+      <option value='Verdana, Geneva, sans-serif'>Verdana</option>
+      <option value='"Times New Roman", Times, serif'>Times New Roman</option>
+      <option value='Georgia, serif'>Georgia</option>
+    </optgroup>
+  </select>
+  <select id="ppDateFormat" title="Date format">
+    <option value="long" selected>15 August 2026</option>
+    <option value="medium">Aug 15, 2026</option>
+    <option value="us">08/15/2026</option>
+    <option value="eu">15/08/2026</option>
+    <option value="iso">2026-08-15</option>
+  </select>
+</div>
+
+<div id="ppFieldControls" class="pp-col-controls screen-only">
+  <span class="strip-heading">Fields:</span>
+</div>
+<div id="ppColControls" class="pp-col-controls screen-only">
+  <span class="strip-heading">Columns:</span>
+</div>
+
+<div class="pp-canvas pp-editing" id="ppCanvas" style="width:912px;height:1008px;">
+  <div class="pp-margin-guide screen-only" style="left:48px;"></div>
+  <div class="pp-margin-guide screen-only" style="right:48px;"></div>
+
+  <!-- ===================== 10 PO header fields ===================== -->
+  <!-- Vendor block, left column -->
+  <div class="pp-el" data-el="vendor_name" data-label="Vendor" style="left:60px;top:50px;font-size:12px;font-weight:bold;">Metro Fastener &amp; Hardware Supply Corp.</div>
+  <div class="pp-el" data-el="vendor_tin" data-label="Vendor TIN" style="left:60px;top:74px;font-size:11px;font-weight:normal;">004-567-890-000</div>
+  <div class="pp-el" data-el="vendor_address" data-label="Vendor Address" style="left:60px;top:98px;font-size:11px;font-weight:normal;">88 Aurora Blvd., Cubao, Quezon City</div>
+
+  <!-- PO details block, right column -->
+  <div class="pp-el" data-el="po_no" data-label="PO No." style="left:620px;top:50px;font-size:12px;font-weight:bold;">PO-2026-08-0042</div>
+  <div class="pp-el" data-el="order_date" data-date="2026-08-15" data-label="Order Date" style="left:620px;top:74px;font-size:11px;font-weight:normal;">15 August 2026</div>
+  <div class="pp-el" data-el="expected_date" data-date="2026-08-29" data-label="Expected Date" style="left:620px;top:98px;font-size:11px;font-weight:normal;">29 August 2026</div>
+  <div class="pp-el" data-el="payment_terms" data-label="Payment Terms" style="left:620px;top:122px;font-size:11px;font-weight:normal;">Net 30</div>
+  <div class="pp-el" data-el="reference" data-label="Reference" style="left:620px;top:146px;font-size:11px;font-weight:normal;">PR-2026-08-0011</div>
+  <div class="pp-el" data-el="vat_treatment" data-label="VAT Treatment" style="left:620px;top:170px;font-size:11px;font-weight:normal;">Vatable</div>
+
+  <!-- Total, near the foot of the line-item band -->
+  <div class="pp-el" data-el="total_amount" data-label="Total Amount" style="left:700px;top:430px;font-size:13px;font-weight:bold;">₱128,450.00</div>
+
+  <!-- Signatory text blocks (layout-only, not record data) -->
+  <div class="pp-el pp-text" data-text="preparer" data-label="Preparer" style="left:60px;top:720px;font-size:10px;font-weight:normal;">Prepared by:</div>
+  <div class="pp-el pp-text" data-text="checker" data-label="Checker" style="left:340px;top:720px;font-size:10px;font-weight:normal;">Checked by:</div>
+  <div class="pp-el pp-text" data-text="approver" data-label="Approver" style="left:620px;top:720px;font-size:10px;font-weight:normal;">Approved by:</div>
+
+  <!-- ===================== 7-column line-item band, 3 dummy rows ===================== -->
+  <div class="pp-lineitems" data-el="lineItems" data-rowheight="20">
+    <div class="pp-col" data-col="line_number" data-label="#" style="left:56px;top:300px;width:30px;font-size:10px;font-weight:normal;">
+      <div class="pp-cell" style="height:20px;line-height:20px;">1</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">2</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">3</div>
+    </div>
+    <div class="pp-col" data-col="product" data-label="Product" style="left:92px;top:300px;width:200px;font-size:10px;font-weight:normal;">
+      <div class="pp-cell" style="height:20px;line-height:20px;">HDW-1001 — Hex Bolt 10x50mm</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">HDW-2044 — Angle Bar 2x2x1/4</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">HDW-3310 — Epoxy Primer Grey</div>
+    </div>
+    <div class="pp-col" data-col="description" data-label="Description" style="left:300px;top:300px;width:160px;font-size:10px;font-weight:normal;">
+      <div class="pp-cell" style="height:20px;line-height:20px;">SS304, box of 100</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">6m length, mild steel</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">4L pail</div>
+    </div>
+    <div class="pp-col pp-amount" data-col="quantity" data-label="Qty" style="left:468px;top:300px;width:50px;font-size:10px;font-weight:normal;">
+      <div class="pp-cell" style="height:20px;line-height:20px;">20</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">60</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">15</div>
+    </div>
+    <div class="pp-col" data-col="uom" data-label="UOM" style="left:524px;top:300px;width:50px;font-size:10px;font-weight:normal;">
+      <div class="pp-cell" style="height:20px;line-height:20px;">box</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">pcs</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">pail</div>
+    </div>
+    <div class="pp-col pp-amount" data-col="unit_price" data-label="Unit Price" style="left:580px;top:300px;width:90px;font-size:10px;font-weight:normal;">
+      <div class="pp-cell" style="height:20px;line-height:20px;">850.00</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">1,250.00</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">2,430.00</div>
+    </div>
+    <div class="pp-col pp-amount" data-col="amount" data-label="Amount" style="left:676px;top:300px;width:100px;font-size:10px;font-weight:normal;">
+      <div class="pp-cell" style="height:20px;line-height:20px;">17,000.00</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">75,000.00</div>
+      <div class="pp-cell" style="height:20px;line-height:20px;">36,450.00</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var canvas = document.getElementById('ppCanvas');
+  var editBtn = document.getElementById('editLayoutBtn');
+  var modeBadge = document.getElementById('modeBadge');
+  var fontSel = document.getElementById('ppFontFamily');
+  var paperSel = document.getElementById('ppPaper');
+  var dateSel = document.getElementById('ppDateFormat');
+  var fieldStrip = document.getElementById('ppFieldControls');
+  var colStrip = document.getElementById('ppColControls');
+  var printBtn = document.querySelector('.btn-print');
+  var editing = true;
+
+  var fieldEls = function () { return [].slice.call(canvas.querySelectorAll('.pp-el:not(.pp-lineitems)')); };
+  var cols = function () { return [].slice.call(canvas.querySelectorAll('.pp-col')); };
+
+  // --- Fields show/hide strip (built once) ---
+  function setFieldVisible(key, visible) {
+    var el = canvas.querySelector('[data-el="' + key + '"], [data-text="' + key + '"]');
+    if (el) el.classList.toggle('pp-field-hidden', !visible);
+  }
+  function buildFieldControls() {
+    if (fieldStrip.dataset.built) return;
+    fieldEls().forEach(function (el) {
+      var key = el.dataset.el || el.dataset.text;
+      var label = document.createElement('label');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.addEventListener('change', function () { setFieldVisible(key, cb.checked); });
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + (el.dataset.label || key)));
+      fieldStrip.appendChild(label);
+    });
+    fieldStrip.dataset.built = '1';
+  }
+
+  // --- Columns show/hide strip (built once) ---
+  function setColVisible(key, visible) {
+    canvas.querySelectorAll('.pp-col[data-col="' + key + '"]').forEach(function (c) {
+      c.classList.toggle('pp-col-hidden', !visible);
+    });
+  }
+  function buildColControls() {
+    if (colStrip.dataset.built) return;
+    cols().forEach(function (col) {
+      var key = col.dataset.col;
+      var label = document.createElement('label');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.addEventListener('change', function () { setColVisible(key, cb.checked); });
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + (col.dataset.label || key)));
+      colStrip.appendChild(label);
+    });
+    colStrip.dataset.built = '1';
+  }
+  buildFieldControls();
+  buildColControls();
+
+  // --- Edit mode <-> Print preview toggle ---
+  function setEditing(on) {
+    editing = on;
+    canvas.classList.toggle('pp-editing', editing);
+    editBtn.textContent = editing ? 'Exit Edit' : 'Edit Layout';
+    modeBadge.textContent = editing ? 'EDIT MODE' : 'PRINT PREVIEW';
+    modeBadge.className = 'mockup-badge ' + (editing ? 'mode-edit' : 'mode-preview');
+    fieldStrip.classList.toggle('pp-show', editing);
+    colStrip.classList.toggle('pp-show', editing);
+    if (fontSel) fontSel.style.visibility = editing ? 'visible' : 'hidden';
+    if (paperSel) paperSel.style.visibility = editing ? 'visible' : 'hidden';
+    if (dateSel) dateSel.style.visibility = editing ? 'visible' : 'hidden';
+    if (printBtn) printBtn.style.display = editing ? 'none' : '';
+    canvas.querySelectorAll('.pp-text').forEach(function (t) {
+      t.setAttribute('contenteditable', editing ? 'true' : 'false');
+    });
+  }
+  editBtn.addEventListener('click', function () { setEditing(!editing); });
+  setEditing(true);
+
+  // --- Drag: fields (.pp-el) move freely; a line-item column (.pp-col) moves
+  //     horizontally on its own x, while a vertical drag moves the whole band
+  //     (all columns share the top), so rows always stay aligned. Positions are
+  //     NOT persisted anywhere -- there is no backend in a static mockup. ---
+  var drag = null, colDrag = null;
+  canvas.addEventListener('pointerdown', function (e) {
+    if (!editing) return;
+    if (e.target.isContentEditable) return;
+    var c = canvas.getBoundingClientRect();
+    var col = e.target.closest('.pp-col');
+    if (col) {
+      col.classList.add('pp-dragging');
+      var r = col.getBoundingClientRect();
+      colDrag = { col: col, dx: e.clientX - r.left, dy: e.clientY - r.top, c: c };
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+    var el = e.target.closest('.pp-el');
+    if (!el) return;
+    el.classList.add('pp-dragging');
+    var r2 = el.getBoundingClientRect();
+    drag = { el: el, dx: e.clientX - r2.left, dy: e.clientY - r2.top, c: c };
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    if (colDrag) {
+      var x = Math.max(0, Math.min(canvas.clientWidth, Math.round(e.clientX - colDrag.c.left - colDrag.dx)));
+      var y = Math.max(0, Math.min(canvas.clientHeight, Math.round(e.clientY - colDrag.c.top - colDrag.dy)));
+      colDrag.col.style.left = x + 'px';
+      cols().forEach(function (c) { c.style.top = y + 'px'; });
+      return;
+    }
+    if (!drag) return;
+    var x2 = Math.max(0, Math.min(canvas.clientWidth, Math.round(e.clientX - drag.c.left - drag.dx)));
+    var y2 = Math.max(0, Math.min(canvas.clientHeight, Math.round(e.clientY - drag.c.top - drag.dy)));
+    drag.el.style.left = x2 + 'px';
+    drag.el.style.top = y2 + 'px';
+  });
+  function endDrag() {
+    if (drag) drag.el.classList.remove('pp-dragging');
+    if (colDrag) colDrag.col.classList.remove('pp-dragging');
+    drag = null; colDrag = null;
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  // --- Font picker: page-wide font family ---
+  if (fontSel) {
+    fontSel.addEventListener('change', function () {
+      canvas.style.fontFamily = fontSel.value;
+    });
+  }
+
+  // --- Date format picker: live-reformat order_date / expected_date. Keys +
+  //     output strings mirror preprinted_layout.DATE_FORMATS. ---
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function fmtDate(iso, key) {
+    var p = (iso || '').split('-');
+    if (p.length !== 3) return iso || '';
+    var y = p[0], m = p[1], d = p[2], mi = parseInt(m, 10) - 1;
+    switch (key) {
+      case 'long': return d + ' ' + MONTHS[mi] + ' ' + y;
+      case 'medium': return MON[mi] + ' ' + d + ', ' + y;
+      case 'us': return m + '/' + d + '/' + y;
+      case 'eu': return d + '/' + m + '/' + y;
+      default: return iso;
+    }
+  }
+  if (dateSel) {
+    dateSel.addEventListener('change', function () {
+      canvas.querySelectorAll('.pp-el[data-date]').forEach(function (el) {
+        el.textContent = fmtDate(el.dataset.date, dateSel.value);
+      });
+    });
+  }
+
+  // --- Paper toggle: resize the canvas + rewrite the @page rule live; the
+  //     tractor-feed margin guides hide themselves for non-continuous stock. ---
+  if (paperSel) {
+    paperSel.addEventListener('change', function () {
+      var opt = paperSel.selectedOptions[0];
+      document.body.dataset.paper = paperSel.value;
+      canvas.style.width = opt.dataset.w + 'px';
+      canvas.style.height = opt.dataset.h + 'px';
+      var ps = document.getElementById('ppPageStyle');
+      if (ps) ps.textContent = '@page { size: ' + opt.dataset.css + '; margin: 0; }';
+    });
+  }
+})();
+</script>
+</body>
+</html>
