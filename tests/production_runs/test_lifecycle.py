@@ -56,7 +56,7 @@ def _component(branch, actor, code='PR-C', qty='1000', cost='5.00'):
                    costing_method='moving_average', standard_cost=Decimal(cost), is_active=True)
     db.session.add(comp); db.session.commit()
     post_movement(comp, branch.id, 'opening', Decimal(qty), Decimal(cost),
-                  'stock_adjustment', 0, 'seed', actor)
+                  'stock_adjustment', 0, 'seed', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     return comp
 

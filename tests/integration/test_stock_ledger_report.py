@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from app import db
 from app.stock_adjustments.service import post_movement
@@ -15,7 +16,7 @@ def test_stock_ledger_lists_movements_with_running_balance(
         client, admin_user, login_user, db_session, product_tracked, branch_main):
     _enable_stock_adjustments()
     post_movement(product_tracked, branch_main.id, 'adjustment', Decimal('10'), Decimal('5.00'),
-                  'stock_adjustment', 1, 'seed', admin_user)
+                  'stock_adjustment', 1, 'seed', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     login_user(client, 'admin', 'admin123')
     resp = client.get(f'/reports/stock-ledger?product_id={product_tracked.id}')
@@ -46,7 +47,7 @@ def test_stock_ledger_print_and_export(
         client, admin_user, login_user, db_session, product_tracked, branch_main):
     _enable_stock_adjustments()
     post_movement(product_tracked, branch_main.id, 'adjustment', Decimal('10'), Decimal('5.00'),
-                  'stock_adjustment', 1, 'seed', admin_user)
+                  'stock_adjustment', 1, 'seed', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     login_user(client, 'admin', 'admin123')
     print_resp = client.get(f'/reports/stock-ledger/print?product_id={product_tracked.id}')
@@ -71,7 +72,7 @@ def test_stock_ledger_branch_scoped(
     accountant_user.set_book_permissions(perms)
     db.session.commit()
     post_movement(product_tracked, branch_main.id, 'adjustment', Decimal('10'), Decimal('5.00'),
-                  'stock_adjustment', 1, 'seed', admin_user)
+                  'stock_adjustment', 1, 'seed', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     login_user(client, 'accountant', 'accountant123')
     resp = client.get(f'/reports/stock-ledger?product_id={product_tracked.id}')
@@ -89,9 +90,9 @@ def test_stock_ledger_branch_filter_narrows_to_selected_branch(
     omitting the param must show both (the existing default, unchanged)."""
     _enable_stock_adjustments()
     post_movement(product_tracked, branch_main.id, 'adjustment', Decimal('10'), Decimal('5.00'),
-                  'stock_adjustment', 1, 'seed main', admin_user)
+                  'stock_adjustment', 1, 'seed main', admin_user, movement_date=date(2026, 1, 1))
     post_movement(product_tracked, branch_manila.id, 'adjustment', Decimal('20'), Decimal('7.00'),
-                  'stock_adjustment', 2, 'seed manila', admin_user)
+                  'stock_adjustment', 2, 'seed manila', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     login_user(client, 'admin', 'admin123')
     client.post('/select-branch', data={'branch_id': branch_main.id})

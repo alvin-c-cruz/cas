@@ -49,7 +49,7 @@ def _claim_balance_update(balance_id, read_version, new_qty, new_avg, new_value)
 
 def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                   source_document_type, source_document_id, reason, actor, journal_entry_id=None,
-                  lot_id=None, lot_reference=None, movement_date=None):
+                  lot_id=None, lot_reference=None, *, movement_date):
     """Apply one stock movement. Returns (StockMovement, went_negative). Does not commit.
 
     FIFO branch (R-03 2b): plan-only reads happen fresh every retry attempt,
@@ -66,8 +66,8 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
 
     movement_date is the BUSINESS-EFFECTIVE date -- the date on the source
     document, not the posting timestamp. It is the primary sort key for both
-    costing engines. The None default is TEMPORARY scaffolding removed in this
-    change's final task; every real caller passes it explicitly.
+    costing engines and is REQUIRED: a caller that cannot name a date is a
+    caller that has not decided what the movement means.
     """
     from app.stock_adjustments.fifo import (fifo_plan_consume, fifo_apply_receive,
                                             fifo_apply_consume, bootstrap_opening_layer_if_needed)
@@ -75,7 +75,10 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                                             specific_id_apply_receive, specific_id_apply_consume)
     delta_qty = Decimal(delta_qty)
     if movement_date is None:
-        movement_date = ph_now().date()
+        raise ValueError(
+            'post_movement requires movement_date. A caller that cannot name the '
+            'business-effective date has not decided what the movement means; '
+            'defaulting to today is the bug this parameter exists to prevent.')
     _assert_not_backdated_receipt(product, branch_id, movement_date, Decimal(delta_qty))
     bal = _get_or_create_balance(product.id, branch_id)
     is_fifo = (product.costing_method == 'fifo')

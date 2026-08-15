@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 import pytest
 from app import db
@@ -21,7 +22,8 @@ def _actor(db_session):
 def test_receipt_creates_one_lot_with_reference(db_session, product_specific_id, branch_main):
     actor = _actor(db_session)
     mv, went_negative = post_movement(product_specific_id, branch_main.id, 'receipt', D('10'), D('5.00'),
-                                      'stock_adjustment', 1, 'r1', actor, lot_reference='Job Order #1')
+                                      'stock_adjustment', 1, 'r1', actor, lot_reference='Job Order #1',
+                                      movement_date=date(2026, 1, 1))
     db.session.commit()
     assert went_negative is False
     assert mv.unit_cost == D('5.00')
@@ -37,14 +39,17 @@ def test_receipt_creates_one_lot_with_reference(db_session, product_specific_id,
 def test_issue_against_picked_lot_costs_at_that_lots_own_cost(db_session, product_specific_id, branch_main):
     actor = _actor(db_session)
     post_movement(product_specific_id, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'stock_adjustment', 1, 'r1', actor, lot_reference='Batch A')
+                  'stock_adjustment', 1, 'r1', actor, lot_reference='Batch A',
+                  movement_date=date(2026, 1, 1))
     db.session.commit()
     post_movement(product_specific_id, branch_main.id, 'receipt', D('5'), D('6.00'),
-                  'stock_adjustment', 2, 'r2', actor, lot_reference='Batch B')
+                  'stock_adjustment', 2, 'r2', actor, lot_reference='Batch B',
+                  movement_date=date(2026, 1, 2))
     db.session.commit()
     batch_b = StockLot.query.filter_by(lot_reference='Batch B').first()
     mv, went_negative = post_movement(product_specific_id, branch_main.id, 'issue', D('-3'), None,
-                                      'stock_adjustment', 3, 'issue', actor, lot_id=batch_b.id)
+                                      'stock_adjustment', 3, 'issue', actor, lot_id=batch_b.id,
+                                      movement_date=date(2026, 1, 3))
     db.session.commit()
     assert went_negative is False
     assert mv.unit_cost == D('6.00')   # costed from the PICKED lot (Batch B), not oldest/newest
@@ -61,22 +66,23 @@ def test_issue_against_picked_lot_costs_at_that_lots_own_cost(db_session, produc
 def test_issue_without_a_lot_id_raises(db_session, product_specific_id, branch_main):
     actor = _actor(db_session)
     post_movement(product_specific_id, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'stock_adjustment', 1, 'r1', actor)
+                  'stock_adjustment', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     with pytest.raises(ValueError, match='requires a lot to be selected'):
         post_movement(product_specific_id, branch_main.id, 'issue', D('-2'), None,
-                      'stock_adjustment', 2, 'issue', actor)
+                      'stock_adjustment', 2, 'issue', actor, movement_date=date(2026, 1, 2))
 
 
 def test_issue_exceeding_picked_lots_remaining_qty_raises(db_session, product_specific_id, branch_main):
     actor = _actor(db_session)
     post_movement(product_specific_id, branch_main.id, 'receipt', D('3'), D('4.00'),
-                  'stock_adjustment', 1, 'r1', actor)
+                  'stock_adjustment', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     lot = StockLot.query.filter_by(product_id=product_specific_id.id).first()
     with pytest.raises(ValueError, match='only has 3.0000 units remaining'):
         post_movement(product_specific_id, branch_main.id, 'issue', D('-5'), None,
-                      'stock_adjustment', 2, 'issue', actor, lot_id=lot.id)
+                      'stock_adjustment', 2, 'issue', actor, lot_id=lot.id,
+                      movement_date=date(2026, 1, 2))
     # nothing changed -- the balance claim must not commit for a rejected plan
     bal = StockBalance.query.filter_by(product_id=product_specific_id.id, branch_id=branch_main.id).first()
     assert bal.quantity_on_hand == D('3.0000')
@@ -87,7 +93,7 @@ def test_existing_moving_average_product_unaffected(db_session, product_tracked,
     this task's changes are specific-ID-only and don't perturb the existing path."""
     actor = _actor(db_session)
     mv, _ = post_movement(product_tracked, branch_main.id, 'receipt', D('10'), D('5.00'),
-                          'test_doc', 1, 'r1', actor)
+                          'test_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     assert mv.unit_cost == D('5.00')
     assert StockLot.query.filter_by(product_id=product_tracked.id).count() == 0
@@ -102,12 +108,14 @@ def test_non_stock_adjustment_document_falls_back_to_moving_average(db_session, 
     actor = _actor(db_session)
     # a receipt from a non-adjustment document should NOT create a StockLot
     mv, _ = post_movement(product_specific_id, branch_main.id, 'receipt', D('10'), D('5.00'),
-                          'delivery_receipt', 1, 'non-adjustment receipt', actor)
+                          'delivery_receipt', 1, 'non-adjustment receipt', actor,
+                          movement_date=date(2026, 1, 1))
     db.session.commit()
     assert StockLot.query.filter_by(product_id=product_specific_id.id).count() == 0
     # an issue from a non-adjustment document must NOT raise for lack of a lot_id
     mv2, went_negative = post_movement(product_specific_id, branch_main.id, 'issue', D('-4'), None,
-                                       'delivery_receipt', 2, 'non-adjustment issue', actor)
+                                       'delivery_receipt', 2, 'non-adjustment issue', actor,
+                                       movement_date=date(2026, 1, 2))
     db.session.commit()
     assert went_negative is False
     # moving-average math: (10 units @ 5.00) - 4 units issued at the average (5.00) = 6 @ 5.00

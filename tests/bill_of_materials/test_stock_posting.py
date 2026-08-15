@@ -1,4 +1,5 @@
 # tests/bill_of_materials/test_stock_posting.py
+from datetime import date
 from decimal import Decimal
 import pytest
 from app import db
@@ -44,7 +45,7 @@ def test_tracked_component_posts_movement_and_wip_je(db_session, main_branch, ad
     wo = _released_wo(main_branch, 'CM-OUT1', 'CM-COMP1')
     comp = wo.materials[0].component_product
     post_movement(comp, main_branch.id, 'receipt', Decimal('50'), Decimal('4.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
 
     consume_materials(wo, [(wo.materials[0], Decimal('6'))], admin_user)
@@ -92,8 +93,10 @@ def test_multi_line_consumption_accumulates_balanced_je(db_session, main_branch,
     wo = WorkOrder(wo_number=generate_wo_number(), bom_id=bom.id, branch_id=main_branch.id, qty_to_produce=Decimal('5'))
     db.session.add(wo); db.session.commit()
     release_work_order(wo, None); db.session.commit()
-    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user)
-    post_movement(comp2, main_branch.id, 'receipt', Decimal('20'), Decimal('3.00'), 'seed', None, 's', admin_user)
+    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user,
+                  movement_date=date(2026, 1, 1))
+    post_movement(comp2, main_branch.id, 'receipt', Decimal('20'), Decimal('3.00'), 'seed', None, 's', admin_user,
+                  movement_date=date(2026, 1, 1))
     db.session.commit()
     mat1 = next(m for m in wo.materials if m.component_product_id == comp1.id)
     mat2 = next(m for m in wo.materials if m.component_product_id == comp2.id)

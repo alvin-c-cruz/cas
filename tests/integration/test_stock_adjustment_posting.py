@@ -117,7 +117,8 @@ def test_negative_correction_line_valued_at_prior_balance_average_not_entered_co
     _assign('inventory_adjustment_account_code', '7101', make_account)
     # Seed an existing balance: receipt of 10 @ 6.00 -> avg 6.00.
     post_movement(product_tracked, branch_main.id, 'receipt', Decimal('10'),
-                  Decimal('6.00'), 'seed', None, 'seed stock', admin_user)
+                  Decimal('6.00'), 'seed', None, 'seed stock', admin_user,
+                  movement_date=datetime.date(2026, 7, 1))
     db.session.commit()
     seeded = StockBalance.query.filter_by(
         product_id=product_tracked.id, branch_id=branch_main.id).one()
@@ -193,7 +194,8 @@ def test_negative_opening_line_debits_equity_credits_inventory(
     _assign('inventory_opening_equity_account_code', '3900', make_account)
     # Seed an existing balance to value the removal against: 10 @ 3.00 -> avg 3.00.
     post_movement(product_tracked, branch_main.id, 'receipt', Decimal('10'),
-                  Decimal('3.00'), 'seed', None, 'seed stock', admin_user)
+                  Decimal('3.00'), 'seed', None, 'seed stock', admin_user,
+                  movement_date=datetime.date(2026, 7, 1))
     db.session.commit()
 
     adj = StockAdjustment(sa_number=generate_sa_number(), branch_id=branch_main.id,

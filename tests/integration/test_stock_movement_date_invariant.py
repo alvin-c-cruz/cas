@@ -74,7 +74,8 @@ def test_delivery_receipt_movement_date_matches_its_je(
     _assign('inventory_account_code', '1401', make_account)
     _assign('cogs_account_code', '61060', make_account)
     post_movement(product_tracked, branch_main.id, 'receipt', Decimal('20'), Decimal('8.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user,
+                  movement_date=BACKDATE - timedelta(days=30))
     db.session.commit()
     so = _confirmed_so(db_session, branch_main, product_tracked, qty=6)
     dr = _delivered_dr(db_session, branch_main, so, delivered_qty=6)
@@ -141,7 +142,8 @@ def test_credit_memo_movement_date_matches_its_je(db_session, main_branch, admin
                       track_inventory=True, costing_method='moving_average')
     db.session.add(product); db.session.commit()
     post_movement(product, main_branch.id, 'receipt', Decimal('20'), Decimal('4.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user,
+                  movement_date=BACKDATE - timedelta(days=30))
     db.session.commit()
     si, si_item = _si_with_item(main_branch, product)
     so, soi = _so_item(main_branch, si.customer, product, 'SO-INV-CMC-0001')

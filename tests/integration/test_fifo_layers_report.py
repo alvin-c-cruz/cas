@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from app import db
 from app.settings import AppSettings
@@ -29,16 +30,18 @@ def test_fifo_layers_report_shows_open_and_deficit_layers(client, db_session, ad
                       costing_method='fifo', standard_cost=None, is_active=True)
     db.session.add(product); db.session.commit()
     post_movement(product, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'test_doc', 1, 'r1', admin_user)
+                  'test_doc', 1, 'r1', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     post_movement(product, branch_main.id, 'issue', D('-5'), None,
-                  'test_doc', 2, 'issue-drain', admin_user)   # drains layer 1 to exactly 0
+                  'test_doc', 2, 'issue-drain', admin_user,
+                  movement_date=date(2026, 1, 2))   # drains layer 1 to exactly 0
     db.session.commit()
     post_movement(product, branch_main.id, 'receipt', D('3'), D('6.00'),
-                  'test_doc', 3, 'r2', admin_user)
+                  'test_doc', 3, 'r2', admin_user, movement_date=date(2026, 1, 3))
     db.session.commit()
     post_movement(product, branch_main.id, 'issue', D('-6'), None,
-                  'test_doc', 4, 'issue-deficit', admin_user)   # drains layer 2 then deficits it
+                  'test_doc', 4, 'issue-deficit', admin_user,
+                  movement_date=date(2026, 1, 4))   # drains layer 2 then deficits it
     db.session.commit()
 
     _login(client, admin_user, branch_main)
@@ -58,7 +61,7 @@ def test_fifo_layers_report_excel_export(client, db_session, admin_user, branch_
                       costing_method='fifo', standard_cost=None, is_active=True)
     db.session.add(product); db.session.commit()
     post_movement(product, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'test_doc', 1, 'r1', admin_user)
+                  'test_doc', 1, 'r1', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
 
     _login(client, admin_user, branch_main)

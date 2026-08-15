@@ -1,4 +1,5 @@
 """Cost-pool computation + completion-gate helpers (R-07 D4)."""
+from datetime import date
 from decimal import Decimal
 import pytest
 from app import db
@@ -89,7 +90,7 @@ def test_materials_in_wip_total_sums_wip_debit_lines(db_session, main_branch, ac
     # Seed an opening balance for the component so issuing it doesn't go negative-cost.
     from app.stock_adjustments.service import post_movement
     post_movement(comp, main_branch.id, 'opening', Decimal('100'), Decimal('5.00'),
-                 'stock_adjustment', 0, 'seed', accountant_user)
+                 'stock_adjustment', 0, 'seed', accountant_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     mat = wo.materials[0]
     issue_material(mat, Decimal('4'), accountant_user)
@@ -118,7 +119,7 @@ def test_ensure_actual_unit_cost_computes_once_and_freezes(db_session, main_bran
     comp.costing_method = 'moving_average'
     db.session.commit()
     post_movement(comp, main_branch.id, 'opening', Decimal('100'), Decimal('5.00'),
-                 'stock_adjustment', 0, 'seed', accountant_user)
+                 'stock_adjustment', 0, 'seed', accountant_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     issue_material(wo.materials[0], Decimal('4'), accountant_user)   # PHP 20.00 material
     db.session.commit()

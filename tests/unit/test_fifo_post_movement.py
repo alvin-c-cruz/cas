@@ -1,4 +1,5 @@
 # tests/unit/test_fifo_post_movement.py
+from datetime import date
 from decimal import Decimal
 import sqlalchemy as sa
 from app import db
@@ -23,7 +24,8 @@ def _actor(db_session):
 def test_first_receipt_bootstraps_nothing_and_creates_one_layer(db_session, product_fifo, branch_main):
     actor = _actor(db_session)
     mv, went_negative = post_movement(product_fifo, branch_main.id, 'receipt', D('10'), D('5.00'),
-                                      'test_doc', 1, 'first receipt', actor)
+                                      'test_doc', 1, 'first receipt', actor,
+                                      movement_date=date(2026, 1, 1))
     db.session.commit()
     assert went_negative is False
     assert mv.unit_cost == D('5.00')
@@ -38,13 +40,14 @@ def test_first_receipt_bootstraps_nothing_and_creates_one_layer(db_session, prod
 def test_two_receipts_then_issue_costs_at_oldest_layer(db_session, product_fifo, branch_main):
     actor = _actor(db_session)
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'test_doc', 1, 'r1', actor)
+                  'test_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('6.00'),
-                  'test_doc', 2, 'r2', actor)
+                  'test_doc', 2, 'r2', actor, movement_date=date(2026, 1, 2))
     db.session.commit()
     mv, went_negative = post_movement(product_fifo, branch_main.id, 'issue', D('-3'), None,
-                                      'test_doc', 3, 'issue', actor)
+                                      'test_doc', 3, 'issue', actor,
+                                      movement_date=date(2026, 1, 3))
     db.session.commit()
     assert went_negative is False
     assert mv.unit_cost == D('4.00')   # costed entirely from the OLDEST (4.00) layer
@@ -60,13 +63,13 @@ def test_two_receipts_then_issue_costs_at_oldest_layer(db_session, product_fifo,
 def test_issue_spanning_two_layers_costs_weighted_average(db_session, product_fifo, branch_main):
     actor = _actor(db_session)
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'test_doc', 1, 'r1', actor)
+                  'test_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('6.00'),
-                  'test_doc', 2, 'r2', actor)
+                  'test_doc', 2, 'r2', actor, movement_date=date(2026, 1, 2))
     db.session.commit()
     mv, _ = post_movement(product_fifo, branch_main.id, 'issue', D('-8'), None,
-                          'test_doc', 3, 'issue', actor)
+                          'test_doc', 3, 'issue', actor, movement_date=date(2026, 1, 3))
     db.session.commit()
     # (5*4.00 + 3*6.00) / 8 = 38/8 = 4.75
     assert mv.unit_cost == D('4.75')
@@ -80,10 +83,11 @@ def test_issue_spanning_two_layers_costs_weighted_average(db_session, product_fi
 def test_issue_exceeding_stock_goes_negative_with_warning(db_session, product_fifo, branch_main):
     actor = _actor(db_session)
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'test_doc', 1, 'r1', actor)
+                  'test_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     mv, went_negative = post_movement(product_fifo, branch_main.id, 'issue', D('-8'), None,
-                                      'test_doc', 2, 'issue', actor)
+                                      'test_doc', 2, 'issue', actor,
+                                      movement_date=date(2026, 1, 2))
     db.session.commit()
     assert went_negative is True
     bal = StockBalance.query.filter_by(product_id=product_fifo.id, branch_id=branch_main.id).first()
@@ -116,10 +120,10 @@ def test_lost_race_retry_rereads_fifo_layers_fresh(monkeypatch, db_session, prod
     under the pre-fix code and passes with expire_all()."""
     actor = _actor(db_session)
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'test_doc', 1, 'r1', actor)
+                  'test_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('6.00'),
-                  'test_doc', 2, 'r2', actor)
+                  'test_doc', 2, 'r2', actor, movement_date=date(2026, 1, 2))
     db.session.commit()
 
     oldest = (StockCostLayer.query
@@ -148,7 +152,8 @@ def test_lost_race_retry_rereads_fifo_layers_fresh(monkeypatch, db_session, prod
     monkeypatch.setattr(service_module, '_claim_balance_update', fake_claim)
 
     mv, went_negative = post_movement(product_fifo, branch_main.id, 'issue', D('-5'), None,
-                                      'test_doc', 3, 'issue', actor)
+                                      'test_doc', 3, 'issue', actor,
+                                      movement_date=date(2026, 1, 3))
     db.session.commit()
 
     assert state['calls'] == 2   # the retry path was actually exercised
@@ -167,7 +172,7 @@ def test_existing_moving_average_product_unaffected(db_session, product_tracked,
     this task's changes are FIFO-only and don't perturb the existing path."""
     actor = _actor(db_session)
     mv, _ = post_movement(product_tracked, branch_main.id, 'receipt', D('10'), D('5.00'),
-                          'test_doc', 1, 'r1', actor)
+                          'test_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     assert mv.unit_cost == D('5.00')
     assert StockCostLayer.query.filter_by(product_id=product_tracked.id).count() == 0

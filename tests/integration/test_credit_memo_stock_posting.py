@@ -160,7 +160,7 @@ def test_chain_verified_line_posts_movement_and_adds_inventory_cogs(
                       track_inventory=True, costing_method='moving_average')
     db.session.add(product); db.session.commit()
     post_movement(product, main_branch.id, 'receipt', Decimal('20'), Decimal('4.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     si, si_item = _si_with_item(main_branch, product)
     so, soi = _so_item(main_branch, si.customer, product, 'SO-CMC-0004')
@@ -215,7 +215,7 @@ def test_fails_closed_before_any_write_when_cogs_unassigned(db_session, main_bra
                       track_inventory=True, costing_method='moving_average')
     db.session.add(product); db.session.commit()
     post_movement(product, main_branch.id, 'receipt', Decimal('20'), Decimal('4.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     si, si_item = _si_with_item(main_branch, product)
     so, soi = _so_item(main_branch, si.customer, product, 'SO-CMC-0006')
@@ -248,7 +248,7 @@ def test_void_reverses_chain_verified_movement(db_session, main_branch, admin_us
                       track_inventory=True, costing_method='moving_average')
     db.session.add(product); db.session.commit()
     post_movement(product, main_branch.id, 'receipt', Decimal('20'), Decimal('4.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     si, si_item = _si_with_item(main_branch, product)
     so, soi = _so_item(main_branch, si.customer, product, 'SO-CMC-0007')

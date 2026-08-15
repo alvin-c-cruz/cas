@@ -48,7 +48,7 @@ def test_tracked_line_posts_issue_at_current_average(
     _assign('cogs_account_code', '61060', make_account)
     # Seed a real prior balance: 20 @ 8.00 -> avg 8.00
     post_movement(product_tracked, branch_main.id, 'receipt', Decimal('20'), Decimal('8.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user, movement_date=date(2026, 7, 1))
     db.session.commit()
     so = _confirmed_so(db_session, branch_main, product_tracked, qty=6)
     dr = _delivered_dr(db_session, branch_main, so, delivered_qty=6)
@@ -87,7 +87,7 @@ def test_fails_closed_before_any_write_when_cogs_unassigned(
         db_session, branch_main, admin_user, product_tracked, make_account):
     _assign('inventory_account_code', '1401', make_account)  # cogs left unassigned
     post_movement(product_tracked, branch_main.id, 'receipt', Decimal('10'), Decimal('5.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user, movement_date=date(2026, 7, 1))
     db.session.commit()
     so = _confirmed_so(db_session, branch_main, product_tracked, qty=3)
     dr = _delivered_dr(db_session, branch_main, so, delivered_qty=3)
@@ -119,7 +119,7 @@ def test_reverse_dr_delivery_reverses_movement_and_posts_reversing_je(
     _assign('inventory_account_code', '1401', make_account)
     _assign('cogs_account_code', '61060', make_account)
     post_movement(product_tracked, branch_main.id, 'receipt', Decimal('20'), Decimal('8.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user, movement_date=date(2026, 7, 1))
     db.session.commit()
     so = _confirmed_so(db_session, branch_main, product_tracked, qty=6)
     dr = _delivered_dr(db_session, branch_main, so, delivered_qty=6)
@@ -173,7 +173,7 @@ def test_deliver_route_posts_cogs_je(
     _assign('inventory_account_code', '1401', make_account)
     _assign('cogs_account_code', '61060', make_account)
     post_movement(product_tracked, branch_main.id, 'receipt', Decimal('20'), Decimal('8.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user, movement_date=date(2026, 7, 1))
     db.session.commit()
     so = _confirmed_so(db_session, branch_main, product_tracked, qty=6)
     dr = _delivered_dr(db_session, branch_main, so, delivered_qty=6)   # status='approved'
@@ -224,7 +224,7 @@ def test_cancel_route_reverses_cogs_je_when_delivered(
     _assign('inventory_account_code', '1401', make_account)
     _assign('cogs_account_code', '61060', make_account)
     post_movement(product_tracked, branch_main.id, 'receipt', Decimal('20'), Decimal('8.00'),
-                  'seed', None, 'seed stock', admin_user)
+                  'seed', None, 'seed stock', admin_user, movement_date=date(2026, 7, 1))
     db.session.commit()
     so = _confirmed_so(db_session, branch_main, product_tracked, qty=6)
     dr = _delivered_dr(db_session, branch_main, so, delivered_qty=6)

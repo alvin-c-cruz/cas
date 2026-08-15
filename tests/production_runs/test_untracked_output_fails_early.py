@@ -126,7 +126,7 @@ class TestTheClosePreviewSharesOneCalculation:
         # would be measuring an empty warehouse rather than the shared calculation.
         post_movement(bom.lines[0].component_product, main_branch.id, 'opening',
                       Decimal('10000'), Decimal('5.00'), 'stock_adjustment', 0,
-                      'seed', accountant_user)
+                      'seed', accountant_user, movement_date=date(2026, 1, 1))
         db.session.commit()
         dept = _dept(main_branch, 'UD')
         run = ProductionRun(run_number='UT0001', bom_id=bom.id, department_id=dept.id,

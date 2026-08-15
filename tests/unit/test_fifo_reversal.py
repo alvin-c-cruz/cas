@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 import pytest
 from app import db
@@ -21,7 +22,7 @@ def _actor(db_session):
 def test_reversing_untouched_receipt_zeroes_its_layer(db_session, product_fifo, branch_main):
     actor = _actor(db_session)
     mv, _ = post_movement(product_fifo, branch_main.id, 'receipt', D('10'), D('5.00'),
-                          'test_doc', 1, 'r1', actor)
+                          'test_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     reverse_document_movements('test_doc', 1, actor)
     db.session.commit()
@@ -35,10 +36,10 @@ def test_reversing_untouched_receipt_zeroes_its_layer(db_session, product_fifo, 
 def test_reversing_partially_consumed_receipt_is_blocked(db_session, product_fifo, branch_main):
     actor = _actor(db_session)
     post_movement(product_fifo, branch_main.id, 'receipt', D('10'), D('5.00'),
-                  'rr_doc', 1, 'r1', actor)
+                  'rr_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     post_movement(product_fifo, branch_main.id, 'issue', D('-4'), None,
-                  'dr_doc', 2, 'shipped', actor)
+                  'dr_doc', 2, 'shipped', actor, movement_date=date(2026, 1, 2))
     db.session.commit()
     # 4 of the original 10 units have been consumed (6 remain) -- the message
     # reports the CONSUMED amount against the ORIGINAL layer size, not the
@@ -53,13 +54,13 @@ def test_reversing_partially_consumed_receipt_is_blocked(db_session, product_fif
 def test_reversing_an_issue_restores_exactly_the_layers_it_drew_from(db_session, product_fifo, branch_main):
     actor = _actor(db_session)
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'rr_doc', 1, 'r1', actor)
+                  'rr_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('6.00'),
-                  'rr_doc', 2, 'r2', actor)
+                  'rr_doc', 2, 'r2', actor, movement_date=date(2026, 1, 2))
     db.session.commit()
     issue_mv, _ = post_movement(product_fifo, branch_main.id, 'issue', D('-8'), None,
-                                'dr_doc', 3, 'shipped', actor)
+                                'dr_doc', 3, 'shipped', actor, movement_date=date(2026, 1, 3))
     db.session.commit()
     layer_a = StockCostLayer.query.filter_by(unit_cost=D('4.00')).first()
     layer_b = StockCostLayer.query.filter_by(unit_cost=D('6.00')).first()
@@ -77,10 +78,10 @@ def test_reversing_an_issue_restores_exactly_the_layers_it_drew_from(db_session,
 def test_reversing_a_fully_consumed_receipt_names_the_consumer(db_session, product_fifo, branch_main):
     actor = _actor(db_session)
     post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('4.00'),
-                  'rr_doc', 1, 'r1', actor)
+                  'rr_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     post_movement(product_fifo, branch_main.id, 'issue', D('-5'), None,
-                  'dr_doc', 2, 'shipped', actor)
+                  'dr_doc', 2, 'shipped', actor, movement_date=date(2026, 1, 2))
     db.session.commit()
     with pytest.raises(FifoLayerConsumedError, match='dr_doc'):
         reverse_document_movements('rr_doc', 1, actor)

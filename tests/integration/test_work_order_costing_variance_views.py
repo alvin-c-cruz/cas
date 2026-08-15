@@ -1,6 +1,6 @@
 """Screen route for the Work Order Costing & Variance Report (R-07 D5)."""
 import io
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import openpyxl
@@ -54,7 +54,7 @@ def _ready_wo(main_branch, accountant_user, qty_to_produce='10',
     db.session.commit()
 
     post_movement(comp, main_branch.id, 'opening', Decimal('1000'), Decimal('5.00'),
-                 'stock_adjustment', 0, 'seed', accountant_user)
+                 'stock_adjustment', 0, 'seed', accountant_user, movement_date=date(2026, 1, 1))
     db.session.commit()
     issue_material(wo.materials[0], Decimal(qty_to_produce), accountant_user)
     db.session.commit()

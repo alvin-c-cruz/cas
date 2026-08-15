@@ -64,7 +64,7 @@ def _setup(branch, actor, suffix, normal_loss_pct=None):
                   costing_method='moving_average', is_active=True)
     db.session.add_all([comp, out]); db.session.commit()
     post_movement(comp, branch.id, 'opening', Decimal('10000'), Decimal('5.00'),
-                  'stock_adjustment', 0, 'seed', actor)
+                  'stock_adjustment', 0, 'seed', actor, movement_date=date(2026, 1, 1))
     db.session.commit()
     bom = BillOfMaterial(product_id=out.id, manufacturing_mode='process',
                          normal_loss_pct=normal_loss_pct)

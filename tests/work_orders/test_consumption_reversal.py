@@ -1,5 +1,6 @@
 # tests/work_orders/test_consumption_reversal.py
 from collections import Counter
+from datetime import date
 from decimal import Decimal
 import pytest
 from app import db
@@ -51,7 +52,8 @@ def test_reverse_consumption_reverses_single_issue(db_session, main_branch, admi
     _assign('inventory_account_code', '1401', make_account)
     _assign('wip_account_code', '1402', make_account)
     wo, comp1, comp2 = _wo_with_two_materials(main_branch)
-    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user)
+    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user,
+                  movement_date=date(2026, 1, 1))
     db.session.commit()
     mat1 = next(m for m in wo.materials if m.component_product_id == comp1.id)
     consume_materials(wo, [(mat1, Decimal('4'))], admin_user)
@@ -81,8 +83,10 @@ def test_reverse_consumption_reverses_multiple_separate_issue_events(db_session,
     _assign('inventory_account_code', '1401', make_account)
     _assign('wip_account_code', '1402', make_account)
     wo, comp1, comp2 = _wo_with_two_materials(main_branch)
-    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user)
-    post_movement(comp2, main_branch.id, 'receipt', Decimal('20'), Decimal('3.00'), 'seed', None, 's', admin_user)
+    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user,
+                  movement_date=date(2026, 1, 1))
+    post_movement(comp2, main_branch.id, 'receipt', Decimal('20'), Decimal('3.00'), 'seed', None, 's', admin_user,
+                  movement_date=date(2026, 1, 1))
     db.session.commit()
     mat1 = next(m for m in wo.materials if m.component_product_id == comp1.id)
     mat2 = next(m for m in wo.materials if m.component_product_id == comp2.id)
@@ -138,7 +142,8 @@ def test_cancel_route_reverses_consumption_when_materials_issued(
     _assign('inventory_account_code', '1401', make_account)
     _assign('wip_account_code', '1402', make_account)
     wo, comp1, _ = _wo_with_two_materials(main_branch)
-    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user)
+    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user,
+                  movement_date=date(2026, 1, 1))
     db.session.commit()
     mat1 = next(m for m in wo.materials if m.component_product_id == comp1.id)
     consume_materials(wo, [(mat1, Decimal('4'))], admin_user)

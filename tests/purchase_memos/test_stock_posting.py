@@ -56,7 +56,8 @@ def _ap_item_from_rr(db_session, main_branch, admin_user, tracked=True, suffix='
     db.session.add(rr); db.session.commit()
     if tracked:
         mv, _ = post_movement(product, main_branch.id, 'receipt', receipt_qty, receipt_cost,
-                              'receiving_report', rr.id, 'seed receipt', admin_user)
+                              'receiving_report', rr.id, 'seed receipt', admin_user,
+                              movement_date=rr.receipt_date)
         db.session.commit()
         rr_item.stock_movement_id = mv.id
         db.session.commit()
@@ -240,7 +241,8 @@ def test_negative_on_hand_return_surfaces_warning(db_session, main_branch, admin
     rr.line_items.append(rr_item)
     db.session.add(rr); db.session.commit()
     mv, _ = post_movement(product, main_branch.id, 'receipt', Decimal('1'), Decimal('5.00'),
-                          'receiving_report', rr.id, 'seed', admin_user)
+                          'receiving_report', rr.id, 'seed', admin_user,
+                          movement_date=rr.receipt_date)
     db.session.commit()
     rr_item.stock_movement_id = mv.id
     db.session.commit()
@@ -463,7 +465,8 @@ def test_moving_average_drift_routes_gap_to_inventory_variance(
                                         receipt_cost=Decimal('5.00'))
     # Second receipt on the SAME product at 9.00 -> moving average = (10*5 + 10*9)/20 = 7.00.
     post_movement(product, main_branch.id, 'receipt', Decimal('10'), Decimal('9.00'),
-                  'receiving_report', 999001, 'second receipt drifts average', admin_user)
+                  'receiving_report', 999001, 'second receipt drifts average', admin_user,
+                  movement_date=date(2026, 2, 6))
     db.session.commit()
     bal = StockBalance.query.filter_by(product_id=product.id, branch_id=main_branch.id).one()
     assert bal.average_unit_cost == Decimal('7.00')   # sanity: average drifted
