@@ -62,6 +62,13 @@ accumulate rows — but the risk today is near zero.
 DateTime: every source document carries a `db.Date`, and a time component would fabricate
 precision the user never entered.
 
+**`StockLot.received_at`** (specific identification) — same treatment, found while planning
+rather than during design. `specific_id_apply_receive` is handed `mv.created_at` at the same
+call site (`service.py:144`). Unlike the FIFO layer this is **not** a costing-order bug —
+specific-ID consumption is user-picked by `lot_id` and nothing orders lots by `received_at` —
+but it is the same wrong value, displayed as the lot's receipt date. Fixed together, since it
+is the identical one-line change on the adjacent line.
+
 **`StockCostLayer.received_at`** — no schema change. We change what is *written*:
 `datetime.combine(effective_date, time.min)` rather than `mv.created_at`. The column stays
 DateTime so nothing downstream breaks, and the posting timestamp is not lost — it stays
