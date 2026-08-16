@@ -27,7 +27,6 @@
     <div><strong>RR #:</strong> {{ rr.rr_number }}</div>
     <div><strong>Date:</strong> {{ rr.receipt_date.strftime('%B %d, %Y') if rr.receipt_date else '' }}</div>
     <div><strong>Vendor:</strong> {{ rr.vendor_name }}</div>
-    {% if rr.purchase_order %}<div><strong>PO #:</strong> {{ rr.purchase_order.po_number }}</div>{% endif %}
   </div>
 
   <table>

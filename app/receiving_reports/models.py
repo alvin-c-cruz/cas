@@ -60,12 +60,38 @@ class ReceivingReport(RowVersioned, db.Model):
     def __repr__(self):
         return f'<ReceivingReport {self.rr_number} - {self.status}>'
 
+    @property
+    def purchase_orders(self):
+        """Distinct POs this receipt draws on, ordered by number.
+
+        Derived from the lines, never from a header column: one receipt may
+        settle several of a vendor's orders, so no single header FK can be true.
+        `purchase_order_item_id` is nullable=False, so every line has one.
+        """
+        seen, out = set(), []
+        for li in self.line_items:
+            poi = li.purchase_order_item
+            # PurchaseOrderItem's backref to its header is named 'order', not
+            # 'purchase_order' -- see PurchaseOrder.line_items(backref='order').
+            po = poi.order if poi else None
+            if po is not None and po.id not in seen:
+                seen.add(po.id)
+                out.append(po)
+        return sorted(out, key=lambda p: (p.po_number or ''))
+
+    @property
+    def po_number_display(self):
+        """What a list column shows: the number when unambiguous, else a count."""
+        pos = self.purchase_orders
+        if not pos:
+            return ''
+        return pos[0].po_number if len(pos) == 1 else f'{len(pos)} POs'
+
     def to_dict(self):
         return {
             'id': self.id, 'rr_number': self.rr_number, 'status': self.status,
             'receipt_date': self.receipt_date.isoformat() if self.receipt_date else None,
-            'purchase_order_id': self.purchase_order_id,
-            'purchase_order_number': self.purchase_order.po_number if self.purchase_order else None,
+            'purchase_order_number': self.po_number_display or None,
             'vendor_name': self.vendor_name,
         }
 

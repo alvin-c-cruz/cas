@@ -108,8 +108,8 @@ def _po_line_payload(po):
 
 def billable_pos_for(branch_id, vendor_id):
     """Approved POs for a vendor with NO receiving report (the services/direct path), not yet billed."""
-    from app.purchase_orders.models import PurchaseOrder
-    from app.receiving_reports.models import ReceivingReport
+    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+    from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     pos = (PurchaseOrder.query
            .filter(PurchaseOrder.branch_id == branch_id,
                    PurchaseOrder.vendor_id == vendor_id,
@@ -118,9 +118,17 @@ def billable_pos_for(branch_id, vendor_id):
            .order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc()).all())
     out = []
     for po in pos:
-        has_rr = (ReceivingReport.query
-                  .filter(ReceivingReport.purchase_order_id == po.id,
-                          ReceivingReport.status.in_(('approved', 'billed'))).first())
+        # Derived from the lines, not the RR header column -- one receipt may now cover several
+        # POs, so a stale header-column filter here would make a received PO look unreceived and
+        # billable BOTH directly and through its RR (a double-bill route into the ledger).
+        has_rr = (db.session.query(ReceivingReport.id)
+                  .join(ReceivingReportItem,
+                        ReceivingReportItem.receiving_report_id == ReceivingReport.id)
+                  .join(PurchaseOrderItem,
+                        PurchaseOrderItem.id == ReceivingReportItem.purchase_order_item_id)
+                  .filter(PurchaseOrderItem.purchase_order_id == po.id,
+                          ReceivingReport.status.in_(('approved', 'billed')))
+                  .first())
         if has_rr:
             continue          # goods PO -> bill via its RR, not directly
         out.append({'id': po.id, 'po_number': po.po_number,
@@ -167,6 +175,6 @@ def billable_rrs_for(branch_id, vendor_id):
             })
         out.append({'id': rr.id, 'rr_number': rr.rr_number,
                     'receipt_date': rr.receipt_date.isoformat() if rr.receipt_date else None,
-                    'purchase_order_number': rr.purchase_order.po_number if rr.purchase_order else None,
+                    'purchase_order_number': rr.po_number_display or None,
                     'lines': lines})
     return out

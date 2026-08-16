@@ -476,7 +476,7 @@ def save_print_layout():
 
 # -- export --------------------------------------------------------------------
 
-_EXPORT_COLUMNS = ['rr_number', 'receipt_date', 'vendor_name', 'purchase_order.po_number', 'status']
+_EXPORT_COLUMNS = ['rr_number', 'receipt_date', 'vendor_name', 'po_number_display', 'status']
 _EXPORT_HEADERS = ['RR #', 'Receipt Date', 'Vendor', 'PO #', 'Status']
 
 

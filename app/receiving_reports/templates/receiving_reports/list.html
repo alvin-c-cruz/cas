@@ -77,7 +77,7 @@
                     <td><a href="{{ url_for('receiving_reports.view', id=rr.id) }}" style="font-weight:600;color:var(--blue);">{{ rr.rr_number }}</a></td>
                     <td>{{ rr.receipt_date.strftime('%b %d, %Y') if rr.receipt_date else '' }}</td>
                     <td>{{ rr.vendor_name }}</td>
-                    <td>{{ rr.purchase_order.po_number if rr.purchase_order else '—' }}</td>
+                    <td>{{ rr.po_number_display or '—' }}</td>
                     <td><span class="badge badge-{{ badge_map.get(rr.status, 'draft') }}">{{ rr.status|replace('_', ' ')|title }}</span></td>
                     <td>
                         <a href="{{ url_for('receiving_reports.view', id=rr.id) }}" class="pb-btn-action">👁️</a>

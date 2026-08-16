@@ -25,8 +25,8 @@
   <div class="detail-grid">
     <div><strong>Vendor:</strong> {{ rr.vendor_name }}</div>
     <div><strong>Status:</strong> <span class="badge">{{ rr.status }}</span></div>
-    <div><strong>Purchase Order:</strong>
-      {% if rr.purchase_order %}<a href="{{ url_for('purchase_orders.view', id=rr.purchase_order_id) }}">{{ rr.purchase_order.po_number }}</a>{% endif %}</div>
+    <div><strong>Purchase Order{{ 's' if rr.purchase_orders|length != 1 else '' }}:</strong>
+      {% for po in rr.purchase_orders %}<a href="{{ url_for('purchase_orders.view', id=po.id) }}">{{ po.po_number }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>
     <div><strong>Receipt Date:</strong> {{ rr.receipt_date.strftime('%b %d, %Y') if rr.receipt_date else '' }}</div>
   </div>
   {% if rr.remarks %}<p><strong>Remarks:</strong> {{ rr.remarks }}</p>{% endif %}
