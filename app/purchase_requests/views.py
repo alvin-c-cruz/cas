@@ -699,10 +699,14 @@ def convert(id):
         flash('Only an approved Purchase Requisition can be converted to a Purchase Order.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     # Import inside the function to avoid an import cycle at module load.
-    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem, generate_po_number
+    from app.purchase_orders.models import (
+        PurchaseOrder, PurchaseOrderItem, next_po_number_for)
     try:
         po = PurchaseOrder(
-            po_number=generate_po_number(), branch_id=pr.branch_id,
+            # ASSIGNED, not suggested -- there is no form to overwrite it here,
+            # so a global next-number would silently issue this purchaser a
+            # number off the OTHER purchaser's pre-printed pad.
+            po_number=next_po_number_for(current_user.id), branch_id=pr.branch_id,
             order_date=ph_now().date(), status='draft', vat_treatment='inclusive',
             notes='', purchase_request_id=pr.id, created_by_id=current_user.id)
         # Built from the SAME open-line query the picker uses, so the shortcut

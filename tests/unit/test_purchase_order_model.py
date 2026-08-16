@@ -1,7 +1,8 @@
 """Unit tests for the PurchaseOrder model + PO-#### numbering (operational, posts no JE)."""
 from decimal import Decimal
 from app.purchase_orders.models import (
-    PurchaseOrder, PurchaseOrderItem, generate_po_number, VAT_TREATMENTS,
+    PurchaseOrder, PurchaseOrderItem, generate_po_number, next_po_number_for,
+    VAT_TREATMENTS,
 )
 import pytest
 
@@ -37,6 +38,84 @@ def test_generate_po_number_ignores_legacy_prefixed_numbers(db_session):
     db_session.add(po)
     db_session.commit()
     assert generate_po_number() == '00001'
+
+
+# --- next_po_number_for: per-purchaser suggestion -------------------------
+# PhilGen's two purchasers each hold their OWN pre-printed PO pad, and the two
+# pads' number ranges NEVER overlap. A global max() is therefore not merely
+# unhelpful -- it is guaranteed to point outside the other purchaser's pad.
+
+
+def _po(number, user_id):
+    return PurchaseOrder(po_number=number, order_date=None, status='draft',
+                         created_by_id=user_id)
+
+
+def test_next_po_number_is_per_purchaser(db_session, admin_user, accountant_user):
+    """The headline case: two pads, non-overlapping ranges, each gets her own."""
+    db_session.add_all([_po('00042E', admin_user.id), _po('70011F', accountant_user.id)])
+    db_session.commit()
+    assert next_po_number_for(admin_user.id) == '00043E'
+    assert next_po_number_for(accountant_user.id) == '70012F'
+
+
+def test_next_po_number_preserves_the_suffix(db_session, admin_user):
+    db_session.add(_po('00001E', admin_user.id))
+    db_session.commit()
+    assert next_po_number_for(admin_user.id) == '00002E'
+
+
+def test_next_po_number_preserves_zero_padded_width(db_session, admin_user):
+    db_session.add(_po('00099E', admin_user.id))
+    db_session.commit()
+    assert next_po_number_for(admin_user.id) == '00100E'
+
+
+def test_next_po_number_width_grows_on_overflow(db_session, admin_user):
+    db_session.add(_po('99999E', admin_user.id))
+    db_session.commit()
+    assert next_po_number_for(admin_user.id) == '100000E'
+
+
+def test_next_po_number_picks_the_highest_by_numeric_value(db_session, admin_user):
+    """'9E' > '10E' as a STRING; the digit part is compared as a NUMBER."""
+    db_session.add_all([_po('00009E', admin_user.id), _po('00010E', admin_user.id)])
+    db_session.commit()
+    assert next_po_number_for(admin_user.id) == '00011E'
+
+
+def test_next_po_number_falls_back_when_purchaser_has_no_prior_po(
+        db_session, admin_user, accountant_user):
+    """A purchaser's very first entry has nothing to infer from -- fall back to
+    the global generator (the field is typed off the paper form anyway).
+
+    The other purchaser's number is deliberately PURELY NUMERIC so the global
+    generator returns something other than its '00001' empty-DB default -- a
+    fallback that merely hardcoded '00001' would otherwise pass this."""
+    db_session.add(_po('30500', admin_user.id))
+    db_session.commit()
+    assert next_po_number_for(accountant_user.id) == '30501' == generate_po_number()
+
+
+def test_next_po_number_ignores_legacy_prefixed_numbers(db_session, admin_user):
+    db_session.add(_po('PO-2026-07-0030', admin_user.id))
+    db_session.commit()
+    assert next_po_number_for(admin_user.id) == generate_po_number() == '00001'
+
+
+def test_next_po_number_ignores_other_purchasers_higher_range(
+        db_session, admin_user, accountant_user):
+    """Control on the defect itself: the OTHER pad's higher number must not
+    leak into this purchaser's suggestion."""
+    db_session.add_all([_po('00007E', admin_user.id), _po('90000F', accountant_user.id)])
+    db_session.commit()
+    assert next_po_number_for(admin_user.id) == '00008E'
+
+
+def test_next_po_number_unpadded_number_stays_unpadded(db_session, admin_user):
+    db_session.add(_po('30500', admin_user.id))
+    db_session.commit()
+    assert next_po_number_for(admin_user.id) == '30501'
 
 
 def test_line_amounts_inclusive_extracts_vat(db_session):

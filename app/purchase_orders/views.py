@@ -12,7 +12,7 @@ from flask_login import login_required, current_user
 from sqlalchemy.orm import joinedload
 
 from app import db
-from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem, generate_po_number
+from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem, next_po_number_for
 from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
 from app.purchase_orders.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
@@ -543,7 +543,10 @@ def create():
             flash('An error occurred while entering the Purchase Order. Please try again.', 'error')
 
     if request.method == 'GET':
-        form.po_number.data = generate_po_number()
+        # A SUGGESTION off this purchaser's own pre-printed pad -- the two pads'
+        # ranges never overlap, so a global next-number points into the other
+        # purchaser's range. The user may still overwrite it.
+        form.po_number.data = next_po_number_for(current_user.id)
         form.order_date.data = ph_now().date()
 
     return render_template('purchase_orders/form.html', form=form, po=None,

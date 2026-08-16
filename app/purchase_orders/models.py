@@ -6,6 +6,7 @@ vat_treatment mirrors Quotation (inclusive / exclusive / zero_rated). Two seams 
 here but stay inert until later phases: `purchase_request_id` (Phase 4 PR->PO conversion) and
 `accounts_payable_id` (Phase 3 billing). Line-level `received_quantity` / `billed_quantity` are
 written by the Receiving Report (Phase 2) and the AP picker (Phase 3) respectively."""
+import re
 from decimal import Decimal, ROUND_HALF_UP
 from app import db
 from app.utils import ph_now
@@ -286,3 +287,46 @@ def generate_po_number():
     nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
     next_num = (max(nums) + 1) if nums else 1
     return f'{next_num:05d}'
+
+
+# Leading digits + an OPTIONAL trailing non-digit marker: '00001E', '00001',
+# '30500'. A legacy prefixed number ('PO-2026-07-0030') does not match and is
+# ignored, exactly as generate_po_number() ignores it.
+_PO_NUMBER_RE = re.compile(r'^(\d+)(\D*)$')
+
+
+def next_po_number_for(user_id):
+    """Suggest the next number off THIS purchaser's own pre-printed PO pad.
+
+    The client runs two purchasers, each holding her own physical pad, and the
+    two pads' number ranges NEVER overlap. generate_po_number()'s global max is
+    therefore guaranteed to land outside the other purchaser's pad -- and, being
+    restricted to purely-numeric numbers, it cannot even see a pad marker like
+    '00001E' at all.
+
+    The digit part is incremented as a NUMBER while the zero-padded width and
+    the marker survive verbatim: '00001E' -> '00002E', '00099E' -> '00100E',
+    '99999E' -> '100000E' (width grows naturally on overflow).
+
+    Falls back to generate_po_number() when this purchaser has no usable prior
+    PO -- her very first entry has nothing to infer from, and the number is
+    typed off the paper form anyway. This function only ever produces a
+    SUGGESTION or a starting point; po_number stays user-entered and unique.
+    """
+    if not user_id:
+        return generate_po_number()
+    rows = (db.session.query(PurchaseOrder.po_number)
+            .filter(PurchaseOrder.created_by_id == user_id).all())
+    best = None
+    for (number,) in rows:
+        m = _PO_NUMBER_RE.match(number) if number else None
+        if not m:
+            continue
+        digits, marker = m.group(1), m.group(2)
+        value = int(digits)
+        if best is None or value > best[0]:
+            best = (value, len(digits), marker)
+    if best is None:
+        return generate_po_number()
+    value, width, marker = best
+    return f'{value + 1:0{width}d}{marker}'

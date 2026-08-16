@@ -104,3 +104,35 @@ class TestTheShortcut:
         _login(client, admin_user, main_branch)
         client.post(f'/purchase-requests/{pr.id}/convert', follow_redirects=True)
         assert PurchaseOrder.query.filter_by(purchase_request_id=pr.id).first() is None
+
+
+class TestTheShortcutIssuesThisPurchasersOwnNumber:
+    """The convert shortcut ASSIGNS po_number server-side with no form to
+    overwrite it, so a globally-derived number is not merely a bad suggestion --
+    it silently issues a number off the OTHER purchaser's pre-printed pad."""
+
+    def test_it_continues_the_converting_purchasers_own_pad(
+            self, client, db_session, admin_user, accountant_user, main_branch, pr):
+        db_session.add_all([
+            PurchaseOrder(po_number='00007E', order_date=date(2026, 8, 15),
+                          status='draft', created_by_id=admin_user.id),
+            PurchaseOrder(po_number='90000F', order_date=date(2026, 8, 15),
+                          status='draft', created_by_id=accountant_user.id),
+        ])
+        db_session.commit()
+        _login(client, admin_user, main_branch)
+        client.post(f'/purchase-requests/{pr.id}/convert', follow_redirects=True)
+        po = PurchaseOrder.query.filter_by(purchase_request_id=pr.id).first()
+        assert po is not None
+        assert po.po_number == '00008E'
+
+    def test_a_first_time_purchaser_falls_back_to_the_global_generator(
+            self, client, db_session, admin_user, accountant_user, main_branch, pr):
+        db_session.add(PurchaseOrder(po_number='00042', order_date=date(2026, 8, 15),
+                                     status='draft', created_by_id=accountant_user.id))
+        db_session.commit()
+        _login(client, admin_user, main_branch)          # no PO of his own yet
+        client.post(f'/purchase-requests/{pr.id}/convert', follow_redirects=True)
+        po = PurchaseOrder.query.filter_by(purchase_request_id=pr.id).first()
+        assert po is not None
+        assert po.po_number == '00043'

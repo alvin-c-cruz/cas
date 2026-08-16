@@ -236,3 +236,41 @@ def test_export_excel_returns_200(client, accountant_user, main_branch, vl_vendo
     resp = client.get('/purchase-orders/export/excel')
     assert resp.status_code == 200
     assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+
+class TestTheCreateFormSuggestsThisPurchasersOwnNextNumber:
+    """PhilGen runs two purchasers, each with her OWN pre-printed PO pad whose
+    number range never overlaps the other's. The create GET pre-fills a
+    SUGGESTION the user may overwrite -- but a globally-derived one is
+    guaranteed to sit outside the other purchaser's pad."""
+
+    def _prior_po(self, db_session, number, user):
+        from app.purchase_orders.models import PurchaseOrder
+        db_session.add(PurchaseOrder(po_number=number, order_date=date(2026, 7, 11),
+                                     status='draft', created_by_id=user.id))
+        db_session.commit()
+
+    def test_suggestion_follows_the_logged_in_purchasers_own_pad(
+            self, client, db_session, accountant_user, admin_user, main_branch):
+        self._prior_po(db_session, '00007E', accountant_user)
+        self._prior_po(db_session, '90000F', admin_user)      # the OTHER pad, higher
+        _login(client, accountant_user, main_branch)
+        resp = client.get('/purchase-orders/create')
+        assert resp.status_code == 200
+        assert b'value="00008E"' in resp.data
+        assert b'value="90001F"' not in resp.data
+
+    def test_the_other_purchaser_gets_her_own_pad(
+            self, client, db_session, accountant_user, admin_user, main_branch):
+        self._prior_po(db_session, '00007E', accountant_user)
+        self._prior_po(db_session, '90000F', admin_user)
+        _login(client, admin_user, main_branch)
+        resp = client.get('/purchase-orders/create')
+        assert b'value="90001F"' in resp.data
+
+    def test_a_first_time_purchaser_falls_back_to_the_global_generator(
+            self, client, db_session, accountant_user, admin_user, main_branch):
+        self._prior_po(db_session, '00042', admin_user)
+        _login(client, accountant_user, main_branch)     # no PO of her own yet
+        resp = client.get('/purchase-orders/create')
+        assert b'value="00043"' in resp.data
