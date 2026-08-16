@@ -38,8 +38,15 @@ RECEIVABLE_PO_STATUSES = ('approved', 'partially_received')
 
 # -- gates ---------------------------------------------------------------------
 
+# Who may build a receipt. Named once so the form's PO-line picker
+# (open_lines below) cannot drift from the create/edit views it feeds -- a
+# picker that answers to someone who may not save is a data leak with no
+# purpose.
+RR_EDIT_ROLES = ('staff', 'accountant', 'admin', 'chief_accountant')
+
+
 def _rr_role_gate():
-    if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
+    if current_user.role not in RR_EDIT_ROLES:
         flash('You do not have permission to manage Receiving Reports.', 'error')
         return redirect(url_for('receiving_reports.list_rr'))
     return None
@@ -457,6 +464,57 @@ def billable_rrs():
     vendor_id = request.args.get('vendor_id', type=int)
     rrs = billable_rrs_for(branch_id, vendor_id) if vendor_id else []
     return jsonify({'consolidate': ap_billing_consolidate(), 'rrs': rrs})
+
+
+@receiving_reports_bp.route('/receiving-reports/open-lines')
+@login_required
+def open_lines():
+    """JSON: the still-open purchase order lines of *vendor_id*, in the SESSION
+    branch -- the data source for the receipt form's "Pull from Purchase Orders"
+    picker. Auto-gated by the receiving_reports module (before_request), so it
+    404s when the module is off.
+
+    It exists because the picker CANNOT be purely client-side. `po_lines` is
+    server-rendered once per GET and is empty until a vendor is chosen (see
+    _eligible_purchase_orders), while the vendor is chosen in the browser --
+    there is nothing already on the page for the picker to read.
+
+    Branch comes from the session and NEVER from the query string: a
+    ?branch_id= parameter would let any signed-in user enumerate another
+    branch's orders through a route that looks like a form helper. Vendor is a
+    query parameter because the vendor is the user's live choice; scoping by it
+    leaks nothing the RR form does not already show.
+
+    `exclude_rr_id` is how the EDIT picker stops counting the receipt being
+    edited against its own open quantity. It is validated to a receipt in this
+    branch, so a forged id cannot inflate what is offered -- though even that
+    would only widen the PICKER: assert_payload_within_open_qty re-measures the
+    real ceiling at save and at approve, with the real exclusion.
+
+    Each row carries po_id and po_number on top of _po_lines_payload's fields:
+    once one receipt can span several orders, "which PO is this line from?" is a
+    per-LINE question, and the payload alone cannot answer it.
+    """
+    if current_user.role not in RR_EDIT_ROLES:
+        return jsonify({'lines': [], 'error': 'not permitted'}), 403
+    branch_id = session.get('selected_branch_id')
+    vendor_id = request.args.get('vendor_id', type=int)
+    exclude_rr_id = request.args.get('exclude_rr_id', type=int)
+    if exclude_rr_id:
+        rr = db.session.get(ReceivingReport, exclude_rr_id)
+        if rr is None or rr.branch_id != branch_id:
+            exclude_rr_id = None
+    eligible = _eligible_purchase_orders(branch_id, vendor_id)
+    payload = _po_lines_payload(eligible, exclude_rr_id=exclude_rr_id)
+    lines = []
+    for po in eligible:
+        for row in payload.get(po.id, []):
+            # A PO stays eligible while ANY of its lines is open, so a fully
+            # received line of a partly received order still arrives here.
+            if row['open'] <= 0:
+                continue
+            lines.append(dict(row, po_id=po.id, po_number=po.po_number))
+    return jsonify({'lines': lines})
 
 
 @receiving_reports_bp.route('/receiving-reports/create', methods=['GET', 'POST'])

@@ -2,6 +2,12 @@
 {% block title %}{{ 'Edit' if rr else 'Enter' }} Receiving Report{% endblock %}
 {% block page_title %}{{ 'Edit' if rr else 'Enter' }} Receiving Report{% endblock %}
 {% block content %}
+{# choices.min.css is what gives an enhanced picker its display:none dropdown;
+   transactions.css carries the .choices/.picker-field treatment. The form loaded
+   NEITHER, which is why the header select was a raw <select>. Same fix the
+   Purchase Order form needed. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=3">
 <div class="page-header">
   <h1>{{ 'Edit' if rr else 'Enter' }} Receiving Report</h1>
   <a href="{{ url_for('receiving_reports.list_rr') }}" class="btn btn-secondary btn-sm">Back to list</a>
@@ -13,9 +19,13 @@
   <input type="hidden" name="lines" id="rrLinesJson" value="[]">
 
   <div class="card"><div class="card-body">
-    <div class="form-grid">
+    <div class="form-row-3">
       <div class="form-group">{{ form.rr_number.label }} {{ form.rr_number(class="form-control") }}</div>
-      <div class="form-group">{{ form.vendor_id.label }} {{ form.vendor_id(class="form-control", id="poSelect") }}</div>
+      {# picker-field: this select becomes a Choices control, and transactions.css
+         renders every .choices__inner as a transparent in-grid box. Without the
+         class the Vendor field renders as bare borderless text beside the
+         ordinary inputs next to it. #}
+      <div class="form-group picker-field">{{ form.vendor_id.label }} {{ form.vendor_id(class="form-control", id="vendorSelect") }}</div>
       <div class="form-group">{{ form.receipt_date.label }} {{ form.receipt_date(class="form-control") }}</div>
     </div>
     <div class="form-group">{{ form.remarks.label }} {{ form.remarks(class="form-control", rows=2) }}</div>
@@ -23,18 +33,70 @@
 
   <div class="card"><div class="card-body">
     <h3>Received Items</h3>
-    <p class="text-muted">Enter the quantity actually received on each line (cannot exceed the open quantity).</p>
+    <p class="text-muted">
+      Choose the vendor, then pull the open lines of its purchase orders. One delivery
+      can settle several orders of the same vendor. Enter the quantity actually
+      received on each line (it cannot exceed the open quantity).
+    </p>
+
+    {# The vendor-change warning. Inline HTML, never confirm()/alert()/prompt() --
+       a project-wide rule. Hidden until the guard in the line script shows it. #}
+    <div id="rrVendorChangeNotice" class="alert alert-warning" style="display:none">
+      The vendor changed, so the lines already in this receipt were cleared -- a
+      Receiving Report covers one vendor. Pull the new vendor's open lines below.
+    </div>
+
     <div class="table-responsive">
       <table class="table" id="rrGrid">
         <thead>
-          <tr><th>Item</th><th>UoM</th><th class="text-end">Ordered</th>
+          <tr><th>From PO</th><th>Item</th><th>UoM</th><th class="text-end">Ordered</th>
               <th class="text-end">Already Received</th><th class="text-end">Open</th>
               <th class="text-end">Receive Now</th></tr>
         </thead>
-        <tbody id="rrGridBody">
-          <tr><td colspan="6" class="text-muted">Select a Purchase Order to load its open lines.</td></tr>
-        </tbody>
+        {# Rendered by the line script below, never server-side: the grid is keyed
+           by purchase order LINE now, and which lines belong on it is the receipt's
+           own EXISTING map plus whatever the picker pulls. #}
+        <tbody id="rrGridBody"></tbody>
       </table>
+    </div>
+
+    {# No "+ Add line" button and no blank editable row, deliberately. Every
+       ReceivingReportItem.purchase_order_item_id is NOT NULL -- a receiver cannot
+       invent a line, only receive one that was ordered. Clearing a quantity to
+       blank or 0 already drops that line at submit, so there is no remove button
+       either. #}
+    <button type="button" class="btn btn-secondary" id="pullPoBtn">+ Pull from Purchase Orders</button>
+    <span id="poPickerNotice" class="text-muted" style="display:none">
+      Choose a vendor first -- the open lines offered are that vendor's.
+    </span>
+
+    <div id="poPickerModal" class="modal-overlay no-print"
+         style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
+      <div class="card" style="max-width:900px;width:94%;max-height:80vh;overflow:auto">
+        <div class="card-body">
+          <h3>Open Purchase Order Lines</h3>
+          <p class="text-muted" id="poPickerEmpty" style="display:none">
+            This vendor has no purchase order lines still awaiting delivery.
+          </p>
+          <table class="table" id="poPickerTable">
+            <thead>
+              <tr>
+                <th style="width:4%;"></th>
+                <th style="width:16%;">PO Number</th>
+                <th style="width:38%;">Item</th>
+                <th style="width:10%;">Unit</th>
+                <th style="width:14%; text-align:right;">Open</th>
+                <th style="width:18%; text-align:right;">Receive Qty</th>
+              </tr>
+            </thead>
+            <tbody id="poPickerBody"></tbody>
+          </table>
+          <div class="form-actions">
+            <button type="button" class="btn btn-primary" id="poPickerAdd">Add Selected</button>
+            <button type="button" class="btn btn-secondary" id="poPickerClose">Close</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div></div>
 
@@ -44,47 +106,233 @@
   </div>
 </form>
 
+{# Choices + search-select must load BEFORE the inline scripts: the vendor picker
+   is enhanced during them, and an unenhanced select is what you get if
+   initSearchSelect is not defined yet. escHtml comes from transaction-utils.js. #}
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='transaction-utils.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
+
 <script>
-  const PO_LINES = {{ po_lines | tojson }};     // {po_id: [{purchase_order_item_id, product_name, uom, ordered, received, open}]}
-  const EXISTING = {{ existing | tojson }};      // {purchase_order_item_id: received_qty} (edit pre-fill)
+  // -- the LINE block: build rows, serialise them, keep them honest to the vendor.
+  // Kept free of fetch/Choices/modal code on purpose -- see the comment above the
+  // picker block below.
 
-  function renderLines(poId) {
-    const body = document.getElementById('rrGridBody');
-    body.innerHTML = '';
-    const rows = PO_LINES[poId] || [];
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="6" class="text-muted">No open lines on this Purchase Order.</td></tr>';
-      return;
-    }
-    rows.forEach(r => {
-      const pre = EXISTING[r.purchase_order_item_id];
-      const tr = document.createElement('tr');
-      tr.innerHTML =
-        `<td>${r.product_name || r.product_code || ''}</td>`
-      + `<td>${r.uom || ''}</td>`
-      + `<td class="text-end">${r.ordered}</td>`
-      + `<td class="text-end">${r.received}</td>`
-      + `<td class="text-end">${r.open}</td>`
-      + `<td class="text-end"><input type="number" step="0.0001" min="0" max="${r.open}"`
-      + ` class="form-control rr-recv" data-poi="${r.purchase_order_item_id}"`
-      + ` value="${pre != null ? pre : ''}" style="max-width:120px;display:inline-block"></td>`;
-      body.appendChild(tr);
+  const PO_LINES = {{ po_lines | tojson }};   // {po_id: [{purchase_order_item_id, product_code, product_name, uom, ordered, received, open}]}
+  const EXISTING = {{ existing | tojson }};   // {purchase_order_item_id: received_qty} (edit / bounce pre-fill)
+  // _po_lines_payload carries no PO number, and "which order is this line from?"
+  // is now a per-LINE question -- one receipt can span several orders of one vendor.
+  // Keys are STRINGS, matching PO_LINES' own (a JSON object has no integer keys,
+  // and Object.keys hands back strings either way) -- and so this stays parseable
+  // as JSON by the tests that read it back out of the page.
+  const PO_NUMBERS = {
+    {%- for po in eligible %}
+    {{ po.id | string | tojson }}: {{ po.po_number | tojson }}{{ "," if not loop.last }}
+    {%- endfor %}
+  };
+
+  // Flat, keyed by purchase order LINE. The grid used to be keyed by PO id and
+  // handed the VENDOR id to look up in it, so no row could ever be built. Keying
+  // by purchase_order_item_id is also what makes one row per PO line structural:
+  // a PurchaseOrderItem belongs to exactly one PO, so no line can appear twice --
+  // which matters because views._submitted_existing_lines() builds a dict on that
+  // same key and would silently drop one of two rows on a bounced edit.
+  const RR_LINE_INDEX = {};
+  Object.keys(PO_LINES).forEach(function (poId) {
+    (PO_LINES[poId] || []).forEach(function (r) {
+      RR_LINE_INDEX[r.purchase_order_item_id] = {
+        purchase_order_item_id: r.purchase_order_item_id,
+        po_id: parseInt(poId, 10),
+        po_number: PO_NUMBERS[poId] || '',
+        product_code: r.product_code, product_name: r.product_name,
+        uom: r.uom, ordered: r.ordered, received: r.received, open: r.open
+      };
     });
-  }
-  const sel = document.getElementById('poSelect');
-  sel.addEventListener('change', () => renderLines(sel.value));
+  });
 
-  document.getElementById('rrForm').addEventListener('submit', () => {
+  const RR_PLACEHOLDER =
+    '<tr id="rrGridEmptyRow"><td colspan="7" class="text-muted">'
+    + 'No lines yet. Choose the vendor above, then pull the open lines of its '
+    + 'purchase orders.</td></tr>';
+
+  // Mirrors the DOM: a row is only ever added by rrAddLine and only ever removed by
+  // rrClearGrid. Counted rather than measured with querySelectorAll so the vendor
+  // guard's "were there lines?" question has one answer, not one per call site.
+  let RR_ROW_COUNT = 0;
+
+  function rrGridBody() { return document.getElementById('rrGridBody'); }
+
+  function rrClearGrid() {
+    rrGridBody().innerHTML = RR_PLACEHOLDER;
+    RR_ROW_COUNT = 0;
+  }
+
+  function rrRowHtml(r, qty) {
+    const item = r.product_name || r.product_code || '';
+    const poi = escHtml(r.purchase_order_item_id);
+    return '<tr class="rr-line" data-poi="' + poi + '">'
+         + '<td>' + escHtml(r.po_number || '') + '</td>'
+         + '<td>' + escHtml(item) + '</td>'
+         + '<td>' + escHtml(r.uom || '') + '</td>'
+         + '<td class="text-end">' + escHtml(r.ordered) + '</td>'
+         + '<td class="text-end">' + escHtml(r.received) + '</td>'
+         + '<td class="text-end">' + escHtml(r.open) + '</td>'
+         + '<td class="text-end"><input type="number" step="0.0001" min="0"'
+         + ' max="' + escHtml(r.open) + '" class="form-control rr-recv"'
+         + ' data-poi="' + poi + '"'
+         + ' value="' + escHtml(qty === null || qty === undefined ? '' : qty) + '"'
+         + ' style="max-width:120px;display:inline-block"></td></tr>';
+  }
+
+  function rrExistingRowFor(poiId) {
+    if (poiId === null || poiId === undefined) return null;
+    return document.querySelector('#rrGridBody tr[data-poi="' + String(poiId) + '"]');
+  }
+
+  // Carried over from the Purchase Order form's picker (fixed 2026-08-16): a line
+  // already in the grid is UPDATED, not added again. The picker reads the DATABASE,
+  // and on CREATE there is no receipt id to exclude, so nothing in the unsaved form
+  // is subtracted from what it offers -- pulling the same line twice would stack a
+  // second row and double the receipt. Merging is the wanted behaviour anyway: the
+  // picker pre-fills what remains OPEN, so the intent is "receive this much of it".
+  // The guard is the server, not this: see views.assert_payload_within_open_qty.
+  function rrAddLine(r, qty) {
+    const already = rrExistingRowFor(r.purchase_order_item_id);
+    if (already) {
+      const input = already.querySelector('.rr-recv');
+      if (input) input.value = (qty === null || qty === undefined) ? '' : qty;
+      return false;
+    }
+    // The placeholder row is CONSUMED by the first real line, the same way the PO
+    // form's seeded blank row is -- it says "there is nothing here yet", which stops
+    // being true the moment a line lands.
+    if (!RR_ROW_COUNT) rrGridBody().innerHTML = '';
+    rrGridBody().insertAdjacentHTML('beforeend', rrRowHtml(r, qty));
+    RR_ROW_COUNT += 1;
+    return true;
+  }
+
+  // Initial fill: the receipt's OWN lines (edit), or the quantities the receiver
+  // typed before a save bounced -- never every open line of every eligible order.
+  rrClearGrid();
+  Object.keys(EXISTING).forEach(function (poiId) {
+    const r = RR_LINE_INDEX[poiId];
+    if (r) rrAddLine(r, EXISTING[poiId]);
+  });
+
+  // A receipt covers ONE vendor. Lines pulled from vendor A must never survive a
+  // switch to vendor B: the save refuses them ("belongs to X"), but only after a
+  // whole delivery has been typed in. Clearing is chosen over blocking the switch
+  // because it cannot leave the grid holding the previous vendor's lines under any
+  // ordering of events, and it needs no popup to say so.
+  (function () {
+    const sel = document.getElementById('vendorSelect');
+    const notice = document.getElementById('rrVendorChangeNotice');
+    if (notice) notice.style.display = 'none';
+    if (!sel) return;
+    sel.addEventListener('change', function () {
+      const had = RR_ROW_COUNT > 0;
+      rrClearGrid();
+      if (notice) notice.style.display = had ? '' : 'none';
+    });
+  })();
+
+  // The submit contract Tasks 2-3 decode: [{purchase_order_item_id, received_quantity}],
+  // only for quantities > 0. Read off the live inputs, so whatever the receiver
+  // last typed is what posts.
+  document.getElementById('rrForm').addEventListener('submit', function () {
     const lines = [];
-    document.querySelectorAll('.rr-recv').forEach(inp => {
+    document.querySelectorAll('.rr-recv').forEach(function (inp) {
       const q = parseFloat(inp.value);
       if (q > 0) lines.push({ purchase_order_item_id: parseInt(inp.dataset.poi, 10),
                               received_quantity: inp.value });
     });
     document.getElementById('rrLinesJson').value = JSON.stringify(lines);
   });
+</script>
 
-  // Initial render (edit form or preselected PO)
-  if (sel.value) renderLines(sel.value);
+{# Deliberately a separate <script> from the line block above: a DOM shim executes
+   that block (tests/integration/test_rr_form_render.py, and the shared harness in
+   tests/integration/_line_identity_js.py for the other document forms), and picker
+   code throws there on APIs the shim does not provide -- fetch, Choices, modals. #}
+<script>
+  (function () {
+    // The vendor picker gets the same treatment as every other counterparty
+    // select -- a plain <select> against 150 vendors is unusable. No addAction:
+    // creating a vendor mid-receipt needs more fields than a quick-add carries.
+    if (typeof initSearchSelect === 'function') {
+      const vSel = document.getElementById('vendorSelect');
+      if (vSel && !vSel.closest('.choices')) initSearchSelect(vSel);
+    }
+
+    const btn = document.getElementById('pullPoBtn');
+    const modal = document.getElementById('poPickerModal');
+    if (!btn || !modal) return;
+    const body = document.getElementById('poPickerBody');
+    const empty = document.getElementById('poPickerEmpty');
+    const notice = document.getElementById('poPickerNotice');
+    const excludeRrId = {{ (rr.id if rr else 0) | tojson }};
+
+    function chosenVendorId() {
+      const sel = document.getElementById('vendorSelect');
+      const v = sel ? parseInt(sel.value, 10) : 0;
+      return v > 0 ? v : 0;      // 0 is the "-- Select vendor --" sentinel
+    }
+
+    btn.addEventListener('click', function () {
+      const vendorId = chosenVendorId();
+      if (!vendorId) {
+        // Inline, not a popup. The endpoint would honestly answer "no lines" for
+        // vendor 0, but that reads as "this vendor has nothing outstanding".
+        if (notice) notice.style.display = '';
+        return;
+      }
+      if (notice) notice.style.display = 'none';
+      body.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
+      modal.style.display = 'flex';
+      const url = '/receiving-reports/open-lines?vendor_id=' + vendorId
+                + (excludeRrId ? ('&exclude_rr_id=' + excludeRrId) : '');
+      fetch(url, {credentials: 'same-origin'})
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          const rows = d.lines || [];
+          empty.style.display = rows.length ? 'none' : '';
+          body.innerHTML = rows.map(function (row) {
+            const item = row.product_name
+              ? escHtml((row.product_code ? row.product_code + ': ' : '') + row.product_name)
+              : escHtml(row.product_code || '');
+            return '<tr data-row=\'' + escHtml(JSON.stringify(row)) + '\'>'
+                 + '<td><input type="checkbox" class="po-pick"></td>'
+                 + '<td>' + escHtml(row.po_number) + '</td>'
+                 + '<td>' + item + '</td>'
+                 + '<td>' + escHtml(row.uom || '') + '</td>'
+                 + '<td style="text-align:right;">' + escHtml(row.open) + '</td>'
+                 + '<td><input type="text" class="form-control po-pick-qty"'
+                 + ' style="text-align:right;font-family:var(--mono);"'
+                 + ' value="' + escHtml(row.open) + '"></td></tr>';
+          }).join('');
+        })
+        .catch(function () {
+          body.innerHTML = '<tr><td colspan="6">Could not load purchase orders -- close and retry.</td></tr>';
+        });
+    });
+
+    document.getElementById('poPickerClose')
+      .addEventListener('click', function () { modal.style.display = 'none'; });
+
+    document.getElementById('poPickerAdd').addEventListener('click', function () {
+      // rrAddLine (line block) owns both the merge and the placeholder consumption,
+      // so the picker never hand-builds a grid row and the two paths cannot diverge.
+      body.querySelectorAll('tr').forEach(function (tr) {
+        const box = tr.querySelector('.po-pick');
+        if (!box || !box.checked) return;
+        const row = JSON.parse(tr.dataset.row);
+        const qtyBox = tr.querySelector('.po-pick-qty');
+        const qty = qtyBox ? qtyBox.value.replace(/,/g, '').trim() : '';
+        rrAddLine(row, qty);
+      });
+      modal.style.display = 'none';
+    });
+  })();
 </script>
 {% endblock %}
