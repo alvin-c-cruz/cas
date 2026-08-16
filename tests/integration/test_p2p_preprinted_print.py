@@ -856,6 +856,21 @@ def asap_pr(db_with_data, branch_manila, product_bolt, uom_box):
                     date_needed=None, asap=True)
 
 
+@pytest.fixture
+def asap_pr_with_a_stale_date(db_with_data, branch_manila, product_bolt, uom_box):
+    """A requisition carrying BOTH the flag and a date.
+
+    The model's own docstring says the exclusion is "enforced in the views, not by
+    a DB constraint, because SQLite CHECK constraints here would need a table
+    rebuild" -- so this row is representable, and a legacy import or a future code
+    path can produce it. It is also the ONLY input that can tell the two ASAP
+    branches apart: with `date_needed` already NULL, a template that dropped the
+    ASAP test entirely still renders an empty box and no data-date, so every
+    assertion about them would pass vacuously."""
+    return _make_pr(branch_manila, product_bolt, uom_box, '00882',
+                    date_needed=date(2026, 9, 30), asap=True)
+
+
 def _grant_module_access(user, branch, db_session, *modules):
     """Give a non-full-access user the module permissions and the document's branch.
 
@@ -1120,15 +1135,31 @@ class TestPurchaseRequisitionOverlayValues:
         body = client.get(f'/purchase-requests/{asap_pr.id}/print').data.decode()
         assert self._cell(body, 'date_needed') == 'ASAP'
 
-    def test_an_asap_requisition_carries_no_reformattable_date(
-            self, client, db_session, admin_user, branch_manila, asap_pr):
-        """preprinted_designer.js:511 rewrites the text of EVERY `.pp-el[data-date]`
-        when the format dropdown changes. An ASAP box carrying a data-date would have
-        'ASAP' silently replaced by a date the record does not have."""
+    def test_asap_wins_over_a_stale_date_and_the_two_are_never_printed_together(
+            self, client, db_session, admin_user, branch_manila,
+            asap_pr_with_a_stale_date):
+        """The flag is the answer; the leftover date must not print beside it or
+        instead of it. Run against a row carrying BOTH, the only input that can tell
+        the ASAP branch from an empty box."""
         AppSettings.set_setting('pr_print_form', 'preprinted')
         db_session.commit()
         _login(client, admin_user, branch_manila)
-        body = client.get(f'/purchase-requests/{asap_pr.id}/print').data.decode()
+        body = client.get(
+            f'/purchase-requests/{asap_pr_with_a_stale_date.id}/print').data.decode()
+        assert self._cell(body, 'date_needed') == 'ASAP'
+        assert '30 September 2026' not in body
+
+    def test_an_asap_requisition_carries_no_reformattable_date(
+            self, client, db_session, admin_user, branch_manila,
+            asap_pr_with_a_stale_date):
+        """preprinted_designer.js:511 rewrites the text of EVERY `.pp-el[data-date]`
+        when the format dropdown changes. An ASAP box carrying a data-date would have
+        'ASAP' silently replaced by a date -- here, the stale one the flag overrides."""
+        AppSettings.set_setting('pr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(
+            f'/purchase-requests/{asap_pr_with_a_stale_date.id}/print').data.decode()
         tag = _element(body, 'date_needed')
         assert tag and 'data-date' not in tag, tag
         # Control: request_date on the SAME page DOES carry one, so the absence above
@@ -1653,18 +1684,32 @@ class TestReceivingReportLayoutSave:
                        .data.decode(), 'rr_number')
         assert tag and 'width:250px' in tag, tag
 
-    def test_the_two_documents_keep_separate_layouts(self, client, db_session,
-                                                     admin_user, branch_manila):
+    def test_the_two_documents_keep_separate_layouts(
+            self, client, db_session, admin_user, branch_manila, approved_rr,
+            approved_pr):
         """Each declaration owns its own setting key (pr_preprinted_layout /
         rr_preprinted_layout). Wiring one route to the other module's save_layout
         would pass every assertion above while silently overwriting the sibling
-        document's stationery."""
+        document's stationery.
+
+        Read back through both PRINT PAGES, not by POSTing the sibling's save route
+        and inspecting the echo: `save_layout` sanitises the SUBMITTED payload over
+        the declaration's defaults and never consults what is stored, so an empty
+        POST echoes the defaults whatever the mutation did. That version of this
+        test passed against the cross-wired route."""
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        AppSettings.set_setting('pr_print_form', 'preprinted')
+        db_session.commit()
         _login(client, admin_user, branch_manila)
         assert client.post('/receiving-reports/print-layout',
                            json={'paper': 'letter'}).status_code == 200
-        pr_layout = client.post('/purchase-requests/print-layout',
-                                json={}).get_json()['layout']
-        assert pr_layout['paper'] == 'continuous', \
+        rr_body = client.get(
+            f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        pr_body = client.get(
+            f'/purchase-requests/{approved_pr.id}/print').data.decode()
+        # Positive control: the save DID land somewhere.
+        assert 'data-paper="letter"' in rr_body
+        assert 'data-paper="continuous"' in pr_body, \
             'the RR save reached the requisition layout'
 
     def test_a_staff_user_is_refused(self, client, db_session, staff_user, branch_manila):
