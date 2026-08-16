@@ -9,7 +9,12 @@
   <h1>Purchase Requisition {{ pr.pr_number }}</h1>
   <div>
     <a href="{{ url_for('purchase_requests.list_pr') }}" class="btn btn-secondary btn-sm">Back</a>
+    {# `pr_print_form: hidden` turns printing off entirely, so the page must not
+       offer a button print_pr() refuses -- mirrors purchase_orders/detail.html
+       and sales_invoices/detail.html:109. #}
+    {% if pr_print_form != 'hidden' %}
     <a href="{{ url_for('purchase_requests.print_pr', id=pr.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
+    {% endif %}
     {% if can_write and pr.status == 'draft' %}
     <a href="{{ url_for('purchase_requests.edit', id=pr.id) }}" class="btn btn-secondary btn-sm">Edit</a>
     {% endif %}

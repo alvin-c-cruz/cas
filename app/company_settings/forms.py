@@ -153,6 +153,14 @@ class CompanySettingsForm(FlaskForm):
         'Purchase Order Print Access', choices=PO_PRINT_ACCESS_CHOICES,
         default='approved_only'
     )
+    # No *_print_access sibling for either of these two: a requisition and a
+    # receiving report are INTERNAL documents that never reach a supplier, so the
+    # commercial risk that justifies the purchase order's draft gate does not
+    # exist. `hidden` is their off switch.
+    pr_print_form = SelectField(
+        'Purchase Requisition Print Form', choices=SV_PRINT_FORM_CHOICES,
+        default='current'
+    )
     cd_print_access = SelectField(
         'CDV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
     )

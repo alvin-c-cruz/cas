@@ -239,6 +239,13 @@
                 {% if module_states.purchase_orders %}
                 {{ render_field(form.po_print_form) }}
                 {% endif %}
+                {# purchase_requests is optional too and depends_on purchase_orders --
+                   gated on its OWN key, so a company that enabled purchase orders
+                   alone is not shown a control that reaches nothing
+                   (BUG-SETTINGS-DOCPRINT-UNGATED-OPTIONAL-CONTROLS). #}
+                {% if module_states.purchase_requests %}
+                {{ render_field(form.pr_print_form) }}
+                {% endif %}
                 {{ render_field(form.cr_print_form) }}
                 {{ render_field(form.ap_print_form) }}
                 {{ render_field(form.cd_print_form) }}

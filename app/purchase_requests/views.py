@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from flask import (Blueprint, render_template, redirect, url_for, flash,
-                   request, session, abort, current_app)
+                   request, session, abort, current_app, jsonify)
 from flask_login import login_required, current_user
 
 from sqlalchemy.orm import joinedload
@@ -14,6 +14,10 @@ from app import db
 from app.purchase_requests.models import (
     PurchaseRequest, PurchaseRequestItem, generate_pr_number)
 from app.purchase_requests.forms import PurchaseRequestForm, PurchaseRequestAmendForm
+from app.purchase_requests.preprinted_layout import (
+    COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
+from app.common.preprinted_base import (
+    DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
 from app.amendments.models import DocumentRevision
 from app.amendments.service import write_revision
 from app.amendments.validation import validate_amendment
@@ -383,6 +387,10 @@ def view(id):
     created_by_user = db.session.get(User, pr.created_by_id) if pr.created_by_id else None
     return render_template('purchase_requests/detail.html', pr=pr,
                            created_by_user=created_by_user,
+                           # Read HERE rather than in the template, so the Print
+                           # button and print_pr()'s own guard read one value.
+                           pr_print_form=AppSettings.get_setting('pr_print_form',
+                                                                 'current'),
                            revisions=_revision_panel_rows(pr))
 
 
@@ -735,10 +743,38 @@ def convert(id):
 @purchase_requests_bp.route('/purchase-requests/<int:id>/print')
 @login_required
 def print_pr(id):
+    """Print a Purchase Requisition -- the form is chosen by the `pr_print_form`
+    company setting (current = standard printable form . preprinted = data-only
+    overlay for the client's own pre-printed stationery . hidden = printing
+    disabled). Mirrors purchase_orders.print_po.
+
+    There is deliberately NO `pr_print_access` sibling to purchase_orders'. A
+    requisition is an INTERNAL document -- it never reaches a supplier, so the
+    commercial risk that justifies refusing to print a draft purchase order does
+    not exist here. `pr_print_form: hidden` is this document's off switch.
+    """
     pr = _get_pr_or_404(id)
+    pr_print_form = AppSettings.get_setting('pr_print_form', 'current')
+    if pr_print_form == 'hidden':
+        flash('Purchase Requisition printing is not enabled.', 'error')
+        return redirect(url_for('purchase_requests.view', id=id))
     company = {'name': AppSettings.get_setting('company_name', ''),
                'address': AppSettings.get_setting('company_address', ''),
                'tin': AppSettings.get_setting('company_tin', '')}
+
+    if pr_print_form == 'preprinted':
+        # The pre-printed overlay is data-only: the client's own stationery
+        # supplies every label INCLUDING the signature captions, so the
+        # company-level signatory names below are not rendered on it.
+        return render_template(
+            'purchase_requests/print_preprinted.html', pr=pr, company=company,
+            printed_at=ph_now(), layout=get_layout(pr.branch_id),
+            can_edit_layout=current_user.has_full_access,
+            col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
+            signatory_ids=TEXT_KEYS,
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
 
     # Company-level free text, NOT derived from created_by/submitted_by/
     # approved_by: the designated signatories are often not CAS users at all, and
@@ -753,6 +789,23 @@ def print_pr(id):
                            can_edit_signatories=can_edit_signatories,
                            PRINT_MIN_ROWS=PRINT_MIN_ROWS,
                            printed_at=ph_now())
+
+
+@purchase_requests_bp.route('/purchase-requests/print-layout', methods=['POST'])
+@login_required
+def save_print_layout():
+    """Persist the pre-printed layout JSON (full-access: admin or Chief Accountant).
+
+    Mirrors purchase_orders.save_print_layout: a layout edit changes what prints on
+    a client's real, BIR-registered stationery, so it is deliberately narrower than
+    the module's edit-level role rule (which admits `staff`)."""
+    if not current_user.has_full_access:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    # The layout is per-branch; the print page requires the selected branch to equal
+    # the document's branch, so the session branch is the document's branch.
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
+    return jsonify(ok=True, layout=clean)
 
 
 # -- export routes -----------------------------------------------------------------
