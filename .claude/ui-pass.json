@@ -1,4 +1,10 @@
 {
+  "03a307591ffd441c95b29c9e2cf30e5653bd0e4f": {
+    "branch": "fix/pr-po-ceiling-aggregate",
+    "date": "2026-08-16",
+    "reason": null,
+    "waived": false
+  },
   "0431c6cf6305de664de0c8838120690325429c03": {
     "branch": "feat/r07-p5-cost-report",
     "date": "2026-08-03",
