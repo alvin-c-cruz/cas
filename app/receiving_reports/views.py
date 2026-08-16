@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from flask import (Blueprint, render_template, redirect, url_for, flash,
                    request, session, abort, jsonify)
 from flask_login import login_required, current_user
+from sqlalchemy.orm import joinedload, selectinload
 
 from app import db
 from app.receiving_reports.models import (
@@ -151,9 +152,16 @@ def _filtered_rr_query(include_ids=False):
     Args read: status, vendor, q, date_from, date_to -- and ids when
     include_ids=True (exports only); a valid ids list overrides all other
     filters but stays branch-scoped. Invalid values are ignored.
+
+    Eager-loads the lines -> PO line -> PO chain that `po_number_display` walks. Both callers
+    (the list page and the exports) render that column for every row, and the exports are
+    unpaginated, so lazy loading here is an N+1 that scales with rows x lines.
     """
     branch_id = session.get('selected_branch_id')
-    query = ReceivingReport.query.filter_by(branch_id=branch_id)
+    query = ReceivingReport.query.filter_by(branch_id=branch_id).options(
+        selectinload(ReceivingReport.line_items)
+        .joinedload(ReceivingReportItem.purchase_order_item)
+        .joinedload(PurchaseOrderItem.order))
 
     if include_ids:
         ids_param = request.args.get('ids', '')

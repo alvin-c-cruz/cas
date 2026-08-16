@@ -6,7 +6,6 @@ which is what lets Task 6 drop it.
 from datetime import date
 from decimal import Decimal
 import pytest
-from app import db
 
 pytestmark = [pytest.mark.integration, pytest.mark.receiving_reports]
 
@@ -56,6 +55,15 @@ def rr_two_pos(db_session, main_branch, vl_vendor):
 
 
 @pytest.fixture
+def rr_header_lies(db_session, main_branch, vl_vendor):
+    """A ONE-PO receipt whose header FK names PO-H while its only line draws on PO-L."""
+    po_h = _approved_po(db_session, main_branch, vl_vendor, number='PO-H')
+    po_l = _approved_po(db_session, main_branch, vl_vendor, number='PO-L')
+    return _make_draft_rr(db_session, main_branch, po_h,
+                          [(po_l.line_items[0], 10)], number='RR-DERIV-0004')
+
+
+@pytest.fixture
 def rr_two_lines_one_po(db_session, main_branch, vl_vendor):
     from app.purchase_orders.models import PurchaseOrderItem
     po = _approved_po(db_session, main_branch, vl_vendor, number='PO-A')
@@ -83,14 +91,76 @@ class TestDerivation:
         assert [po.po_number for po in rr_two_lines_one_po.purchase_orders] == ['PO-A']
         assert rr_two_lines_one_po.po_number_display == 'PO-A'
 
-    def test_derivation_does_not_read_the_header_column(self, db_session, rr_two_pos):
-        """Mutation anchor: blanking the header FK must change nothing.
+    def test_header_column_is_ignored_when_it_disagrees_with_the_lines(self, db_session,
+                                                                       rr_header_lies):
+        """Mutation anchor: the lines win when the header FK says something else.
 
-        The header column is still `nullable=False` at this task (Task 6 drops it), so an
-        autoflushed UPDATE with NULL would violate the live NOT NULL constraint -- that is a
-        DB-schema artifact, not the thing under test. `no_autoflush` blanks the FK in memory
-        only, which is all `.purchase_orders` needs to prove it never reads the column.
+        The other three cases all have header FK == line PO, so a header reader
+        (`purchase_orders -> [self.purchase_order]`) passes every one of them. This is the
+        only assertion in the module that a ONE-PO receipt can fail -- a count check cannot
+        catch a header reader when both answers have length 1. The header column keeps its
+        real, non-null value throughout, so no `no_autoflush` juggling is needed.
         """
-        with db.session.no_autoflush:
-            rr_two_pos.purchase_order_id = None
-            assert len(rr_two_pos.purchase_orders) == 2
+        assert rr_header_lies.purchase_order.po_number == 'PO-H'      # the column really lies
+        assert [po.po_number for po in rr_header_lies.purchase_orders] == ['PO-L']
+        assert rr_header_lies.po_number_display == 'PO-L'
+
+
+@pytest.fixture
+def rr_no_lines(db_session, main_branch, vl_vendor):
+    """A fresh draft with no lines yet -- the zero-PO shape the detail page must not mangle."""
+    po = _approved_po(db_session, main_branch, vl_vendor, number='PO-A')
+    return _make_draft_rr(db_session, main_branch, po, [], number='RR-DERIV-0005')
+
+
+@pytest.fixture(autouse=True)
+def rr_modules_enabled(db_session):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    for k in ('products', 'purchase_orders', 'receiving_reports'):
+        AppSettings.set_setting(f'module_enabled:{k}', '1')
+    db_session.commit(); clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
+def _login(client, user, branch):
+    with client.session_transaction() as sess:
+        sess['_user_id'] = str(user.id); sess['_fresh'] = True
+        sess['selected_branch_id'] = branch.id
+
+
+class TestDetailPageLabel:
+    """The detail page's PO cell: singular/plural on COUNT, and a dash when there is nothing.
+
+    The label used to pluralize on `!= 1`, so a zero-PO draft read "Purchase Orders:" followed
+    by empty space; the list page has always fallen back to an em dash.
+    """
+
+    def _cell(self, client, rr):
+        resp = client.get(f'/receiving-reports/{rr.id}')
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        start = body.index('<strong>Purchase Order')
+        return body[start:body.index('</div>', start)]
+
+    def test_no_pos_reads_singular_with_a_dash(self, client, accountant_user, main_branch,
+                                               rr_no_lines):
+        _login(client, accountant_user, main_branch)
+        cell = self._cell(client, rr_no_lines)
+        assert '<strong>Purchase Order:</strong>' in cell     # singular, not "Orders"
+        assert '\u2014' in cell                               # em dash, as on the list page
+
+    def test_one_po_reads_singular_with_the_number(self, client, accountant_user, main_branch,
+                                                   rr_one_po):
+        _login(client, accountant_user, main_branch)
+        cell = self._cell(client, rr_one_po)
+        assert '<strong>Purchase Order:</strong>' in cell
+        assert '>PO-A</a>' in cell and '\u2014' not in cell
+
+    def test_two_pos_read_plural_with_both_numbers(self, client, accountant_user, main_branch,
+                                                   rr_two_pos):
+        _login(client, accountant_user, main_branch)
+        cell = self._cell(client, rr_two_pos)
+        assert '<strong>Purchase Orders:</strong>' in cell    # plural only above one
+        assert '>PO-A</a>' in cell and '>PO-B</a>' in cell and '\u2014' not in cell

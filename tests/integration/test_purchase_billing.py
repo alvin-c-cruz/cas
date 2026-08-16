@@ -50,6 +50,25 @@ def _rr(db_session, branch, po, status='approved', received=60, number='RR-2026-
     return rr
 
 
+def _rr_spanning(db_session, branch, header_po, line_pos, status='approved', received=5,
+                 number='RR-MULTI-PO'):
+    """One RR drawing on several POs -- one line per PO's first line item.
+
+    `header_po` populates the (soon-to-be-dropped) header FK, which can only ever name ONE of
+    them; that is exactly the shape a header-column filter gets wrong.
+    """
+    from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
+    rr = ReceivingReport(branch_id=branch.id, rr_number=number, receipt_date=date(2026, 7, 11),
+                         purchase_order_id=header_po.id, vendor_id=header_po.vendor_id,
+                         vendor_name=header_po.vendor_name, status=status)
+    for i, po in enumerate(line_pos, start=1):
+        rr.line_items.append(ReceivingReportItem(line_number=i,
+                                                 purchase_order_item_id=po.line_items[0].id,
+                                                 received_quantity=Decimal(str(received))))
+    db_session.add(rr); db_session.commit()
+    return rr
+
+
 def _ap(branch, vendor, ap_id=9001):
     return SimpleNamespace(id=ap_id, branch_id=branch.id, vendor_id=vendor.id)
 
@@ -152,6 +171,30 @@ def test_billable_pos_endpoint_excludes_pos_with_rr(client, accountant_user, mai
     assert resp.status_code == 200
     nums = [p['po_number'] for p in resp.get_json()['pos']]
     assert 'PO-SVC' in nums and 'PO-GOODS' not in nums
+
+
+def test_billable_pos_excludes_every_po_a_multi_po_rr_receives(db_session, main_branch, vl_vendor):
+    """Double-bill guard: ONE receipt covering TWO POs must drop BOTH from the direct-bill list.
+
+    The RR header FK can only name one of them (PO-MULTI-A here). If `has_rr` filtered on that
+    header column instead of joining through the lines, PO-MULTI-B would look unreceived and be
+    offered for direct billing WHILE `billable_rrs_for` offers the same goods inside the RR --
+    the same receipt billed twice into AP.
+
+    PO-MULTI-C (no RR at all) is the control: it must still be listed, so an over-broad guard
+    that excludes everything cannot pass this test either.
+    """
+    from app.purchase_billing import billable_pos_for
+    po_a = _po(db_session, main_branch, vl_vendor, number='PO-MULTI-A')
+    po_b = _po(db_session, main_branch, vl_vendor, number='PO-MULTI-B')
+    _po(db_session, main_branch, vl_vendor, number='PO-MULTI-C')
+    _rr_spanning(db_session, main_branch, header_po=po_a, line_pos=[po_a, po_b],
+                 number='RR-MULTI-PO-1')
+
+    nums = [p['po_number'] for p in billable_pos_for(main_branch.id, vl_vendor.id)]
+    assert 'PO-MULTI-A' not in nums          # named by the header FK -- excluded either way
+    assert 'PO-MULTI-B' not in nums          # line-only -- only the line join sees this one
+    assert nums == ['PO-MULTI-C']            # and the unreceived PO is still billable
 
 
 def test_billable_endpoints_404_when_module_off(client, admin_user, main_branch, db_session):
