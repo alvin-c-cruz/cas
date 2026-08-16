@@ -95,6 +95,12 @@
     "reason": null,
     "waived": false
   },
+  "7a5c50183d09d482b32d18abd12c67e22b6b90fc": {
+    "branch": "feat/po-number-per-purchaser",
+    "date": "2026-08-16",
+    "reason": null,
+    "waived": false
+  },
   "7f8810198ba62f6ca7b9a7120ed606cc9cfd6537": {
     "branch": "fix/ar-aging-branch-chips",
     "date": "2026-08-01",
