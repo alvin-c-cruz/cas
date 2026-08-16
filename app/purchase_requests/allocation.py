@@ -80,25 +80,83 @@ def _has_committed_reference(pr_item, exclude_po_id=None):
 PULLABLE_PR = ('approved', 'partially_converted')
 
 
-def assert_within_open_qty(pr_item, qty, idx, exclude_po_id=None):
-    """Refuse to order more of a requisition line than remains open.
+def _pr_item_label(pr_item):
+    """How a requisition line is named in a refusal message."""
+    return (pr_item.product.name if pr_item.product
+            else (pr_item.description or 'this item'))
 
-    Enforced HERE, at save, rather than by the picker's `max` attribute -- a
-    POST bypasses the input entirely. *idx* is the submitted line's 1-based
-    position, used only in the message.
+
+def assert_payload_within_open_qty(allocations, exclude_po_id=None):
+    """Refuse a SUBMITTED PAYLOAD that orders more of a requisition line than
+    remains open, counting every line of that payload TOGETHER.
+
+    *allocations* is an ordered iterable of ``(pr_item, qty, idx)`` triples --
+    one per submitted line that names a requisition line, in submission order.
+    *idx* is that line's 1-based position, used only in the message.
+
+    THE CEILING BELONGS TO THE REQUISITION LINE, NOT TO A PURCHASE-ORDER LINE.
+    pr_line_open_qty() sums the PO lines already COMMITTED IN THE DATABASE, so
+    nothing in the submission being validated counts towards it. Asking the
+    question once per submitted line therefore measured every line against the
+    FULL open quantity: the same requisition line pulled twice into one order
+    answered "20 <= 20" twice and shipped 40 against 20 open
+    (BUG-PR-PO-CEILING-NOT-AGGREGATED-WITHIN-ONE-SUBMISSION). Only the payload's
+    per-requisition-line TOTAL is comparable to the ceiling.
+
+    Summed up front and checked ONCE per distinct requisition line, rather than
+    by threading a running tally through the caller's per-line loop: the message
+    then names the requisition line that is over-ordered and every submitted line
+    contributing to it, instead of whichever line happened to tip it over. It
+    also means nothing is written before the whole submission is known to fit.
+
+    Refuses at the FIRST over-ordered requisition line in submission order (dicts
+    preserve insertion order), so the message is deterministic rather than
+    dependent on id ordering.
 
     An unquantified requisition line has no ceiling, so there is nothing to
-    check.
+    check -- see pr_line_open_qty's None.
     """
-    open_qty = pr_line_open_qty(pr_item, exclude_po_id)
-    if open_qty is None:
-        return None
-    if Decimal(str(qty or 0)) > open_qty:
-        label = (pr_item.product.name if pr_item.product
-                 else (pr_item.description or 'this item'))
-        raise ValueError(
-            f'Line {idx}: only {open_qty} of {label} remain unordered.')
+    totals = {}
+    for pr_item, qty, idx in allocations:
+        # Keyed on pr_item.id, not on the instance: the caller resolves each
+        # submitted line separately, and two db.session.get() calls for one id
+        # need not hand back the same object once the identity map is bypassed.
+        slot = totals.setdefault(pr_item.id, [pr_item, Decimal('0'), []])
+        slot[1] += Decimal(str(qty or 0))
+        slot[2].append(idx)
+
+    for pr_item, total, idxs in totals.values():
+        open_qty = pr_line_open_qty(pr_item, exclude_po_id)
+        if open_qty is None:
+            continue
+        if total > open_qty:
+            label = _pr_item_label(pr_item)
+            if len(idxs) == 1:
+                raise ValueError(
+                    f'Line {idxs[0]}: only {open_qty} of {label} remain unordered.')
+            lines = ', '.join(str(i) for i in idxs)
+            raise ValueError(
+                f'Lines {lines}: only {open_qty} of {label} remain unordered, '
+                f'but these lines order {total} between them.')
     return None
+
+
+def assert_within_open_qty(pr_item, qty, idx, exclude_po_id=None):
+    """Refuse to order more of a requisition line than remains open, ONE line at
+    a time.
+
+    Enforced at save rather than by the picker's `max` attribute -- a POST
+    bypasses the input entirely. *idx* is the submitted line's 1-based position,
+    used only in the message.
+
+    Delegates so there is exactly ONE implementation of the rule: a payload of
+    one line is the single-line case, and a second hand-written spelling of a
+    ceiling is how the two paths would drift. THIS ENTRY POINT IS NOT SUFFICIENT
+    ON ITS OWN for validating a submission -- see assert_payload_within_open_qty,
+    which is what a caller holding a whole line array must use.
+    """
+    return assert_payload_within_open_qty([(pr_item, qty, idx)],
+                                          exclude_po_id=exclude_po_id)
 
 
 def open_lines_for_branch(branch_id, exclude_po_id=None):

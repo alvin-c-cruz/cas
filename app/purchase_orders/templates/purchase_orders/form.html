@@ -568,12 +568,64 @@
     document.getElementById('prPickerClose')
       .addEventListener('click', () => { modal.style.display = 'none'; });
 
+    {# A requisition line already sitting in the grid is UPDATED, not added
+       again. The picker reads the DATABASE (open_lines_for_branch), and on
+       CREATE there is no purchase-order id to exclude, so nothing in the
+       unsaved form is subtracted from what it offers -- pulling the same line a
+       second time stacked a second row and doubled the order. Merging is the
+       convenient behaviour anyway: the picker's quantity box is pre-filled with
+       what remains OPEN, so the user's intent is "order this much of it", not
+       "order this much MORE".
+
+       The server is the guard, not this: a POST never runs it. See
+       app/purchase_requests/allocation.py::assert_payload_within_open_qty. #}
+    function existingRowFor(prItemId) {
+      if (prItemId == null) return null;
+      return document.querySelector(
+        '#lineItemsBody tr[data-source-pr-item-id="' + String(prItemId) + '"]');
+    }
+
+    {# Mirrors _assign_po_line_fields' blank-line rule (product OR description OR
+       quantity OR unit price -- amount is derived here, so it cannot be set
+       while all four are empty). A row carrying either identity dataset key is
+       NEVER blank: data-po-item-id is a persisted line and
+       data-source-pr-item-id is a pulled one, and dropping either would delete
+       real work. #}
+    function poRowIsBlank(tr) {
+      if (tr.dataset.poItemId || tr.dataset.sourcePrItemId) return false;
+      const val = sel => {
+        const el = tr.querySelector(sel);
+        return el && el.value ? el.value.trim() : '';
+      };
+      return !val('.po-product') && !val('.po-desc')
+          && !val('.po-qty') && !val('.po-price');
+    }
+
     document.getElementById('prPickerAdd').addEventListener('click', function () {
+      {# Snapshot the blank rows BEFORE the pull, and drop them only if the pull
+         actually appended something. The form seeds ONE blank row on load so the
+         grid does not read as "there is nothing to fill in" (see the comment on
+         the EXISTING forEach above) -- deliberate on FIRST LOAD, but stray the
+         moment pulled lines land underneath it. Snapshotting first is what keeps
+         this from touching a row the pull itself created: those are appended
+         after this line and are not in the list. #}
+      const blanksBefore = Array.prototype.slice
+        .call(document.querySelectorAll('#lineItemsBody tr')).filter(poRowIsBlank);
+      let appended = 0;
       body.querySelectorAll('tr').forEach(tr => {
         const box = tr.querySelector('.pr-pick');
         if (!box || !box.checked) return;
         const row = JSON.parse(tr.dataset.row);
         const qty = tr.querySelector('.pr-pick-qty').value.replace(/,/g, '').trim();
+        const already = existingRowFor(row.pr_item_id);
+        if (already) {
+          const cell = already.querySelector('.po-qty');
+          if (cell) {
+            cell.value = qty ? poQtyFmt(qty) : '';
+            recalcRow(already);
+          }
+          return;
+        }
         addRow({
           product_id: row.product_id,
           description: row.description,
@@ -584,7 +636,9 @@
           // Unit price is deliberately absent: a requisition carries no price,
           // and inventing one here would defeat the PR/PO split.
         });
+        appended += 1;
       });
+      if (appended) blanksBefore.forEach(tr => tr.remove());
       modal.style.display = 'none';
       recalcTotals();
     });

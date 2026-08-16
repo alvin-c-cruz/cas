@@ -51,6 +51,60 @@ def _po_line_int(v):
         return None
 
 
+def _po_line_is_blank(d):
+    """True for a blank trailing line -- a row the user never filled in.
+
+    Extracted so the up-front allocation pre-pass and the per-line coercion skip
+    exactly the same rows. Two spellings of "blank" would let a line the pre-pass
+    ignored still be saved (or the reverse), which is the whole class of bug the
+    pre-pass exists to close.
+    """
+    amount = Decimal(str(d.get('amount', '0') or '0'))
+    return (_po_line_int(d.get('product_id')) is None
+            and not (d.get('description') or '').strip()
+            and (amount is None or amount == 0)
+            and _po_line_dec(d.get('quantity')) is None
+            and _po_line_dec(d.get('unit_price')) is None)
+
+
+def _assert_payload_allocations(items, exclude_po_id=None):
+    """Weigh the WHOLE submitted line array against the requisition ceilings,
+    before a single row is touched.
+
+    Called by BOTH line paths at their top, so no write path can reach the
+    database without it -- _assign_po_line_fields is the only place a line is
+    coerced, and these two functions are its only callers.
+
+    Why here and not per line: the ceiling belongs to the REQUISITION line, and
+    one payload may name one requisition line on several of its own rows. The
+    per-line check inside _assign_po_line_fields measures each row against a sum
+    over PO lines already in the DATABASE, so it cannot see its own siblings --
+    the same requisition line pulled twice into one order passed twice and
+    doubled it. See assert_payload_within_open_qty.
+
+    Deliberately does NOT re-judge the two per-line refusals (unknown id, wrong
+    branch): _assign_po_line_fields owns those messages, and re-deriving them
+    here would be a second spelling of a rule. An unknown id is skipped and
+    refused by name a moment later; a wrong-branch line forms its own group (a
+    different requisition line, hence a different id) so counting it can only add
+    a refusal to a line that is being refused anyway.
+    """
+    from app.purchase_requests.models import PurchaseRequestItem
+    from app.purchase_requests.allocation import assert_payload_within_open_qty
+    allocations = []
+    for idx, d in enumerate(items or [], start=1):
+        if not isinstance(d, dict) or _po_line_is_blank(d):
+            continue
+        src_id = _po_line_int(d.get('source_pr_item_id'))
+        if src_id is None:
+            continue
+        pr_item = db.session.get(PurchaseRequestItem, src_id)
+        if pr_item is None:
+            continue
+        allocations.append((pr_item, _po_line_dec(d.get('quantity')), idx))
+    assert_payload_within_open_qty(allocations, exclude_po_id=exclude_po_id)
+
+
 def _assign_po_line_fields(item, d, idx, branch_id=None, exclude_po_id=None):
     """Coerce one submitted line dict onto *item*. A line needs a Product (goods)
     OR a free-text description (services).
@@ -71,9 +125,7 @@ def _assign_po_line_fields(item, d, idx, branch_id=None, exclude_po_id=None):
     amount = Decimal(str(d.get('amount', '0') or '0'))
     qty = _po_line_dec(d.get('quantity'))
     price = _po_line_dec(d.get('unit_price'))
-    is_empty = (product_id is None and description is None
-                and (amount is None or amount == 0) and qty is None and price is None)
-    if is_empty:
+    if _po_line_is_blank(d):
         return False  # skip a blank trailing line
     if product_id is None and description is None:
         raise ValueError(f'Line {idx}: enter a product or a description.')
@@ -107,6 +159,12 @@ def _assign_po_line_fields(item, d, idx, branch_id=None, exclude_po_id=None):
         pr = db.session.get(PurchaseRequest, pr_item.purchase_request_id)
         if pr is None or (branch_id is not None and pr.branch_id != branch_id):
             raise ValueError(f'Line {idx}: that requisition line belongs to another branch.')
+        # The ROW's own contract. The SUBMISSION's ceiling is enforced by
+        # _assert_payload_allocations, which both callers run before any row is
+        # touched -- this one cannot see its siblings and so cannot be the guard
+        # for a multi-line payload. Kept because this helper is the single place
+        # a line is coerced and must not silently assume its caller pre-screened;
+        # both call the same implementation, so there is one rule, not two.
         assert_within_open_qty(pr_item, qty, idx, exclude_po_id=exclude_po_id)
         item.source_pr_item_id = src_id
 
@@ -136,6 +194,8 @@ def _parse_and_attach_po_lines(po, lines_json, branch_id=None, exclude_po_id=Non
     """Parse hidden-JSON line array and attach PurchaseOrderItem objects to *po*.
     A line needs a Product (goods) OR a free-text description (services)."""
     items = json.loads(lines_json) if lines_json else []
+    # Whole-payload allocation ceiling FIRST, before any line is attached.
+    _assert_payload_allocations(items, exclude_po_id=exclude_po_id)
     kept = 0
     for idx, d in enumerate(items, start=1):
         li = PurchaseOrderItem()
@@ -180,6 +240,13 @@ def _apply_amended_po_lines(po, items, branch_id=None, exclude_po_id=None):
     "not found" and creates a new line on this order instead.
     """
     items = items or []
+    # Whole-payload allocation ceiling FIRST, before any row is updated, added
+    # or deleted. On THIS path it is the only check that can see a duplicated
+    # requisition line at all: exclude_po_id takes the order's own committed
+    # lines out of the ceiling (it must -- see the route), so the per-line check
+    # measures each submitted row against an ordered total this order does not
+    # appear in.
+    _assert_payload_allocations(items, exclude_po_id=exclude_po_id)
     existing = {item.id: item for item in po.line_items}
     seen = set()
     kept = 0
