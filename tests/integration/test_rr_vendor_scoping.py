@@ -74,7 +74,7 @@ class TestNoOpenLineExcluded:
         po = _po(db_session, main_branch, vl_vendor, 'PO-VS-004', qty=10)
         poi = po.line_items[0]
         rr = ReceivingReport(branch_id=main_branch.id, rr_number='RR-VS-FULL',
-                             receipt_date=date(2026, 7, 11), purchase_order_id=po.id,
+                             receipt_date=date(2026, 7, 11),
                              vendor_id=vl_vendor.id, vendor_name=vl_vendor.name,
                              status='approved')
         rr.line_items.append(ReceivingReportItem(line_number=1, purchase_order_item_id=poi.id,
@@ -92,7 +92,7 @@ class TestNoOpenLineExcluded:
         po = _po(db_session, main_branch, vl_vendor, 'PO-VS-005', qty=10)
         poi = po.line_items[0]
         rr = ReceivingReport(branch_id=main_branch.id, rr_number='RR-VS-PARTIAL',
-                             receipt_date=date(2026, 7, 11), purchase_order_id=po.id,
+                             receipt_date=date(2026, 7, 11),
                              vendor_id=vl_vendor.id, vendor_name=vl_vendor.name,
                              status='approved')
         rr.line_items.append(ReceivingReportItem(line_number=1, purchase_order_item_id=poi.id,
@@ -205,7 +205,7 @@ class TestABouncedEditIgnoresAPostedVendor:
         from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
         po = _po(db_session, main_branch, vl_vendor, 'PO-VS-EDIT-OWN', qty=10)
         rr = ReceivingReport(branch_id=main_branch.id, rr_number='RR-VS-EDIT',
-                             receipt_date=date(2026, 7, 11), purchase_order_id=po.id,
+                             receipt_date=date(2026, 7, 11),
                              vendor_id=vl_vendor.id, vendor_name=vl_vendor.name,
                              status='draft')
         rr.line_items.append(ReceivingReportItem(line_number=1,

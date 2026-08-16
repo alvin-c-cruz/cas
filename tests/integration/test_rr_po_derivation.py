@@ -1,7 +1,9 @@
 """The PO(s) an RR touches are derived from its lines, not from a header column.
 
-The header FK still exists at this task; these tests must pass WITHOUT reading it,
-which is what lets Task 6 drop it.
+These tests passing WITHOUT reading the header FK is what let Task 6 drop it. It is
+now gone (migration rrmulti_0001), so the receipt's orders can only come from its
+lines -- and the one test here that anchored on a lying header column has been
+deleted rather than weakened, its job now done by the schema itself.
 """
 from datetime import date
 from decimal import Decimal
@@ -25,10 +27,11 @@ def _approved_po(db_session, branch, vendor, number, qty=100):
 
 def _make_draft_rr(db_session, branch, header_po, poi_and_qty, number):
     """poi_and_qty: list of (purchase_order_item, received_qty) -- one RR line per pair.
-    header_po is only used to populate the (soon-to-be-unread) header FK."""
+    header_po supplies only the vendor snapshot: there is no header PO column any
+    more (dropped in rrmulti_0001), so the receipt's orders come from its lines."""
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     rr = ReceivingReport(branch_id=branch.id, rr_number=number, receipt_date=date(2026, 7, 11),
-                         purchase_order_id=header_po.id, vendor_id=header_po.vendor_id,
+                         vendor_id=header_po.vendor_id,
                          vendor_name=header_po.vendor_name, status='draft')
     for i, (poi, qty) in enumerate(poi_and_qty, start=1):
         rr.line_items.append(ReceivingReportItem(line_number=i,
@@ -52,15 +55,6 @@ def rr_two_pos(db_session, main_branch, vl_vendor):
     return _make_draft_rr(db_session, main_branch, po_a,
                           [(po_a.line_items[0], 10), (po_b.line_items[0], 5)],
                           number='RR-DERIV-0002')
-
-
-@pytest.fixture
-def rr_header_lies(db_session, main_branch, vl_vendor):
-    """A ONE-PO receipt whose header FK names PO-H while its only line draws on PO-L."""
-    po_h = _approved_po(db_session, main_branch, vl_vendor, number='PO-H')
-    po_l = _approved_po(db_session, main_branch, vl_vendor, number='PO-L')
-    return _make_draft_rr(db_session, main_branch, po_h,
-                          [(po_l.line_items[0], 10)], number='RR-DERIV-0004')
 
 
 @pytest.fixture
@@ -91,19 +85,12 @@ class TestDerivation:
         assert [po.po_number for po in rr_two_lines_one_po.purchase_orders] == ['PO-A']
         assert rr_two_lines_one_po.po_number_display == 'PO-A'
 
-    def test_header_column_is_ignored_when_it_disagrees_with_the_lines(self, db_session,
-                                                                       rr_header_lies):
-        """Mutation anchor: the lines win when the header FK says something else.
-
-        The other three cases all have header FK == line PO, so a header reader
-        (`purchase_orders -> [self.purchase_order]`) passes every one of them. This is the
-        only assertion in the module that a ONE-PO receipt can fail -- a count check cannot
-        catch a header reader when both answers have length 1. The header column keeps its
-        real, non-null value throughout, so no `no_autoflush` juggling is needed.
-        """
-        assert rr_header_lies.purchase_order.po_number == 'PO-H'      # the column really lies
-        assert [po.po_number for po in rr_header_lies.purchase_orders] == ['PO-L']
-        assert rr_header_lies.po_number_display == 'PO-L'
+    # `test_header_column_is_ignored_when_it_disagrees_with_the_lines` lived here.
+    # It built a receipt whose header FK named PO-H while its only line drew on
+    # PO-L, so a header-reading `purchase_orders` failed it. That column no longer
+    # exists (rrmulti_0001), so the receipt has no header PO to disagree with the
+    # lines and the anchor is unbuildable -- deleted rather than weakened, because
+    # what it proved is now guaranteed by the schema.
 
 
 @pytest.fixture

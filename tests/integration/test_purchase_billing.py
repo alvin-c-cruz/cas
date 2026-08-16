@@ -41,7 +41,7 @@ def _po(db_session, branch, vendor, status='approved', number='PO-2026-07-0500',
 def _rr(db_session, branch, po, status='approved', received=60, number='RR-2026-07-0500'):
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     rr = ReceivingReport(branch_id=branch.id, rr_number=number, receipt_date=date(2026, 7, 11),
-                         purchase_order_id=po.id, vendor_id=po.vendor_id,
+                         vendor_id=po.vendor_id,
                          vendor_name=po.vendor_name, status=status)
     rr.line_items.append(ReceivingReportItem(line_number=1,
                                              purchase_order_item_id=po.line_items[0].id,
@@ -59,7 +59,7 @@ def _rr_spanning(db_session, branch, header_po, line_pos, status='approved', rec
     """
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     rr = ReceivingReport(branch_id=branch.id, rr_number=number, receipt_date=date(2026, 7, 11),
-                         purchase_order_id=header_po.id, vendor_id=header_po.vendor_id,
+                         vendor_id=header_po.vendor_id,
                          vendor_name=header_po.vendor_name, status=status)
     for i, po in enumerate(line_pos, start=1):
         rr.line_items.append(ReceivingReportItem(line_number=i,

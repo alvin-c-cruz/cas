@@ -27,7 +27,7 @@ def po(db_session):
 
 def _rr(po, status, qty):
     rr = ReceivingReport(rr_number='RR-%s' % status, receipt_date=date(2026, 8, 6),
-                         purchase_order_id=po.id, vendor_name=po.vendor_name, status=status)
+                         vendor_id=1, vendor_name=po.vendor_name, status=status)
     rr.line_items.append(ReceivingReportItem(
         line_number=1, purchase_order_item_id=po.line_items[0].id,
         received_quantity=Decimal(qty)))

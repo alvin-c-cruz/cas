@@ -79,7 +79,7 @@ def _po(db_session, branch, vendor, number, qty=10, status='approved', descripti
 def _draft_rr(db_session, branch, vendor, po, number='RR-FR-001', qty=Decimal('2')):
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     rr = ReceivingReport(branch_id=branch.id, rr_number=number,
-                         receipt_date=date(2026, 7, 11), purchase_order_id=po.id,
+                         receipt_date=date(2026, 7, 11),
                          vendor_id=vendor.id, vendor_name=vendor.name, status='draft')
     rr.line_items.append(ReceivingReportItem(
         line_number=1, purchase_order_item_id=po.line_items[0].id, received_quantity=qty))
@@ -290,7 +290,7 @@ class TestTheOpenLinesEndpoint:
         db_session.commit()
         closed, still_open = po.line_items[0], po.line_items[1]
         rr = ReceivingReport(branch_id=main_branch.id, rr_number='RR-FR-FULL',
-                             receipt_date=date(2026, 7, 11), purchase_order_id=po.id,
+                             receipt_date=date(2026, 7, 11),
                              vendor_id=vl_vendor.id, vendor_name=vl_vendor.name,
                              status='approved')
         rr.line_items.append(ReceivingReportItem(
@@ -367,7 +367,7 @@ class TestTheOpenLinesEndpoint:
         _login(client, admin_user, main_branch)
         po = _po(db_session, main_branch, vl_vendor, 'PO-FR-011', qty=10)
         rr = ReceivingReport(branch_id=main_branch.id, rr_number='RR-FR-EXCL',
-                             receipt_date=date(2026, 7, 11), purchase_order_id=po.id,
+                             receipt_date=date(2026, 7, 11),
                              vendor_id=vl_vendor.id, vendor_name=vl_vendor.name,
                              status='approved')
         rr.line_items.append(ReceivingReportItem(

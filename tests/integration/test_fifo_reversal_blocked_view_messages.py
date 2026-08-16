@@ -44,13 +44,12 @@ def _login(client, user, branch):
 def test_rr_cancel_surfaces_fifo_blocked_message(client, db_session, admin_user, branch_main, monkeypatch):
     from app.receiving_reports.models import ReceivingReport
     from app import db
-    # purchase_order_id is a real NOT NULL FK but SQLite FK enforcement is
-    # off app-wide in this app (see memory sqlite-fk-off-delete-guard) -- a
-    # dummy non-referential id satisfies the NOT NULL constraint without a
-    # full PurchaseOrder fixture chain, which this test has no other reason
-    # to build.
+    # vendor_id is a real NOT NULL FK but SQLite FK enforcement is off
+    # app-wide in this app (see memory sqlite-fk-off-delete-guard) -- a dummy
+    # non-referential id satisfies the NOT NULL constraint without a full
+    # Vendor fixture chain, which this test has no other reason to build.
     rr = ReceivingReport(rr_number='RR-2026-07-9001', branch_id=branch_main.id,
-                         receipt_date=date(2026, 7, 22), purchase_order_id=1,
+                         receipt_date=date(2026, 7, 22), vendor_id=1,
                          vendor_name='Test Vendor', status='approved')
     db.session.add(rr); db.session.commit()
 

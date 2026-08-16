@@ -258,10 +258,11 @@ def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None,
     (RECEIVABLE_PO_STATUSES) -- one receipt covers one vendor, in one branch,
     drawing only on live orders. All three are checked HERE, at save, rather than
     by the form's PO picker: A PICKER FILTER IS NOT ENFORCEMENT -- a raw POST
-    bypasses a picker entirely, and once the header `purchase_order_id` column
-    goes away nothing else looks at any PO's branch or status at all. None means
-    there is no value to compare against (ReceivingReport.vendor_id and
-    .branch_id are both nullable), so there is nothing to enforce.
+    bypasses a picker entirely, and with the header `purchase_order_id` column now
+    gone (migration rrmulti_0001) nothing else looks at any PO's branch or status
+    at all. Either argument left at its None default means there is no value to
+    compare against (ReceivingReport.branch_id is nullable, and both are ordinary
+    parameters a caller may omit), so there is nothing to enforce.
 
     The status rule has to live on the LINE, not the header: po_line_open_qty
     ignores PO status entirely, so a cancelled order's lines read as fully open
@@ -552,20 +553,8 @@ def create():
                 remarks=form.remarks.data or None, status='draft',
                 created_by_id=current_user.id)
             _parse_rr_lines(rr, request.form.get('lines', '[]'))
-            # purchase_order_id is still a NOT NULL header column (a later task
-            # drops it) -- there is no single "the" PO anymore once one receipt
-            # can span several of one vendor's orders, so populate it from the PO
-            # the FIRST submitted line draws on. Resolved via a fresh
-            # PurchaseOrderItem lookup, not rr.purchase_orders: rr's own
-            # ReceivingReportItem children are still transient/pending at this
-            # point (rr hasn't been added to the session, and even once added a
-            # freshly-cascaded child stays pending until flush), and a
-            # not-yet-flushed row's relationship attributes silently resolve to
-            # None instead of lazy-loading -- there is no persisted row to load
-            # through yet. db.session.get() on the PurchaseOrderItem itself has
-            # no such restriction: that row is already persistent.
-            first_poi = db.session.get(PurchaseOrderItem, rr.line_items[0].purchase_order_item_id)
-            rr.purchase_order_id = first_poi.order.id
+            # No header PO to derive: the receipt's orders live on its lines
+            # (rr.purchase_orders), and the header column was dropped in rrmulti_0001.
             db.session.add(rr); db.session.commit()
         except ValueError as e:
             db.session.rollback(); flash(str(e), 'error')
@@ -641,12 +630,9 @@ def edit(id):
             rr.remarks = form.remarks.data or None
             rr.line_items.clear()
             _parse_rr_lines(rr, request.form.get('lines', '[]'))
-            # See the same line -- and the same reason NOT to use
-            # rr.purchase_orders -- in create(): still a NOT NULL header column,
-            # re-derived here too because editing the lines can change which POs
-            # this receipt draws on.
-            first_poi = db.session.get(PurchaseOrderItem, rr.line_items[0].purchase_order_item_id)
-            rr.purchase_order_id = first_poi.order.id
+            # Nothing to re-derive on the header: editing the lines changes which
+            # POs this receipt draws on, and rr.purchase_orders reads them from the
+            # lines every time (see create()).
             db.session.commit()
         except ValueError as e:
             db.session.rollback(); flash(str(e), 'error')

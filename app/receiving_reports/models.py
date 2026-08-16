@@ -26,12 +26,12 @@ class ReceivingReport(RowVersioned, db.Model):
     rr_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
     receipt_date = db.Column(db.Date, nullable=False, index=True)
 
-    purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'),
-                                  nullable=False, index=True)
-    purchase_order = db.relationship('PurchaseOrder', foreign_keys=[purchase_order_id])
-
-    # Vendor snapshot (from the PO at create; no picker).
-    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=True, index=True)
+    # The header vendor IS the key: one receipt covers one vendor, and the PO(s) it
+    # draws on are derived per-line through `purchase_order_item` (see .purchase_orders).
+    # There is deliberately NO header purchase_order_id -- one receipt may settle
+    # several of a vendor's orders, so no single header FK can be true (dropped in
+    # migration rrmulti_0001).
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False, index=True)
     vendor_name = db.Column(db.String(200), nullable=False)
 
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)

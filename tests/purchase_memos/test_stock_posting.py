@@ -48,7 +48,7 @@ def _ap_item_from_rr(db_session, main_branch, admin_user, tracked=True, suffix='
                                            amount=receipt_qty * receipt_cost))
     db.session.add(po); db.session.commit()
     rr = ReceivingReport(rr_number=f'RR-{suffix}-0001', receipt_date=date(2026, 2, 5),
-                         purchase_order_id=po.id, branch_id=main_branch.id, status='approved',
+                         branch_id=main_branch.id, status='approved',
                          vendor_id=vendor.id, vendor_name=vendor.name)
     rr_item = ReceivingReportItem(line_number=1, purchase_order_item_id=po.line_items[0].id,
                                   product_id=product.id, received_quantity=receipt_qty)
@@ -234,7 +234,7 @@ def test_negative_on_hand_return_surfaces_warning(db_session, main_branch, admin
                                            amount=Decimal('5.00')))
     db.session.add(po); db.session.commit()
     rr = ReceivingReport(rr_number='RR-CV-0003', receipt_date=date(2026, 2, 5),
-                         purchase_order_id=po.id, branch_id=main_branch.id, status='approved',
+                         branch_id=main_branch.id, status='approved',
                          vendor_id=vendor.id, vendor_name=vendor.name)
     rr_item = ReceivingReportItem(line_number=1, purchase_order_item_id=po.line_items[0].id,
                                   product_id=product.id, received_quantity=Decimal('1'))

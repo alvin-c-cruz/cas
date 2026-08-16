@@ -43,7 +43,7 @@ def _approved_po(db_session, branch, vendor, number='PO-2026-07-0600', qty=100):
 def _approved_rr(db_session, branch, po, number='RR-2026-07-0600', received=60):
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     rr = ReceivingReport(branch_id=branch.id, rr_number=number, receipt_date=date(2026, 7, 11),
-                         purchase_order_id=po.id, vendor_id=po.vendor_id,
+                         vendor_id=po.vendor_id,
                          vendor_name=po.vendor_name, status='approved')
     rr.line_items.append(ReceivingReportItem(line_number=1,
                                              purchase_order_item_id=po.line_items[0].id,

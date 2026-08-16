@@ -1543,7 +1543,6 @@ def approved_rr(client, db_session, admin_user, branch_manila, rr_source_po):
     po_line = rr_source_po.line_items[0]
     rr = ReceivingReport(branch_id=branch_manila.id, rr_number='00778',
                          receipt_date=date(2026, 8, 6),
-                         purchase_order_id=rr_source_po.id,
                          vendor_id=rr_source_po.vendor_id,
                          vendor_name=rr_source_po.vendor_name,
                          remarks='Received in good order', status='draft')
@@ -1867,7 +1866,6 @@ def multi_po_rr(db_session, branch_manila, rr_source_po, rr_source_po_2):
     poi_2 = rr_source_po_2.line_items[0]
     rr = ReceivingReport(branch_id=branch_manila.id, rr_number='00779',
                          receipt_date=date(2026, 8, 6),
-                         purchase_order_id=rr_source_po.id,
                          vendor_id=rr_source_po.vendor_id,
                          vendor_name=rr_source_po.vendor_name,
                          remarks='Two POs, one delivery', status='draft')
@@ -1896,7 +1894,6 @@ def rr_with_an_orphaned_line(db_session, branch_manila, rr_source_po):
     poi = rr_source_po.line_items[0]
     rr = ReceivingReport(branch_id=branch_manila.id, rr_number='00780',
                          receipt_date=date(2026, 8, 6),
-                         purchase_order_id=rr_source_po.id,
                          vendor_id=rr_source_po.vendor_id,
                          vendor_name=rr_source_po.vendor_name,
                          remarks='One good line, one orphaned', status='draft')

@@ -1,25 +1,16 @@
 import pytest
 from datetime import date
 from app import db
-from app.purchase_orders.models import PurchaseOrder
 from app.receiving_reports.models import ReceivingReport
 from app.receiving_reports.utils import compute_rr_summary
 
 pytestmark = [pytest.mark.unit, pytest.mark.receiving_reports]
 
 
-def _po(number):
-    # ReceivingReport.purchase_order_id is NOT NULL -- a stub PO satisfies the column
-    # (SQLite FK enforcement is off app-wide, so it needn't be branch-matched).
-    po = PurchaseOrder(po_number=number, status='approved', vat_treatment='inclusive')
-    db.session.add(po)
-    db.session.commit()
-    return po
-
-
 def _rr(branch_id, status, number):
-    po = _po(f'PO-{number}')
-    rr = ReceivingReport(branch_id=branch_id, purchase_order_id=po.id, rr_number=number,
+    # vendor_id is the NOT NULL header key; SQLite FK enforcement is off app-wide,
+    # so a literal id satisfies it without a Vendor row.
+    rr = ReceivingReport(branch_id=branch_id, vendor_id=1, rr_number=number,
                         receipt_date=date(2026, 7, 11), vendor_name='Test Vendor', status=status)
     db.session.add(rr)
     db.session.commit()

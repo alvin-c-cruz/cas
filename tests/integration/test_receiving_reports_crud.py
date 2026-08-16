@@ -60,8 +60,10 @@ def test_create_rr_persists_and_audits(client, accountant_user, main_branch, vl_
     po = _approved_po(db_session, main_branch, vl_vendor)
     resp = _create_rr(client, po, received=60)
     assert resp.status_code == 200
-    rr = ReceivingReport.query.filter_by(purchase_order_id=po.id).first()
+    rr = ReceivingReport.query.filter_by(vendor_id=po.vendor_id).first()
     assert rr is not None
+    # The purchase order is derived from the lines now, not from a header column.
+    assert [p.id for p in rr.purchase_orders] == [po.id]
     assert rr.status == 'draft' and rr.branch_id == main_branch.id
     assert rr.vendor_name == vl_vendor.name
     assert len(rr.line_items) == 1

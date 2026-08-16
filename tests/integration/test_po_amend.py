@@ -115,7 +115,7 @@ def approved_po_with_receipt(client, approved_po):
     """approved_po plus one APPROVED Receiving Report for 4 of its 10 units."""
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     rr = ReceivingReport(rr_number='RR-00997', receipt_date=date(2026, 8, 6),
-                         purchase_order_id=approved_po.id,
+                         vendor_id=approved_po.vendor_id,
                          vendor_name=approved_po.vendor_name, status='approved',
                          branch_id=approved_po.branch_id)
     rr.line_items.append(ReceivingReportItem(

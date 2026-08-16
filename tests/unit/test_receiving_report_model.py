@@ -26,7 +26,7 @@ def test_generate_rr_number_increments(db_session):
     from app.receiving_reports.models import ReceivingReport, generate_rr_number
     n1 = generate_rr_number()
     assert n1 == '00001'
-    rr = ReceivingReport(rr_number=n1, receipt_date=date(2026, 7, 11), purchase_order_id=1,
+    rr = ReceivingReport(rr_number=n1, receipt_date=date(2026, 7, 11), vendor_id=1,
                          vendor_name='Acme', status='draft')
     db_session.add(rr); db_session.commit()
     assert generate_rr_number() == '00002'
@@ -35,7 +35,7 @@ def test_generate_rr_number_increments(db_session):
 def test_generate_rr_number_continues_from_legacy_literal_number(db_session):
     from app.receiving_reports.models import ReceivingReport, generate_rr_number
     rr = ReceivingReport(rr_number='19240', receipt_date=date(2026, 7, 11),
-                         purchase_order_id=1, vendor_name='Acme', status='draft')
+                         vendor_id=1, vendor_name='Acme', status='draft')
     db_session.add(rr); db_session.commit()
     assert generate_rr_number() == '19241'
 
@@ -43,7 +43,7 @@ def test_generate_rr_number_continues_from_legacy_literal_number(db_session):
 def test_generate_rr_number_ignores_legacy_prefixed_numbers(db_session):
     from app.receiving_reports.models import ReceivingReport, generate_rr_number
     rr = ReceivingReport(rr_number='RR-2026-07-0030', receipt_date=date(2026, 7, 11),
-                         purchase_order_id=1, vendor_name='Acme', status='draft')
+                         vendor_id=1, vendor_name='Acme', status='draft')
     db_session.add(rr); db_session.commit()
     assert generate_rr_number() == '00001'
 
@@ -57,7 +57,7 @@ def test_journal_entry_seam_defaults_none(db_session):
     """RR carries an inert journal_entry_id accrual seam (unused in v1)."""
     from app.receiving_reports.models import ReceivingReport
     rr = ReceivingReport(rr_number='RR-2026-07-0001', receipt_date=date(2026, 7, 11),
-                         purchase_order_id=1, vendor_name='Acme', status='draft')
+                         vendor_id=1, vendor_name='Acme', status='draft')
     assert rr.journal_entry_id is None
     assert rr.accounts_payable_id is None
 
@@ -74,7 +74,7 @@ def test_po_line_open_qty_after_partial_receipt(db_session):
     po = _po_with_line(db_session, qty=100)
     poi = po.line_items[0]
     rr = ReceivingReport(rr_number='RR-2026-07-0001', receipt_date=date(2026, 7, 11),
-                         purchase_order_id=po.id, vendor_name='Acme', status='approved')
+                         vendor_id=1, vendor_name='Acme', status='approved')
     rr.line_items.append(ReceivingReportItem(line_number=1, purchase_order_item_id=poi.id,
                                              received_quantity=Decimal('60')))
     db_session.add(rr); db_session.commit()
@@ -87,7 +87,7 @@ def test_draft_receipt_does_not_consume_open_qty(db_session):
     po = _po_with_line(db_session, qty=100)
     poi = po.line_items[0]
     rr = ReceivingReport(rr_number='RR-2026-07-0002', receipt_date=date(2026, 7, 11),
-                         purchase_order_id=po.id, vendor_name='Acme', status='draft')
+                         vendor_id=1, vendor_name='Acme', status='draft')
     rr.line_items.append(ReceivingReportItem(line_number=1, purchase_order_item_id=poi.id,
                                              received_quantity=Decimal('60')))
     db_session.add(rr); db_session.commit()
@@ -99,7 +99,7 @@ def test_rr_item_delegates_uom_and_price_to_po_line(db_session):
     po = _po_with_line(db_session, qty=100)
     poi = po.line_items[0]
     rr = ReceivingReport(rr_number='RR-2026-07-0003', receipt_date=date(2026, 7, 11),
-                         purchase_order_id=po.id, vendor_name='Acme', status='draft')
+                         vendor_id=1, vendor_name='Acme', status='draft')
     li = ReceivingReportItem(line_number=1, purchase_order_item_id=poi.id,
                              received_quantity=Decimal('5'))
     rr.line_items.append(li)
@@ -127,7 +127,7 @@ class TestPoNumberProperty:
         po = _po_with_line(db_session, qty=100)
         poi = po.line_items[0]
         rr = ReceivingReport(rr_number='RR-2026-07-0004', receipt_date=date(2026, 7, 11),
-                             purchase_order_id=po.id, vendor_name='Acme', status='draft')
+                             vendor_id=1, vendor_name='Acme', status='draft')
         li = ReceivingReportItem(line_number=1, purchase_order_item_id=poi.id,
                                  received_quantity=Decimal('5'))
         rr.line_items.append(li)

@@ -65,7 +65,7 @@ def test_create_rr_rejects_duplicate_rr_number(client, accountant_user, db_sessi
                                     'password': 'accountant123'}, follow_redirects=True)
         po1 = _approved_po(db_session, main_branch.id, vl_vendor.id)
         existing = ReceivingReport(rr_number='RR-DUP-0001', branch_id=main_branch.id,
-                                   receipt_date=date(2026, 7, 16), purchase_order_id=po1.id,
+                                   receipt_date=date(2026, 7, 16),
                                    vendor_id=vl_vendor.id, vendor_name='Test Vendor',
                                    status='draft')
         db_session.add(existing)

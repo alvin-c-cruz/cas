@@ -74,7 +74,7 @@ def _make_draft_rr(db_session, branch, header_po, pairs, number):
     """
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     rr = ReceivingReport(branch_id=branch.id, rr_number=number,
-                         receipt_date=date(2026, 7, 11), purchase_order_id=header_po.id,
+                         receipt_date=date(2026, 7, 11),
                          vendor_id=header_po.vendor_id, vendor_name=header_po.vendor_name,
                          status='draft')
     for i, (poi, qty) in enumerate(pairs, start=1):
