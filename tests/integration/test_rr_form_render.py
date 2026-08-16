@@ -27,6 +27,15 @@ from tests.integration._line_identity_js import form_script, node_or_fail
 pytestmark = [pytest.mark.integration, pytest.mark.receiving_reports]
 
 
+def _vendor_select(html):
+    """The header vendor <select>, isolated the same way
+    test_account_edit_parent_preselect.py isolates its own parent picker --
+    scoped so a `selected` match cannot land on some other select on the page."""
+    m = re.search(r'<select[^>]*id="vendorSelect".*?</select>', html, re.DOTALL)
+    assert m, 'vendor select not found in the rendered form'
+    return m.group(0)
+
+
 # -- fixtures ------------------------------------------------------------------
 
 @pytest.fixture
@@ -139,7 +148,14 @@ class TestThePullControl:
         FORM renders and refuses any that offers to add something -- except the
         picker's own "Add Selected", which only ever adds lines the picker supplied.
         """
-        form_html = create_page[create_page.index('id="rrForm"'):create_page.index('</form>')]
+        # M-4: index('</form>') alone finds the FIRST </form> in the whole document,
+        # not this form's own close -- base.html happens to render no form ahead of
+        # the content block, so it has worked by accident, but it fails safe (a
+        # narrower slice can only drop buttons, never manufacture a fake offender)
+        # for a reason unrelated to what this test is about. Anchor the search past
+        # the form's own start instead.
+        form_start = create_page.index('id="rrForm"')
+        form_html = create_page[form_start:create_page.index('</form>', form_start)]
         labels = [' '.join(m.split()) for m in
                   re.findall(r'<button\b[^>]*>(.*?)</button>', form_html, re.DOTALL)]
         assert labels, 'the form rendered no buttons at all'
@@ -296,6 +312,24 @@ class TestTheOpenLinesEndpoint:
 
         assert resp.status_code == 200
         assert resp.get_json()['lines'] == []
+
+    def test_the_endpoint_404s_when_the_module_is_off(
+            self, client, db_session, admin_user, main_branch, vl_vendor):
+        """M-3: the docstring claims this route is auto-gated by the receiving_reports
+        module's `before_request` (it maps by the `('receiving_reports.',)` endpoint
+        prefix in app/users/module_access.py) -- structurally true, but unasserted
+        anywhere in this file, since every other test here opts in via `rr_enabled`.
+        Deliberately does NOT request that fixture: `receiving_reports` is
+        `default_enabled: False` in MODULE_REGISTRY, so a plain module-less client
+        session already has it off."""
+        _login(client, admin_user, main_branch)
+        _po(db_session, main_branch, vl_vendor, 'PO-FR-OFF')
+
+        resp = client.get(f'/receiving-reports/open-lines?vendor_id={vl_vendor.id}')
+
+        assert resp.status_code == 404, (
+            f'expected the module-off gate to 404 this route, got {resp.status_code}: '
+            f'{resp.data[:200]!r}')
 
     def test_a_viewer_cannot_read_the_picker(
             self, client, db_session, viewer_user, main_branch, vl_vendor, rr_enabled):
@@ -552,8 +586,15 @@ class TestChangingTheVendorClearsTheGrid:
         poi = po.line_items[0]
         row = _run_line_block(tmp_path, html, 'load')['before']
 
-        # _draft_rr receives 2 of 10; the edit picker excludes this receipt from its
-        # own ceiling, so the whole 10 is still open to it.
+        # M-5: _draft_rr receives 2 of 10, and the ceiling here is still the full 10 --
+        # but NOT because the edit picker excludes this receipt from its own ceiling
+        # (exclude_rr_id). This receipt is `draft`, and po_line_open_qty() sums only
+        # COMMITTED_STATUSES (approved/billed), so a draft's own lines are never in
+        # that sum in the first place; nothing is being excluded here. Coverage of
+        # exclude_rr_id itself -- an APPROVED receipt's own committed qty being
+        # reopened for its own edit -- lives in
+        # TestTheOpenLinesEndpoint.test_excluding_this_receipt_reopens_the_quantity_it_holds,
+        # which correctly uses an approved RR.
         assert f'<td>{po.po_number}</td>' in row, (
             'the From PO cell is not rendered -- the column this task added is blank '
             f'on every row. Grid body was: {row}')
@@ -585,6 +626,18 @@ class TestChangingTheVendorClearsTheGrid:
         changed = _run_line_block(tmp_path, create_page, 'add-then-change')
         assert loaded['notice'] == 'none', 'the warning is showing before anything changed'
         assert changed['notice'] != 'none'
+
+    def test_switching_vendor_on_an_empty_grid_shows_no_warning(self, tmp_path, create_page):
+        """M-2: pins the OTHER branch of `notice.style.display = had ? '' : 'none'`.
+        A mutation of the TRUE branch (had -> always 'none') is already caught by the
+        test above; this one catches the opposite mutation (had -> always ''), which
+        would pop "the lines already in this receipt were cleared" over a grid that
+        never held anything -- the first vendor pick on a fresh create, the single
+        most common path through this control."""
+        out = _run_line_block(tmp_path, create_page, 'change')
+        assert out['notice'] == 'none', (
+            'the vendor-change notice showed even though the grid was empty when '
+            f'the vendor changed: {out}')
 
     def test_no_javascript_popup_is_used(self, edit_page, create_page):
         """Project rule: no confirm()/alert()/prompt(), ever. Both pages, because the
@@ -719,7 +772,28 @@ class TestTheEditPagesVendorIsFixed:
         assert resp.status_code == 200, (
             f'the over-receipt was not refused with a re-render: {resp.status_code}')
         body = resp.data.decode()
-        assert 'exceeds' in body or 'open' in body
+        # NOT 'exceeds' (never emitted) or bare 'open' (in the "Open" column header
+        # and the "open lines"/"Open Purchase Order Lines" prose on EVERY render,
+        # refusal or not) -- neither can tell an over-receipt refusal from a
+        # row-version conflict or a plain validation bounce. Pin the actual flash:
+        # assert_payload_within_open_qty's `f'Line {idxs[0]}: only {open_qty} of
+        # {label} remain open.'`, with 10.0000 the PO's full qty (this draft's own 2
+        # received are never committed, so nothing is deducted from the ceiling) --
+        # the quantity column carries 4 decimal places, per po_line_open_qty.
+        assert 'Line 1: only 10.0000 of Cement remain open.' in body, (
+            f'the expected over-receipt refusal literal was not in the response: '
+            f'{body}')
+
+        # I-1: the page states the vendor is fixed (#rrVendorFixedHint) while the
+        # SAME page's #vendorSelect must not be showing the vendor the bounced POST
+        # carried (other_vendor) -- it must mark the RECEIPT's own vendor selected,
+        # or the receiver is told the opposite of what they see.
+        sel = _vendor_select(body)
+        selected = re.findall(r'<option\b[^>]*\bselected\b[^>]*>', sel)
+        assert len(selected) == 1, f'expected exactly one selected vendor option, got {selected}'
+        assert f'value="{vl_vendor.id}"' in selected[0], (
+            f'the vendor select shows the POSTed (other) vendor instead of the '
+            f"receipt's own vendor: {selected[0]}")
 
         row = _run_line_block(tmp_path, body, 'load')['before']
         assert f'data-poi="{poi.id}"' in row, (

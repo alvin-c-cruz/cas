@@ -659,8 +659,13 @@ def edit(id):
             flash(f'Receiving Report "{rr.rr_number}" updated.', 'success')
             return redirect(url_for('receiving_reports.view', id=rr.id))
 
-    if request.method == 'GET':
-        form.vendor_id.data = rr.vendor_id
+    # Unconditional, not GET-only: validate_on_submit() has already run above, so
+    # a bounced POST reaches here too with form.vendor_id.data still holding
+    # whatever vendor the request posted. The vendor is fixed on this page (see
+    # the eligibility comment above and #rrVendorFixedHint in the template) --
+    # re-pinning .data to the receipt's own vendor before render is display-only
+    # and does not affect what was (or wasn't) saved.
+    form.vendor_id.data = rr.vendor_id
     return _render_edit(rr, form, eligible)
 
 
