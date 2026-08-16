@@ -8,7 +8,7 @@ import pytest
 from app.common import preprinted_base as base
 from app.purchase_orders import preprinted_layout as pl
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.purchase_orders]
 
 # Currency markers that must never appear in a printed line-item column header --
 # this app extracts a currency symbol nowhere in a column header (CAS convention).

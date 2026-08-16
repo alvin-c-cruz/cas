@@ -3,6 +3,9 @@
 # (conftest create_all() does not exercise Alembic). This test only pins the
 # backfill mapping so it cannot silently drift from the resolver.
 from app.posting.control_accounts import DEFAULT_CONTROL_ACCOUNT_CODES, CONTROL_ACCOUNTS
+import pytest
+
+pytestmark = [pytest.mark.control_accounts]
 
 
 def test_backfill_mapping_matches_resolver():

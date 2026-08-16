@@ -4,7 +4,7 @@ from app import db
 from app.purchase_requests.models import PurchaseRequest
 from app.purchase_requests.utils import compute_pr_summary
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.purchase_requests]
 
 
 def _pr(branch_id, status, number):

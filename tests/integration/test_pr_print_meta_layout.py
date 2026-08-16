@@ -19,7 +19,7 @@ import pytest
 
 from app.purchase_requests.models import PurchaseRequest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 
 @pytest.fixture(autouse=True)

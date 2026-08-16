@@ -6,6 +6,9 @@ from datetime import date
 # Module-level import so the model is registered in db.metadata before any
 # db_session create_all() runs (app-factory registration lands in Task 2).
 from app.receiving_reports.models import ReceivingReport, ReceivingReportItem  # noqa: F401
+import pytest
+
+pytestmark = [pytest.mark.receiving_reports]
 
 
 def _po_with_line(db_session, qty=100, status='approved'):

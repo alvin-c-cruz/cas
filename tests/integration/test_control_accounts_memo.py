@@ -18,7 +18,7 @@ from app.posting.control_accounts import ControlAccountError
 
 from tests.conftest import assign_control_accounts
 
-pytestmark = [pytest.mark.integration, pytest.mark.credit_memos]
+pytestmark = [pytest.mark.integration, pytest.mark.credit_memos, pytest.mark.control_accounts]
 
 
 def _acct(code, name, atype, nb):

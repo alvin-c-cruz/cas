@@ -5,7 +5,7 @@ from app.accounts.models import Account
 from app.customers.models import Customer
 from app.sales_invoices.models import SalesInvoice
 
-pytestmark = [pytest.mark.sales_invoices, pytest.mark.integration]
+pytestmark = [pytest.mark.sales_invoices, pytest.mark.integration, pytest.mark.control_accounts]
 
 
 def login(client, username='admin', password='admin123'):

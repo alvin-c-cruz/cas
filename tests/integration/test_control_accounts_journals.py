@@ -4,6 +4,9 @@ _cr_gl_account_ids) must resolve control accounts via settings
 (get_control_account(key, required=False)), not hardcoded legacy codes."""
 from app.accounts.models import Account
 from tests.conftest import assign_control_accounts
+import pytest
+
+pytestmark = [pytest.mark.control_accounts]
 
 
 def _acct(db_session, code, name, atype='Liability', nb='Credit'):

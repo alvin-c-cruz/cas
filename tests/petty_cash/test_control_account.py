@@ -2,7 +2,7 @@
 import pytest
 from app.posting.control_accounts import get_control_account, ControlAccountError, CONTROL_ACCOUNTS
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.control_accounts]
 
 
 def test_short_over_key_registered():

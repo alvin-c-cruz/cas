@@ -16,7 +16,7 @@ import pytest
 from app.audit.models import AuditLog
 from app.purchase_requests.models import PurchaseRequest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 REASON = 'Superseded by a revised requisition'   # >= 10 chars, both routes require it
 

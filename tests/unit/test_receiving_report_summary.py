@@ -5,7 +5,7 @@ from app.purchase_orders.models import PurchaseOrder
 from app.receiving_reports.models import ReceivingReport
 from app.receiving_reports.utils import compute_rr_summary
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.receiving_reports]
 
 
 def _po(number):

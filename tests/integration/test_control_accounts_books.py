@@ -5,6 +5,9 @@ via settings (get_control_account(key, required=False)), not hardcoded legacy
 codes -- mirrors tests/integration/test_control_accounts_journals.py."""
 from app.accounts.models import Account
 from tests.conftest import assign_control_accounts
+import pytest
+
+pytestmark = [pytest.mark.control_accounts]
 
 
 def _acct(db_session, code, name, atype='Liability', nb='Credit'):

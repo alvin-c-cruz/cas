@@ -8,7 +8,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from tests.conftest import assign_control_accounts
 
-pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration, pytest.mark.control_accounts]
 
 
 def _account(code, name, atype, nb):

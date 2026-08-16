@@ -2,6 +2,8 @@
 migration runs against an actual accumulated schema, not just today's models."""
 import os, shutil, subprocess, sqlite3, tempfile, pytest
 
+pytestmark = [pytest.mark.receiving_reports]
+
 REAL_DB = os.path.join(os.path.dirname(__file__), '..', '..', 'instance', 'cas.db')
 
 @pytest.mark.skipif(not os.path.exists(REAL_DB), reason='no real cas.db to copy')

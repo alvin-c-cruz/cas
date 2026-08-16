@@ -2,7 +2,7 @@ import json
 from datetime import date
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.receiving_reports]
 
 
 @pytest.fixture(autouse=True)

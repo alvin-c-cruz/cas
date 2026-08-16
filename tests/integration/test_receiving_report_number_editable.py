@@ -5,7 +5,7 @@ from datetime import date
 from app.receiving_reports.models import ReceivingReport, generate_rr_number
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.receiving_reports]
 
 
 @pytest.fixture(autouse=True)

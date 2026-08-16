@@ -8,7 +8,7 @@ from app.stock_adjustments.models import StockMovement, StockBalance
 from app.posting.control_accounts import ControlAccountError
 from app.settings import AppSettings
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.receiving_reports]
 
 
 @pytest.fixture(autouse=True)

@@ -34,7 +34,7 @@ import pytest
 
 CAS_ROOT = Path(__file__).resolve().parents[2]
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.purchase_orders]
 
 # Seeded through the ORM so the live write_revision()/build_snapshot() path -- not
 # a hand-rolled restatement of it -- produces the reference snapshot.

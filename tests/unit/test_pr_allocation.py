@@ -15,7 +15,7 @@ from app.purchase_requests.allocation import (
 from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.purchase_requests]
 
 
 def _pr_line(db_session, main_branch, admin_user, qty, number='ALLOC-1'):

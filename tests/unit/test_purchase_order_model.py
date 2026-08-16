@@ -3,6 +3,9 @@ from decimal import Decimal
 from app.purchase_orders.models import (
     PurchaseOrder, PurchaseOrderItem, generate_po_number, VAT_TREATMENTS,
 )
+import pytest
+
+pytestmark = [pytest.mark.purchase_orders]
 
 
 def test_vat_treatments_constant():

@@ -1,6 +1,6 @@
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 
 def _login(client, user, branch):

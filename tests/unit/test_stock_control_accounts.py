@@ -4,6 +4,8 @@ from app.posting.control_accounts import (
     get_control_account, ControlAccountError,
 )
 
+pytestmark = [pytest.mark.control_accounts]
+
 STOCK_KEYS = ('inventory', 'inventory_adjustment', 'inventory_opening_equity')
 
 def test_stock_control_keys_registered():

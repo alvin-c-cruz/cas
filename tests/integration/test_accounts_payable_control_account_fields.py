@@ -5,7 +5,7 @@ from app.accounts.models import Account
 from app.vendors.models import Vendor
 from app.accounts_payable.models import AccountsPayable
 
-pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration, pytest.mark.control_accounts]
 
 
 def login(client, username='accountant', password='accountant123'):

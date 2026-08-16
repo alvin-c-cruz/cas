@@ -6,6 +6,8 @@ from app.cash_receipts.models import CashReceiptVoucher
 from app.utils import ph_now
 from tests.conftest import assign_control_accounts
 
+pytestmark = [pytest.mark.control_accounts]
+
 
 def _acct(db_session, code, name, atype='Asset', nb='Debit'):
     a = Account(code=code, name=name, account_type=atype,

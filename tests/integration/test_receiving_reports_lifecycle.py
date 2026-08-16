@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.receiving_reports]
 
 
 @pytest.fixture(autouse=True)

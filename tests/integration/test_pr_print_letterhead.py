@@ -20,7 +20,7 @@ from app.purchase_requests.models import PurchaseRequest
 # VACUOUS: it asserted the absence of a URL that never appears either way.
 LOGO_URL = b'/settings/logo'
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 
 def _login(client, user, branch):

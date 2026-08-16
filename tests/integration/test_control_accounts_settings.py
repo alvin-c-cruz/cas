@@ -1,6 +1,9 @@
 from app.accounts.models import Account
 from app.settings import AppSettings
 from app.audit.models import AuditLog
+import pytest
+
+pytestmark = [pytest.mark.control_accounts]
 
 
 def _acct(db_session, code, name, atype='Asset', nb='Debit'):

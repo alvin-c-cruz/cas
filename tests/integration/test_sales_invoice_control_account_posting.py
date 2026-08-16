@@ -7,7 +7,7 @@ from app.customers.models import Customer
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
 from tests.conftest import assign_control_accounts
 
-pytestmark = [pytest.mark.sales_invoices, pytest.mark.integration]
+pytestmark = [pytest.mark.sales_invoices, pytest.mark.integration, pytest.mark.control_accounts]
 
 
 def _account(code, name, atype, nb):

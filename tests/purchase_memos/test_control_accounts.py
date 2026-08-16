@@ -15,7 +15,7 @@ import pytest
 from app.purchase_memos.service import (resolve_memo_account, PURCHASE_RETURNS_KEY,
                                         VENDOR_CREDITS_KEY)
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.control_accounts]
 
 
 def test_resolve_memo_account_raises_when_purchase_returns_unassigned(app, db_session):

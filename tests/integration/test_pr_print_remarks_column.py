@@ -12,7 +12,7 @@ import pytest
 from app.products.models import Product
 from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 REMARK = 'FOR GINACA SPARE PARTS, DAILY USE'
 FREE_TEXT = 'Hand-written item with no product record'

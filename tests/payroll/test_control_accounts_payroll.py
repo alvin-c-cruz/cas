@@ -15,6 +15,8 @@ from app.posting.control_accounts import (
     get_control_account, ControlAccountError, assign_default_control_accounts,
 )
 
+pytestmark = [pytest.mark.control_accounts]
+
 PAYROLL_KEYS = [k for k in CONTROL_ACCOUNTS if k.startswith('payroll_')]
 
 

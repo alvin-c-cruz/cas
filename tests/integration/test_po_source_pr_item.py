@@ -17,7 +17,7 @@ from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 from app.vendors.models import Vendor
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_orders]
 
 _MARKER = 'poItemIdOf'
 _FORM_ID = 'poForm'

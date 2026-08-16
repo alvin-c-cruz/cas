@@ -5,7 +5,7 @@ from app import db
 from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.utils import compute_po_summary
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.purchase_orders]
 
 
 def _po(branch_id, status, number, total=Decimal('1000.00')):

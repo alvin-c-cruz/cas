@@ -7,6 +7,8 @@ from app.posting.control_accounts import (
     visible_control_accounts, DEFAULT_CONTROL_ACCOUNT_CODES,
 )
 
+pytestmark = [pytest.mark.control_accounts]
+
 
 def _acct(db_session, code, name='Ctrl', atype='Asset', nb='Debit'):
     a = Account(code=code, name=name, account_type=atype,

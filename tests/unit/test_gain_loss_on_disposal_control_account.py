@@ -3,6 +3,8 @@ from app.posting.control_accounts import (
     CONTROL_ACCOUNTS, get_control_account, ControlAccountError,
 )
 
+pytestmark = [pytest.mark.control_accounts]
+
 
 def test_gain_loss_on_disposal_key_registered():
     assert 'gain_loss_on_disposal' in CONTROL_ACCOUNTS

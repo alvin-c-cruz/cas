@@ -15,7 +15,7 @@ from app import db
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 from app.settings import AppSettings
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_orders, pytest.mark.purchase_requests, pytest.mark.receiving_reports]
 
 
 def _set_modules(db_session, **states):

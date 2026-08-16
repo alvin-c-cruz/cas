@@ -15,7 +15,7 @@ import pytest
 from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
 from app.purchase_requests.views import PRINT_MIN_ROWS
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 
 def _login(client, user, branch):

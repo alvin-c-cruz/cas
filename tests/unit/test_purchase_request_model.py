@@ -5,6 +5,9 @@ from datetime import date
 
 # Module-level import so the model is registered before any db_session create_all().
 from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem  # noqa: F401
+import pytest
+
+pytestmark = [pytest.mark.purchase_requests]
 
 
 def test_generate_pr_number_increments(db_session):

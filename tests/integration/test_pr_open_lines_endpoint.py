@@ -9,7 +9,7 @@ import pytest
 
 from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 
 def _login(client, user, branch):

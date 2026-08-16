@@ -4,6 +4,9 @@ from decimal import Decimal
 
 from app import db
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+import pytest
+
+pytestmark = [pytest.mark.purchase_orders]
 
 
 def _po(db_session, branch_id=None):

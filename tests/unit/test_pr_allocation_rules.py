@@ -10,7 +10,7 @@ from app.purchase_requests.allocation import (
 from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.purchase_requests]
 
 
 @pytest.fixture

@@ -3,7 +3,7 @@ mirroring PurchaseOrderForm.po_number (app/purchase_orders/forms.py)."""
 import json
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 
 @pytest.fixture(autouse=True)

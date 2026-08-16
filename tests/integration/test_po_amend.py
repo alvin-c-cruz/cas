@@ -21,7 +21,7 @@ from app import db
 from app.amendments.models import DocumentRevision
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_orders]
 
 
 @pytest.fixture(autouse=True)

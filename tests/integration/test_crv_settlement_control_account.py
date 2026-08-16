@@ -14,7 +14,7 @@ from app.sales_memos.models import SalesMemo
 from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
 from tests.conftest import assign_control_accounts
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.control_accounts]
 
 
 def _account(code, name, atype, nb):

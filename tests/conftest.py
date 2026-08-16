@@ -8,6 +8,40 @@ from app.users.models import User
 from app.branches.models import Branch
 from app.accounts.models import Account
 from werkzeug.security import generate_password_hash
+import re
+
+
+# --- -m expression guard -------------------------------------------------
+# `--strict-markers` only rejects an UNREGISTERED @pytest.mark.foo applied to a
+# test. It does NOT validate a `-m` EXPRESSION, so `pytest -m purchase_orders`
+# printed "no tests collected (5704 deselected)" while /guard treated the run as
+# blast-radius evidence. Standalone that exits 5, but inside a union
+# (`-m "a or b or typo"`) the hollow member is invisible: the other markers
+# collect tests, so the run exits 0. This turns an unregistered name in a `-m`
+# expression into a UsageError instead.
+_MARKEXPR_KEYWORDS = {'and', 'or', 'not', 'True', 'False', 'None'}
+_MARKEXPR_IDENT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+
+
+def pytest_collection_modifyitems(session, config, items):
+    """Fail the run if the -m expression names a marker nobody registered."""
+    expr = getattr(config.option, 'markexpr', '') or ''
+    if not expr:
+        return
+    # getini('markers') carries pytest.ini's list PLUS anything plugins added by
+    # collection time (e.g. pytest-playwright's only_browser), so plugin-supplied
+    # markers do not false-positive here.
+    known = {line.split(':', 1)[0].split('(', 1)[0].strip()
+             for line in config.getini('markers')} | _MARKEXPR_KEYWORDS
+    unknown = sorted({m.group(0) for m in _MARKEXPR_IDENT.finditer(expr)} - known)
+    if unknown:
+        raise pytest.UsageError(
+            '-m expression names unregistered marker(s): '
+            + ', '.join(unknown)
+            + '. Register them under [pytest] markers in pytest.ini, or fix the '
+            'spelling. --strict-markers does not validate -m expressions, so an '
+            'unregistered name selects ZERO tests and still exits 0 in a union.'
+        )
 
 
 @pytest.fixture(scope='session')

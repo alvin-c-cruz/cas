@@ -7,6 +7,8 @@ from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
 from app.sales_invoices.views import _post_invoice_je
 from tests.conftest import assign_control_accounts
 
+pytestmark = [pytest.mark.control_accounts]
+
 
 def _acct(db_session, code, name, atype='Asset', nb='Debit'):
     a = Account(code=code, name=name, account_type=atype,

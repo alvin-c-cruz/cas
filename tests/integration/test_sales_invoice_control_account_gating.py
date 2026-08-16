@@ -7,7 +7,7 @@ from app import db
 from app.accounts.models import Account
 from app.settings import AppSettings
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.control_accounts]
 
 
 def _account(code, name='Ctrl', atype='Asset', nb='Debit'):

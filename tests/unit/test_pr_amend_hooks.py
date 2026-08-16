@@ -19,7 +19,7 @@ import pytest
 from app import db
 from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.purchase_requests]
 
 
 def _pr(status='approved', lines=(('widget', None, '3'),), **over):

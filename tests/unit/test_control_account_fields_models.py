@@ -7,6 +7,8 @@ from app.customers.models import Customer
 from app.vendors.models import Vendor
 from datetime import date
 
+pytestmark = [pytest.mark.control_accounts]
+
 
 def _account(db_session, code, name, atype, nb):
     a = Account(code=code, name=name, account_type=atype, normal_balance=nb, is_active=True)

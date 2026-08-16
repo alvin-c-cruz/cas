@@ -29,7 +29,7 @@ from app.purchase_requests.views import _apply_amended_pr_lines
 
 from tests.integration import _line_identity_js as _js
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 _MARKER = 'prItemIdOf'
 _FORM_ID = 'prForm'

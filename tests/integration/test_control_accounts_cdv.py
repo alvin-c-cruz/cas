@@ -2,6 +2,8 @@ import pytest
 from app.accounts.models import Account
 from tests.conftest import assign_control_accounts
 
+pytestmark = [pytest.mark.control_accounts]
+
 
 def _acct(db_session, code, name, atype='Liability', nb='Credit'):
     a = Account(code=code, name=name, account_type=atype,

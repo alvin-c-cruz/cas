@@ -1,6 +1,6 @@
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.purchase_orders]
 
 
 @pytest.fixture(autouse=True)

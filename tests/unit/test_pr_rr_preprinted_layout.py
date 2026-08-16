@@ -11,7 +11,7 @@ import pytest
 from app.purchase_requests import preprinted_layout as pr_pl
 from app.receiving_reports import preprinted_layout as rr_pl
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.purchase_requests, pytest.mark.receiving_reports]
 
 
 class TestPurchaseRequisition:
