@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from flask import (Blueprint, render_template, redirect, url_for, flash,
                    request, session, abort, jsonify)
 from flask_login import login_required, current_user
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import joinedload, selectinload
 
 from app import db
@@ -67,6 +68,13 @@ def _eligible_purchase_orders(branch_id, vendor_id):
     falling back to every vendor's receivable POs would defeat the vendor-first
     design this whole task exists for -- see TestNoVendorChosenYet in
     tests/integration/test_rr_vendor_scoping.py.
+
+    The guard is BEHAVIOURALLY REDUNDANT and kept on purpose: `vendor_id == NULL`
+    and `vendor_id == 0` match no PurchaseOrder row either, so removing it alone
+    changes no answer (removing it does not fail a test -- the filter below is what
+    the vendor tests kill). It stays because it skips a pointless query and states
+    the rule where a reader meets it, rather than leaving "no vendor yet" to be
+    inferred from SQL that happens to return nothing.
     """
     if not vendor_id:
         return []
@@ -105,11 +113,61 @@ def _existing_lines(rr):
     return {li.purchase_order_item_id: float(li.received_quantity) for li in rr.line_items}
 
 
-def _submitted_existing_lines():
-    """Rebuild {purchase_order_item_id: received_qty} from the POSTed hidden JSON (bounced edit)."""
+_UNREADABLE_PAYLOAD = ('The received lines could not be read. Please re-enter the '
+                       'quantities and save again.')
+
+
+def _payload_entries(lines_json):
+    """Decode the hidden `lines` field into a list of dicts, or raise a ValueError
+    written in OUR words.
+
+    The single decoder both `_parse_rr_lines` (the guard) and
+    `_submitted_existing_lines` (the bounce-render helper) read the payload
+    through, so neither can be handed a shape the other refuses.
+
+    `lines` is raw client JSON, and two of its malformed shapes used to escape as
+    Python's own text or as a 500:
+
+    * ``'{not json at all'`` -- json.JSONDecodeError SUBCLASSES ValueError, so it
+      landed in the routes' `except ValueError as e: flash(str(e))` and the
+      receiver was shown "Expecting property name enclosed in double quotes...".
+      Same class as the `int('abc')` leak already refused below.
+    * ``'[1, 2, 3]'`` -- a JSON array of non-dicts. `d.get(...)` raised
+      AttributeError INSIDE the try (swallowed into a generic flash) and then
+      again in `_submitted_existing_lines` OUTSIDE it, for an HTTP 500. A bare
+      `except Exception` did not even contain it: it hid the first occurrence and
+      let the second escape.
+
+    A non-dict entry is refused in the same shape a non-numeric id already gets
+    ("Line N: that purchase order line is not a valid reference."), so one
+    malformed row reads the same however it is malformed.
+    """
     try:
-        items = json.loads(request.form.get('lines', '[]') or '[]')
+        items = json.loads(lines_json) if lines_json else []
     except (ValueError, TypeError):
+        raise ValueError(_UNREADABLE_PAYLOAD) from None
+    if not isinstance(items, list):
+        raise ValueError(_UNREADABLE_PAYLOAD)
+    for position, d in enumerate(items, start=1):
+        if not isinstance(d, dict):
+            raise ValueError(
+                f'Line {position}: that purchase order line is not a valid reference.')
+    return items
+
+
+def _submitted_existing_lines():
+    """Rebuild {purchase_order_item_id: received_qty} from the POSTed hidden JSON (bounced edit).
+
+    A DISPLAY helper: it runs while re-rendering a form that has ALREADY flashed
+    its real refusal, so an unreadable payload degrades to "nothing to pre-fill"
+    rather than raising a second time and taking the bounce page down with it.
+    The rejection itself still happens -- `_payload_entries` raises the same
+    ValueError here as it does for the guard; this is the one caller that has
+    somewhere better to go than a traceback.
+    """
+    try:
+        items = _payload_entries(request.form.get('lines', '[]'))
+    except ValueError:
         return {}
     out = {}
     for d in items:
@@ -257,7 +315,7 @@ def _parse_rr_lines(rr, lines_json):
     against the payload's per-PO-line total rather than one line at a time. See
     assert_payload_within_open_qty.
     """
-    items = json.loads(lines_json) if lines_json else []
+    items = _payload_entries(lines_json)
     kept = []
     for position, d in enumerate(items, start=1):
         try:
@@ -451,15 +509,25 @@ def create():
             first_poi = db.session.get(PurchaseOrderItem, rr.line_items[0].purchase_order_item_id)
             rr.purchase_order_id = first_poi.order.id
             db.session.add(rr); db.session.commit()
+        except ValueError as e:
+            db.session.rollback(); flash(str(e), 'error')
+        # Narrow, and only over the WRITE. A bare `except Exception` here hid this
+        # task's own IndexError behind "An error occurred creating the Receiving
+        # Report."; worse, the audit-log call and the redirect used to sit inside
+        # it too, so anything raised AFTER db.session.commit() told the receiver
+        # the creation had failed for a receipt that exists. Success work lives in
+        # the else: a rollback cannot un-commit, so it must never be reached with
+        # the row already written. (IntegrityError is a SQLAlchemyError subclass;
+        # named anyway because a duplicate rr_number racing the check above is the
+        # one failure a reader should expect to land here.)
+        except (SQLAlchemyError, IntegrityError):
+            db.session.rollback(); flash('An error occurred creating the Receiving Report.', 'error')
+        else:
             log_create(module='receiving_reports', record_id=rr.id,
                        record_identifier=f'{rr.rr_number} - {rr.vendor_name}',
                        new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']))
             flash(f'Receiving Report "{rr.rr_number}" created.', 'success')
             return redirect(url_for('receiving_reports.view', id=rr.id))
-        except ValueError as e:
-            db.session.rollback(); flash(str(e), 'error')
-        except Exception:
-            db.session.rollback(); flash('An error occurred creating the Receiving Report.', 'error')
 
     if request.method == 'GET':
         form.rr_number.data = generate_rr_number(branch_id)
@@ -522,15 +590,16 @@ def edit(id):
             first_poi = db.session.get(PurchaseOrderItem, rr.line_items[0].purchase_order_item_id)
             rr.purchase_order_id = first_poi.order.id
             db.session.commit()
+        except ValueError as e:
+            db.session.rollback(); flash(str(e), 'error')
+        except (SQLAlchemyError, IntegrityError):   # see create() for why it is narrow
+            db.session.rollback(); flash('An error occurred updating the Receiving Report.', 'error')
+        else:
             log_update(module='receiving_reports', record_id=rr.id,
                        record_identifier=f'{rr.rr_number} - {rr.vendor_name}', old_values=old,
                        new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']))
             flash(f'Receiving Report "{rr.rr_number}" updated.', 'success')
             return redirect(url_for('receiving_reports.view', id=rr.id))
-        except ValueError as e:
-            db.session.rollback(); flash(str(e), 'error')
-        except Exception:
-            db.session.rollback(); flash('An error occurred updating the Receiving Report.', 'error')
 
     if request.method == 'GET':
         form.vendor_id.data = rr.vendor_id

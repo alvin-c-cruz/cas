@@ -523,7 +523,19 @@ class TestEveryReceiptCarriesAtLeastOneLine:
 
 
 class TestAMalformedPayloadIsRefusedCleanly:
-    """The lines JSON is raw client input; a refusal must not leak Python's own text."""
+    """The lines JSON is raw client input; a refusal must not leak Python's own text.
+
+    The routes' `except ValueError as e: flash(str(e))` is a pipe from any ValueError
+    the payload path raises straight onto the receiver's screen -- and
+    json.JSONDecodeError, int()'s ValueError and Decimal's are all ValueErrors. Every
+    shape below therefore has to be refused in OUR words before it gets there.
+    """
+
+    def _post_raw_lines(self, client, po, lines_json, rr_number='RR-CEIL-BAD'):
+        return client.post('/receiving-reports/create', data={
+            'vendor_id': str(po.vendor_id), 'receipt_date': '2026-07-11', 'remarks': '',
+            'rr_number': rr_number, 'lines': lines_json,
+        }, follow_redirects=True)
 
     def test_a_non_numeric_po_line_id_gets_a_clean_refusal(
             self, client, db_session, admin_user, main_branch, po_open_10):
@@ -540,6 +552,114 @@ class TestAMalformedPayloadIsRefusedCleanly:
         assert b'invalid literal' not in resp.data       # int()'s own words, flashed verbatim
         assert b'not a valid reference' in resp.data
         assert ReceivingReport.query.count() == 0
+
+    def test_unparseable_json_never_shows_the_python_parser_its_own_words(
+            self, client, db_session, admin_user, main_branch, po_open_10):
+        """json.JSONDecodeError SUBCLASSES ValueError, so it went out through the
+        clean-refusal handler and the receiver read 'Expecting property name
+        enclosed in double quotes: line 1 column 2 (char 1)'."""
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+
+        resp = self._post_raw_lines(client, po_open_10, '{not json at all')
+
+        assert resp.status_code == 200
+        assert b'Expecting' not in resp.data             # the json module's own words
+        assert b'char 1' not in resp.data
+        assert b'could not be read' in resp.data
+        assert ReceivingReport.query.count() == 0
+
+    def test_a_json_array_of_non_dicts_is_refused_instead_of_500ing(
+            self, client, db_session, admin_user, main_branch, po_open_10):
+        """`[1, 2, 3]`: `d.get(...)` raised AttributeError inside the route's try
+        (swallowed into a generic flash) and AGAIN in `_submitted_existing_lines`
+        while rendering the bounce -- OUTSIDE it, for an HTTP 500. The bare
+        `except Exception` hid the first occurrence and let the second escape."""
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+
+        resp = self._post_raw_lines(client, po_open_10, '[1, 2, 3]')
+
+        assert resp.status_code == 200                   # not the 500 this used to be
+        assert b'Line 1' in resp.data and b'not a valid reference' in resp.data
+        assert b'object has no attribute' not in resp.data
+        assert ReceivingReport.query.count() == 0
+
+    def test_the_edit_path_refuses_the_same_shapes(
+            self, client, db_session, admin_user, main_branch, po_open_10):
+        """The edit route runs the same payload path through the same bounce
+        renderer, so it owns the same two holes."""
+        _login(client, admin_user, main_branch)
+        poi = po_open_10.line_items[0]
+        rr = _make_draft_rr(db_session, main_branch, po_open_10, [(poi, 3)], 'RR-CEIL-BADEDIT')
+
+        for payload in ('{not json at all', '[1, 2, 3]'):
+            resp = client.post(f'/receiving-reports/{rr.id}/edit', data={
+                'vendor_id': str(rr.vendor_id), 'receipt_date': '2026-07-11', 'remarks': '',
+                'rr_number': rr.rr_number, 'row_version': str(rr.row_version),
+                'lines': payload,
+            }, follow_redirects=True)
+
+            assert resp.status_code == 200, payload
+            assert b'Expecting' not in resp.data, payload
+            assert b'object has no attribute' not in resp.data, payload
+            db_session.expire_all()
+            assert [Decimal(str(li.received_quantity)) for li in rr.line_items] == [Decimal('3')]
+
+
+class TestTheErrorHandlerIsNarrowAndCoversOnlyTheWrite:
+    """Two separate defects lived in `except Exception:` wrapped around the whole
+    body of create()/edit().
+
+    1. It swallowed ANY internal failure into "An error occurred creating the
+       Receiving Report." -- which is how this branch's own IndexError
+       (`rr.purchase_orders[0]` on transient children) presented: as a routine
+       refusal, from code that was simply broken.
+    2. It also wrapped `log_create` and the `return redirect(...)`. Anything raised
+       AFTER `db.session.commit()` therefore told the receiver the creation had
+       failed for a receipt that exists, and the handler's own
+       `db.session.rollback()` cannot un-commit it.
+
+    They need separate pins: narrowing the handler alone does not move the audit
+    call out of it, and moving the audit call out alone does not narrow the handler.
+    """
+
+    def test_an_unexpected_internal_failure_is_not_dressed_up_as_a_refusal(
+            self, client, db_session, admin_user, main_branch, po_open_10, monkeypatch):
+        """A bug in the save path must surface as a bug, not as a refusal the
+        receiver will try to correct by retyping quantities."""
+        from app.receiving_reports.models import ReceivingReport
+        from app.receiving_reports import views as rr_views
+        _login(client, admin_user, main_branch)
+
+        def _boom(*a, **kw):
+            raise RuntimeError('a defect in the save path')
+        monkeypatch.setattr(rr_views, '_parse_rr_lines', _boom)
+
+        with pytest.raises(RuntimeError):
+            _post_rr(client, po_open_10, [(po_open_10.line_items[0], 4)])
+
+        assert ReceivingReport.query.count() == 0
+
+    def test_an_audit_log_db_failure_never_reports_a_creation_error(
+            self, client, db_session, admin_user, main_branch, po_open_10, monkeypatch):
+        """log_create writes to the database, so SQLAlchemyError is exactly what it
+        can raise -- and that is exactly what the (correctly narrow) handler catches.
+        The protection here is that it is no longer INSIDE the handler at all."""
+        from sqlalchemy.exc import SQLAlchemyError
+        from app.receiving_reports.models import ReceivingReport
+        from app.receiving_reports import views as rr_views
+        _login(client, admin_user, main_branch)
+
+        def _boom(*a, **kw):
+            raise SQLAlchemyError('audit log unavailable')
+        monkeypatch.setattr(rr_views, 'log_create', _boom)
+
+        with pytest.raises(SQLAlchemyError):
+            _post_rr(client, po_open_10, [(po_open_10.line_items[0], 4)])
+
+        assert ReceivingReport.query.count() == 1        # it really was created
+        assert ReceivingReport.query.one().status == 'draft'
 
 
 class TestPayloadGuardUnit:

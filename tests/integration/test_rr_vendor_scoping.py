@@ -6,7 +6,12 @@ defeat the vendor-first design this task exists for).
 
 Called directly, not through the route: this pins the data-layer contract Task 4's
 template/picker will consume, independent of how the picker itself is built.
+
+TestABouncedEditIgnoresAPostedVendor at the foot of this file is the exception --
+it goes through the edit ROUTE, because WHICH vendor edit() scopes by is a property
+of the route, not of the helper.
 """
+import json
 from datetime import date
 from decimal import Decimal
 
@@ -138,3 +143,109 @@ class TestNoVendorChosenYet:
         _po(db_session, main_branch, vl_vendor, 'PO-VS-010')
 
         assert _eligible_purchase_orders(main_branch.id, 0) == []
+
+
+# -- the edit route's own scoping ---------------------------------------------
+
+@pytest.fixture
+def rr_enabled(db_session):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    for k in ('products', 'purchase_orders', 'receiving_reports'):
+        AppSettings.set_setting(f'module_enabled:{k}', '1')
+    db_session.commit(); clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
+def _login(client, user, branch):
+    with client.session_transaction() as sess:
+        sess['_user_id'] = str(user.id); sess['_fresh'] = True
+        sess['selected_branch_id'] = branch.id
+
+
+def _po_lines_keys(body):
+    """The PO ids the re-rendered form's grid was handed, read out of
+    `const PO_LINES = {...};`.
+
+    raw_decode rather than a regex or a split on ';': the payload carries product
+    names and descriptions, so any delimiter guess is a delimiter a product name
+    can contain.
+    """
+    marker = 'const PO_LINES = '
+    start = body.index(marker) + len(marker)
+    payload, _ = json.JSONDecoder().raw_decode(body, start)
+    return {int(k) for k in payload}
+
+
+class TestABouncedEditIgnoresAPostedVendor:
+    """edit() scopes the picker by the RECEIPT's own vendor, never by the POSTed one.
+
+    The vendor is a snapshot fixed at create, so a POSTed vendor_id has no standing
+    on this route -- and the save already refuses a line whose PO belongs to anyone
+    else, so data integrity never depended on this. What DOES depend on it is the
+    bounce RE-RENDER: honour the POSTed vendor and a raw POST carrying a foreign
+    vendor_id plus an over-ceiling quantity gets a grid full of ANOTHER vendor's PO
+    lines, inviting the receiver to build a payload the save will only refuse.
+
+    Unpinned until now: mutating line ~497 to honour `request.form['vendor_id']`
+    left the whole receiving_reports marker green.
+    """
+
+    def _bounce(self, client, rr, poi, qty, vendor_id):
+        return client.post(f'/receiving-reports/{rr.id}/edit', data={
+            'vendor_id': str(vendor_id), 'receipt_date': '2026-07-11', 'remarks': '',
+            'rr_number': rr.rr_number, 'row_version': str(rr.row_version),
+            'lines': json.dumps([{'purchase_order_item_id': poi.id,
+                                  'received_quantity': str(qty)}]),
+        }, follow_redirects=True)
+
+    @pytest.fixture
+    def draft_rr(self, db_session, main_branch, vl_vendor):
+        from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
+        po = _po(db_session, main_branch, vl_vendor, 'PO-VS-EDIT-OWN', qty=10)
+        rr = ReceivingReport(branch_id=main_branch.id, rr_number='RR-VS-EDIT',
+                             receipt_date=date(2026, 7, 11), purchase_order_id=po.id,
+                             vendor_id=vl_vendor.id, vendor_name=vl_vendor.name,
+                             status='draft')
+        rr.line_items.append(ReceivingReportItem(line_number=1,
+                                                 purchase_order_item_id=po.line_items[0].id,
+                                                 received_quantity=Decimal('1')))
+        db_session.add(rr); db_session.commit()
+        return rr, po
+
+    def test_a_foreign_posted_vendor_does_not_reach_the_re_rendered_grid(
+            self, client, db_session, admin_user, main_branch, vl_vendor, other_vendor,
+            rr_enabled, draft_rr):
+        _login(client, admin_user, main_branch)
+        rr, own_po = draft_rr
+        # A second PO of the RECEIPT's vendor that the receipt does NOT draw on:
+        # it can only be offered by the vendor scoping, never by the
+        # `for po in rr.purchase_orders` fold-in below it.
+        also_mine = _po(db_session, main_branch, vl_vendor, 'PO-VS-EDIT-MINE2', qty=10)
+        theirs = _po(db_session, main_branch, other_vendor, 'PO-VS-EDIT-THEIRS', qty=10)
+
+        # 11 against 10 open -> refused -> the bounce re-render this test is about.
+        resp = self._bounce(client, rr, own_po.line_items[0], 11, vendor_id=other_vendor.id)
+
+        assert resp.status_code == 200
+        assert b'remain open' in resp.data                  # it really did bounce
+        keys = _po_lines_keys(resp.data.decode())
+        assert theirs.id not in keys                        # the forged vendor's PO
+        assert {own_po.id, also_mine.id} <= keys            # the receipt's own vendor's
+
+    def test_posting_the_receipts_own_vendor_renders_the_same_grid(
+            self, client, db_session, admin_user, main_branch, vl_vendor, other_vendor,
+            rr_enabled, draft_rr):
+        """CONTROL. The grid above is not narrow because the bounce renders nothing
+        useful -- posting the honest vendor produces exactly the same PO set."""
+        _login(client, admin_user, main_branch)
+        rr, own_po = draft_rr
+        also_mine = _po(db_session, main_branch, vl_vendor, 'PO-VS-EDIT-MINE3', qty=10)
+        theirs = _po(db_session, main_branch, other_vendor, 'PO-VS-EDIT-THEIRS2', qty=10)
+
+        resp = self._bounce(client, rr, own_po.line_items[0], 11, vendor_id=vl_vendor.id)
+
+        keys = _po_lines_keys(resp.data.decode())
+        assert theirs.id not in keys
+        assert {own_po.id, also_mine.id} <= keys
