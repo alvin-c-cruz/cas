@@ -137,6 +137,12 @@
     "reason": null,
     "waived": false
   },
+  "c457d1b3da3463e53083c90f5aab14abf32ec07f": {
+    "branch": "feat/rr-vendor-first",
+    "date": "2026-08-16",
+    "reason": null,
+    "waived": false
+  },
   "c4a4c03aa7b054c624dbdc321b900a000535a1bc": {
     "branch": "feat/so-post-confirm-amendment",
     "date": "2026-08-05",
