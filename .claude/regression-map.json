@@ -510,6 +510,10 @@
       "purchase_orders",
       "purchase_requests",
       "receiving_reports"
+    ],
+    "app/purchase_requests/allocation.py": [
+      "purchase_orders",
+      "purchase_requests"
     ]
   },
   "modules": {
