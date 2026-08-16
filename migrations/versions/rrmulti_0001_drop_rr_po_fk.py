@@ -80,6 +80,24 @@ def upgrade():
 
 
 def downgrade():
+    """Restore the header column. THE ROUND TRIP IS NOT SCHEMA-EXACT, in three ways
+    and one data way -- know them before rolling back:
+
+    1. `purchase_order_id` comes back NULLABLE, not NOT NULL. After the upgrade a
+       LINELESS receipt is legal and has no PO to name, so a NOT NULL restore would
+       abort on data its own upgrade permits.
+    2. It carries NO FOREIGN KEY to purchase_orders. A batch `add_column` cannot
+       emit an unnamed FK ("Constraint must have a name"), and SQLite FK enforcement
+       is off app-wide, so nothing is enforced either way -- but the restored schema
+       is not byte-equal to the pre-upgrade one.
+    3. It lands at the END of the column list, not at its original position 4.
+       Nothing depends on column order here; noted so a schema diff does not read
+       as a defect.
+    4. DATA LOSS, unavoidable: a receipt drawing on SEVERAL purchase orders collapses
+       to its FIRST line's PO alone, silently. That the header cannot represent a
+       multi-PO receipt is the whole reason this column is being dropped, so a
+       rollback cannot preserve what the old shape could not hold.
+    """
     conn = op.get_bind()
     with op.batch_alter_table('receiving_reports') as b:
         # Plain Integer, no inline ForeignKey -- see the module docstring.

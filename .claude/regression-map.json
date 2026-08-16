@@ -343,7 +343,10 @@
       "purchase_orders"
     ],
     "app/receiving_reports/models.py": [
-      "receiving_reports"
+      "receiving_reports",
+      "purchase_orders",
+      "accounts_payable",
+      "purchase_memos"
     ],
     "app/receiving_reports/views.py": [
       "receiving_reports"
