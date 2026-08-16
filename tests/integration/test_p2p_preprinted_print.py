@@ -9,6 +9,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from flask import g
 
 from app import db
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
@@ -41,6 +42,17 @@ def p2p_modules_enabled(db_session):
 
 
 def _login(client, user, branch):
+    # Flask-Login memoises the resolved user on `g` (`g._login_user`) and only
+    # calls its user_loader when that attribute is ABSENT. `g` normally dies with
+    # the request -- but conftest's `app`/`db_session` fixtures keep an app context
+    # pushed for the whole test, and Flask reuses an already-pushed app context for
+    # the same app instead of creating a per-request one. So the cache outlives
+    # every request in a test: once ANY request has run (a fixture that approves a
+    # document through its own route, say), writing a new `_user_id` into the
+    # session changes nothing and the next request still runs as the FIRST user.
+    # Dropping the memo here is what makes this helper actually switch users; it is
+    # a no-op before the first request.
+    g.pop('_login_user', None)
     with client.session_transaction() as sess:
         sess['_user_id'] = str(user.id)
         sess['_fresh'] = True
@@ -1282,3 +1294,497 @@ class TestPrPrintFormSettingRegistration:
         assert b'name="pr_print_form"' not in body
         # Positive control: the page rendered and its ungated sibling is still there.
         assert b'name="sv_print_form"' in body
+
+
+# -- Receiving Report fixtures ------------------------------------------------
+# There is no shared `approved_rr` fixture anywhere in the suite -- the RR suites
+# use module-local helpers (`_make_draft_rr` at
+# tests/integration/test_receiving_reports_lifecycle.py:39 and `_draft_rr` at
+# test_receiving_report_stock_posting.py:48). This is that helper, on
+# `branch_manila` to match the PO fixtures above: an RR references a PO, so both
+# must live in the same branch or _rr_or_404 / _get_po_or_404 abort 404.
+
+@pytest.fixture
+def rr_source_po(db_with_data, branch_manila, vendor_acme, product_bolt, uom_box):
+    """The PO an RR receives against. Its line carries a product, a UoM and an
+    ordered quantity, because those three are exactly what the RR overlay has to
+    DERIVE -- an RR line stores none of them."""
+    po = PurchaseOrder(po_number='00990', order_date=date(2026, 8, 5), status='approved',
+                       vendor_id=vendor_acme.id, vendor_name=vendor_acme.name, notes='',
+                       payment_terms='Net 30', vat_treatment='inclusive',
+                       branch_id=branch_manila.id)
+    po.line_items.append(PurchaseOrderItem(
+        line_number=1, description='hex bolt 12mm', quantity=Decimal('40'),
+        unit_price=Decimal('5.00'), amount=Decimal('200.00'),
+        line_total=Decimal('200.00'), vat_rate=Decimal('0'), vat_amount=Decimal('0'),
+        product_id=product_bolt.id, unit_of_measure_id=uom_box.id))
+    po.calculate_totals()
+    db.session.add(po)
+    db.session.commit()
+    return po
+
+
+@pytest.fixture
+def approved_rr(client, db_session, admin_user, branch_manila, rr_source_po):
+    """Approved through its OWN route, not by assigning `status` -- approving an RR
+    runs the open-quantity guard and post_rr_receipt(), so a hand-set status would
+    print a document the application would never have produced."""
+    from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
+    po_line = rr_source_po.line_items[0]
+    rr = ReceivingReport(branch_id=branch_manila.id, rr_number='00778',
+                         receipt_date=date(2026, 8, 6),
+                         purchase_order_id=rr_source_po.id,
+                         vendor_id=rr_source_po.vendor_id,
+                         vendor_name=rr_source_po.vendor_name,
+                         remarks='Received in good order', status='draft')
+    rr.line_items.append(ReceivingReportItem(
+        line_number=1, purchase_order_item_id=po_line.id,
+        product_id=po_line.product_id, received_quantity=Decimal('15')))
+    db.session.add(rr)
+    db.session.commit()
+    _login(client, admin_user, branch_manila)
+    assert client.post(f'/receiving-reports/{rr.id}/approve',
+                       follow_redirects=True).status_code == 200
+    db_session.refresh(rr)
+    assert rr.status == 'approved', 'the fixture RR did not approve'
+    return rr
+
+
+class TestReceivingReportPrintForm:
+    """`rr_print_form` routes the receiving report's print surface. Like the
+    requisition, and unlike the purchase order, it has NO *_print_access sibling: an
+    RR is receipt evidence held internally, so `hidden` is its off switch."""
+
+    def test_current_renders_the_standard_form(self, client, db_session, admin_user,
+                                               branch_manila, approved_rr):
+        AppSettings.set_setting('rr_print_form', 'current')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/receiving-reports/{approved_rr.id}/print')
+        assert resp.status_code == 200
+        assert b'pp-canvas' not in resp.data, 'rendered the pre-printed overlay instead'
+        # Positive control: the standard form really rendered.
+        assert approved_rr.rr_number.encode() in resp.data
+
+    def test_the_default_is_the_standard_form(self, client, db_session, admin_user,
+                                              branch_manila, approved_rr):
+        """The unset key is the only configuration that exists in production today --
+        nothing seeds rr_print_form, and every other test here sets it first."""
+        assert AppSettings.get_setting('rr_print_form') is None, \
+            'something wrote the key -- this test no longer exercises the default'
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/receiving-reports/{approved_rr.id}/print')
+        assert resp.status_code == 200
+        assert b'pp-canvas' not in resp.data
+
+    def test_preprinted_renders_the_overlay_with_every_declared_field(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        from app.receiving_reports.preprinted_layout import FIELD_KEYS
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/receiving-reports/{approved_rr.id}/print')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'pp-canvas' in body
+        for key in FIELD_KEYS:
+            assert f'data-el="{key}"' in body, f'{key} is not rendered on the overlay'
+
+    def test_the_overlay_emits_each_field_s_declared_width(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        """`w` is MANDATORY on every field of a preprinted_base document and the RR
+        declaration sets 500/200. Without it the width reaches neither the page nor
+        the designer's save payload (boxWidth() reads el.style.width)."""
+        from app.receiving_reports.preprinted_layout import (
+            DEFAULT_RR_PREPRINTED_LAYOUT, FIELD_KEYS)
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        for key in FIELD_KEYS:
+            tag = _element(body, key)
+            assert tag, f'{key} is not rendered on the overlay'
+            expected = DEFAULT_RR_PREPRINTED_LAYOUT['fields'][key]['w']
+            assert f'width:{expected}px' in tag, \
+                f'{key} rendered without its declared width: {tag}'
+
+    def test_the_overlay_loads_the_shared_designer_assets(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        """The shared core, not a per-document copy -- and cache-busted, since a static
+        asset linked with no ?v= caches indefinitely."""
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        assert 'css/preprinted_designer.css?v=1' in body
+        assert 'js/preprinted_designer.js?v=1' in body
+        assert 'rr_preprinted_designer' not in body, 'made a per-document copy'
+        assert "initPreprintedDesigner({ saveUrl: '/receiving-reports/print-layout' })" in body
+
+    def test_the_overlay_renders_the_designer_s_dom_contract(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        """preprinted_designer.js names these ids as its contract with the template
+        ('Do not rename any of them') and returns false without #ppCanvas /
+        #editLayoutBtn -- i.e. an Edit button that silently does nothing."""
+        from app.common.preprinted_base import TEXT_KEYS
+        from app.receiving_reports.preprinted_layout import COLUMN_KEYS
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        for element_id in ('ppCanvas', 'editLayoutBtn', 'ppPaper', 'ppFontFamily',
+                           'ppDateFormat', 'ppFieldControls', 'ppColControls',
+                           'ppPageStyle'):
+            assert f'id="{element_id}"' in body, f'#{element_id} is missing'
+        for key in COLUMN_KEYS:
+            assert f'data-col="{key}"' in body, f'column {key} is missing'
+        for key in TEXT_KEYS:
+            assert f'data-text="{key}"' in body, f'signatory text {key} is missing'
+        # Emitted as markup, not as an autoescaped string (which would render
+        # `data-signatory=&#34;1&#34;`).
+        assert body.count('data-signatory="1"') == len(TEXT_KEYS)
+        assert 'data-signatory=&#34;' not in body
+
+    def test_every_field_carries_its_designer_label(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        """preprinted_designer.js:248 builds each element's checkbox caption from
+        `el.dataset.label || key` -- drop data-label and edit mode degrades to raw
+        storage keys in the control panel the user is meant to read."""
+        from app.receiving_reports.preprinted_layout import FIELD_KEYS, FIELD_LABELS
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        for key in FIELD_KEYS:
+            tag = _element(body, key)
+            assert tag, f'{key} is not rendered on the overlay'
+            assert f'data-label="{FIELD_LABELS[key]}"' in tag, \
+                f'{key} rendered without its declared designer label: {tag}'
+
+    def test_a_non_full_access_user_is_offered_no_edit_layout_button(
+            self, client, db_session, staff_user, branch_manila, approved_rr):
+        """`can_edit_layout` is has_full_access -- the same rule save_print_layout
+        enforces with a 403."""
+        _grant_module_access(staff_user, branch_manila, db_session,
+                             'receiving_reports', 'purchase_orders', 'products')
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, staff_user, branch_manila)
+        resp = client.get(f'/receiving-reports/{approved_rr.id}/print')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # Positive control: the overlay itself rendered -- staff may PRINT.
+        assert 'pp-canvas' in body
+        assert 'id="editLayoutBtn"' not in body
+        assert 'data-can-edit="false"' in body
+
+    def test_a_full_access_user_is_offered_the_edit_layout_button(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        """The control for the assertion above."""
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        assert 'id="editLayoutBtn"' in body
+        assert 'data-can-edit="true"' in body
+
+    def test_hidden_refuses_and_redirects(self, client, db_session, admin_user,
+                                          branch_manila, approved_rr):
+        AppSettings.set_setting('rr_print_form', 'hidden')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/receiving-reports/{approved_rr.id}/print',
+                          follow_redirects=True)
+        assert b'pp-canvas' not in resp.data
+        assert b'Receiving Report printing is not enabled.' in resp.data
+
+    def test_the_print_button_is_hidden_when_the_form_is_hidden(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        """The page must not offer a control the route refuses."""
+        AppSettings.set_setting('rr_print_form', 'hidden')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}').data.decode()
+        # Positive control: the page really rendered, so the absence below is not a
+        # 302/404/empty body passing for a hidden button.
+        assert approved_rr.rr_number in body
+        assert f'/receiving-reports/{approved_rr.id}/print' not in body
+
+    def test_the_print_button_is_shown_when_printing_is_enabled(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        """The control: the absence above is the setting, not a removed button."""
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}').data.decode()
+        assert f'/receiving-reports/{approved_rr.id}/print' in body
+
+
+class TestReceivingReportOverlayValues:
+    """The overlay is data-only, so an element that renders EMPTY satisfies every
+    `data-el=` / `data-col=` presence assertion while printing blank paper. Half of
+    the RR's line columns are DERIVED through the purchase_order_item FK, and their
+    declared keys do not match the model's attribute names -- COLUMN_KEYS says
+    `ordered_qty` and `uom` where the model exposes `ordered_quantity` (to_dict) and
+    `uom_text` / `unit_of_measure` (receiving_reports/models.py:104-106,113-114).
+    Nothing that exists today catches a typo in that mapping, so every column is
+    asserted on its VALUE, taken from the referenced PO line."""
+
+    def _cell(self, body, key):
+        m = re.search(r'data-el="%s"[^>]*>([^<]*)<' % re.escape(key), body)
+        assert m, f'the {key} box is not rendered on the overlay'
+        return m.group(1).strip()
+
+    def test_the_rr_line_itself_stores_none_of_the_derived_columns(self, approved_rr):
+        """Why the assertions below matter: `ReceivingReportItem` stores only
+        line_number, a product_id snapshot and received_quantity. A template that
+        read description / ordered_qty / uom off the RR line would render three
+        empty columns and still satisfy a presence assertion."""
+        from app.receiving_reports.models import ReceivingReportItem
+        line = approved_rr.line_items[0]
+        assert not hasattr(line, 'description')
+        assert not hasattr(line, 'ordered_qty')
+        assert not hasattr(ReceivingReportItem, 'uom')
+        # The FK the derived values must come through. nullable=False, so it is
+        # always present.
+        assert line.purchase_order_item is not None
+
+    def test_each_field_prints_its_record_value(
+            self, client, db_session, admin_user, branch_manila, approved_rr,
+            rr_source_po):
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        assert self._cell(body, 'rr_number') == '00778'
+        assert self._cell(body, 'vendor_name') == 'ACME'
+        assert self._cell(body, 'remarks') == 'Received in good order'
+        # Derived through the purchase_order relationship, not stored on the RR.
+        assert self._cell(body, 'po_number') == rr_source_po.po_number
+        # 'long' (%d %B %Y) is the RR declaration's default dateFormat.
+        assert self._cell(body, 'receipt_date') == '06 August 2026'
+
+    @pytest.mark.parametrize('fmt,printed', [
+        ('long',   '06 August 2026'),
+        ('medium', 'Aug 06, 2026'),
+        ('us',     '08/06/2026'),
+        ('eu',     '06/08/2026'),
+        ('iso',    '2026-08-06'),
+    ])
+    def test_the_receipt_date_honours_the_designer_s_chosen_format(
+            self, client, db_session, admin_user, branch_manila, approved_rr,
+            fmt, printed):
+        """The date format is a LAYOUT choice made in the designer's own dropdown
+        (`layout.dateFormat` -> DATE_FORMATS), exactly as the PO overlay resolves it.
+        Every format is exercised: one case alone also passes against a template that
+        hardcoded that one."""
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        assert client.post('/receiving-reports/print-layout',
+                           json={'dateFormat': fmt}).status_code == 200
+        body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        assert self._cell(body, 'receipt_date') == printed
+
+    def test_each_line_column_prints_its_record_value(
+            self, client, db_session, admin_user, branch_manila, approved_rr,
+            rr_source_po, product_bolt, uom_box):
+        """description, ordered_qty and uom come from the PO line; line_number and
+        received_quantity from the RR line. The two ordered/received figures are
+        deliberately DIFFERENT (40 vs 15) so a template that wired one column to the
+        other's value fails instead of matching by coincidence."""
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        cells = _column_cells(body)
+        assert cells['line_number'] == ['1']
+        assert cells['product'] == [f'{product_bolt.code} — {product_bolt.name}']
+        assert cells['description'] == ['hex bolt 12mm']
+        assert cells['ordered_qty'] == ['40']
+        assert cells['received_quantity'] == ['15']
+        assert cells['uom'] == [uom_box.code]
+
+    def test_the_uom_column_falls_back_to_the_po_line_s_free_text(
+            self, client, db_session, admin_user, branch_manila, approved_rr,
+            rr_source_po):
+        """A PO line may carry a free-text `uom_text` instead of a UnitOfMeasure FK
+        (both columns are nullable). The second branch of the mapping, unreachable
+        from the test above."""
+        po_line = rr_source_po.line_items[0]
+        po_line.unit_of_measure_id = None
+        po_line.uom_text = 'PAIL'
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
+        assert _column_cells(body)['uom'] == ['PAIL']
+
+
+class TestReceivingReportLayoutSave:
+
+    def test_full_access_can_save(self, client, db_session, admin_user, branch_manila):
+        _login(client, admin_user, branch_manila)
+        resp = client.post('/receiving-reports/print-layout', json={'paper': 'letter'})
+        assert resp.status_code == 200
+        assert resp.get_json()['layout']['paper'] == 'letter'
+
+    def test_a_saved_field_width_round_trips(self, client, db_session, admin_user,
+                                             branch_manila):
+        """`w` must survive the save, or the width the user dragged is discarded
+        server-side even once the template emits it."""
+        _login(client, admin_user, branch_manila)
+        resp = client.post('/receiving-reports/print-layout', json={
+            'fields': {'rr_number': {'x': 100, 'y': 60, 'w': 250,
+                                     'fontSize': 12, 'bold': True}}})
+        assert resp.status_code == 200
+        assert resp.get_json()['layout']['fields']['rr_number']['w'] == 250
+
+    def test_the_saved_layout_reaches_the_overlay(self, client, db_session, admin_user,
+                                                  branch_manila, approved_rr):
+        """The round trip is not enough on its own: get_layout() is per-BRANCH, so a
+        save keyed on one branch and a print reading another would both pass their own
+        assertions and never meet."""
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        assert client.post('/receiving-reports/print-layout', json={
+            'fields': {'rr_number': {'x': 100, 'y': 60, 'w': 250,
+                                     'fontSize': 12, 'bold': True}}}).status_code == 200
+        tag = _element(client.get(f'/receiving-reports/{approved_rr.id}/print')
+                       .data.decode(), 'rr_number')
+        assert tag and 'width:250px' in tag, tag
+
+    def test_the_two_documents_keep_separate_layouts(self, client, db_session,
+                                                     admin_user, branch_manila):
+        """Each declaration owns its own setting key (pr_preprinted_layout /
+        rr_preprinted_layout). Wiring one route to the other module's save_layout
+        would pass every assertion above while silently overwriting the sibling
+        document's stationery."""
+        _login(client, admin_user, branch_manila)
+        assert client.post('/receiving-reports/print-layout',
+                           json={'paper': 'letter'}).status_code == 200
+        pr_layout = client.post('/purchase-requests/print-layout',
+                                json={}).get_json()['layout']
+        assert pr_layout['paper'] == 'continuous', \
+            'the RR save reached the requisition layout'
+
+    def test_a_staff_user_is_refused(self, client, db_session, staff_user, branch_manila):
+        """Layout edits change what prints on a client's real stationery.
+
+        The staff user is given the module permissions and the branch FIRST: without
+        either, enforce_module_access / validate_branch_session redirect before
+        receiving_reports.save_print_layout ever runs, and the test would 'pass' on a
+        302 that says nothing about the view's own role guard."""
+        _grant_module_access(staff_user, branch_manila, db_session,
+                             'receiving_reports', 'purchase_orders', 'products')
+        _login(client, staff_user, branch_manila)
+        assert client.post('/receiving-reports/print-layout', json={}).status_code == 403
+
+
+class TestRrRoutesFollowTheOptionalModuleGate:
+    """receiving_reports is optional (default_enabled=False). enforce_module_access
+    matches by ENDPOINT PREFIX -- the module declares `('receiving_reports.',)` -- so
+    `receiving_reports.save_print_layout` is a brand-new endpoint covered only because
+    its name happens to start with it."""
+
+    def test_the_print_route_404s_when_the_module_is_off(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        _set_modules(db_session, receiving_reports=False)
+        _login(client, admin_user, branch_manila)
+        assert client.get(f'/receiving-reports/{approved_rr.id}/print').status_code == 404
+
+    def test_the_layout_save_route_404s_when_the_module_is_off(
+            self, client, db_session, admin_user, branch_manila):
+        """Admin -- has_full_access, so a 404 here can only be the module gate, not
+        save_print_layout's own 403."""
+        _set_modules(db_session, receiving_reports=False)
+        _login(client, admin_user, branch_manila)
+        assert client.post('/receiving-reports/print-layout',
+                           json={'paper': 'letter'}).status_code == 404
+
+    def test_both_routes_are_reachable_when_the_module_is_on(
+            self, client, db_session, admin_user, branch_manila, approved_rr):
+        """The control: the 404s above are the module gate, not two dead URLs."""
+        _login(client, admin_user, branch_manila)
+        assert client.get(f'/receiving-reports/{approved_rr.id}/print').status_code == 200
+        assert client.post('/receiving-reports/print-layout',
+                           json={'paper': 'letter'}).status_code == 200
+
+
+class TestRrPrintFormSettingRegistration:
+    """A print form nobody can select is unreachable -- the feature would be settable
+    only by hand-writing an app_settings row, so no client could ever switch the
+    receiving report to pre-printed. All three registration parts (SelectField,
+    SETTINGS_KEYS, template) are proven SEPARATELY: a `render_field` with no views.py
+    entry renders fine and silently discards every save."""
+
+    VALID_FORM_DATA = TestPoPrintFormSettingRegistration.VALID_FORM_DATA
+
+    def test_the_settings_page_renders_the_control(self, client, db_session,
+                                                   admin_user, main_branch):
+        _login(client, admin_user, main_branch)
+        assert b'name="rr_print_form"' in client.get('/settings').data
+
+    def test_the_settings_post_persists_the_chosen_value(self, client, db_session,
+                                                         admin_user, main_branch):
+        """Separate from the render test on purpose: the field renders whether or not
+        views.py lists it, and without the SETTINGS_KEYS entry the POST is discarded
+        in silence."""
+        _login(client, admin_user, main_branch)
+        data = dict(self.VALID_FORM_DATA)
+        data['rr_print_form'] = 'preprinted'
+        assert client.post('/settings', data=data,
+                           follow_redirects=True).status_code == 200
+        assert AppSettings.get_setting('rr_print_form') == 'preprinted'
+
+    def test_a_saved_value_actually_routes_the_print_page(
+            self, client, db_session, admin_user, branch_manila, main_branch,
+            approved_rr):
+        """End to end: the control is not decorative -- what the settings page stores
+        is the exact token receiving_reports.print_rr() tests for."""
+        _login(client, admin_user, main_branch)
+        data = dict(self.VALID_FORM_DATA)
+        data['rr_print_form'] = 'preprinted'
+        assert client.post('/settings', data=data,
+                           follow_redirects=True).status_code == 200
+        _login(client, admin_user, branch_manila)
+        assert b'pp-canvas' in client.get(
+            f'/receiving-reports/{approved_rr.id}/print').data
+
+    def test_the_two_controls_persist_independently(self, client, db_session,
+                                                    admin_user, main_branch):
+        """Both were registered in one pass; a copy-paste slip that pointed the RR
+        control at the PR key would pass every single-key test above."""
+        _login(client, admin_user, main_branch)
+        data = dict(self.VALID_FORM_DATA)
+        data['rr_print_form'] = 'preprinted'
+        data['pr_print_form'] = 'hidden'
+        assert client.post('/settings', data=data,
+                           follow_redirects=True).status_code == 200
+        assert AppSettings.get_setting('rr_print_form') == 'preprinted'
+        assert AppSettings.get_setting('pr_print_form') == 'hidden'
+
+    def test_the_saved_value_repopulates_the_control(self, client, db_session,
+                                                     admin_user, main_branch):
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data.decode()
+        select = re.search(r'<select[^>]*name="rr_print_form".*?</select>', body, re.S)
+        assert select, 'the rr_print_form control is not rendered'
+        # `selected` and `value=` must sit on the SAME <option>; asserting a
+        # hand-guessed attribute order is how a render assertion checks nothing
+        # (memory render-assertions-miss-order-and-attributes).
+        chosen = re.findall(r'<option[^>]*\bselected\b[^>]*>', select.group(0))
+        assert chosen == ['<option selected value="preprinted">'], chosen
+
+    def test_the_control_is_hidden_when_the_module_is_disabled(
+            self, client, db_session, admin_user, main_branch):
+        """Tied to an optional module, like its po_/pr_ siblings
+        (BUG-SETTINGS-DOCPRINT-UNGATED-OPTIONAL-CONTROLS)."""
+        _set_modules(db_session, receiving_reports=False)
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data
+        assert b'name="rr_print_form"' not in body
+        # Positive control: the page rendered, and disabling THIS module left the
+        # sibling P2P control alone.
+        assert b'name="pr_print_form"' in body

@@ -9,7 +9,12 @@
   <h1>Receiving Report {{ rr.rr_number }}</h1>
   <div>
     <a href="{{ url_for('receiving_reports.list_rr') }}" class="btn btn-secondary btn-sm">Back</a>
+    {# `rr_print_form: hidden` turns printing off entirely, so the page must not
+       offer a button print_rr() refuses -- mirrors purchase_orders/detail.html
+       and sales_invoices/detail.html:109. #}
+    {% if rr_print_form != 'hidden' %}
     <a href="{{ url_for('receiving_reports.print_rr', id=rr.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
+    {% endif %}
     {% if can_write and rr.status == 'draft' %}
     <a href="{{ url_for('receiving_reports.edit', id=rr.id) }}" class="btn btn-secondary btn-sm">Edit</a>
     {% endif %}

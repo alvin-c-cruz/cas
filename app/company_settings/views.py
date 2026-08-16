@@ -49,6 +49,7 @@ SETTINGS_KEYS = [
     'po_print_form',
     'po_print_access',
     'pr_print_form',
+    'rr_print_form',
     'cd_print_access',
     'cd_check_print_access',
     'cr_print_access',

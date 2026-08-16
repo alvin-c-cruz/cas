@@ -15,6 +15,10 @@ from app import db
 from app.receiving_reports.models import (
     ReceivingReport, ReceivingReportItem, po_line_open_qty, generate_rr_number)
 from app.receiving_reports.forms import ReceivingReportForm
+from app.receiving_reports.preprinted_layout import (
+    COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
+from app.common.preprinted_base import (
+    DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 from app.settings import AppSettings
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
@@ -291,7 +295,11 @@ def create():
 @login_required
 def view(id):
     rr = _rr_or_404(id)
-    return render_template('receiving_reports/detail.html', rr=rr)
+    # Read HERE rather than in the template, so the Print button and print_rr()'s
+    # own guard read one value.
+    return render_template('receiving_reports/detail.html', rr=rr,
+                           rr_print_form=AppSettings.get_setting('rr_print_form',
+                                                                 'current'))
 
 
 @receiving_reports_bp.route('/receiving-reports/<int:id>/edit', methods=['GET', 'POST'])
@@ -417,12 +425,53 @@ def cancel(id):
 @receiving_reports_bp.route('/receiving-reports/<int:id>/print')
 @login_required
 def print_rr(id):
+    """Print a Receiving Report -- the form is chosen by the `rr_print_form` company
+    setting (current = standard printable form . preprinted = data-only overlay for
+    the client's own pre-printed stationery . hidden = printing disabled). Mirrors
+    purchase_orders.print_po.
+
+    There is deliberately NO `rr_print_access` sibling to purchase_orders'. An RR is
+    receipt evidence held INTERNALLY -- it never reaches a supplier, so the
+    commercial risk that justifies refusing to print a draft purchase order does not
+    exist here. `rr_print_form: hidden` is this document's off switch.
+    """
     rr = _rr_or_404(id)
+    rr_print_form = AppSettings.get_setting('rr_print_form', 'current')
+    if rr_print_form == 'hidden':
+        flash('Receiving Report printing is not enabled.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
     company = {'name': AppSettings.get_setting('company_name', ''),
                'address': AppSettings.get_setting('company_address', ''),
                'tin': AppSettings.get_setting('company_tin', '')}
+    if rr_print_form == 'preprinted':
+        return render_template(
+            'receiving_reports/print_preprinted.html', rr=rr, company=company,
+            printed_at=ph_now(), layout=get_layout(rr.branch_id),
+            can_edit_layout=current_user.has_full_access,
+            col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
+            signatory_ids=TEXT_KEYS,
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     return render_template('receiving_reports/print.html', rr=rr, company=company,
                            printed_at=ph_now())
+
+
+@receiving_reports_bp.route('/receiving-reports/print-layout', methods=['POST'])
+@login_required
+def save_print_layout():
+    """Persist the pre-printed layout JSON (full-access: admin or Chief Accountant).
+
+    Mirrors purchase_orders.save_print_layout: a layout edit changes what prints on
+    a client's real, BIR-registered stationery, so it is deliberately narrower than
+    the module's edit-level role rule (which admits `staff`)."""
+    if not current_user.has_full_access:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    # The layout is per-branch; the print page requires the selected branch to equal
+    # the document's branch, so the session branch is the document's branch.
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
+    return jsonify(ok=True, layout=clean)
 
 
 # -- export --------------------------------------------------------------------

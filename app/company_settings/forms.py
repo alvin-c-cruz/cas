@@ -161,6 +161,10 @@ class CompanySettingsForm(FlaskForm):
         'Purchase Requisition Print Form', choices=SV_PRINT_FORM_CHOICES,
         default='current'
     )
+    rr_print_form = SelectField(
+        'Receiving Report Print Form', choices=SV_PRINT_FORM_CHOICES,
+        default='current'
+    )
     cd_print_access = SelectField(
         'CDV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
     )
