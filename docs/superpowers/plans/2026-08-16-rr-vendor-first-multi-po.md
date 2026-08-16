@@ -12,6 +12,8 @@
 
 ## Global Constraints
 
+- **The backref from a PO line to its order is `poi.order`, NOT `poi.purchase_order`** (`PurchaseOrder.line_items = db.relationship('PurchaseOrderItem', backref='order')`, `app/purchase_orders/models.py:107`). An earlier draft of this plan used the wrong name in two places; Task 1's implementer caught it via TDD RED. Do not reintroduce it.
+
 - Work in a worktree cut from the INNER repo: `git -C projects/cas worktree add ../wt-rr-multipo -b feat/rr-vendor-first main`. Never commit to `main`. Copy `.env` into the worktree.
 - Python is `C:/envs/erp-workspace/projects/cas/venv/Scripts/python.exe` (absolute — a worktree has no venv). Git: always `git -C <worktree> …`; the shell cwd persists between calls.
 - **Never state an expected pass count in a step.** Confirm zero failures instead. Parametrised tests make any fixed number wrong, and a stated number invites adding or deleting tests to reach it.
@@ -99,7 +101,7 @@ Expected: FAIL — `AttributeError: 'ReceivingReport' object has no attribute 'p
         seen, out = set(), []
         for li in self.line_items:
             poi = li.purchase_order_item
-            po = poi.purchase_order if poi else None
+            po = poi.order if poi else None
             if po is not None and po.id not in seen:
                 seen.add(po.id)
                 out.append(po)
@@ -372,8 +374,8 @@ tests assert exactly that, so they will tell you if it does not.
 - [ ] **Step 2: Render the column per line**
 
 ```jinja
-<div class="pp-col" data-col="po_number">{{ li.purchase_order_item.purchase_order.po_number
-    if li.purchase_order_item and li.purchase_order_item.purchase_order else '' }}</div>
+<div class="pp-col" data-col="po_number">{{ li.purchase_order_item.order.po_number
+    if li.purchase_order_item and li.purchase_order_item.order else '' }}</div>
 ```
 
 Assert it renders the **actual PO number**, not merely that the element exists — an element that
