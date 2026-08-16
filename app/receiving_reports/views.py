@@ -21,6 +21,7 @@ from app.receiving_reports.preprinted_layout import (
 from app.common.preprinted_base import (
     DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+from app.vendors.models import Vendor
 from app.settings import AppSettings
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.utils import ph_now
@@ -52,10 +53,26 @@ def _approve_role_gate():
 
 # -- form context --------------------------------------------------------------
 
-def _eligible_purchase_orders(branch_id):
-    """Approved POs in this branch that still have at least one line with open qty."""
+def _active_vendors():
+    return Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+
+
+def _eligible_purchase_orders(branch_id, vendor_id):
+    """Approved (or partially-received) POs of *vendor_id*, in this branch, that
+    still have at least one line with open qty.
+
+    Returns [] when vendor_id is falsy (None or the picker's 0 "-- Select vendor
+    --" sentinel): the create view has no vendor chosen on first load, and there
+    is no PO to be eligible against until there is a vendor to scope by. Silently
+    falling back to every vendor's receivable POs would defeat the vendor-first
+    design this whole task exists for -- see TestNoVendorChosenYet in
+    tests/integration/test_rr_vendor_scoping.py.
+    """
+    if not vendor_id:
+        return []
     pos = (PurchaseOrder.query
            .filter(PurchaseOrder.branch_id == branch_id,
+                   PurchaseOrder.vendor_id == vendor_id,
                    PurchaseOrder.status.in_(RECEIVABLE_PO_STATUSES))
            .order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc()).all())
     return [po for po in pos if any(po_line_open_qty(li) > 0 for li in po.line_items)]
@@ -392,8 +409,14 @@ def create():
         return gate
     branch_id = session.get('selected_branch_id')
     form = ReceivingReportForm()
-    eligible = _eligible_purchase_orders(branch_id)
-    form.purchase_order_id.choices = [(po.id, f'{po.po_number}: {po.vendor_name}') for po in eligible]
+    form.set_vendor_choices(_active_vendors())
+    # The create view has no vendor until the user picks one: on a fresh GET
+    # there is nothing submitted yet, so eligible is deliberately []. On a
+    # bounced POST, re-scope by whatever vendor was actually submitted so the
+    # re-rendered grid still shows that vendor's POs. See _eligible_purchase_orders.
+    submitted_vendor_id = (request.form.get('vendor_id', type=int)
+                           if request.method == 'POST' else None)
+    eligible = _eligible_purchase_orders(branch_id, submitted_vendor_id)
 
     if form.validate_on_submit():
         rr_number = (form.rr_number.data or '').strip()
@@ -401,18 +424,32 @@ def create():
             flash('Receiving Report number already exists.', 'error')
             return _render_create(form, eligible)
 
-        po = db.session.get(PurchaseOrder, form.purchase_order_id.data)
-        if not po or po.branch_id != branch_id or po.status not in RECEIVABLE_PO_STATUSES:
-            flash('Select a valid approved Purchase Order.', 'error')
+        vendor = db.session.get(Vendor, form.vendor_id.data)
+        if not vendor:
+            flash('Selected vendor not found.', 'error')
             return _render_create(form, eligible)
         try:
             rr = ReceivingReport(
                 rr_number=rr_number, branch_id=branch_id,
-                receipt_date=form.receipt_date.data, purchase_order_id=po.id,
-                vendor_id=po.vendor_id, vendor_name=po.vendor_name,
+                receipt_date=form.receipt_date.data,
+                vendor_id=vendor.id, vendor_name=vendor.name,
                 remarks=form.remarks.data or None, status='draft',
                 created_by_id=current_user.id)
             _parse_rr_lines(rr, request.form.get('lines', '[]'))
+            # purchase_order_id is still a NOT NULL header column (a later task
+            # drops it) -- there is no single "the" PO anymore once one receipt
+            # can span several of one vendor's orders, so populate it from the PO
+            # the FIRST submitted line draws on. Resolved via a fresh
+            # PurchaseOrderItem lookup, not rr.purchase_orders: rr's own
+            # ReceivingReportItem children are still transient/pending at this
+            # point (rr hasn't been added to the session, and even once added a
+            # freshly-cascaded child stays pending until flush), and a
+            # not-yet-flushed row's relationship attributes silently resolve to
+            # None instead of lazy-loading -- there is no persisted row to load
+            # through yet. db.session.get() on the PurchaseOrderItem itself has
+            # no such restriction: that row is already persistent.
+            first_poi = db.session.get(PurchaseOrderItem, rr.line_items[0].purchase_order_item_id)
+            rr.purchase_order_id = first_poi.order.id
             db.session.add(rr); db.session.commit()
             log_create(module='receiving_reports', record_id=rr.id,
                        record_identifier=f'{rr.rr_number} - {rr.vendor_name}',
@@ -427,9 +464,6 @@ def create():
     if request.method == 'GET':
         form.rr_number.data = generate_rr_number(branch_id)
         form.receipt_date.data = ph_now().date()
-        preselect = request.args.get('po', type=int)
-        if preselect and any(po.id == preselect for po in eligible):
-            form.purchase_order_id.data = preselect
     return _render_create(form, eligible)
 
 
@@ -456,10 +490,19 @@ def edit(id):
         return redirect(url_for('receiving_reports.view', id=rr.id))
     branch_id = session.get('selected_branch_id')
     form = ReceivingReportForm(obj=rr)
-    eligible = _eligible_purchase_orders(branch_id)
-    if rr.purchase_order and rr.purchase_order not in eligible:
-        eligible = [rr.purchase_order] + eligible
-    form.purchase_order_id.choices = [(po.id, f'{po.po_number}: {po.vendor_name}') for po in eligible]
+    form.set_vendor_choices(_active_vendors())
+    # The vendor is fixed at create (a snapshot, not re-chosen on edit -- see
+    # ReceivingReport.vendor_id), so the picker is scoped by the RECEIPT's own
+    # vendor, never by whatever the (possibly disabled) vendor field submits.
+    eligible = _eligible_purchase_orders(branch_id, rr.vendor_id)
+    # Every PO this receipt already draws on must stay offered even if its open
+    # qty is now fully consumed by this RR's own lines (exclude_rr_id in the
+    # payload grid handles the quantity; this only keeps the PO itself in the
+    # list). rr.purchase_orders is the derived, multi-PO accessor -- the old
+    # single rr.purchase_order check missed every PO but the header one.
+    for po in rr.purchase_orders:
+        if po not in eligible:
+            eligible.append(po)
 
     if form.validate_on_submit():
         old = model_to_dict(rr, ['rr_number', 'status', 'receipt_date'])
@@ -472,6 +515,12 @@ def edit(id):
             rr.remarks = form.remarks.data or None
             rr.line_items.clear()
             _parse_rr_lines(rr, request.form.get('lines', '[]'))
+            # See the same line -- and the same reason NOT to use
+            # rr.purchase_orders -- in create(): still a NOT NULL header column,
+            # re-derived here too because editing the lines can change which POs
+            # this receipt draws on.
+            first_poi = db.session.get(PurchaseOrderItem, rr.line_items[0].purchase_order_item_id)
+            rr.purchase_order_id = first_poi.order.id
             db.session.commit()
             log_update(module='receiving_reports', record_id=rr.id,
                        record_identifier=f'{rr.rr_number} - {rr.vendor_name}', old_values=old,
@@ -484,7 +533,7 @@ def edit(id):
             db.session.rollback(); flash('An error occurred updating the Receiving Report.', 'error')
 
     if request.method == 'GET':
-        form.purchase_order_id.data = rr.purchase_order_id
+        form.vendor_id.data = rr.vendor_id
     return _render_edit(rr, form, eligible)
 
 

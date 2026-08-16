@@ -47,7 +47,7 @@ def _create_rr(client, po, received=60, rr_number=None):
     poi = po.line_items[0]
     lines = [{'purchase_order_item_id': poi.id, 'received_quantity': str(received)}]
     return client.post('/receiving-reports/create', data={
-        'purchase_order_id': str(po.id), 'receipt_date': '2026-07-11',
+        'vendor_id': str(po.vendor_id), 'receipt_date': '2026-07-11',
         'remarks': 'partial delivery', 'lines': json.dumps(lines),
         'rr_number': rr_number,
     }, follow_redirects=True)
@@ -85,7 +85,7 @@ def test_create_requires_a_received_line(client, accountant_user, main_branch, v
     po = _approved_po(db_session, main_branch, vl_vendor)
     # all-zero line -> rejected (nothing received)
     resp = client.post('/receiving-reports/create', data={
-        'purchase_order_id': str(po.id), 'receipt_date': '2026-07-11',
+        'vendor_id': str(po.vendor_id), 'receipt_date': '2026-07-11',
         'lines': json.dumps([{'purchase_order_item_id': po.line_items[0].id,
                               'received_quantity': '0'}]),
     }, follow_redirects=True)

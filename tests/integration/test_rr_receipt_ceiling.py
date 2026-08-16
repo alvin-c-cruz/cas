@@ -89,7 +89,7 @@ def _post_rr(client, header_po, pairs, rr_number='RR-CEIL-0001'):
     lines = [{'purchase_order_item_id': poi.id, 'received_quantity': str(qty)}
              for poi, qty in pairs]
     return client.post('/receiving-reports/create', data={
-        'purchase_order_id': str(header_po.id),
+        'vendor_id': str(header_po.vendor_id),
         'receipt_date': '2026-07-11',
         'remarks': '',
         'rr_number': rr_number,
@@ -101,7 +101,7 @@ def _post_edit(client, rr, pairs):
     lines = [{'purchase_order_item_id': poi.id, 'received_quantity': str(qty)}
              for poi, qty in pairs]
     return client.post(f'/receiving-reports/{rr.id}/edit', data={
-        'purchase_order_id': str(rr.purchase_order_id),
+        'vendor_id': str(rr.vendor_id),
         'receipt_date': '2026-07-11',
         'remarks': '',
         'rr_number': rr.rr_number,
@@ -531,7 +531,7 @@ class TestAMalformedPayloadIsRefusedCleanly:
         _login(client, admin_user, main_branch)
 
         resp = client.post('/receiving-reports/create', data={
-            'purchase_order_id': str(po_open_10.id),
+            'vendor_id': str(po_open_10.vendor_id),
             'receipt_date': '2026-07-11', 'remarks': '', 'rr_number': 'RR-CEIL-BAD',
             'lines': json.dumps([{'purchase_order_item_id': 'abc',
                                   'received_quantity': '1'}]),

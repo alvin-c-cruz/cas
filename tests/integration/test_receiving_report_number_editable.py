@@ -46,7 +46,7 @@ def test_create_rr_honors_submitted_rr_number(client, accountant_user, db_sessio
         po = _approved_po(db_session, main_branch.id, vl_vendor.id)
         custom_number = 'RR-CUSTOM-9001'
         resp = client.post('/receiving-reports/create', data={
-            'purchase_order_id': po.id,
+            'vendor_id': po.vendor_id,
             'receipt_date': '2026-07-17',
             'remarks': '',
             'lines': ('[{"purchase_order_item_id": %d, "received_quantity": 10}]'
@@ -73,7 +73,7 @@ def test_create_rr_rejects_duplicate_rr_number(client, accountant_user, db_sessi
 
         po2 = _approved_po(db_session, main_branch.id, vl_vendor.id)
         resp = client.post('/receiving-reports/create', data={
-            'purchase_order_id': po2.id,
+            'vendor_id': po2.vendor_id,
             'receipt_date': '2026-07-17',
             'remarks': '',
             'lines': ('[{"purchase_order_item_id": %d, "received_quantity": 10}]'
