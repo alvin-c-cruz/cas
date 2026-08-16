@@ -358,6 +358,7 @@ so no client has a saved layout keyed on its current `FIELD_KEYS`/`COLUMN_KEYS`.
 **Files:**
 - Modify: `app/receiving_reports/preprinted_layout.py`
 - Modify: `app/receiving_reports/templates/receiving_reports/print_preprinted.html`
+- Modify: `app/receiving_reports/templates/receiving_reports/print.html` (add the same `PO No.` column to the PLAIN print's line table — Task 1 removed its header `PO #:` line, so without this the plain printout carries no PO reference at all)
 - Test: `tests/unit/test_pr_rr_preprinted_layout.py`, `tests/integration/test_p2p_preprinted_print.py`
 
 - [ ] **Step 1: Update the declaration and its tests**
@@ -422,7 +423,11 @@ constraint change. Copy `clients/philgen/backups/<newest>.db` to a scratch file,
 `flask db upgrade` against it, then assert: `purchase_order_id` is gone, `vendor_id` is NOT NULL and
 fully populated, and every pre-existing RR still resolves its PO through its lines. Paste the output.
 
-- [ ] **Step 3: Remove the column from the model, run the full RR + billing surface, commit.**
+- [ ] **Step 3: Remove the column from the model, and retire the one test that writes it**
+
+`tests/integration/test_rr_po_derivation.py::TestDerivation::test_derivation_does_not_read_the_header_column` sets `rr.purchase_order_id = None` as a mutation anchor. That column no longer exists after this task, so the test must be **deleted, not weakened** — its purpose (proving the readers do not consult the header column) is now guaranteed by the schema itself. Leave the other three derivation tests untouched; they are what still prove the accessor works.
+
+- [ ] **Step 4: Run the full RR + billing surface, then commit.**
 
 ---
 
