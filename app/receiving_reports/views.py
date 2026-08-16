@@ -106,6 +106,22 @@ def _submitted_existing_lines():
     return out
 
 
+def _render_create(form, eligible):
+    """Render the create form, carrying the receiver's own typed quantities back on a
+    bounce.
+
+    Moving the ceiling / vendor / branch / status checks to SAVE made
+    bounce-with-data the ROUTINE path -- before that the only ValueError create()
+    could raise was "Add at least one received line", where there was nothing typed
+    to lose. Re-seeding from `{}` would silently empty the whole grid because one
+    quantity was mistyped. Mirrors _render_edit.
+    """
+    existing = _submitted_existing_lines() if request.method == 'POST' else {}
+    return render_template('receiving_reports/form.html', form=form, rr=None,
+                           eligible=eligible, po_lines=_po_lines_payload(eligible),
+                           existing=existing)
+
+
 def _render_edit(rr, form, eligible):
     existing = (_submitted_existing_lines() if request.method == 'POST'
                 else _existing_lines(rr))
@@ -120,10 +136,18 @@ def _poi_label(poi):
     return (poi.product.name if poi.product else (poi.description or 'this item'))
 
 
-def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None):
+def _line_prefix(idxs):
+    """'Line 3: ' / 'Lines 1, 2: ' -- how a refusal names the submitted lines it blames."""
+    return (f'Line{"s" if len(idxs) > 1 else ""} '
+            f'{", ".join(str(i) for i in idxs)}: ')
+
+
+def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None,
+                                   branch_id=None):
     """Refuse a SUBMITTED PAYLOAD that receives more of a PO line than remains
-    open, or that draws on more than one vendor -- counting every line of that
-    payload TOGETHER.
+    open, or that draws on a purchase order belonging to another vendor, another
+    branch, or one that is not receivable -- counting every line of that payload
+    TOGETHER.
 
     *pairs* is an ordered iterable of ``(purchase_order_item_id, qty)``, one per
     submitted line, in submission order. A line's 1-based position in that
@@ -147,11 +171,21 @@ def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None):
     contributing to it, instead of whichever line happened to tip it over. It
     also means nothing is written before the whole submission is known to fit.
 
-    *vendor_id* is the receipt header's vendor. Every line's PO must belong to
-    it -- one receipt covers one vendor. Checked HERE, at save, rather than by
-    the form's PO picker: a raw POST bypasses a picker entirely. None means
-    there is no vendor to compare against (ReceivingReport.vendor_id is
-    nullable), so there is nothing to enforce.
+    *vendor_id* is the receipt header's vendor and *branch_id* its branch. Every
+    line's PO must belong to both, and must itself be receivable
+    (RECEIVABLE_PO_STATUSES) -- one receipt covers one vendor, in one branch,
+    drawing only on live orders. All three are checked HERE, at save, rather than
+    by the form's PO picker: A PICKER FILTER IS NOT ENFORCEMENT -- a raw POST
+    bypasses a picker entirely, and once the header `purchase_order_id` column
+    goes away nothing else looks at any PO's branch or status at all. None means
+    there is no value to compare against (ReceivingReport.vendor_id and
+    .branch_id are both nullable), so there is nothing to enforce.
+
+    The status rule has to live on the LINE, not the header: po_line_open_qty
+    ignores PO status entirely, so a cancelled order's lines read as fully open
+    forever. That was masked while the form only ever emitted the header PO's own
+    lines and the header PO was status-checked in create(); cross-PO lines make it
+    reachable.
 
     Refuses at the FIRST offending PO line in submission order (dicts preserve
     insertion order), so the message is deterministic rather than dependent on
@@ -170,11 +204,22 @@ def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None):
         # PurchaseOrderItem's backref to its header is named 'order', not
         # 'purchase_order' -- see PurchaseOrder.line_items(backref='order').
         po = poi.order
-        if vendor_id is not None and po is not None and po.vendor_id != vendor_id:
+        if po is None:
             raise ValueError(
-                f'Line{"s" if len(idxs) > 1 else ""} {", ".join(str(i) for i in idxs)}: '
-                f'{po.po_number} belongs to {po.vendor_name}. '
+                f'Line {idxs[0]}: that purchase order line is not attached to a '
+                f'purchase order.')
+        if vendor_id is not None and po.vendor_id != vendor_id:
+            raise ValueError(
+                f'{_line_prefix(idxs)}{po.po_number} belongs to {po.vendor_name}. '
                 f'A Receiving Report covers one vendor.')
+        if branch_id is not None and po.branch_id != branch_id:
+            raise ValueError(
+                f'{_line_prefix(idxs)}{po.po_number} belongs to another branch. '
+                f'A Receiving Report covers one branch.')
+        if po.status not in RECEIVABLE_PO_STATUSES:
+            raise ValueError(
+                f'{_line_prefix(idxs)}{po.po_number} is {po.status} and can no '
+                f'longer be received against.')
         open_qty = po_line_open_qty(poi, exclude_rr_id=exclude_rr_id)
         if total > open_qty:
             label = _poi_label(poi)
@@ -197,7 +242,7 @@ def _parse_rr_lines(rr, lines_json):
     """
     items = json.loads(lines_json) if lines_json else []
     kept = []
-    for d in items:
+    for position, d in enumerate(items, start=1):
         try:
             qty = Decimal(str(d.get('received_quantity')))
         except (InvalidOperation, TypeError):
@@ -205,12 +250,24 @@ def _parse_rr_lines(rr, lines_json):
         poi_id = d.get('purchase_order_item_id')
         if not poi_id or qty <= 0:
             continue
-        kept.append((int(poi_id), qty))
+        try:
+            poi_id = int(poi_id)
+        except (TypeError, ValueError):
+            # The payload is raw client JSON: int('abc') would otherwise escape as
+            # a verbatim "invalid literal for int()" flash.
+            raise ValueError(
+                f'Line {position}: that purchase order line is not a valid reference.'
+            ) from None
+        kept.append((poi_id, qty))
     if not kept:
         raise ValueError('Add at least one received line.')
-    # rr.id is None on the create path (nothing to exclude yet); on edit it drops
-    # the receipt's own rows, keeping a re-save idempotent.
-    assert_payload_within_open_qty(kept, exclude_rr_id=rr.id, vendor_id=rr.vendor_id)
+    # rr.id is None on the create path (nothing to exclude yet). On edit, excluding
+    # this receipt's own rows is belt-and-braces, not load-bearing: po_line_open_qty
+    # sums only COMMITTED_STATUSES (approved/billed) and edit() has already refused
+    # a non-draft, so the receipt under check is never in that sum. Kept so the
+    # guard stays correct if either of those changes.
+    assert_payload_within_open_qty(kept, exclude_rr_id=rr.id, vendor_id=rr.vendor_id,
+                                   branch_id=rr.branch_id)
     for line_number, (poi_id, qty) in enumerate(kept, start=1):
         poi = db.session.get(PurchaseOrderItem, poi_id)
         rr.line_items.append(ReceivingReportItem(
@@ -342,16 +399,12 @@ def create():
         rr_number = (form.rr_number.data or '').strip()
         if ReceivingReport.query.filter(ReceivingReport.rr_number == rr_number).first():
             flash('Receiving Report number already exists.', 'error')
-            return render_template('receiving_reports/form.html', form=form, rr=None,
-                                   eligible=eligible, po_lines=_po_lines_payload(eligible),
-                                   existing={})
+            return _render_create(form, eligible)
 
         po = db.session.get(PurchaseOrder, form.purchase_order_id.data)
         if not po or po.branch_id != branch_id or po.status not in RECEIVABLE_PO_STATUSES:
             flash('Select a valid approved Purchase Order.', 'error')
-            return render_template('receiving_reports/form.html', form=form, rr=None,
-                                   eligible=eligible, po_lines=_po_lines_payload(eligible),
-                                   existing={})
+            return _render_create(form, eligible)
         try:
             rr = ReceivingReport(
                 rr_number=rr_number, branch_id=branch_id,
@@ -377,8 +430,7 @@ def create():
         preselect = request.args.get('po', type=int)
         if preselect and any(po.id == preselect for po in eligible):
             form.purchase_order_id.data = preselect
-    return render_template('receiving_reports/form.html', form=form, rr=None,
-                           eligible=eligible, po_lines=_po_lines_payload(eligible), existing={})
+    return _render_create(form, eligible)
 
 
 @receiving_reports_bp.route('/receiving-reports/<int:id>')
@@ -448,14 +500,17 @@ def approve(id):
         flash('Only a draft Receiving Report can be approved.', 'error')
         return redirect(url_for('receiving_reports.view', id=id))
     # Guard: committing these lines must not exceed each PO line's OPEN qty, and
-    # every line must belong to this receipt's vendor. Re-checked here and not
-    # only at save: a draft written before this guard existed (or against a PO
-    # that has since been received elsewhere) must not become approvable.
-    # `open` excludes THIS rr so a re-check stays idempotent.
+    # every line's PO must belong to this receipt's vendor and branch and still be
+    # receivable. Re-checked here and not only at save: a draft written before this
+    # guard existed (or against a PO that has since been received elsewhere, or
+    # cancelled since) must not become approvable.
+    # Excluding THIS rr from `open` is belt-and-braces, not load-bearing:
+    # po_line_open_qty sums only COMMITTED_STATUSES (approved/billed) and this route
+    # has already refused a non-draft above, so this receipt cannot be in that sum.
     try:
         assert_payload_within_open_qty(
             [(li.purchase_order_item_id, li.received_quantity) for li in rr.line_items],
-            exclude_rr_id=rr.id, vendor_id=rr.vendor_id)
+            exclude_rr_id=rr.id, vendor_id=rr.vendor_id, branch_id=rr.branch_id)
     except ValueError as e:
         flash(str(e), 'error')
         return redirect(url_for('receiving_reports.view', id=id))

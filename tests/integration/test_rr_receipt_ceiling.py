@@ -135,6 +135,12 @@ def po_other_vendor(db_session, main_branch, other_vendor):
     return _approved_po(db_session, main_branch, other_vendor, 'PO-CEIL-C', quantities=(10,))
 
 
+@pytest.fixture
+def po_other_branch(db_session, branch_manila, vl_vendor):
+    """SAME vendor, DIFFERENT branch -- the case the vendor rule alone lets through."""
+    return _approved_po(db_session, branch_manila, vl_vendor, 'PO-CEIL-MNL', quantities=(10,))
+
+
 class TestTheCeilingSeesTheWholePayload:
     """At SAVE. Nothing may be written before the whole submission is known to fit."""
 
@@ -321,6 +327,221 @@ class TestOneVendorPerReceipt:
         assert rr.status == 'draft'
 
 
+class TestOneBranchPerReceipt:
+    """Every line's purchase order must belong to the receipt's BRANCH.
+
+    create() still branch-checks the HEADER PO, but the header column is on its way
+    out; nothing looks at the branch of the PO a LINE names. A picker filter is not
+    enforcement -- same reasoning the vendor rule already gets.
+    """
+
+    def test_a_line_from_another_branch_is_refused_at_the_route(
+            self, client, db_session, admin_user, main_branch, po_open_10, po_other_branch):
+        """Header PO in this branch, payload line from another branch's PO of the
+        SAME vendor: the vendor rule passes it, only the branch rule refuses it."""
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+
+        resp = _post_rr(client, po_open_10, [(po_other_branch.line_items[0], 1)])
+
+        assert b'one branch' in resp.data
+        assert ReceivingReport.query.count() == 0
+
+    def test_a_mixed_branch_payload_is_refused_even_when_every_qty_fits(
+            self, client, db_session, admin_user, main_branch, po_open_10, po_other_branch):
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+
+        resp = _post_rr(client, po_open_10,
+                        [(po_open_10.line_items[0], 1), (po_other_branch.line_items[0], 1)])
+
+        assert b'one branch' in resp.data
+        assert ReceivingReport.query.count() == 0
+
+    def test_lines_from_two_POs_of_THIS_branch_are_accepted(
+            self, client, db_session, admin_user, main_branch, vl_vendor, po_open_10):
+        """CONTROL. The rule compares each PO's branch to the RECEIPT's branch --
+        an over-restriction that refuses a second in-branch order breaks the
+        multi-PO receipt this whole feature exists for."""
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+        second = _approved_po(db_session, main_branch, vl_vendor, 'PO-CEIL-A3', quantities=(10,))
+
+        _post_rr(client, po_open_10,
+                 [(po_open_10.line_items[0], 5), (second.line_items[0], 5)])
+
+        assert ReceivingReport.query.count() == 1
+        rr = ReceivingReport.query.one()
+        assert rr.branch_id == main_branch.id
+        assert {po.branch_id for po in rr.purchase_orders} == {main_branch.id}
+
+    def test_approving_a_cross_branch_draft_is_refused(
+            self, client, db_session, admin_user, main_branch, po_open_10, po_other_branch):
+        """A draft that predates the guard must not become approvable."""
+        _login(client, admin_user, main_branch)
+        rr = _make_draft_rr(db_session, main_branch, po_open_10,
+                            [(po_other_branch.line_items[0], 1)], 'RR-CEIL-XB')
+
+        resp = client.post(f'/receiving-reports/{rr.id}/approve', follow_redirects=True)
+
+        assert b'one branch' in resp.data
+        db_session.refresh(rr)
+        assert rr.status == 'draft'
+
+
+class TestOnlyAReceivablePOMayBeReceived:
+    """Every line's purchase order must still be receivable.
+
+    po_line_open_qty ignores PO status entirely, so a cancelled order's lines read
+    as FULLY OPEN forever. That was masked while the form emitted only the header
+    PO's lines and create() status-checked the header; cross-PO lines make it
+    routine.
+    """
+
+    def test_a_line_from_a_cancelled_po_is_refused(
+            self, client, db_session, admin_user, main_branch, vl_vendor, po_open_10):
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+        dead = _approved_po(db_session, main_branch, vl_vendor, 'PO-CEIL-DEAD', quantities=(10,))
+        dead.status = 'cancelled'; db_session.commit()
+
+        resp = _post_rr(client, po_open_10, [(dead.line_items[0], 1)])
+
+        assert b'cancelled' in resp.data
+        assert ReceivingReport.query.count() == 0
+
+    def test_a_line_from_a_draft_po_is_refused(
+            self, client, db_session, admin_user, main_branch, vl_vendor, po_open_10):
+        """Nobody has approved this order yet -- its lines are not receivable."""
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+        unapproved = _approved_po(db_session, main_branch, vl_vendor, 'PO-CEIL-DRAFT',
+                                  quantities=(10,))
+        unapproved.status = 'draft'; db_session.commit()
+
+        resp = _post_rr(client, po_open_10, [(unapproved.line_items[0], 1)])
+
+        assert b'is draft' in resp.data
+        assert ReceivingReport.query.count() == 0
+
+    def test_a_line_from_a_partially_received_po_is_accepted(
+            self, client, db_session, admin_user, main_branch, vl_vendor, po_open_10):
+        """CONTROL. RECEIVABLE_PO_STATUSES holds TWO statuses. Narrowing the rule to
+        'approved' alone silently blocks every second delivery against an order."""
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+        partial = _approved_po(db_session, main_branch, vl_vendor, 'PO-CEIL-PART',
+                               quantities=(10,))
+        partial.status = 'partially_received'; db_session.commit()
+
+        _post_rr(client, po_open_10,
+                 [(po_open_10.line_items[0], 5), (partial.line_items[0], 5)])
+
+        assert ReceivingReport.query.count() == 1
+        rr = ReceivingReport.query.one()
+        assert [po.po_number for po in rr.purchase_orders] == ['PO-CEIL-A', 'PO-CEIL-PART']
+
+    def test_approving_a_draft_whose_po_was_cancelled_is_refused(
+            self, client, db_session, admin_user, main_branch, po_open_10):
+        """The order died between drafting and approval; the receipt must not commit."""
+        _login(client, admin_user, main_branch)
+        rr = _make_draft_rr(db_session, main_branch, po_open_10,
+                            [(po_open_10.line_items[0], 1)], 'RR-CEIL-DEADPO')
+        po_open_10.status = 'cancelled'; db_session.commit()
+
+        resp = client.post(f'/receiving-reports/{rr.id}/approve', follow_redirects=True)
+
+        assert b'cancelled' in resp.data
+        db_session.refresh(rr)
+        assert rr.status == 'draft'
+
+
+class TestARefusedSaveKeepsWhatWasTyped:
+    """A refusal must hand the receiver's own numbers back.
+
+    Moving the ceiling/vendor/branch/status checks to SAVE made bounce-with-data the
+    ROUTINE path: before, the only ValueError create() could raise was "Add at least
+    one received line", where nothing typed existed to lose. Re-seeding the grid from
+    `{}` empties every quantity because one of them was wrong.
+    """
+
+    def test_a_refused_create_re_renders_with_the_submitted_quantities(
+            self, client, db_session, admin_user, main_branch, po_two_lines):
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+        a, b = po_two_lines.line_items[0], po_two_lines.line_items[1]
+
+        resp = _post_rr(client, po_two_lines, [(a, 3), (b, 11)])   # b busts its ceiling
+
+        assert ReceivingReport.query.count() == 0
+        body = resp.data.decode()
+        assert 'const EXISTING = {};' not in body        # the whole grid, wiped
+        assert f'"{a.id}": 3.0' in body                  # the GOOD line survives
+        assert f'"{b.id}": 11.0' in body                 # so does the one to correct
+
+    def test_a_refused_edit_still_re_renders_with_the_submitted_quantities(
+            self, client, db_session, admin_user, main_branch, po_two_lines):
+        """CONTROL on the path this fix did not mean to change -- _render_edit
+        already did this, and must keep doing it."""
+        _login(client, admin_user, main_branch)
+        a, b = po_two_lines.line_items[0], po_two_lines.line_items[1]
+        rr = _make_draft_rr(db_session, main_branch, po_two_lines, [(a, 1)], 'RR-CEIL-BOUNCE')
+
+        resp = _post_edit(client, rr, [(a, 3), (b, 11)])
+
+        body = resp.data.decode()
+        assert f'"{a.id}": 3.0' in body and f'"{b.id}": 11.0' in body
+
+
+class TestEveryReceiptCarriesAtLeastOneLine:
+    """The empty-payload refusal. Untested until now: deleting it left the whole
+    receiving_reports marker green while an empty POST created a receipt with no
+    lines at all."""
+
+    def test_an_empty_payload_creates_nothing(
+            self, client, db_session, admin_user, main_branch, po_open_10):
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+
+        resp = _post_rr(client, po_open_10, [])
+
+        assert b'Add at least one received line' in resp.data
+        assert ReceivingReport.query.count() == 0
+
+    def test_a_payload_of_only_zero_quantities_creates_nothing(
+            self, client, db_session, admin_user, main_branch, po_open_10):
+        """The grid posts a row per PO line; blank ones arrive as 0 and are dropped,
+        so 'nothing typed' reaches the guard as an EMPTY kept list, not an empty
+        payload."""
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+
+        resp = _post_rr(client, po_open_10, [(po_open_10.line_items[0], 0)])
+
+        assert b'Add at least one received line' in resp.data
+        assert ReceivingReport.query.count() == 0
+
+
+class TestAMalformedPayloadIsRefusedCleanly:
+    """The lines JSON is raw client input; a refusal must not leak Python's own text."""
+
+    def test_a_non_numeric_po_line_id_gets_a_clean_refusal(
+            self, client, db_session, admin_user, main_branch, po_open_10):
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+
+        resp = client.post('/receiving-reports/create', data={
+            'purchase_order_id': str(po_open_10.id),
+            'receipt_date': '2026-07-11', 'remarks': '', 'rr_number': 'RR-CEIL-BAD',
+            'lines': json.dumps([{'purchase_order_item_id': 'abc',
+                                  'received_quantity': '1'}]),
+        }, follow_redirects=True)
+
+        assert b'invalid literal' not in resp.data       # int()'s own words, flashed verbatim
+        assert b'not a valid reference' in resp.data
+        assert ReceivingReport.query.count() == 0
+
+
 class TestPayloadGuardUnit:
     """The guard itself, called directly -- the message shape the routes surface."""
 
@@ -345,3 +566,24 @@ class TestPayloadGuardUnit:
                                             (987654, Decimal('1'))])
 
         assert 'Line 2' in str(exc.value)
+
+    def test_a_po_line_with_no_purchase_order_is_refused(self, db_session, main_branch):
+        """The orphan row the `poi is None` rule already refuses, one level down.
+
+        Guarding it only inside the vendor conditional made it fail OPEN: with no
+        vendor to compare against, an ownerless line sailed through to the ceiling,
+        where po_line_open_qty reads it as fully open. It is refused
+        UNCONDITIONALLY -- a line whose order cannot be identified can be checked
+        against nothing at all."""
+        from app.purchase_orders.models import PurchaseOrderItem
+        from app.receiving_reports.views import assert_payload_within_open_qty
+        orphan = PurchaseOrderItem(purchase_order_id=987654, line_number=1,
+                                   description='Orphan', quantity=Decimal('5'),
+                                   unit_price=Decimal('10'), amount=Decimal('50'))
+        db_session.add(orphan); db_session.commit()
+
+        with pytest.raises(ValueError) as exc:
+            assert_payload_within_open_qty([(orphan.id, Decimal('1'))], vendor_id=None)
+
+        assert 'Line 1' in str(exc.value)
+        assert 'not attached to a purchase order' in str(exc.value)
