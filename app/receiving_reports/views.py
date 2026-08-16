@@ -115,10 +115,88 @@ def _render_edit(rr, form, eligible):
                            existing=existing)
 
 
+def _poi_label(poi):
+    """How a PO line is named in a refusal message."""
+    return (poi.product.name if poi.product else (poi.description or 'this item'))
+
+
+def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None):
+    """Refuse a SUBMITTED PAYLOAD that receives more of a PO line than remains
+    open, or that draws on more than one vendor -- counting every line of that
+    payload TOGETHER.
+
+    *pairs* is an ordered iterable of ``(purchase_order_item_id, qty)``, one per
+    submitted line, in submission order. A line's 1-based position in that
+    sequence is what the raised message calls "Line N".
+
+    THE CEILING BELONGS TO THE PO LINE, NOT TO A RECEIPT LINE.
+    po_line_open_qty() sums the RR lines already COMMITTED IN THE DATABASE
+    (approved/billed) and `exclude_rr_id` drops the WHOLE receipt being checked,
+    so nothing in the submission being validated counts towards it. Asking the
+    question once per submitted line therefore measured every line against the
+    FULL open quantity: the same PO line receipted twice in one receipt answered
+    "6 <= 10" twice and committed 12 against 10 ordered. Only the payload's
+    per-PO-line TOTAL is comparable to the ceiling. This is the same defect class
+    as BUG-PR-PO-CEILING-NOT-AGGREGATED-WITHIN-ONE-SUBMISSION -- see
+    purchase_requests.allocation.assert_payload_within_open_qty, which this
+    mirrors.
+
+    Summed up front and checked ONCE per distinct PO line, rather than by
+    threading a running tally through the caller's per-line loop: the message
+    then names the PO line that is over-received and EVERY submitted line
+    contributing to it, instead of whichever line happened to tip it over. It
+    also means nothing is written before the whole submission is known to fit.
+
+    *vendor_id* is the receipt header's vendor. Every line's PO must belong to
+    it -- one receipt covers one vendor. Checked HERE, at save, rather than by
+    the form's PO picker: a raw POST bypasses a picker entirely. None means
+    there is no vendor to compare against (ReceivingReport.vendor_id is
+    nullable), so there is nothing to enforce.
+
+    Refuses at the FIRST offending PO line in submission order (dicts preserve
+    insertion order), so the message is deterministic rather than dependent on
+    id ordering.
+    """
+    totals = {}
+    for idx, (poi_id, qty) in enumerate(pairs, start=1):
+        slot = totals.setdefault(int(poi_id), [Decimal('0'), []])
+        slot[0] += Decimal(str(qty or 0))
+        slot[1].append(idx)
+
+    for poi_id, (total, idxs) in totals.items():
+        poi = db.session.get(PurchaseOrderItem, poi_id)
+        if poi is None:
+            raise ValueError(f'Line {idxs[0]}: that purchase order line no longer exists.')
+        # PurchaseOrderItem's backref to its header is named 'order', not
+        # 'purchase_order' -- see PurchaseOrder.line_items(backref='order').
+        po = poi.order
+        if vendor_id is not None and po is not None and po.vendor_id != vendor_id:
+            raise ValueError(
+                f'Line{"s" if len(idxs) > 1 else ""} {", ".join(str(i) for i in idxs)}: '
+                f'{po.po_number} belongs to {po.vendor_name}. '
+                f'A Receiving Report covers one vendor.')
+        open_qty = po_line_open_qty(poi, exclude_rr_id=exclude_rr_id)
+        if total > open_qty:
+            label = _poi_label(poi)
+            if len(idxs) == 1:
+                raise ValueError(
+                    f'Line {idxs[0]}: only {open_qty} of {label} remain open.')
+            raise ValueError(
+                f'Lines {", ".join(str(i) for i in idxs)}: only {open_qty} of {label} '
+                f'remain open, but these lines receive {total} between them.')
+    return None
+
+
 def _parse_rr_lines(rr, lines_json):
-    """Attach RR lines from the hidden JSON: [{purchase_order_item_id, received_quantity}]."""
+    """Attach RR lines from the hidden JSON: [{purchase_order_item_id, received_quantity}].
+
+    The whole payload is validated BEFORE the first ReceivingReportItem is built,
+    so a refusal leaves nothing half-written -- and so the ceiling is measured
+    against the payload's per-PO-line total rather than one line at a time. See
+    assert_payload_within_open_qty.
+    """
     items = json.loads(lines_json) if lines_json else []
-    kept = 0
+    kept = []
     for d in items:
         try:
             qty = Decimal(str(d.get('received_quantity')))
@@ -127,14 +205,18 @@ def _parse_rr_lines(rr, lines_json):
         poi_id = d.get('purchase_order_item_id')
         if not poi_id or qty <= 0:
             continue
-        kept += 1
-        poi = db.session.get(PurchaseOrderItem, int(poi_id))
+        kept.append((int(poi_id), qty))
+    if not kept:
+        raise ValueError('Add at least one received line.')
+    # rr.id is None on the create path (nothing to exclude yet); on edit it drops
+    # the receipt's own rows, keeping a re-save idempotent.
+    assert_payload_within_open_qty(kept, exclude_rr_id=rr.id, vendor_id=rr.vendor_id)
+    for line_number, (poi_id, qty) in enumerate(kept, start=1):
+        poi = db.session.get(PurchaseOrderItem, poi_id)
         rr.line_items.append(ReceivingReportItem(
-            line_number=kept, purchase_order_item_id=int(poi_id),
+            line_number=line_number, purchase_order_item_id=poi_id,
             product_id=(poi.product_id if poi else None),
             received_quantity=qty))
-    if kept == 0:
-        raise ValueError('Add at least one received line.')
 
 
 def _rr_or_404(id):
@@ -365,16 +447,18 @@ def approve(id):
     if rr.status != 'draft':
         flash('Only a draft Receiving Report can be approved.', 'error')
         return redirect(url_for('receiving_reports.view', id=id))
-    # Guard: committing these lines must not exceed each PO line's OPEN qty.
+    # Guard: committing these lines must not exceed each PO line's OPEN qty, and
+    # every line must belong to this receipt's vendor. Re-checked here and not
+    # only at save: a draft written before this guard existed (or against a PO
+    # that has since been received elsewhere) must not become approvable.
     # `open` excludes THIS rr so a re-check stays idempotent.
-    for li in rr.line_items:
-        open_qty = po_line_open_qty(li.purchase_order_item, exclude_rr_id=rr.id)
-        if Decimal(str(li.received_quantity)) > open_qty:
-            poi = li.purchase_order_item
-            item = (poi.product.name if (poi and poi.product) else (poi.description if poi else 'item'))
-            flash(f'Line {li.line_number}: receiving {li.received_quantity} exceeds the open '
-                  f'quantity {open_qty} for {item}.', 'error')
-            return redirect(url_for('receiving_reports.view', id=id))
+    try:
+        assert_payload_within_open_qty(
+            [(li.purchase_order_item_id, li.received_quantity) for li in rr.line_items],
+            exclude_rr_id=rr.id, vendor_id=rr.vendor_id)
+    except ValueError as e:
+        flash(str(e), 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
     rr.status = 'approved'
     rr.approved_by_id = current_user.id
     rr.approved_at = ph_now()
