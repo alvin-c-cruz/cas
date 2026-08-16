@@ -131,6 +131,20 @@ class ReceivingReportItem(db.Model):
         poi = self.purchase_order_item
         return poi.uom_text if poi else None
 
+    @property
+    def po_number(self):
+        """The PO number this line receives against, derived through the line's
+        own `purchase_order_item` -- never through a header FK. One receipt can
+        settle several of a vendor's orders, so each line carries its own PO.
+
+        `PurchaseOrderItem`'s backref to its header is named `order`, not
+        `purchase_order` -- see PurchaseOrder.line_items(backref='order'). Returns
+        '' (never raises) when the line item or its order is missing, so both
+        print templates can render it unguarded."""
+        poi = self.purchase_order_item
+        po = poi.order if poi else None
+        return po.po_number if po else ''
+
     def to_dict(self):
         poi = self.purchase_order_item
         return {

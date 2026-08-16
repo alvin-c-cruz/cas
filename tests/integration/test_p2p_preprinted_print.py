@@ -1063,6 +1063,18 @@ def _column_cells(body):
     return out
 
 
+def _plain_rows(body):
+    """[[cell text, ...], ...] -- one list per <tbody> <tr>, for print.html's
+    (the PLAIN/`current` form's) line-item table. Mirrors `_column_cells` above:
+    read the RENDERED cell text, not merely whether a <td> is present, so a column
+    that renders empty is caught rather than satisfying a presence check."""
+    tbody = re.search(r'<tbody>(.*?)</tbody>', body, re.S)
+    assert tbody, 'the line-item table body is not rendered'
+    rows = re.findall(r'<tr>(.*?)</tr>', tbody.group(1), re.S)
+    return [[c.strip() for c in re.findall(r'<td[^>]*>(.*?)</td>', row, re.S)]
+            for row in rows]
+
+
 class TestPurchaseRequisitionPrintForm:
     """`pr_print_form` routes the requisition's print surface. There is deliberately
     NO pr_print_access sibling: a requisition is an INTERNAL document -- it never
@@ -1755,8 +1767,11 @@ class TestReceivingReportOverlayValues:
         assert self._cell(body, 'rr_number') == '00778'
         assert self._cell(body, 'vendor_name') == 'ACME'
         assert self._cell(body, 'remarks') == 'Received in good order'
-        # Derived through the purchase_order relationship, not stored on the RR.
-        assert self._cell(body, 'po_number') == rr_source_po.po_number
+        # po_number is NOT a header field -- one receipt may settle several of a
+        # vendor's orders, so there is no single `po_number` box any more; it
+        # moved to a per-line COLUMN (see test_each_line_column_prints_its_record_value
+        # and TestReceivingReportOverlayPoNumberColumn below).
+        assert 'data-el="po_number"' not in body
         # 'long' (%d %B %Y) is the RR declaration's default dateFormat.
         assert self._cell(body, 'receipt_date') == '06 August 2026'
 
@@ -1797,6 +1812,7 @@ class TestReceivingReportOverlayValues:
         assert cells['line_number'] == ['1']
         assert cells['product'] == [f'{product_bolt.code} — {product_bolt.name}']
         assert cells['description'] == ['hex bolt 12mm']
+        assert cells['po_number'] == [rr_source_po.po_number]
         assert cells['ordered_qty'] == ['40']
         assert cells['received_quantity'] == ['15']
         assert cells['uom'] == [uom_box.code]
@@ -1815,6 +1831,172 @@ class TestReceivingReportOverlayValues:
         _login(client, admin_user, branch_manila)
         body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
         assert _column_cells(body)['uom'] == ['PAIL']
+
+
+@pytest.fixture
+def rr_source_po_2(db_with_data, branch_manila, vendor_acme, product_bolt, uom_box):
+    """A SECOND approved PO from the same vendor -- the multi-PO receiving case
+    (Task 4): one receipt may settle several of a vendor's orders in a single
+    delivery, so `po_number` has to be a per-LINE value, not a header field."""
+    po = PurchaseOrder(po_number='00991', order_date=date(2026, 8, 5), status='approved',
+                       vendor_id=vendor_acme.id, vendor_name=vendor_acme.name, notes='',
+                       payment_terms='Net 30', vat_treatment='inclusive',
+                       branch_id=branch_manila.id)
+    po.line_items.append(PurchaseOrderItem(
+        line_number=1, description='hex nut 12mm', quantity=Decimal('20'),
+        unit_price=Decimal('2.00'), amount=Decimal('40.00'),
+        line_total=Decimal('40.00'), vat_rate=Decimal('0'), vat_amount=Decimal('0'),
+        product_id=product_bolt.id, unit_of_measure_id=uom_box.id))
+    po.calculate_totals()
+    db.session.add(po)
+    db.session.commit()
+    return po
+
+
+@pytest.fixture
+def multi_po_rr(db_session, branch_manila, rr_source_po, rr_source_po_2):
+    """One receipt, two lines, each drawn from a DIFFERENT PO of the same vendor.
+
+    Built directly via the ORM rather than through create()/approve() (the pattern
+    `approved_rr` uses): the print route gates only on `rr_print_form` (there is no
+    rr_print_access sibling), so a draft prints identically to an approved one, and
+    this fixture exists to answer a rendering question, not to re-prove the
+    approval workflow `approved_rr` already covers."""
+    from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
+    poi_1 = rr_source_po.line_items[0]
+    poi_2 = rr_source_po_2.line_items[0]
+    rr = ReceivingReport(branch_id=branch_manila.id, rr_number='00779',
+                         receipt_date=date(2026, 8, 6),
+                         purchase_order_id=rr_source_po.id,
+                         vendor_id=rr_source_po.vendor_id,
+                         vendor_name=rr_source_po.vendor_name,
+                         remarks='Two POs, one delivery', status='draft')
+    rr.line_items.append(ReceivingReportItem(
+        line_number=1, purchase_order_item_id=poi_1.id,
+        product_id=poi_1.product_id, received_quantity=Decimal('10')))
+    rr.line_items.append(ReceivingReportItem(
+        line_number=2, purchase_order_item_id=poi_2.id,
+        product_id=poi_2.product_id, received_quantity=Decimal('5')))
+    db.session.add(rr)
+    db.session.commit()
+    return rr
+
+
+@pytest.fixture
+def rr_with_an_orphaned_line(db_session, branch_manila, rr_source_po):
+    """A line whose `purchase_order_item_id` points at NO ROW at all.
+
+    `purchase_order_item_id` is `nullable=False`, so this is the only way to make
+    `ReceivingReportItem.purchase_order_item` resolve to None on a row that is
+    actually PERSISTED and printed -- it is representable because SQLite FK
+    enforcement is OFF app-wide (memory `sqlite-fk-off-delete-guard`), not a purely
+    hypothetical state: a purged PO line, a bad legacy import, or any future
+    deletion path that forgets to guard this FK would leave exactly this."""
+    from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
+    poi = rr_source_po.line_items[0]
+    rr = ReceivingReport(branch_id=branch_manila.id, rr_number='00780',
+                         receipt_date=date(2026, 8, 6),
+                         purchase_order_id=rr_source_po.id,
+                         vendor_id=rr_source_po.vendor_id,
+                         vendor_name=rr_source_po.vendor_name,
+                         remarks='One good line, one orphaned', status='draft')
+    rr.line_items.append(ReceivingReportItem(
+        line_number=1, purchase_order_item_id=poi.id,
+        product_id=poi.product_id, received_quantity=Decimal('10')))
+    rr.line_items.append(ReceivingReportItem(
+        line_number=2, purchase_order_item_id=999999, received_quantity=Decimal('3')))
+    db.session.add(rr)
+    db.session.commit()
+    return rr
+
+
+class TestReceivingReportOverlayPoNumberColumn:
+    """`po_number` moved from a header FIELD to a per-line COLUMN (Task 5) because
+    one receipt may settle several of a vendor's orders (Task 4) -- no single header
+    box can print "the" PO number any more. Rendered from
+    `ReceivingReportItem.po_number` (app/receiving_reports/models.py), never
+    inlined in the template."""
+
+    def test_a_multi_po_receipt_prints_each_lines_own_po_number(
+            self, client, db_session, admin_user, branch_manila, multi_po_rr,
+            rr_source_po, rr_source_po_2):
+        """The failure this column exists to catch: a template wired to ONE PO
+        (the old header FK, or a naive `rr.purchase_orders[0]`) would repeat the
+        same number on every line instead of each line printing its own."""
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/receiving-reports/{multi_po_rr.id}/print').data.decode()
+        cells = _column_cells(body)
+        assert cells['po_number'] == [rr_source_po.po_number, rr_source_po_2.po_number]
+        # The two POs are genuinely different numbers -- otherwise a
+        # repeat-the-first-number bug would coincidentally satisfy the assertion.
+        assert rr_source_po.po_number != rr_source_po_2.po_number
+
+    def test_a_line_with_no_purchase_order_item_prints_an_empty_po_number_without_raising(
+            self, client, db_session, admin_user, branch_manila,
+            rr_with_an_orphaned_line, rr_source_po):
+        """The control the brief calls for. The plan's own rejected snippet
+        (`purchase_order_item.purchase_order.po_number`) would have raised
+        `AttributeError` in real Python code -- `purchase_order` is not a real
+        relationship, its backref is `order` -- and even the Jinja-inlined form of
+        that mistake would only have masked the symptom (an always-empty column,
+        never caught by a presence assertion), not fixed it. Here the model
+        property must degrade line-by-line: line 1 (a real PO line) still prints
+        its number; line 2 (orphaned) is empty -- proving the empty cell is that
+        ONE line's own state, not the whole column going blank."""
+        AppSettings.set_setting('rr_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/receiving-reports/{rr_with_an_orphaned_line.id}/print')
+        assert resp.status_code == 200
+        cells = _column_cells(resp.data.decode())
+        assert cells['po_number'] == [rr_source_po.po_number, '']
+
+
+class TestReceivingReportPlainPrintPoNumberColumn:
+    """print.html (`rr_print_form == 'current'`) gained the same PO No. column --
+    Task 1 removed this template's header `PO #:` line, so without a per-line
+    column the plain printout would carry no PO reference at all."""
+
+    def test_the_plain_print_carries_a_po_number_column(
+            self, client, db_session, admin_user, branch_manila, approved_rr,
+            rr_source_po):
+        AppSettings.set_setting('rr_print_form', 'current')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/receiving-reports/{approved_rr.id}/print')
+        assert resp.status_code == 200
+        assert b'pp-canvas' not in resp.data, 'rendered the pre-printed overlay instead'
+        body = resp.data.decode()
+        assert '<th>PO No.</th>' in body
+        rows = _plain_rows(body)
+        assert len(rows) == 1
+        # Columns are #, Item, PO No., Ordered, Received (print.html's <thead> order).
+        assert rows[0][2] == rr_source_po.po_number
+
+    def test_a_multi_po_receipt_prints_each_lines_own_po_number(
+            self, client, db_session, admin_user, branch_manila, multi_po_rr,
+            rr_source_po, rr_source_po_2):
+        AppSettings.set_setting('rr_print_form', 'current')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(
+            f'/receiving-reports/{multi_po_rr.id}/print').data.decode()
+        rows = _plain_rows(body)
+        assert [r[2] for r in rows] == [rr_source_po.po_number, rr_source_po_2.po_number]
+        assert rr_source_po.po_number != rr_source_po_2.po_number
+
+    def test_a_line_with_no_purchase_order_item_prints_an_empty_po_number_without_raising(
+            self, client, db_session, admin_user, branch_manila,
+            rr_with_an_orphaned_line, rr_source_po):
+        AppSettings.set_setting('rr_print_form', 'current')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        resp = client.get(f'/receiving-reports/{rr_with_an_orphaned_line.id}/print')
+        assert resp.status_code == 200
+        rows = _plain_rows(resp.data.decode())
+        assert [r[2] for r in rows] == [rr_source_po.po_number, '']
 
 
 class TestReceivingReportLayoutSave:

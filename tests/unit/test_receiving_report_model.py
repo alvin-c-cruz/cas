@@ -114,3 +114,60 @@ def test_item_has_stock_movement_id_column(db_session):
     col = ReceivingReportItem.__table__.columns.get('stock_movement_id')
     assert col is not None
     assert col.nullable is True
+
+
+class TestPoNumberProperty:
+    """`po_number` is derived through purchase_order_item -> order (the PO
+    header's backref, NOT `purchase_order` -- see PurchaseOrderItem.order,
+    purchase_orders/models.py:107). One receipt may settle several of a vendor's
+    orders (Task 4), so this is a per-LINE property, not a header field."""
+
+    def test_po_number_derives_through_the_po_line_and_its_order(self, db_session):
+        from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
+        po = _po_with_line(db_session, qty=100)
+        poi = po.line_items[0]
+        rr = ReceivingReport(rr_number='RR-2026-07-0004', receipt_date=date(2026, 7, 11),
+                             purchase_order_id=po.id, vendor_name='Acme', status='draft')
+        li = ReceivingReportItem(line_number=1, purchase_order_item_id=poi.id,
+                                 received_quantity=Decimal('5'))
+        rr.line_items.append(li)
+        db_session.add(rr)
+        db_session.commit()
+        assert li.po_number == po.po_number
+
+    def test_po_number_is_empty_when_the_line_has_no_purchase_order_item(self, db_session):
+        """A transient line whose relationship/FK was never set. `purchase_order_item`
+        is `nullable=False` in the DB, but this object is never committed -- the
+        property must degrade to '' here too, not only on a persisted row."""
+        from app.receiving_reports.models import ReceivingReportItem
+        li = ReceivingReportItem(line_number=1, received_quantity=Decimal('5'))
+        assert li.purchase_order_item is None
+        assert li.po_number == ''
+
+    def test_po_number_is_empty_when_the_po_line_itself_has_no_order(self, db_session):
+        """The other missing link: the PO line exists but is not attached to any
+        PurchaseOrder header (`.order`, the REAL backref, is None). Exercises the
+        second `if` branch of the property -- the first test above cannot reach it,
+        since its `poi` is always attached to a committed `po`."""
+        from app.receiving_reports.models import ReceivingReportItem
+        from app.purchase_orders.models import PurchaseOrderItem
+        poi = PurchaseOrderItem(line_number=1, quantity=Decimal('10'))
+        assert poi.order is None
+        li = ReceivingReportItem(line_number=1, received_quantity=Decimal('5'))
+        li.purchase_order_item = poi
+        assert li.po_number == ''
+
+    def test_po_number_never_reads_a_purchase_order_attribute(self, db_session):
+        """Pins the exact defect the plan's own Step 2 snippet would have shipped:
+        `purchase_order_item.purchase_order` is not a real relationship
+        (PurchaseOrderItem's backref is `order`), so a property written that way
+        raises AttributeError instead of degrading to ''. A real PO line, with a
+        real order, is used so the wrong attribute would actually be reached."""
+        from app.receiving_reports.models import ReceivingReportItem
+        po = _po_with_line(db_session, qty=100)
+        poi = po.line_items[0]
+        assert not hasattr(poi, 'purchase_order')
+        li = ReceivingReportItem(line_number=1, purchase_order_item_id=poi.id,
+                                 received_quantity=Decimal('5'))
+        li.purchase_order_item = poi
+        assert li.po_number == po.po_number  # does not raise

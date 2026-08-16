@@ -52,21 +52,26 @@ class TestReceivingReport:
         assert rr_pl.LAYOUT_SETTING_KEY == 'rr_preprinted_layout'
 
     def test_fields(self):
+        """`po_number` is NOT a header field -- one receipt may settle several of
+        a vendor's orders, so it moved to a per-line COLUMN (Task 5)."""
         assert rr_pl.FIELD_KEYS == ['rr_number', 'receipt_date', 'vendor_name',
-                                    'po_number', 'remarks']
+                                    'remarks']
+        assert 'po_number' not in rr_pl.FIELD_KEYS
 
     def test_columns(self):
         assert rr_pl.COLUMN_KEYS == ['line_number', 'product', 'description',
-                                     'ordered_qty', 'received_quantity', 'uom']
+                                     'po_number', 'ordered_qty', 'received_quantity',
+                                     'uom']
 
     def test_every_label_is_exactly_right(self):
         assert rr_pl.FIELD_LABELS == {
             'rr_number': 'RR No.', 'receipt_date': 'Receipt Date',
-            'vendor_name': 'Vendor', 'po_number': 'PO No.', 'remarks': 'Remarks',
+            'vendor_name': 'Vendor', 'remarks': 'Remarks',
         }
         assert rr_pl.COLUMN_LABELS == {
             'line_number': '#', 'product': 'Product', 'description': 'Description',
-            'ordered_qty': 'Ordered', 'received_quantity': 'Received', 'uom': 'UOM',
+            'po_number': 'PO No.', 'ordered_qty': 'Ordered',
+            'received_quantity': 'Received', 'uom': 'UOM',
         }
 
 

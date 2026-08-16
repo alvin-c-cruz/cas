@@ -113,13 +113,10 @@
      Purchase Order overlay resolves it. Hardcoding a format here would leave the
      designer's own date-format dropdown silently doing nothing on this document. #}
   {% set date_fmt = date_formats[layout.dateFormat] %}
-  {# `po_number` is DERIVED through the purchase_order relationship -- the RR
-     header stores only the FK. #}
   {% set field_values = {
     'rr_number': rr.rr_number,
     'receipt_date': rr.receipt_date.strftime(date_fmt) if rr.receipt_date else '',
     'vendor_name': rr.vendor_name or '',
-    'po_number': rr.purchase_order.po_number if rr.purchase_order else '',
     'remarks': rr.remarks or '',
   } %}
   {# `data-date` makes the designer re-format that box live when the format
@@ -151,13 +148,18 @@
          DERIVED through purchase_order_item (nullable=False, so always present),
          and the declared column keys deliberately do NOT match the model's
          attribute names -- `ordered_qty` is po_line.quantity and `uom` is
-         po_line.unit_of_measure.code / po_line.uom_text. #}
+         po_line.unit_of_measure.code / po_line.uom_text. `po_number` is the RR
+         line's own `po_number` property (derived through purchase_order_item ->
+         order, NEVER `purchase_order_item.purchase_order` -- that relationship
+         does not exist, its backref is named `order`) -- one receipt may settle
+         several of a vendor's orders, so each LINE carries its own PO number. #}
       {%- set po_line = item.purchase_order_item %}
       {%- set product = item.product or (po_line.product if po_line else None) %}
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
         {%- elif col.key == 'product' -%}{% if product %}{{ product.code ~ ' — ' ~ product.name }}{% else %}{{ '' }}{% endif %}
         {%- elif col.key == 'description' -%}{{ (po_line.description if po_line else '') or '' }}
+        {%- elif col.key == 'po_number' -%}{{ item.po_number }}
         {%- elif col.key == 'ordered_qty' -%}{{ po_line | qty_fmt }}
         {%- elif col.key == 'received_quantity' -%}{{ item | qty_fmt }}
         {%- elif col.key == 'uom' -%}{% if po_line and po_line.unit_of_measure %}{{ po_line.unit_of_measure.code }}{% else %}{{ (po_line.uom_text if po_line else '') or '' }}{% endif %}
