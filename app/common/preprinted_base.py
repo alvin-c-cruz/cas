@@ -16,7 +16,14 @@ its default.
 
 Do NOT import from any existing module's `preprinted_layout.py` here, and do not
 import this module from one of them -- the eight existing clones stay untouched
-and independently changeable; this base stands alone.
+and independently changeable; this base is independent OF THE CLONES.
+
+It is NOT dependency-free, and the difference matters. It imports
+`app.common.preprinted_texts` (below), which all eight clones import too -- so that
+module is a seam shared by ELEVEN modules, not an isolated one. A defect there
+(e.g. the open `_clamp` OverflowError) reaches every clone AND this base; a change
+there must be assessed against all eleven, not against the three new declarations.
+`app.settings` / `app.audit.utils` are shared app-wide in the same way.
 """
 import copy
 import json
