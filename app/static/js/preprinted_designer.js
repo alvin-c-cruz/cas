@@ -30,6 +30,7 @@
   // what is stored the same thing (drag a field to x=10 without this and it silently
   // jumps to x=48 on the next page load).
   var SAFE_MARGIN = 48;          // printable inset (tractor-feed margin)
+  var CANVAS_H = 1008;           // preprinted_base.CANVAS_H -- the server's y ceiling
   var FONT_MIN = 6, FONT_MAX = 72;
   var COL_WIDTH_MIN = 20;        // narrowest a line-item column may be dragged
 
@@ -97,8 +98,15 @@
     function clampFieldX(x) {
       return Math.max(SAFE_MARGIN, Math.min(canvas.clientWidth - SAFE_MARGIN, x));
     }
+    // y clamps to the CONSTANT 1008, NOT to canvas.clientHeight. The two are the same
+    // number on continuous stock, but Letter makes the canvas 1056px tall
+    // (preprinted_base.PAPER_SIZES) while _clean_box still clamps y to CANVAS_H = 1008.
+    // Reading the live canvas height there let a user drag po_no to y=1050 on Letter and
+    // get 1008 back on the next load -- a silent 42px upward jump, the same defect class
+    // the x-axis fix (7c7dfd1d) removed. lineItems.y and text blocks share this clamp,
+    // so all three moved together. Do not "simplify" this back to canvas.clientHeight.
     function clampY(y) {
-      return Math.max(0, Math.min(canvas.clientHeight, y));
+      return Math.max(0, Math.min(CANVAS_H, y));
     }
     function clampColX(x) {
       return clampFieldX(x);

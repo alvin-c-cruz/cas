@@ -153,6 +153,110 @@ def test_drag_within_bounds_is_not_clamped(designer):
     assert 0 < top < CANVAS_H
 
 
+# --- y clamps at the CONSTANT 1008, not at the live canvas height -----------------
+#
+# On continuous stock the canvas IS 1008px tall, so the two are indistinguishable --
+# every clamp test above passes either way. Letter is what separates them: the canvas
+# becomes 816 x 1056 (preprinted_base.PAPER_SIZES) while `_clean_box` keeps clamping y
+# to CANVAS_H = 1008. The shipped clampY read `canvas.clientHeight`, so on Letter a
+# field could be dragged to y=1050, look right, save, and come back at 1008 on the next
+# load -- a silent 42px upward jump. That is the same defect class the x-axis fix
+# (7c7dfd1d) removed; it was simply still live on y.
+#
+# `LETTER_H` is asserted from the harness's own <option data-h>, not typed in twice, so
+# these tests cannot go vacuous by drifting away from the paper table they exist to
+# straddle.
+LETTER_H = 1056        # preprinted_base.PAPER_SIZES['letter']['h']
+LETTER_W = 816
+
+
+def _select_letter(page):
+    """Switch the harness to Letter and confirm the canvas really grew past CANVAS_H.
+
+    Without this check a designer that ignored the paper <select> entirely would leave
+    the canvas at 1008 and the clamp assertions below would pass for the wrong reason.
+    """
+    page.select_option('#ppPaper', 'letter')
+    size = page.locator('#ppCanvas').evaluate(
+        "e => [e.clientWidth, e.clientHeight]")
+    assert size == [LETTER_W, LETTER_H], \
+        f'the harness did not switch to Letter: canvas is {size}'
+    assert LETTER_H > CANVAS_H, 'Letter must be TALLER than CANVAS_H or this proves nothing'
+    return page.locator('#ppCanvas').bounding_box()
+
+
+def test_field_on_letter_clamps_y_at_canvas_h_not_at_the_taller_canvas(designer):
+    """Drag a field to y=1050 on Letter: it must stop at 1008, the server's ceiling."""
+    page = designer
+    page.set_viewport_size({'width': 1280, 'height': 1400})
+    page.click('#editLayoutBtn')
+    canvas = _select_letter(page)
+
+    _drag_to(page, '[data-el="po_no"]', canvas['x'] + 200, canvas['y'] + 1050)
+    _left, top = _left_top(page, '[data-el="po_no"]')
+    assert top == CANVAS_H, \
+        f'y clamped to {top}; the server would store 1008 and the field would jump'
+    assert top < LETTER_H
+
+
+def test_line_item_band_on_letter_clamps_y_at_canvas_h(designer):
+    """lineItems.y shares clampY, and the band carries every row with it -- an
+    unclamped band means the whole table jumps on reload, not one field."""
+    page = designer
+    page.set_viewport_size({'width': 1280, 'height': 1400})
+    page.click('#editLayoutBtn')
+    canvas = _select_letter(page)
+
+    box = page.locator(PRODUCT_COL).bounding_box()
+    _drag_to(page, PRODUCT_COL, box['x'] + box['width'] / 2, canvas['y'] + 1050)
+    assert _left_top(page, PRODUCT_COL)[1] == CANVAS_H
+    assert _left_top(page, AMOUNT_COL)[1] == CANVAS_H, 'the band split'
+
+
+def test_text_block_on_letter_clamps_y_at_canvas_h(designer):
+    """The third caller of clampY: a .pp-text signatory block."""
+    page = designer
+    page.set_viewport_size({'width': 1280, 'height': 1400})
+    page.click('#editLayoutBtn')
+    canvas = _select_letter(page)
+
+    _drag_to(page, '.pp-text[data-text="preparer"]',
+             canvas['x'] + 200, canvas['y'] + 1050)
+    _left, top = _left_top(page, '.pp-text[data-text="preparer"]')
+    assert top == CANVAS_H
+
+
+def test_a_letter_drag_above_canvas_h_is_not_clamped(designer):
+    """Control: clamping at the CONSTANT must not pin every Letter drag to 1008.
+
+    Without this, `return CANVAS_H` would satisfy all three tests above."""
+    page = designer
+    page.set_viewport_size({'width': 1280, 'height': 1400})
+    page.click('#editLayoutBtn')
+    canvas = _select_letter(page)
+
+    _drag_to(page, '[data-el="po_no"]', canvas['x'] + 200, canvas['y'] + 900)
+    _left, top = _left_top(page, '[data-el="po_no"]')
+    assert 800 < top < CANVAS_H
+
+
+def test_the_clamped_letter_y_is_what_reaches_the_save_payload(designer):
+    """The DOM assertions above are only as good as what collect() sends: the whole
+    point is that the SERVER never has to correct the number."""
+    page = designer
+    page.set_viewport_size({'width': 1280, 'height': 1400})
+    captured = _intercept_save(page)
+    page.click('#editLayoutBtn')
+    canvas = _select_letter(page)
+    _drag_to(page, '[data-el="po_no"]', canvas['x'] + 200, canvas['y'] + 1050)
+
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    payload = json.loads(captured['body'])
+    assert payload['paper'] == 'letter'
+    assert payload['fields']['po_no']['y'] == CANVAS_H
+
+
 # --- column drag: columns clamp EXACTLY like fields -------------------------------
 #
 # These two tests were written one commit ago to pin the OPPOSITE behaviour: a column
