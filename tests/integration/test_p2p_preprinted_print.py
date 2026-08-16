@@ -356,6 +356,63 @@ class TestPurchaseOrderPrintForm:
         assert b'Purchase Order printing is not enabled.' in resp.data
 
 
+class TestPurchaseOrderOverlayLineValues:
+    """The PO overlay's line-item cells, asserted on their VALUE.
+
+    `uom_box`, `product_bolt` and `_column_cells` are declared further down the file
+    with the Purchase Requisition fixtures -- module-level fixtures and helpers are
+    resolved by name at call time, not by source order, and PO/PR/RR deliberately
+    share ONE set so a divergence between the three overlays shows up as a
+    disagreement between tests written against identical inputs."""
+
+    def test_the_uom_column_prints_the_unit_code_not_its_long_name(
+            self, client, db_session, admin_user, branch_manila, approved_po,
+            uom_box):
+        """OWNER DECISION (2026-08-16): all three P2P overlays print
+        `unit_of_measure.code`. The PO shipped printing `.name`, so the same order
+        printed 'Carton' where PR/RR printed 'BOX'. The pre-printed uom box is 50px
+        wide by default (DEFAULT_PO_PREPRINTED_LAYOUT), which a unit NAME overruns on
+        real stationery -- and the PO's own on-screen surfaces already use the code
+        (`PurchaseOrderItem.uom_display`, purchase_orders/models.py:259)."""
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        approved_po.line_items[0].unit_of_measure_id = uom_box.id
+        db_session.commit()
+        # Guard the guard: if code and name were ever made the same word (or differed
+        # only in case) the assertion below would hold against BOTH expressions.
+        assert uom_box.code != uom_box.name
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
+        cells = _column_cells(body)
+        assert cells['uom'] == [uom_box.code]
+        assert uom_box.name not in cells['uom']
+
+    def test_the_uom_column_falls_back_to_the_line_s_free_text(
+            self, client, db_session, admin_user, branch_manila, approved_po):
+        """The other half of the expression PR/RR use: a PO line may carry a
+        free-text `uom_text` instead of a UnitOfMeasure FK (both columns are
+        nullable -- purchase_orders/models.py:213-214). Without this, a template
+        that dropped the fallback and emitted only `.code` would still pass the
+        test above."""
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        line = approved_po.line_items[0]
+        line.unit_of_measure_id = None
+        line.uom_text = 'PAIL'
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
+        assert _column_cells(body)['uom'] == ['PAIL']
+
+    def test_a_line_with_neither_prints_an_empty_uom_cell(
+            self, client, db_session, admin_user, branch_manila, approved_po):
+        """`_make_draft_po` builds its line with neither -- the tail of the chain
+        (`or ''`) must render an empty cell, not 'None'."""
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        db_session.commit()
+        _login(client, admin_user, branch_manila)
+        body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
+        assert _column_cells(body)['uom'] == ['']
+
+
 class TestPrintAccessGate:
     """po_print_access defaults to approved_only: a DRAFT purchase order must not
     be printable, because a draft PO sent to a supplier is a commercial problem.
@@ -368,6 +425,26 @@ class TestPrintAccessGate:
     #: <table> (the line items), and 'not enabled' is the *print form* message, not
     #: this one. A refusal must be proven by the refusal, not by absence.
     REFUSAL = b'A draft Purchase Order cannot be printed. Approve it first.'
+
+    #: Every PO status that must PRINT. `VALID_PO_STATUSES` (purchase_orders/views.py:35)
+    #: has five members; `draft` and `cancelled` are pinned as refusals elsewhere in this
+    #: class and in TestCancelledIsNeverPrintable, and these are the other three.
+    #:
+    #: Only `approved` was pinned until 2026-08-16, and the gap was not theoretical: the
+    #: route predicate `po.status == 'draft'` mutated to `po.status != 'approved'` left
+    #: the whole suite GREEN, because nothing anywhere built a PO in either of the other
+    #: two states. The button gate carries the same predicate, so the existing
+    #: route-agrees-with-button tests could not see it either -- both sides would have
+    #: been wrong together, consistently.
+    #:
+    #: `closed` is set today by purchase_billing.py:62 (a fully billed order), and it is
+    #: the state a PO spends the REST OF ITS LIFE in -- refusing it would mean a buyer
+    #: cannot reprint any order they have finished paying for. `partially_received` is a
+    #: declared member that no code path assigns yet (PurchaseOrder.AMEND_STATUSES says
+    #: so explicitly, and receiving_reports.RECEIVABLE_PO_STATUSES already accepts it),
+    #: so it is pinned here to fix the behaviour BEFORE that transition ships rather than
+    #: leave it to whichever branch happens to add the writer.
+    PRINTABLE_STATUSES = ['approved', 'partially_received', 'closed']
 
     def test_a_draft_is_refused_at_the_route(self, client, db_session, admin_user,
                                              branch_manila, draft_po):
@@ -390,14 +467,25 @@ class TestPrintAccessGate:
         assert b'pp-canvas' not in resp.data
         assert self.REFUSAL in resp.data
 
-    def test_an_approved_po_is_allowed(self, client, db_session, admin_user,
-                                       branch_manila, approved_po):
-        """The control. Without it the gate could refuse everything and the test
-        above would still pass."""
+    @pytest.mark.parametrize('status', PRINTABLE_STATUSES)
+    def test_a_non_draft_non_cancelled_po_is_allowed(
+            self, client, db_session, admin_user, branch_manila, approved_po, status):
+        """The control, across the WHOLE printable axis (see PRINTABLE_STATUSES).
+
+        Without it the gate could refuse everything and the refusal tests above would
+        still pass; with only `approved` on it, the gate could refuse the two states a
+        PO spends most of its life in and the suite would still pass."""
+        approved_po.status = status
         AppSettings.set_setting('po_print_access', 'approved_only')
         db_session.commit()
         _login(client, admin_user, branch_manila)
-        assert client.get(f'/purchase-orders/{approved_po.id}/print').status_code == 200
+        resp = client.get(f'/purchase-orders/{approved_po.id}/print')
+        assert resp.status_code == 200
+        # A 200 alone would also be returned by a redirect that was not followed;
+        # assert the print surface really rendered and carries no refusal.
+        assert self.REFUSAL not in resp.data
+        assert TestCancelledIsNeverPrintable.REFUSAL not in resp.data
+        assert approved_po.po_number.encode() in resp.data
 
     def test_a_draft_is_allowed_when_the_gate_is_relaxed(
             self, client, db_session, admin_user, branch_manila, draft_po):
@@ -423,12 +511,23 @@ class TestPrintAccessGate:
         assert draft_po.po_number in body
         assert f'/purchase-orders/{draft_po.id}/print' not in body
 
-    def test_the_print_button_is_shown_on_an_approved_detail_page(
-            self, client, db_session, admin_user, branch_manila, approved_po):
+    @pytest.mark.parametrize('status', PRINTABLE_STATUSES)
+    def test_the_print_button_is_shown_on_a_printable_detail_page(
+            self, client, db_session, admin_user, branch_manila, approved_po, status):
+        """The button gate (purchase_orders/detail.html:20-21) restates the route's
+        predicate, so it is pinned across the SAME axis -- a mutation applied to both
+        (they are the identical expression) must not be able to leave the pair
+        agreeing with each other and wrong."""
+        approved_po.status = status
         AppSettings.set_setting('po_print_access', 'approved_only')
         db_session.commit()
         _login(client, admin_user, branch_manila)
-        body = client.get(f'/purchase-orders/{approved_po.id}').data.decode()
+        resp = client.get(f'/purchase-orders/{approved_po.id}')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # Positive control: the page really rendered, so the presence below is read
+        # off a real detail page and not a redirect that happens to contain the URL.
+        assert approved_po.po_number in body
         assert f'/purchase-orders/{approved_po.id}/print' in body
 
     def test_the_print_button_is_hidden_when_the_form_is_hidden(
@@ -866,8 +965,15 @@ class TestPoPrintAccessSettingRegistration:
 
 @pytest.fixture
 def uom_box(db_with_data):
+    """`code` and `name` are deliberately DIFFERENT WORDS, not 'BOX'/'Box'.
+
+    Every overlay's uom column must print `.code`; the previous name ('Box') differed
+    from the code only in CASE, so `== [uom_box.code]` distinguished `.code` from
+    `.name` by nothing but capitalisation -- one `|upper` or a case-insensitive
+    comparison anywhere and all three assertions would go vacuous at once. 'Carton'
+    shares no characters with 'BOX', so the mutation .code -> .name is unmissable."""
     from app.units_of_measure.models import UnitOfMeasure
-    u = UnitOfMeasure(code='BOX', name='Box', is_active=True)
+    u = UnitOfMeasure(code='BOX', name='Carton', is_active=True)
     db.session.add(u)
     db.session.commit()
     return u
