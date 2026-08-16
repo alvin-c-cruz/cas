@@ -126,10 +126,65 @@ def _grant_po_access(user, branch, db_session):
     db_session.commit()
 
 
+#: The overlay canvas, asserted by its ID.
+#:
+#: Never assert the rendered overlay by its CLASS (`'pp-canvas' in body`): every
+#: overlay hardcodes `.pp-canvas { position: relative; ... }` in its own inline
+#: <style>, so that substring is present even with the canvas <div> deleted
+#: outright -- the positive controls written that way could not fail. `id="ppCanvas"`
+#: appears only on the element itself.
+#:
+#: The NEGATIVE direction (`b'pp-canvas' not in resp.data` on the standard
+#: print.html) is a real assertion and deliberately keeps the class form:
+#: print.html contains the string nowhere, in markup or in CSS.
+CANVAS = 'id="ppCanvas"'
+
+
 def _element(body, key):
     """The full opening tag of the overlay element for *key*, or None."""
     m = re.search(r'<div[^>]*data-el="%s"[^>]*>' % re.escape(key), body)
     return m.group(0) if m else None
+
+
+def _body_paper(body):
+    """`layout.paper` as reported by the rendered <body> TAG, or None.
+
+    Never assert `'data-paper="X"' in body`: every overlay's inline CSS hardcodes
+    `body:not([data-paper="continuous"]) .pp-margin-guide { display: none; }`, so
+    that substring is present on EVERY render whatever layout.paper actually holds.
+    A cross-wire assertion written that way is satisfied by the stylesheet alone --
+    which is how the sibling-isolation check below stayed green against a
+    receiving_reports save route wired to purchase_requests.save_layout."""
+    m = re.search(r'<body[^>]*\sdata-paper="([^"]*)"', body)
+    return m.group(1) if m else None
+
+
+class TestTheLoginHelperSwitchesIdentity:
+    """`_login` silently underwrites EVERY role assertion in this file.
+
+    If its `g.pop('_login_user')` is dropped, Flask-Login keeps serving the first
+    user who made a request (see the helper's own comment) and every gate test below
+    quietly becomes an assertion about that user instead of the one it names -- a
+    staff-is-refused test would 'pass' while running as admin. That mutation was held
+    only incidentally, by one test written for an unrelated reason; this pins it
+    directly."""
+
+    def test_a_second_login_changes_who_the_server_serves(
+            self, client, db_session, admin_user, staff_user, branch_manila,
+            approved_po):
+        _grant_po_access(staff_user, branch_manila, db_session)
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        db_session.commit()
+        # A request MUST run as admin BEFORE the switch: `g._login_user` is populated
+        # by a request, so a switch asserted without one would pass against the
+        # broken helper too (it is a no-op before the first request).
+        _login(client, admin_user, branch_manila)
+        assert 'data-can-edit="true"' in client.get(
+            f'/purchase-orders/{approved_po.id}/print').data.decode()
+        _login(client, staff_user, branch_manila)
+        assert 'data-can-edit="false"' in client.get(
+            f'/purchase-orders/{approved_po.id}/print').data.decode(), \
+            '_login did not switch identity -- still served as the first user'
 
 
 class TestPurchaseOrderPrintForm:
@@ -154,7 +209,7 @@ class TestPurchaseOrderPrintForm:
         resp = client.get(f'/purchase-orders/{approved_po.id}/print')
         assert resp.status_code == 200
         body = resp.data.decode()
-        assert 'pp-canvas' in body
+        assert CANVAS in body
         for key in FIELD_KEYS:
             assert f'data-el="{key}"' in body, f'{key} is not rendered on the overlay'
 
@@ -252,7 +307,7 @@ class TestPurchaseOrderPrintForm:
         assert resp.status_code == 200
         body = resp.data.decode()
         # Positive control: the overlay itself rendered -- staff may PRINT.
-        assert 'pp-canvas' in body
+        assert CANVAS in body
         assert 'id="editLayoutBtn"' not in body
         assert 'data-can-edit="false"' in body
 
@@ -939,7 +994,7 @@ class TestPurchaseRequisitionPrintForm:
         resp = client.get(f'/purchase-requests/{approved_pr.id}/print')
         assert resp.status_code == 200
         body = resp.data.decode()
-        assert 'pp-canvas' in body
+        assert CANVAS in body
         for key in FIELD_KEYS:
             assert f'data-el="{key}"' in body, f'{key} is not rendered on the overlay'
 
@@ -1032,7 +1087,7 @@ class TestPurchaseRequisitionPrintForm:
         assert resp.status_code == 200
         body = resp.data.decode()
         # Positive control: the overlay itself rendered -- staff may PRINT.
-        assert 'pp-canvas' in body
+        assert CANVAS in body
         assert 'id="editLayoutBtn"' not in body
         assert 'data-can-edit="false"' in body
 
@@ -1147,7 +1202,13 @@ class TestPurchaseRequisitionOverlayValues:
         body = client.get(
             f'/purchase-requests/{asap_pr_with_a_stale_date.id}/print').data.decode()
         assert self._cell(body, 'date_needed') == 'ASAP'
+        # Both renderings of the stale date: the long form is what layout.dateFormat
+        # ('long', the default) would print into a visible box, the ISO form is what a
+        # `data-date` attribute carries -- and the ISO form is also what every OTHER
+        # dateFormat leaks through, so the long-form literal alone would miss a leak
+        # on any client whose designer picked a different format.
         assert '30 September 2026' not in body
+        assert '2026-09-30' not in body
 
     def test_an_asap_requisition_carries_no_reformattable_date(
             self, client, db_session, admin_user, branch_manila,
@@ -1417,7 +1478,7 @@ class TestReceivingReportPrintForm:
         resp = client.get(f'/receiving-reports/{approved_rr.id}/print')
         assert resp.status_code == 200
         body = resp.data.decode()
-        assert 'pp-canvas' in body
+        assert CANVAS in body
         for key in FIELD_KEYS:
             assert f'data-el="{key}"' in body, f'{key} is not rendered on the overlay'
 
@@ -1505,7 +1566,7 @@ class TestReceivingReportPrintForm:
         assert resp.status_code == 200
         body = resp.data.decode()
         # Positive control: the overlay itself rendered -- staff may PRINT.
-        assert 'pp-canvas' in body
+        assert CANVAS in body
         assert 'id="editLayoutBtn"' not in body
         assert 'data-can-edit="false"' in body
 
@@ -1684,15 +1745,12 @@ class TestReceivingReportLayoutSave:
                        .data.decode(), 'rr_number')
         assert tag and 'width:250px' in tag, tag
 
-    def test_the_two_documents_keep_separate_layouts(
-            self, client, db_session, admin_user, branch_manila, approved_rr,
-            approved_pr):
-        """Each declaration owns its own setting key (pr_preprinted_layout /
-        rr_preprinted_layout). Wiring one route to the other module's save_layout
-        would pass every assertion above while silently overwriting the sibling
-        document's stationery.
+    def _both_papers(self, client, db_session, admin_user, branch_manila,
+                     approved_rr, approved_pr, save_url):
+        """POST `paper: letter` to *save_url*, then read layout.paper back off BOTH
+        print pages as (rr, pr).
 
-        Read back through both PRINT PAGES, not by POSTing the sibling's save route
+        Read back through the PRINT PAGES, not by POSTing the sibling's save route
         and inspecting the echo: `save_layout` sanitises the SUBMITTED payload over
         the declaration's defaults and never consults what is stored, so an empty
         POST echoes the defaults whatever the mutation did. That version of this
@@ -1701,16 +1759,42 @@ class TestReceivingReportLayoutSave:
         AppSettings.set_setting('pr_print_form', 'preprinted')
         db_session.commit()
         _login(client, admin_user, branch_manila)
-        assert client.post('/receiving-reports/print-layout',
-                           json={'paper': 'letter'}).status_code == 200
-        rr_body = client.get(
-            f'/receiving-reports/{approved_rr.id}/print').data.decode()
-        pr_body = client.get(
-            f'/purchase-requests/{approved_pr.id}/print').data.decode()
-        # Positive control: the save DID land somewhere.
-        assert 'data-paper="letter"' in rr_body
-        assert 'data-paper="continuous"' in pr_body, \
-            'the RR save reached the requisition layout'
+        assert client.post(save_url, json={'paper': 'letter'}).status_code == 200
+        return (_body_paper(client.get(
+                    f'/receiving-reports/{approved_rr.id}/print').data.decode()),
+                _body_paper(client.get(
+                    f'/purchase-requests/{approved_pr.id}/print').data.decode()))
+
+    def test_an_rr_layout_save_does_not_reach_the_requisition(
+            self, client, db_session, admin_user, branch_manila, approved_rr,
+            approved_pr):
+        """Each declaration owns its own setting key (pr_preprinted_layout /
+        rr_preprinted_layout). Wiring the RR route to purchase_requests.save_layout
+        would pass every assertion above while silently overwriting the requisition's
+        stationery.
+
+        Asserted through `_body_paper` (the <body> TAG), never as a substring: both
+        overlays hardcode `data-paper="continuous"` inside their own inline CSS, so
+        the substring form is true on every render and pins nothing."""
+        rr, pr = self._both_papers(client, db_session, admin_user, branch_manila,
+                                   approved_rr, approved_pr,
+                                   '/receiving-reports/print-layout')
+        # Positive control: the save DID land on the receiving report.
+        assert rr == 'letter', rr
+        assert pr == 'continuous', 'the RR save reached the requisition layout'
+
+    def test_a_pr_layout_save_does_not_reach_the_receiving_report(
+            self, client, db_session, admin_user, branch_manila, approved_rr,
+            approved_pr):
+        """The mirror direction. A cross-wire is directional -- pinning only
+        RR -> PR leaves purchase_requests.save_print_layout free to write
+        rr_preprinted_layout, the same defect with the documents swapped."""
+        rr, pr = self._both_papers(client, db_session, admin_user, branch_manila,
+                                   approved_rr, approved_pr,
+                                   '/purchase-requests/print-layout')
+        # Positive control: the save DID land on the requisition.
+        assert pr == 'letter', pr
+        assert rr == 'continuous', 'the PR save reached the receiving-report layout'
 
     def test_a_staff_user_is_refused(self, client, db_session, staff_user, branch_manila):
         """Layout edits change what prints on a client's real stationery.
