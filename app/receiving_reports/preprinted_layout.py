@@ -65,8 +65,16 @@ DEFAULT_RR_PREPRINTED_LAYOUT = {
     # `po_number` is appended AFTER `uom` (x=666) rather than slotted between
     # `description` (ends 460) and `ordered_qty` (starts 468) -- that gap is
     # only 8px, not enough room for a PO number box. Placing it after `uom`
-    # (which ends at 660) leaves a 6px gap to it and it ends at 746, well
+    # (which ends at 660) leaves a 6px gap to it and it ends at 776, well
     # inside the safe-margin printable edge (CANVAS_W - SAFE_MARGIN = 864).
+    #
+    # Its width is 110, not the 80 the band strictly needs. `.pp-cell` is
+    # `overflow: hidden; white-space: nowrap`, so a number too long for its box
+    # is CLIPPED SILENTLY on a printed document -- there is no ellipsis and no
+    # warning. At fontSize 10 in Courier New (~0.6em advance) 80px holds ~13
+    # characters, which fits a generated 5-digit serial but truncates a legacy
+    # prefixed one (`RR-2026-07-0030`, 15 chars). 110px holds ~18 and still
+    # leaves 88px of slack to the safe margin, so the headroom is free.
     'lineItems': {
         'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
         'columns': [
@@ -76,7 +84,7 @@ DEFAULT_RR_PREPRINTED_LAYOUT = {
             {'key': 'ordered_qty',       'x': 468, 'visible': True, 'width': 60},
             {'key': 'received_quantity', 'x': 534, 'visible': True, 'width': 70},
             {'key': 'uom',               'x': 610, 'visible': True, 'width': 50},
-            {'key': 'po_number',         'x': 666, 'visible': True, 'width': 80},
+            {'key': 'po_number',         'x': 666, 'visible': True, 'width': 110},
         ],
     },
     'extras': [],
