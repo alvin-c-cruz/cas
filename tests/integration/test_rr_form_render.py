@@ -127,14 +127,30 @@ class TestThePullControl:
         assert 'id="poPickerAdd"' in create_page
 
     def test_no_free_form_add_line_control_is_offered(self, create_page):
-        """ABSENCE, paired below with the positive that a pull control IS offered.
+        """ABSENCE at the level of INTENT, paired below with the positive that a pull
+        control IS offered.
 
         Every RR line references a purchase_order_item_id (NOT NULL) -- a receiver
         cannot invent one -- so an "+ Add line" button would build a row that can
         never be saved.
+
+        `'addLineBtn' not in create_page` pins ONE id and nothing else: the same
+        control re-added under any other id passes it. So this reads every button the
+        FORM renders and refuses any that offers to add something -- except the
+        picker's own "Add Selected", which only ever adds lines the picker supplied.
         """
+        form_html = create_page[create_page.index('id="rrForm"'):create_page.index('</form>')]
+        labels = [' '.join(m.split()) for m in
+                  re.findall(r'<button\b[^>]*>(.*?)</button>', form_html, re.DOTALL)]
+        assert labels, 'the form rendered no buttons at all'
+        offenders = [lbl for lbl in labels
+                     if re.search(r'\badd\b', lbl, re.I) and lbl != 'Add Selected']
+        assert not offenders, (
+            f'the form offers a free-form add-line control: {offenders} -- every RR '
+            'line needs a purchase_order_item_id, so a hand-added row can never save')
         assert 'addLineBtn' not in create_page
-        assert 'id="pullPoBtn"' in create_page             # the positive pair
+        assert '+ Pull from Purchase Orders' in labels     # the positive pair
+        assert 'id="pullPoBtn"' in create_page
 
 
 class TestTheGrid:
@@ -150,7 +166,10 @@ class TestTheGrid:
         """
         assert 'Select a Purchase Order to load' not in create_page
         assert 'rrGridEmptyRow' in create_page             # the positive pair
-        assert 'pull the open lines' in create_page
+        # NOT 'pull the open lines': that phrase is in the <p class="text-muted">
+        # prose ABOVE the grid as well as in the placeholder, so deleting the
+        # placeholder outright leaves it green. This sentence is the placeholder's own.
+        assert 'No lines yet. Choose the vendor above' in create_page
 
     def test_the_hidden_lines_input_is_still_rendered(self, create_page):
         """CONTROL on the submit contract Tasks 2-3 depend on. A form that renders
@@ -334,7 +353,8 @@ class TestTheOpenLinesEndpoint:
 class TestTheEditFormPrefillsItsOwnLines:
 
     def test_an_existing_line_renders_with_the_po_number_it_came_from(
-            self, client, db_session, admin_user, main_branch, vl_vendor, rr_enabled):
+            self, tmp_path, client, db_session, admin_user, main_branch, vl_vendor,
+            rr_enabled):
         _login(client, admin_user, main_branch)
         po = _po(db_session, main_branch, vl_vendor, 'PO-FR-EDIT', qty=10)
         rr = _draft_rr(db_session, main_branch, vl_vendor, po, number='RR-FR-EDIT')
@@ -345,7 +365,19 @@ class TestTheEditFormPrefillsItsOwnLines:
         marker = 'const PO_NUMBERS = '
         payload, _ = json.JSONDecoder().raw_decode(body, body.index(marker) + len(marker))
         assert payload[str(po.id)] == 'PO-FR-EDIT'
-        assert str(po.line_items[0].id) in body
+        # NOT `str(poi.id) in body`: a bare small integer matches somewhere in a 74 KB
+        # page whatever the form rendered. The line has to be reachable from the two
+        # maps the grid is built out of -- PO_LINES (under its own order) and EXISTING.
+        poi_id = po.line_items[0].id
+        po_lines, _ = json.JSONDecoder().raw_decode(
+            body, body.index('const PO_LINES = ') + len('const PO_LINES = '))
+        existing, _ = json.JSONDecoder().raw_decode(
+            body, body.index('const EXISTING = ') + len('const EXISTING = '))
+        assert [ln['purchase_order_item_id'] for ln in po_lines[str(po.id)]] == [poi_id]
+        assert existing == {str(poi_id): 2.0}
+        # ...and it renders. The grid is built by the script, so both maps can be
+        # perfectly correct while the pre-fill loop puts nothing on the page.
+        assert 'PO-FR-EDIT' in _run_line_block(tmp_path, body, 'load')['before']
 
 
 # -- changing the vendor: the grid is cleared, with a visible warning ----------
@@ -358,7 +390,9 @@ _VENDOR_CHANGE_DRIVER = r'''
 // different thing (grid clearing) on a form that uses a different hidden input.
 // argv[2] = file holding the extracted <script> body
 // argv[3] = path to the REAL transaction-utils.js (escHtml lives there)
-// argv[4] = 'change' to fire the vendor change handler, anything else to just load
+// argv[4] = the action: 'load' (just load), 'change' (fire the vendor change
+//           handler), 'add-then-change' (put a line in the grid, THEN fire it),
+//           'repull' (add the same line twice through the picker's own adder)
 const fs = require('fs');
 const vm = require('vm');
 const src = [fs.readFileSync(process.argv[3], 'utf8'),
@@ -410,25 +444,41 @@ const ctx = {document: document, console: console};
 vm.runInNewContext(src, ctx);
 
 const before = element('rrGridBody').innerHTML;
-if (process.argv[4] === 'change') {
+// The PICKER's own record shape, reused by every action that puts a line in.
+const PULLED = {purchase_order_item_id: 4242, po_number: 'PO-REPULL', product_code: 'X',
+                product_name: 'Widget', uom: 'pc', ordered: 9, received: 0, open: 9};
+function fireVendorChange() {
   const fn = handlers['vendorSelect:change'];
   if (!fn) { console.error('the form never wired a change handler on vendorSelect'); process.exit(2); }
   element('vendorSelect').value = '999';
   fn({});
-} else if (process.argv[4] === 'repull') {
-  // The picker's own path: the same purchase order line added twice.
+}
+function addLineOrFail(qty) {
   if (typeof ctx.rrAddLine !== 'function') {
     console.error('the line block no longer exposes rrAddLine'); process.exit(3);
   }
-  const r = {purchase_order_item_id: 4242, po_number: 'PO-REPULL', product_code: 'X',
-             product_name: 'Widget', uom: 'pc', ordered: 9, received: 0, open: 9};
-  ctx.rrAddLine(r, '1');
-  ctx.rrAddLine(r, '3');
+  ctx.rrAddLine(PULLED, qty);
+}
+if (process.argv[4] === 'change') {
+  fireVendorChange();
+} else if (process.argv[4] === 'add-then-change') {
+  // The CREATE page starts with an empty grid, so a switch there only has lines to
+  // lose once the receiver has pulled some. Pull one first, then switch.
+  addLineOrFail('1');
+  fireVendorChange();
+} else if (process.argv[4] === 'repull') {
+  // The picker's own path: the same purchase order line added twice.
+  addLineOrFail('1');
+  addLineOrFail('3');
 }
 process.stdout.write(JSON.stringify({
   before: before,
   after: element('rrGridBody').innerHTML,
   notice: element('rrVendorChangeNotice').style.display,
+  // Whether the page wired the vendor picker as a LIVE control at all. On an edit
+  // the vendor is fixed, so there must be no handler -- reported rather than
+  // asserted here so the same driver can serve both the presence and the absence.
+  vendor_change_wired: !!handlers['vendorSelect:change'],
   repulled_qty: inputs['4242'] ? inputs['4242'].value : null
 }));
 '''
@@ -459,11 +509,14 @@ def _run_line_block(tmp_path, html, action):
 
 
 class TestChangingTheVendorClearsTheGrid:
-    """A receipt covers ONE vendor. Lines pulled from vendor A must never survive a
-    switch to vendor B -- the save would refuse them ("belongs to X"), but only after
-    the receiver has typed a whole delivery in. Clearing (rather than blocking the
-    switch) is what this form does, and the warning is inline HTML: confirm()/alert()
-    are forbidden project-wide."""
+    """On CREATE a receipt covers ONE vendor. Lines pulled from vendor A must never
+    survive a switch to vendor B -- the save would refuse them ("belongs to X"), but
+    only after the receiver has typed a whole delivery in. Clearing (rather than
+    blocking the switch) is what this form does, and the warning is inline HTML:
+    confirm()/alert() are forbidden project-wide.
+
+    On EDIT there is no switch to guard: see TestTheEditPagesVendorIsFixed below.
+    """
 
     @pytest.fixture
     def edit_page(self, client, db_session, admin_user, main_branch, vl_vendor, rr_enabled):
@@ -482,26 +535,199 @@ class TestChangingTheVendorClearsTheGrid:
             'the "no lines yet" placeholder row was not consumed by the line that '
             'landed on top of it')
 
-    def test_changing_the_vendor_empties_the_grid(self, tmp_path, edit_page):
+    def test_the_prefilled_row_carries_its_quantity_its_po_number_and_its_ceiling(
+            self, tmp_path, edit_page):
+        """rrRowHtml's OUTPUT, asserted -- the pre-filled quantity, the From PO cell
+        and the client-side ceiling.
+
+        Nothing else in this module reads any of the three: `data-poi` and the
+        placeholder's absence (above) survive `value=""` (every edit silently zeroed),
+        a dropped `<td>` (the From PO column renders blank on every row) and a dropped
+        `max=` alike. The PO number cannot be looked for in the whole PAGE either --
+        it is in PO_NUMBERS regardless of whether any row ever prints it -- so this
+        reads the grid body the driver hands back, which holds only what rrRowHtml
+        wrote.
+        """
         html, po = edit_page
-        out = _run_line_block(tmp_path, html, 'change')
-        assert f'data-poi="{po.line_items[0].id}"' in out['before']
+        poi = po.line_items[0]
+        row = _run_line_block(tmp_path, html, 'load')['before']
+
+        # _draft_rr receives 2 of 10; the edit picker excludes this receipt from its
+        # own ceiling, so the whole 10 is still open to it.
+        assert f'<td>{po.po_number}</td>' in row, (
+            'the From PO cell is not rendered -- the column this task added is blank '
+            f'on every row. Grid body was: {row}')
+        assert f'data-poi="{poi.id}" value="2"' in row, (
+            'the quantity input did not come back pre-filled with the quantity the '
+            f'receipt actually holds. Grid body was: {row}')
+        assert 'max="10"' in row, (
+            'the quantity input carries no open-quantity ceiling. Grid body was: '
+            f'{row}')
+
+    def test_changing_the_vendor_empties_the_grid(self, tmp_path, create_page):
+        # 'before' is the grid as the page LOADED (empty on create); the line the
+        # driver pulls in lands between that and the switch, so the SWITCH's effect
+        # is the only thing 'after' can be showing. That the pull itself works is
+        # the separate control below -- otherwise this passes on a grid the driver
+        # never managed to put anything into.
+        out = _run_line_block(tmp_path, create_page, 'add-then-change')
         assert 'data-poi' not in out['after']
         assert 'rrGridEmptyRow' in out['after'], 'the placeholder did not come back'
 
-    def test_changing_the_vendor_shows_the_warning(self, tmp_path, edit_page):
-        html, _ = edit_page
-        loaded = _run_line_block(tmp_path, html, 'load')
-        changed = _run_line_block(tmp_path, html, 'change')
+    def test_a_pulled_line_is_in_the_grid_before_the_switch(self, tmp_path, create_page):
+        """CONTROL for the clearing test above: without it that test passes just as
+        happily on a grid the driver never managed to put anything into."""
+        out = _run_line_block(tmp_path, create_page, 'repull')
+        assert 'data-poi="4242"' in out['after']
+
+    def test_changing_the_vendor_shows_the_warning(self, tmp_path, create_page):
+        loaded = _run_line_block(tmp_path, create_page, 'load')
+        changed = _run_line_block(tmp_path, create_page, 'add-then-change')
         assert loaded['notice'] == 'none', 'the warning is showing before anything changed'
         assert changed['notice'] != 'none'
 
-    def test_no_javascript_popup_is_used(self, edit_page):
-        """Project rule: no confirm()/alert()/prompt(), ever."""
+    def test_no_javascript_popup_is_used(self, edit_page, create_page):
+        """Project rule: no confirm()/alert()/prompt(), ever. Both pages, because the
+        two now render different warnings."""
         html, _ = edit_page
-        for banned in ('confirm(', 'alert(', 'prompt('):
-            assert banned not in html, f'{banned} is forbidden -- use inline HTML'
-        assert 'rrVendorChangeNotice' in html          # the positive pair
+        for page, pair in ((create_page, 'rrVendorChangeNotice'),
+                           (html, 'rrVendorFixedHint')):
+            for banned in ('confirm(', 'alert(', 'prompt('):
+                assert banned not in page, f'{banned} is forbidden -- use inline HTML'
+            assert pair in page                        # the positive pair
+
+
+# -- the edit page's vendor is fixed, so the picker cannot offer a refusable line --
+
+class TestTheEditPagesVendorIsFixed:
+    """`edit()` scopes `eligible` by the RECEIPT's own `rr.vendor_id` and ignores any
+    POSTed `vendor_id`. A picker that read the live `#vendorSelect` on that page could
+    therefore offer lines the save must refuse -- and the refusal re-renders from the
+    SUBMITTED set, so the receiver loses the typed quantity AND the receipt's original
+    lines (they are absent from PO_LINES under the new vendor, and the pre-fill loop's
+    `if (r)` drops them without a word).
+
+    The select stays enabled -- `vendor_id` is DataRequired and disabling it fails
+    every edit submit -- so it is the two live WIRES that are cut.
+    """
+
+    @pytest.fixture
+    def edit_page(self, client, db_session, admin_user, main_branch, vl_vendor, rr_enabled):
+        _login(client, admin_user, main_branch)
+        po = _po(db_session, main_branch, vl_vendor, 'PO-FR-FIX', qty=10)
+        rr = _draft_rr(db_session, main_branch, vl_vendor, po, number='RR-FR-FIX')
+        return client.get(f'/receiving-reports/{rr.id}/edit').data.decode(), rr, po
+
+    def test_the_picker_asks_the_receipt_for_its_vendor_not_the_live_select(
+            self, edit_page):
+        html, rr, _ = edit_page
+        picker = form_script(html, 'pullPoBtn')
+        marker = 'const RR_FIXED_VENDOR_ID = '
+        value, _end = json.JSONDecoder().raw_decode(
+            picker, picker.index(marker) + len(marker))
+        assert value == rr.vendor_id, (
+            'the edit page does not pin the picker to the receipt\'s own vendor')
+        assert re.search(r'if\s*\(\s*RR_FIXED_VENDOR_ID\s*\)\s*return\s+RR_FIXED_VENDOR_ID',
+                         picker), (
+            'chosenVendorId does not PREFER the receipt\'s vendor -- it still reads '
+            'the live select, so the picker can offer lines this receipt can never '
+            'accept')
+
+    def test_the_create_page_still_reads_the_live_select(self, create_page):
+        """CONTROL for the pin above. On create there IS no receipt to ask, so the
+        select is the only source -- a pin that swallowed the create page too would
+        make the picker permanently offer nothing."""
+        picker = form_script(create_page, 'pullPoBtn')
+        marker = 'const RR_FIXED_VENDOR_ID = '
+        value, _end = json.JSONDecoder().raw_decode(
+            picker, picker.index(marker) + len(marker))
+        assert value == 0
+        assert "getElementById('vendorSelect')" in picker
+
+    def test_no_vendor_change_handler_is_wired_on_the_edit_page(self, tmp_path, edit_page):
+        """ABSENCE, paired with the create page's presence below. Executed, not read
+        off the source: a handler that is registered and then does nothing leaves
+        every literal in the page intact."""
+        html, _rr, _po = edit_page
+        out = _run_line_block(tmp_path, html, 'load')
+        assert out['vendor_change_wired'] is False, (
+            'the edit page still wires the grid-clearing vendor handler -- switching '
+            'the vendor there empties a grid that the save will refuse to refill')
+
+    def test_the_create_page_does_wire_one(self, tmp_path, create_page):
+        """The positive pair for the absence above."""
+        out = _run_line_block(tmp_path, create_page, 'load')
+        assert out['vendor_change_wired'] is True
+
+    def test_the_vendor_change_notice_is_not_rendered_on_the_edit_page(
+            self, edit_page, create_page):
+        """The notice tells the receiver their lines were cleared because the vendor
+        changed. On a page where the vendor cannot change it is a promise the form
+        does not keep.
+
+        Asserted on the DIV and on the notice's own sentence, never on the bare id:
+        the id also appears in the inline <script> (which is served on both pages),
+        so `'rrVendorChangeNotice' not in html` is a guaranteed false FAIL here the
+        same way it has been a false PASS elsewhere in this repo.
+        """
+        html, _rr, _po = edit_page
+        for absent in ('<div id="rrVendorChangeNotice"',
+                       "Pull the new vendor's open lines below."):
+            assert absent not in html, (
+                f'the edit page still renders the vendor-change notice ({absent!r})')
+            assert absent in create_page                 # the positive pair
+        assert 'rrVendorFixedHint' in html
+
+    def test_the_edit_page_says_the_vendor_is_fixed(self, edit_page):
+        """An enabled control the view ignores must not be silently misleading."""
+        html, _rr, _po = edit_page
+        assert 'The vendor is fixed for an existing receipt' in html
+        assert 'id="vendorSelect"' in html               # still enabled, still there
+        assert 'disabled' not in html.split('id="vendorSelect"')[1].split('>')[0], (
+            'the vendor select was disabled -- vendor_id is DataRequired, so every '
+            'edit submit would then fail validation')
+
+    def test_the_create_page_carries_no_fixed_vendor_hint(self, create_page):
+        """CONTROL: the hint is edit-only, and the notice is create-only."""
+        assert 'rrVendorFixedHint' not in create_page
+        assert 'rrVendorChangeNotice' in create_page     # the positive pair
+
+    def test_a_bounced_edit_redisplays_the_receipts_line_and_the_typed_quantity(
+            self, tmp_path, client, db_session, admin_user, main_branch, vl_vendor,
+            other_vendor, rr_enabled):
+        """THE OUTCOME the two cut wires exist to protect.
+
+        A real refusal (over-receipt), submitted with the other vendor selected --
+        which an enabled-but-ignored select can still post -- must come back showing
+        the receipt's own line carrying what the receiver typed. Driven through the
+        rendered page's own line block, because the grid is built by that script:
+        EXISTING and PO_LINES can both be perfectly correct while the pre-fill loop
+        renders nothing.
+        """
+        _login(client, admin_user, main_branch)
+        po = _po(db_session, main_branch, vl_vendor, 'PO-FR-BOUNCE', qty=10)
+        rr = _draft_rr(db_session, main_branch, vl_vendor, po, number='RR-FR-BOUNCE')
+        poi = po.line_items[0]
+
+        resp = client.post(f'/receiving-reports/{rr.id}/edit', data={
+            'rr_number': rr.rr_number, 'vendor_id': str(other_vendor.id),
+            'receipt_date': '2026-07-11', 'remarks': '', 'row_version': '1',
+            'lines': json.dumps([{'purchase_order_item_id': poi.id,
+                                  'received_quantity': '99'}]),
+        }, follow_redirects=False)
+
+        assert resp.status_code == 200, (
+            f'the over-receipt was not refused with a re-render: {resp.status_code}')
+        body = resp.data.decode()
+        assert 'exceeds' in body or 'open' in body
+
+        row = _run_line_block(tmp_path, body, 'load')['before']
+        assert f'data-poi="{poi.id}"' in row, (
+            'the bounced edit lost the receipt\'s own line -- the grid came back '
+            f'empty. Grid body was: {row}')
+        assert f'data-poi="{poi.id}" value="99"' in row, (
+            'the bounced edit lost the quantity the receiver typed. Grid body was: '
+            f'{row}')
 
 
 # -- one row per PO line, by construction -------------------------------------

@@ -25,7 +25,22 @@
          renders every .choices__inner as a transparent in-grid box. Without the
          class the Vendor field renders as bare borderless text beside the
          ordinary inputs next to it. #}
-      <div class="form-group picker-field">{{ form.vendor_id.label }} {{ form.vendor_id(class="form-control", id="vendorSelect") }}</div>
+      {# The select stays ENABLED on edit: vendor_id is DataRequired, so disabling it
+         fails validation on every edit submit, and the usual hidden-field workaround
+         posts a duplicate name= (see CLAUDE.md's hidden_tag gotcha). It is the SCRIPT
+         that stops treating it as live -- edit() scopes `eligible` by rr.vendor_id and
+         ignores any POSTed vendor_id, so an enabled-but-ignored control needs to SAY
+         so rather than silently invite a switch that can only ever be refused. #}
+      <div class="form-group picker-field">
+        {{ form.vendor_id.label }} {{ form.vendor_id(class="form-control", id="vendorSelect") }}
+        {% if rr %}
+        <small class="text-muted" id="rrVendorFixedHint">
+          The vendor is fixed for an existing receipt -- only this vendor's open
+          purchase order lines can be received here. To receive from another vendor,
+          enter a new Receiving Report.
+        </small>
+        {% endif %}
+      </div>
       <div class="form-group">{{ form.receipt_date.label }} {{ form.receipt_date(class="form-control") }}</div>
     </div>
     <div class="form-group">{{ form.remarks.label }} {{ form.remarks(class="form-control", rows=2) }}</div>
@@ -40,11 +55,16 @@
     </p>
 
     {# The vendor-change warning. Inline HTML, never confirm()/alert()/prompt() --
-       a project-wide rule. Hidden until the guard in the line script shows it. #}
+       a project-wide rule. Hidden until the guard in the line script shows it.
+       CREATE only: on edit the vendor cannot change (edit() ignores a POSTed
+       vendor_id), so no handler is wired there and this notice would be a promise
+       the form never keeps. #}
+    {% if not rr %}
     <div id="rrVendorChangeNotice" class="alert alert-warning" style="display:none">
       The vendor changed, so the lines already in this receipt were cleared -- a
       Receiving Report covers one vendor. Pull the new vendor's open lines below.
     </div>
+    {% endif %}
 
     <div class="table-responsive">
       <table class="table" id="rrGrid">
@@ -220,15 +240,27 @@
     if (r) rrAddLine(r, EXISTING[poiId]);
   });
 
-  // A receipt covers ONE vendor. Lines pulled from vendor A must never survive a
-  // switch to vendor B: the save refuses them ("belongs to X"), but only after a
-  // whole delivery has been typed in. Clearing is chosen over blocking the switch
-  // because it cannot leave the grid holding the previous vendor's lines under any
-  // ordering of events, and it needs no popup to say so.
+  // On an EDIT the vendor is FIXED. edit() builds `eligible` from the RECEIPT's own
+  // rr.vendor_id and deliberately ignores any POSTed vendor_id, so a switch in the
+  // picker can only ever offer lines the save must refuse -- and that refusal
+  // re-renders from the SUBMITTED set, so the receiver loses the typed quantity AND
+  // the receipt's original lines (they are not in PO_LINES under the new vendor, so
+  // the pre-fill loop's `if (r)` drops them silently). The wire is cut here rather
+  // than by disabling the select: see the hint beside the field above.
+  const RR_VENDOR_IS_FIXED = {{ (true if rr else false) | tojson }};
+
+  // On CREATE a receipt still covers ONE vendor. Lines pulled from vendor A must not
+  // survive a switch to vendor B: the save refuses them ("belongs to X"), but only
+  // after a whole delivery has been typed in. Clearing is chosen over blocking the
+  // switch because it cannot leave the grid holding the previous vendor's lines under
+  // any ordering of events, and it needs no popup to say so.
   (function () {
-    const sel = document.getElementById('vendorSelect');
     const notice = document.getElementById('rrVendorChangeNotice');
     if (notice) notice.style.display = 'none';
+    // No handler at all on edit -- and the warning div itself is create-only, so a
+    // notice about a switch can never appear on a page where none can happen.
+    if (RR_VENDOR_IS_FIXED) return;
+    const sel = document.getElementById('vendorSelect');
     if (!sel) return;
     sel.addEventListener('change', function () {
       const had = RR_ROW_COUNT > 0;
@@ -273,7 +305,15 @@
     const notice = document.getElementById('poPickerNotice');
     const excludeRrId = {{ (rr.id if rr else 0) | tojson }};
 
+    // On an EDIT the picker asks the RECEIPT for its vendor, never the live select:
+    // edit() scopes `eligible` by rr.vendor_id and ignores any POSTed vendor_id, so
+    // reading the select here would offer lines from a vendor the save must refuse,
+    // and the bounce would re-render from the submitted set -- losing the typed
+    // quantity and the receipt's own lines with it. 0 on create means "not chosen".
+    const RR_FIXED_VENDOR_ID = {{ (rr.vendor_id if rr else 0) | tojson }};
+
     function chosenVendorId() {
+      if (RR_FIXED_VENDOR_ID) return RR_FIXED_VENDOR_ID;
       const sel = document.getElementById('vendorSelect');
       const v = sel ? parseInt(sel.value, 10) : 0;
       return v > 0 ? v : 0;      // 0 is the "-- Select vendor --" sentinel
