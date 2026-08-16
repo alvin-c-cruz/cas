@@ -11,8 +11,7 @@ line_number, a product_id snapshot and received_quantity -- description,
 ordered_qty and uom come through the purchase_order_item FK at render time.
 That is a rendering rule (Task 7), not something declared here.
 """
-from app.common.preprinted_base import (
-    CANVAS_W, CANVAS_H, ALLOWED_FONTS, TEXT_KEYS, build_layout_api)
+from app.common.preprinted_base import build_layout_api
 
 LAYOUT_SETTING_KEY = 'rr_preprinted_layout'
 

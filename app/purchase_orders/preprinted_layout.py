@@ -6,8 +6,7 @@ allow-list, clamping, sanitisation, per-branch persistence and auditing -- comes
 from app.common.preprinted_base, so this file is a declaration rather than a
 ninth copy of a 275-line module.
 """
-from app.common.preprinted_base import (
-    CANVAS_W, CANVAS_H, ALLOWED_FONTS, TEXT_KEYS, build_layout_api)
+from app.common.preprinted_base import build_layout_api
 
 LAYOUT_SETTING_KEY = 'po_preprinted_layout'
 

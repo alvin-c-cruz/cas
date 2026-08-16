@@ -9,8 +9,7 @@ ninth copy of a 275-line module.
 A requisition is an internal ask -- no vendor, no money anywhere. Pricing
 arrives later, at PO.
 """
-from app.common.preprinted_base import (
-    CANVAS_W, CANVAS_H, ALLOWED_FONTS, TEXT_KEYS, build_layout_api)
+from app.common.preprinted_base import build_layout_api
 
 LAYOUT_SETTING_KEY = 'pr_preprinted_layout'
 
