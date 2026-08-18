@@ -5,6 +5,13 @@ from app import db
 from app.customers.models import Customer
 from app.products.models import Product
 
+# Dates must be RELATIVE. These were hardcoded '2026-07-09' / '2026-08-09', so on
+# 2026-08-10 every quote these helpers create silently became EXPIRED and the app
+# correctly refused to accept it -- turning three accept->SO tests red with a
+# `NoneType has no attribute line_items` that looked like a Sales Order bug.
+_TODAY = date.today().isoformat()
+_VALID_UNTIL = (date.today() + timedelta(days=31)).isoformat()
+
 pytestmark = [pytest.mark.integration, pytest.mark.quotations]
 
 
@@ -34,7 +41,7 @@ def _create_quote(client, c, p, treatment='exclusive', qty='2', price='100.00'):
     lines = json.dumps([{'product_id': str(p.id), 'quantity': qty, 'unit_price': price,
                          'vat_category': 'V12', 'vat_rate': '12'}])
     client.post('/quotations/create', data={'customer_id': str(c.id),
-        'quotation_date': '2026-07-09', 'valid_until': '2026-08-09',
+        'quotation_date': _TODAY, 'valid_until': _VALID_UNTIL,
         'vat_treatment': treatment, 'payment_terms': 'Net 30', 'lines': lines},
         follow_redirects=True)
 
@@ -169,3 +176,34 @@ def test_accept_only_when_sent(client, db_session, admin_user, main_branch):
     client.post(f'/quotations/{q.id}/accept', follow_redirects=True)
     db_session.refresh(q)
     assert q.status == 'draft' and q.sales_order_id is None
+
+
+def test_the_create_helper_produces_a_quote_that_is_not_already_expired(
+        client, db_session, admin_user, main_branch):
+    """PRECONDITION GUARD. Every accept-> Sales Order test below depends on the
+    quote created by `_create_quote` still being valid, because the accept route
+    refuses an expired quotation -- correctly, and `test_expired_sent_quote_
+    cannot_be_accepted` asserts that refusal.
+
+    When `_create_quote` hardcoded `valid_until='2026-08-09'`, that precondition
+    silently expired on 2026-08-10 and the three accept tests began failing with
+    `AttributeError: 'NoneType' object has no attribute 'line_items'` -- a
+    message that points at Sales Orders, not at the stale fixture. The bug was
+    filed HIGH against quotation CREATE (which works fine) and cost a session.
+
+    This test states the precondition directly, so the next time it breaks the
+    failure names the real cause instead of sending someone into the SO code.
+    """
+    from app.quotations.models import Quotation
+    c, p = _seed(db_session)
+    _login(client, admin_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    _create_quote(client, c, p, 'inclusive')
+    q = Quotation.query.first()
+    assert q is not None, 'the create POST did not produce a quotation at all'
+    assert q.valid_until >= date.today(), (
+        'the fixture quote is already expired (valid_until=%s, today=%s) -- the '
+        'accept tests below cannot pass. Use relative dates, never literals.'
+        % (q.valid_until, date.today()))
+    assert q.is_expired is False

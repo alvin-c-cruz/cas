@@ -13,6 +13,14 @@ from decimal import Decimal
 from app import db
 from app.customers.models import Customer
 from app.products.models import Product
+from datetime import date, timedelta
+
+# Dates must be RELATIVE. These were hardcoded '2026-07-09' / '2026-08-09', so on
+# 2026-08-10 every quote these helpers create silently became EXPIRED and the app
+# correctly refused to accept it -- turning three accept->SO tests red with a
+# `NoneType has no attribute line_items` that looked like a Sales Order bug.
+_TODAY = date.today().isoformat()
+_VALID_UNTIL = (date.today() + timedelta(days=31)).isoformat()
 
 pytestmark = [pytest.mark.integration, pytest.mark.quotations]
 
@@ -42,7 +50,7 @@ def _make_quote(client, db_session, admin_user, branch):
     lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
                          'vat_category': 'V12', 'vat_rate': '12'}])
     client.post('/quotations/create', data={'customer_id': str(c.id),
-        'quotation_date': '2026-07-09', 'valid_until': '2026-08-09',
+        'quotation_date': _TODAY, 'valid_until': _VALID_UNTIL,
         'vat_treatment': 'inclusive', 'payment_terms': 'Net 30', 'lines': lines},
         follow_redirects=True)
     return Quotation.query.filter_by(customer_id=c.id).first()
