@@ -4,6 +4,10 @@ TDD test: VATCategory must NOT have output_vat_account_id
 """
 from app.vat_categories.models import VATCategory
 
+import pytest
+
+pytestmark = [pytest.mark.vat_categories]
+
 
 def test_vatcategory_has_no_output_account_attr(db_session):
     cat = VATCategory(code='VAT-12', name='Goods', rate=12.00, is_active=True)

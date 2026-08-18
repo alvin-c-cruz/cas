@@ -1,5 +1,9 @@
 """TDD gate: vat_categories blueprint must be admin-only on every route."""
 
+import pytest
+
+pytestmark = [pytest.mark.vat_categories]
+
 
 def _login(client, user, password):
     return client.post('/login', data={'username': user.username, 'password': password},

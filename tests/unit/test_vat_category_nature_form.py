@@ -6,6 +6,8 @@ from app.vat_categories.models import (
 )
 from app.vat_categories.forms import VATCategoryForm
 
+pytestmark = [pytest.mark.vat_categories]
+
 
 class TestPurchaseNatures:
     def test_eight_natures_defined(self):
