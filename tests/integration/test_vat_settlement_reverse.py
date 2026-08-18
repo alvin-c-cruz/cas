@@ -9,7 +9,7 @@ from app.vat_settlement import service
 from app.journal_entries.models import JournalEntry
 from tests.integration.test_vat_settlement_compute import _vat_world, _je
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.vat_settlement]
 
 
 def test_reverse_restores_balances_and_reopens(db_session, main_branch, admin_user):

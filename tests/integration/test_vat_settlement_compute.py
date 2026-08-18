@@ -8,7 +8,7 @@ from app.settings import AppSettings
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.vat_settlement import service
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.vat_settlement]
 
 
 def _acct(code, name, typ, nb):

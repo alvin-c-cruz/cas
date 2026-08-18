@@ -3,7 +3,7 @@ from decimal import Decimal
 from app import db
 from app.vat_settlement.models import VatSettlement
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.vat_settlement]
 
 
 def test_create_and_roundtrip_entry_ids(db_session, admin_user):

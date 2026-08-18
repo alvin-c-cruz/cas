@@ -6,7 +6,7 @@ from app import db
 from app.vat_settlement.models import VatSettlement
 from tests.integration.test_vat_settlement_compute import _vat_world, _je
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.vat_settlement]
 
 
 def login(client, username='admin', password='admin123'):

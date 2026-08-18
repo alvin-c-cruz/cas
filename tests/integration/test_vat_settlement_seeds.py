@@ -2,7 +2,7 @@ import pytest
 from app.seeds import construction_coa, firm_coa
 from app.seeds.seed_data import BASELINE_COA
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.vat_settlement]
 
 
 def _codes(coa):

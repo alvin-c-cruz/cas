@@ -9,7 +9,7 @@ from app.vat_settlement import service
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from tests.integration.test_vat_settlement_compute import _vat_world, _je
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.vat_settlement]
 
 TODAY = date(2026, 1, 15)  # after 2025-Q3 and Q4
 

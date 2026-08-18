@@ -138,10 +138,14 @@ _REAL_MAP = json.load(open(os.path.join(_CLAUDE, "regression-map.json"), encodin
 def test_registered_markers_reads_pytest_ini_for_real():
     reg = guard.registered_markers(_REPO)
     assert "accounts_payable" in reg and "credit_memos" in reg and "e2e" in reg
-    # Never registered -- these are the names that broke the union.
+    # debit_memos and sales_vat_categories are ALIASES by design -- they are map
+    # module names that resolve to another module's marker, and are deliberately
+    # never registered themselves. Unlike vat_settlement (which was simply an
+    # unregistered real module, fixed 2026-08-18) these two stay unregistered,
+    # so they are the durable examples to pin here.
     assert "debit_memos" not in reg
     assert "sales_vat_categories" not in reg
-    assert "vat_settlement" not in reg
+    assert "vat_settlement" in reg  # registered 2026-08-18; was the 5th hollow marker
 
 
 def test_module_names_are_translated_to_their_registered_marker():
@@ -152,10 +156,14 @@ def test_module_names_are_translated_to_their_registered_marker():
 
 
 def test_a_module_whose_marker_is_unregistered_is_excluded_and_named():
-    expr, unrunnable = guard.marker_expr(["accounts_payable", "vat_settlement"],
+    """Pins the BEHAVIOUR with a synthetic name, not whichever real module happens
+    to be unregistered today. The first version of this test used vat_settlement and
+    went RED the moment that module was repaired -- a test that fails when the codebase
+    gets BETTER was pinning the defect instead of the rule."""
+    expr, unrunnable = guard.marker_expr(["accounts_payable", "no_such_module_xyz"],
                                          _REAL_MAP, guard.registered_markers(_REPO))
     assert expr == "accounts_payable"
-    assert unrunnable == ["vat_settlement"]
+    assert unrunnable == ["no_such_module_xyz"]
 
 
 def test_two_modules_sharing_one_marker_are_not_repeated():
@@ -203,3 +211,29 @@ def test_the_suggested_expression_for_base_html_really_collects_tests():
     assert proc.returncode != 4, out          # 4 = UsageError
     assert "unregistered marker" not in out
     assert "tests collected" in out
+
+
+def test_no_map_key_names_a_module_without_a_runnable_marker():
+    """The standing invariant: every dependent in the map must be RUNNABLE.
+
+    Its sibling above only asserts the expression that survives filtering is
+    clean -- which stays green while marker_expr() quietly drops a module. That
+    dropping is the right runtime behaviour (a loud partial run beats a dead
+    one) but it must never become the steady state: a silently excluded module
+    is a module nobody guards. This asserts the exclusion list is EMPTY.
+
+    It caught vat_settlement, whose map note claimed it was forward-wired for an
+    unmerged branch. app/vat_settlement/ has been shipped and deployed for weeks
+    with 33 tests carrying no marker, so four keys covering the BIR-filings
+    surface -- vat_categories/models.py, reports/{vat_lines,bir,vat_return}.py
+    -- were guarded by a union that dropped the VAT-settlement engine.
+    """
+    reg = guard.registered_markers(_REPO)
+    unrunnable = {}
+    for key, deps in _REAL_MAP["blast_radius"].items():
+        _, missing = guard.marker_expr(deps, _REAL_MAP, reg)
+        if missing:
+            unrunnable[key] = missing
+    assert unrunnable == {}, (
+        "map keys naming a module with no registered marker: %r -- register the "
+        "marker in pytest.ini and apply it, do not drop the dependent" % unrunnable)
