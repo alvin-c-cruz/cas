@@ -29,7 +29,9 @@ _ID_RE = re.compile(r'[^a-zA-Z0-9_-]')
 def _clamp(value, lo, hi, fallback):
     try:
         n = int(round(float(value)))
-    except (TypeError, ValueError):
+    # OverflowError joins the two: json.loads("1e999") is float inf and round(inf)
+    # refuses to make an int of it -- valid JSON, no try/except upstream, a 500.
+    except (TypeError, ValueError, OverflowError):
         return fallback
     return max(lo, min(hi, n))
 
