@@ -24,6 +24,7 @@ out, not to the branch being asked about).
 import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -106,6 +107,76 @@ def affected_modules(files, mapping):
     return mods
 
 
+def registered_markers(app_root=None):
+    """Marker names registered under [pytest] markers in pytest.ini.
+
+    Parsed from the file rather than asked of pytest: the guard has to be able to
+    say "nothing carries that marker" without paying for a full collection run.
+    Returns an empty set when there is no pytest.ini -- callers must treat that
+    as "registry unknown", not as "nothing is registered".
+    """
+    root = app_root or APP_ROOT
+    path = os.path.join(root, 'pytest.ini')
+    names = set()
+    if not os.path.exists(path):
+        return names
+    in_block = False
+    with open(path, encoding='utf-8') as fh:
+        for raw in fh:
+            line = raw.rstrip()
+            if re.match(r'^\s*markers\s*=', line):
+                in_block = True
+                rest = line.split('=', 1)[1].strip()
+                if rest:
+                    names.add(rest.split(':', 1)[0].split('(', 1)[0].strip())
+                continue
+            if not in_block:
+                continue
+            if not line.strip():
+                continue
+            if not line[:1].isspace():
+                break  # dedented -- the markers block ended
+            entry = line.strip()
+            if entry.startswith('#') or entry.startswith('['):
+                continue
+            names.add(entry.split(':', 1)[0].split('(', 1)[0].strip())
+    return names
+
+
+def marker_expr(mods, mapping, registered=None):
+    """Build a -m expression for a set of module names.
+
+    Returns (expression, modules-with-no-runnable-marker).
+
+    A module's pytest marker is NOT always its name: the map's own `modules`
+    table carries the translation (debit_memos' tests are marked credit_memos,
+    sales_vat_categories' are marked sales_vat). Joining the MODULE names
+    instead named a marker that no test carries -- silently selecting nothing
+    before tests/conftest.py's -m guard existed, and a UsageError that runs
+    ZERO tests, union and all, after it. 22 of 97 map keys were affected,
+    including base.html, app/__init__.py and every app/posting/ file.
+    """
+    meta = mapping.get('modules', {})
+    if registered is None:
+        registered = registered_markers()
+    markers, unrunnable = set(), set()
+    for mod in mods:
+        marker = meta.get(mod, {}).get('marker') or mod
+        # An empty registry means pytest.ini could not be read -- filtering on it
+        # would silently empty the expression, which is the failure this guards.
+        if registered and marker not in registered:
+            unrunnable.add(mod)
+        else:
+            markers.add(marker)
+    return ' or '.join(sorted(markers)), sorted(unrunnable)
+
+
+def _warn_unrunnable(unrunnable):
+    print('[guard] WARNING: no registered pytest marker for: ' + ', '.join(unrunnable)
+          + ' -- EXCLUDED below, so these modules are NOT covered by it. Register the '
+            'marker in pytest.ini and apply it to their tests, or run them by path.')
+
+
 def main():
     argv = sys.argv[1:]
     run_e2e = '--run-e2e' in argv
@@ -166,10 +237,26 @@ def main():
     print('[guard] changed shared files affect modules:', ', '.join(sorted(mods)))
     e2e_mods = sorted(m for m in mods if mapping['modules'].get(m, {}).get('e2e'))
 
+    registered = registered_markers()
+    if not registered:
+        print('[guard] WARNING: could not read pytest.ini markers -- cannot tell a real '
+              'marker from a typo; the expressions below are unverified.')
+    expr, unrunnable = marker_expr(mods, mapping, registered)
+
     if not run_e2e:
-        print(f'[guard] suggested: pytest -m "{" or ".join(sorted(mods))}"')
+        if unrunnable:
+            _warn_unrunnable(unrunnable)
+        if expr:
+            print(f'[guard] suggested: pytest -m "{expr}"')
+        else:
+            print('[guard] NO affected module has a runnable marker -- this guard CANNOT '
+                  'certify the change. Run the affected modules by path.')
         if e2e_mods:
-            print(f'[guard] e2e gate:  pytest -m "e2e and ({" or ".join(e2e_mods)})"')
+            e2e_expr, _ = marker_expr(e2e_mods, mapping, registered)
+            if e2e_expr:
+                print(f'[guard] e2e gate:  pytest -m "e2e and ({e2e_expr})"')
+            else:
+                print('[guard] (affected e2e suites have no runnable marker)')
         else:
             print('[guard] (no e2e suites for these modules yet)')
         return 0
@@ -178,7 +265,17 @@ def main():
         print('[guard] no e2e suites for affected modules -- e2e gate passes by default.')
         return 0
 
-    marker = 'e2e and (' + ' or '.join(e2e_mods) + ')'
+    e2e_expr, e2e_unrunnable = marker_expr(e2e_mods, mapping, registered)
+    if e2e_unrunnable:
+        _warn_unrunnable(e2e_unrunnable)
+    if not e2e_expr:
+        # The gate was supposed to run and cannot. Passing here would report a
+        # green e2e gate for a run that executed nothing.
+        print('[guard] ERROR: affected e2e suites exist but none has a runnable marker -- '
+              'refusing to report a passing e2e gate.')
+        return 1
+
+    marker = 'e2e and (' + e2e_expr + ')'
     print(f'[guard] running e2e gate: pytest -m "{marker}"')
     rc = subprocess.run(
         [sys.executable, '-m', 'pytest', '-m', marker, '-o', 'addopts=', '-q'],

@@ -117,3 +117,89 @@ def test_cli_no_base_arg_auto_detect_still_falls_back_cleanly(repo):
     res = _run_cli([], str(orphan))
     assert res.returncode == 0, res.stdout + res.stderr
     assert "none -- uncommitted only" in res.stdout
+
+
+# --- marker translation ---------------------------------------------------
+# The map's `modules` table exists to translate a module name to the pytest
+# marker that actually selects its tests -- debit_memos' tests carry
+# credit_memos, sales_vat_categories' carry sales_vat. guard.py joined the
+# MODULE names instead, so 22 of 97 map keys (base.html and app/__init__.py
+# among them) suggested a `-m` expression naming something no test carries.
+# Since the tests/conftest.py -m guard landed, such an expression is a
+# UsageError that runs ZERO tests -- the whole union, not just the bad member.
+#
+# These tests read the REAL regression-map.json and the REAL pytest.ini: the
+# defect was a disagreement between those two files, which a fixture cannot
+# reproduce (memory feedback-mock-only-tests-cannot-see-seams).
+_REPO = os.path.abspath(os.path.join(_CLAUDE, ".."))
+_REAL_MAP = json.load(open(os.path.join(_CLAUDE, "regression-map.json"), encoding="utf-8"))
+
+
+def test_registered_markers_reads_pytest_ini_for_real():
+    reg = guard.registered_markers(_REPO)
+    assert "accounts_payable" in reg and "credit_memos" in reg and "e2e" in reg
+    # Never registered -- these are the names that broke the union.
+    assert "debit_memos" not in reg
+    assert "sales_vat_categories" not in reg
+    assert "vat_settlement" not in reg
+
+
+def test_module_names_are_translated_to_their_registered_marker():
+    expr, unrunnable = guard.marker_expr(["debit_memos", "sales_vat_categories"],
+                                         _REAL_MAP, guard.registered_markers(_REPO))
+    assert expr == "credit_memos or sales_vat"
+    assert unrunnable == []
+
+
+def test_a_module_whose_marker_is_unregistered_is_excluded_and_named():
+    expr, unrunnable = guard.marker_expr(["accounts_payable", "vat_settlement"],
+                                         _REAL_MAP, guard.registered_markers(_REPO))
+    assert expr == "accounts_payable"
+    assert unrunnable == ["vat_settlement"]
+
+
+def test_two_modules_sharing_one_marker_are_not_repeated():
+    expr, _ = guard.marker_expr(["credit_memos", "debit_memos"],
+                                _REAL_MAP, guard.registered_markers(_REPO))
+    assert expr == "credit_memos"
+
+
+def test_control_a_plain_registered_module_passes_through_untouched():
+    """CONTROL: the translation must not disturb the majority case -- a module
+    whose name IS its marker. Without this, a function that returned '' always
+    would satisfy every assertion above."""
+    expr, unrunnable = guard.marker_expr(["sales_invoices", "accounts_payable"],
+                                         _REAL_MAP, guard.registered_markers(_REPO))
+    assert expr == "accounts_payable or sales_invoices"
+    assert unrunnable == []
+
+
+def test_every_module_named_anywhere_in_the_real_map_yields_a_runnable_expression():
+    """No map key may suggest a command that cannot run."""
+    reg = guard.registered_markers(_REPO)
+    broken = {}
+    for key, deps in _REAL_MAP["blast_radius"].items():
+        expr, unrunnable = guard.marker_expr(deps, _REAL_MAP, reg)
+        bad = [m for m in expr.split(" or ") if m and m not in reg]
+        if bad:
+            broken[key] = bad
+    assert broken == {}, broken
+
+
+@pytest.mark.slow
+def test_the_suggested_expression_for_base_html_really_collects_tests():
+    """THE SEAM. Build the union the way /guard prints it for the highest
+    blast-radius key in the map, then hand it to REAL pytest. Before the fix
+    this exits 4 (UsageError) and runs nothing, while /guard reports the
+    command as its blast-radius evidence."""
+    reg = guard.registered_markers(_REPO)
+    expr, _ = guard.marker_expr(_REAL_MAP["blast_radius"]["app/templates/base.html"],
+                                _REAL_MAP, reg)
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-cov",
+         "-p", "no:cacheprovider", "-m", "(%s) and not e2e" % expr],
+        cwd=_REPO, capture_output=True, text=True)
+    out = proc.stdout + proc.stderr
+    assert proc.returncode != 4, out          # 4 = UsageError
+    assert "unregistered marker" not in out
+    assert "tests collected" in out
