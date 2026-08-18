@@ -7,6 +7,10 @@ from app.employees.models import Employee
 from app.payroll import service
 from app.payroll.models import PayrollRun, PayrollRunLine
 
+import pytest
+
+pytestmark = [pytest.mark.payroll]
+
 
 def _make_run(branch_id, run_number, period_month, semi_period=0, status='posted',
               run_type='regular', period_year=2026):

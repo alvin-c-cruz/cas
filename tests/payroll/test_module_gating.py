@@ -27,7 +27,7 @@ from app.users.module_access import MODULE_REGISTRY, build_sidebar, can_access_m
 from app.users.models import User
 from app.utils.cache_helpers import clear_module_config_cache
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.payroll]
 
 
 def _disable_payroll():

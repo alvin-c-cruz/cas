@@ -78,8 +78,11 @@ def test_legitimate_expressions_are_not_blocked(expr):
 @pytest.mark.parametrize('marker', [
     'purchase_orders', 'purchase_requests', 'receiving_reports',
     'control_accounts',
+    # payroll joined the map 2026-08-18 as preprinted_texts.py's 11th consumer;
+    # it is registered and applied in the same commit, so pin it here too.
+    'payroll',
 ])
-def test_the_four_repaired_markers_select_a_non_empty_suite(marker):
+def test_repaired_module_markers_select_a_non_empty_suite(marker):
     """A registered-but-EMPTY marker is what this branch existed to fix.
 
     The guard above cannot see this case (the name IS registered), so pin the

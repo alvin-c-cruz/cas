@@ -13,6 +13,8 @@ from app.payroll.tables_models import (
 )
 from app.seeds.statutory_2026 import seed_statutory_2026
 
+pytestmark = [pytest.mark.payroll]
+
 
 def test_sss_table_has_rows_and_effectivity(db_session):
     """SSS contribution table can hold salary bracket rows."""

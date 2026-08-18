@@ -7,6 +7,10 @@ from app.payroll.preprinted_layout import (
     get_layout, save_layout, DEFAULT_PAYSLIP_PREPRINTED_LAYOUT, FIELD_KEYS,
 )
 
+import pytest
+
+pytestmark = [pytest.mark.payroll]
+
 
 def test_default_layout_has_every_field_key(app_ctx, main_branch):
     layout = get_layout(main_branch.id)

@@ -9,7 +9,7 @@ import pytest
 
 from app.payroll import service
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.payroll]
 
 
 def test_je_ties_and_plug_equals_net(app_ctx, posted_run_factory):

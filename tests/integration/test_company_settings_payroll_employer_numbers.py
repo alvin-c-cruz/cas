@@ -2,7 +2,7 @@ import pytest
 from app.settings import AppSettings
 from app.utils.bir_books import get_company_identity
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.payroll]
 
 
 def _login_admin(client):

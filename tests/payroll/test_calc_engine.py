@@ -9,6 +9,8 @@ from app import db
 from app.payroll import service
 from app.seeds.statutory_2026 import seed_statutory_2026
 
+pytestmark = [pytest.mark.payroll]
+
 
 def test_effective_lookup_fails_closed(db_session):
     """Lookup raises ValueError when no effective row covers the date."""

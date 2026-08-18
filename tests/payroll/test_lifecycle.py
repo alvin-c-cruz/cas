@@ -26,7 +26,7 @@ from app.seeds.statutory_2026 import seed_statutory_2026
 from app.settings import AppSettings
 from app.utils.concurrency import claim_version
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.payroll]
 
 
 def _cells(row_html):

@@ -2,6 +2,10 @@
 from app import db
 from app.payroll.models import PayrollRun
 
+import pytest
+
+pytestmark = [pytest.mark.payroll]
+
 
 class TestPayslipGating:
     def _post_run(self, client, run, login_user, accountant_user, db_session, main_branch):

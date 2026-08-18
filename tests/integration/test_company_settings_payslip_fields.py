@@ -6,6 +6,8 @@ import pytest
 from app.settings import AppSettings
 from app.utils.cache_helpers import clear_module_config_cache
 
+pytestmark = [pytest.mark.payroll]
+
 
 def login(client, username='admin', password='admin123'):
     client.post('/login', data={'username': username, 'password': password},

@@ -14,7 +14,7 @@ from app.reports.payroll_remittances import (
     get_sss_remittance, get_philhealth_remittance, get_pagibig_remittance, get_bir_1601c,
 )
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.payroll]
 
 
 def _post(run):

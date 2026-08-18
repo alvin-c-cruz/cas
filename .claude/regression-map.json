@@ -512,7 +512,8 @@
       "delivery_receipts",
       "purchase_orders",
       "purchase_requests",
-      "receiving_reports"
+      "receiving_reports",
+      "payroll"
     ],
     "app/purchase_requests/allocation.py": [
       "purchase_orders",
@@ -611,6 +612,10 @@
     "purchase_requests": {
       "marker": "purchase_requests",
       "e2e": null
+    },
+    "payroll": {
+      "marker": "payroll",
+      "e2e": null
     }
   },
   "notes": [
@@ -622,6 +627,7 @@
     "control_accounts (settings-assigned control accounts, BUG-POSTING-HARDCODED-CONTROL-ACCOUNTS, merged 2026-07-11): app/posting/control_accounts.py is the HIGH-blast resolver every posting engine + the memo JE builder + the BIR books report call -- its blast_radius edges are live, so a resolver change already unions and runs the sales_invoices/cash_receipts/accounts_payable/cash_disbursements/reports/credit_memos/debit_memos suites (which DO carry markers). The 'control_accounts' module marker was FORWARD-WIRED and is NOW LIVE (2026-08-16): registered in pytest.ini and applied to its test files, `pytest -m control_accounts` selects 112, equal to its by-path count; no e2e smoke for the settings page yet (backlog).",
     "SI/AP per-transaction control-account fields (merged 2026-07-12, cas main e1c8979): the standalone app/control_accounts/ blueprint was retired -- its Control Accounts settings page (assigns the global-default AR-Trade/AP-Trade/Creditable-WHT/WHT-Payable accounts that SI/AP/CD/CR still fall back to) now lives as two routes inside app/company_settings/views.py. The map entry moved with it; do not re-add app/control_accounts/views.py (deleted).",
     "app/journals/views.py (VOUCHER_TYPES) and app/reports/general_journal_data.py (VOUCHER_ENTRY_TYPES) are the voucher-type registry EVERY new JE-posting module must join, or its posted entries go invisible in the General Journal / Books of Accounts report -- Bank Transfers shipped exactly this gap once (entry_type='transfer' initially unregistered, caught only by whole-branch review, R-04 slice 2). Added 2026-07-19 (/retro, R-04 arc completion) after the same class recurred as a near-miss risk across Petty Cash Replenishment and Bank Reconciliation's own entry_type additions. The 'journals' module marker already exists in pytest.ini and 5+ test files (test_ap_journal_columnar.py, test_cd_journal_views.py, test_cr_journal.py, test_journals.py, test_journals_output_vat_regression.py) -- this was a genuine missing registration, not a forward-wire.",
-    "A MODULE NAME IS NOT ALWAYS ITS MARKER, and guard.py used to join the module names (2026-08-18). The 'modules' table above carries the translation -- debit_memos' tests are marked credit_memos, sales_vat_categories' are marked sales_vat -- and guard.py ignored it, so 22 of the 97 keys here (app/templates/base.html, app/__init__.py, app/users/module_access.py and every app/posting/ and app/sales_memos/ file among them) printed a `-m` expression naming a marker no test carries. Before the conftest -m guard existed that silently under-selected; after it, the expression is a UsageError that collects NOTHING. guard.py now resolves each module through modules[<name>]['marker'], de-duplicates (credit_memos + debit_memos collapse to one term), and excludes+names any marker pytest.ini does not register. Pinned by .claude/tests/test_guard.py, including one test that hands the base.html expression to real pytest -- the mutation check confirms the pre-fix expression exits 4."
+    "A MODULE NAME IS NOT ALWAYS ITS MARKER, and guard.py used to join the module names (2026-08-18). The 'modules' table above carries the translation -- debit_memos' tests are marked credit_memos, sales_vat_categories' are marked sales_vat -- and guard.py ignored it, so 22 of the 97 keys here (app/templates/base.html, app/__init__.py, app/users/module_access.py and every app/posting/ and app/sales_memos/ file among them) printed a `-m` expression naming a marker no test carries. Before the conftest -m guard existed that silently under-selected; after it, the expression is a UsageError that collects NOTHING. guard.py now resolves each module through modules[<name>]['marker'], de-duplicates (credit_memos + debit_memos collapse to one term), and excludes+names any marker pytest.ini does not register. Pinned by .claude/tests/test_guard.py, including one test that hands the base.html expression to real pytest -- the mutation check confirms the pre-fix expression exits 4.",
+    "payroll (added 2026-08-18): registered in pytest.ini and applied as module-level pytestmark to 14 files, `pytest -m payroll` selects 221 == its by-path count. It was added because app/common/preprinted_texts.py has ELEVEN consumers -- every pre-printed document in the app -- and app/payroll/preprinted_layout.py was the one missing from its dependent list. Adding the dependent WITHOUT the marker would have been the 834726d8 hollow-marker bug all over again, except louder: the conftest guard would have failed the whole union. No e2e smoke for payroll yet (backlog)."
   ]
 }
