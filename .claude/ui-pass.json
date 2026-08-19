@@ -65,6 +65,12 @@
     "reason": "PARTIAL browser pass at this tip, owner-approved to merge. VERIFIED LIVE against a migrated copy of RIC's real backup (ric-20260730-0751.db), session uitest-1 on the branch worktree: a full amendment end-to-end via real UI navigation only (sidebar -> Sales Orders list -> SO 2026010001 -> Amend -> edit -> Update), qty 600->800 and unit price 60.00->63.50 applied, flash 'amended (Rev 1)', revision count 1->2; the unit-price change was correctly ALLOWED because that order is not billed, which is the live confirmation that the new guard does not over-block. Both revision snapshot viewers checked: Rev 1 shows the amended values, Rev 0 shows the originals with the 'reconstructed at upgrade' disclaimer, 27-header-key snapshots, and the 'Company Account' salesperson line matches the LIVE SO page (a NULL-salesperson display fallback, not the C1 fabrication). No 404/403/500 anywhere in the run. NOT VERIFIED LIVE: the billed-order unit-price REFUSAL itself, because nothing in the app ever writes SalesOrder.sales_invoice_id -- the invoicing path sets it on the DeliveryReceipt instead (sales_invoices/views.py:590), so RIC has 333 invoices and 333 invoiced DRs but 0 of 121 SOs flagged billed. The guard is therefore correct but DORMANT, as are the pre-existing billed quantity-decrease/line-removal guards and cancel()'s billed block. Manufacturing that state by writing the flag directly was deliberately declined -- it would fabricate evidence for a state no user can reach. Tracked as BUG-SO-BILLED-FLAG-NEVER-SET (HIGH); owner directed that it be fixed on its own branch rather than folded into this one. The refusal path is covered by 63 tests with 6/6 mutants killed.",
     "waived": true
   },
+  "437fc27b82efda6f4b2407d646172bf04b8d539e": {
+    "branch": "feat/po-purpose",
+    "date": "2026-08-19",
+    "reason": null,
+    "waived": false
+  },
   "44e7a024210f342a01def4eabd55c4f49d1b6562": {
     "branch": "fix/so-billed-flag-derived",
     "date": "2026-08-05",
@@ -152,6 +158,12 @@
   "8f4fd3896c273690f707b530e720b4270e4f33f4": {
     "branch": "feat/r07-p3-equivalent-units",
     "date": "2026-08-02",
+    "reason": null,
+    "waived": false
+  },
+  "a83a1951b612b3ac5c1abb595a65f244c5a30287": {
+    "branch": "feat/ap-notes-autofill",
+    "date": "2026-08-19",
     "reason": null,
     "waived": false
   },
