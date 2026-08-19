@@ -178,7 +178,7 @@ class SalesMemoItem(db.Model):
         }
 
 
-def generate_memo_number(memo_type):
+def generate_memo_number(memo_type, branch_id=None):
     """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
 
     Mirrors generate_invoice_number's contract exactly. Each memo_type ('credit'/
@@ -189,8 +189,9 @@ def generate_memo_number(memo_type):
     includes legacy-migrated literal numbers, not just CAS-generated ones. Legacy
     prefixed numbers (e.g. the old 'CM-2026-07-0030' format) are ignored.
     """
-    rows = (SalesMemo.query.filter_by(memo_type=memo_type)
-            .with_entities(SalesMemo.memo_number).all())
-    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
-    next_num = (max(nums) + 1) if nums else 1
-    return f'{next_num:05d}'
+    from app.utils.doc_numbering import next_document_number
+    # memo_type is an UNCONDITIONAL filter, not a scope axis: a Credit Memo and a
+    # Debit Note are different documents sharing one table, so they keep separate
+    # series under BOTH company and branch scope.
+    return next_document_number(SalesMemo, SalesMemo.memo_number, branch_id,
+                                filters=[SalesMemo.memo_type == memo_type])

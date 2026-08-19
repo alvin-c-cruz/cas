@@ -103,6 +103,48 @@ def test_generate_purchase_memo_number_increments_within_type(app_ctx, a_posted_
     assert generate_purchase_memo_number('credit') == '00001'
 
 
+def _pm(memo_type, number, a_posted_ap, branch_id):
+    from app.utils import ph_now
+    return PurchaseMemo(
+        memo_type=memo_type, memo_number=number, memo_date=ph_now().date(),
+        accounts_payable_id=a_posted_ap.id, original_ap_number=a_posted_ap.ap_number,
+        vendor_id=a_posted_ap.vendor_id, vendor_name=a_posted_ap.vendor_name,
+        branch_id=branch_id, reason='return', status='draft')
+
+
+def test_generate_purchase_memo_number_is_per_branch_under_branch_scope(
+        app_ctx, a_posted_ap, one_branch):
+    from app.settings import AppSettings
+    AppSettings.set_setting('document_number_scope', 'branch')
+    db.session.add_all([
+        _pm('debit', '00007', a_posted_ap, one_branch.id),
+        _pm('debit', '90000', a_posted_ap, None),   # another branch's series
+    ])
+    db.session.commit()
+    assert generate_purchase_memo_number('debit', one_branch.id) == '00008'
+
+
+def test_generate_purchase_memo_number_does_not_merge_types(app_ctx, a_posted_ap, one_branch):
+    """memo_type is UNCONDITIONAL -- it must hold under BOTH scopes."""
+    from app.settings import AppSettings
+    db.session.add(_pm('debit', '00090', a_posted_ap, one_branch.id))
+    db.session.commit()
+    assert generate_purchase_memo_number('credit', one_branch.id) == '00001'
+    AppSettings.set_setting('document_number_scope', 'branch')
+    assert generate_purchase_memo_number('credit', one_branch.id) == '00001'
+
+
+def test_generate_purchase_memo_number_is_company_wide_by_default(
+        app_ctx, a_posted_ap, one_branch):
+    """CONTROL -- no setting row, so a number outside this branch DOES lead."""
+    db.session.add_all([
+        _pm('debit', '00007', a_posted_ap, one_branch.id),
+        _pm('debit', '90000', a_posted_ap, None),
+    ])
+    db.session.commit()
+    assert generate_purchase_memo_number('debit', one_branch.id) == '90001'
+
+
 def test_generate_purchase_memo_number_continues_from_legacy_literal_number(
         app_ctx, a_posted_ap, one_branch):
     from app.utils import ph_now

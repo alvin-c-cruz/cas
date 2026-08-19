@@ -77,6 +77,50 @@ def test_generate_memo_number_increments_within_type(app, db_session):
     assert generate_memo_number('debit') == '00001'
 
 
+def _memo(memo_type, number, branch_id=None):
+    from app.utils import ph_now
+    return SalesMemo(memo_type=memo_type, memo_number=number, memo_date=ph_now().date(),
+                     sales_invoice_id=1, original_invoice_number='SI-1', customer_id=1,
+                     customer_name='X', reason='return', status='draft',
+                     branch_id=branch_id)
+
+
+def test_generate_memo_number_is_per_type_and_branch_under_branch_scope(
+        app, db_session, main_branch, branch_manila):
+    from app.settings import AppSettings
+    AppSettings.set_setting('document_number_scope', 'branch')
+    db_session.add_all([
+        _memo('credit', '00001', main_branch.id),
+        _memo('debit', '00050', main_branch.id),
+        _memo('credit', '00030', branch_manila.id),
+    ])
+    db_session.commit()
+    # this branch's CREDIT series only -- neither the debit run nor the other
+    # branch's credit run may lead it
+    assert generate_memo_number('credit', main_branch.id) == '00002'
+
+
+def test_generate_memo_number_does_not_merge_credit_and_debit(app, db_session, main_branch):
+    """memo_type is UNCONDITIONAL -- it must hold under BOTH scopes."""
+    from app.settings import AppSettings
+    db_session.add(_memo('debit', '00090', main_branch.id))
+    db_session.commit()
+    assert generate_memo_number('credit', main_branch.id) == '00001'
+    AppSettings.set_setting('document_number_scope', 'branch')
+    assert generate_memo_number('credit', main_branch.id) == '00001'
+
+
+def test_generate_memo_number_stays_per_type_only_under_company_scope(
+        app, db_session, main_branch, branch_manila):
+    """CONTROL -- no setting row, so the other branch's credit memo DOES lead."""
+    db_session.add_all([
+        _memo('credit', '00001', main_branch.id),
+        _memo('credit', '00030', branch_manila.id),
+    ])
+    db_session.commit()
+    assert generate_memo_number('credit', main_branch.id) == '00031'
+
+
 def test_generate_memo_number_continues_from_legacy_literal_number(app, db_session):
     from app.utils import ph_now
     today = ph_now().date()
