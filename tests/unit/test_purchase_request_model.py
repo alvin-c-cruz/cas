@@ -34,6 +34,32 @@ def test_generate_pr_number_ignores_legacy_prefixed_numbers(db_session):
     assert generate_pr_number() == '00001'
 
 
+def test_generate_pr_number_is_per_branch_under_branch_scope(db_session, main_branch,
+                                                             branch_manila):
+    """The delegate must actually PASS branch_id through, not just accept it."""
+    from app.settings import AppSettings
+    from app.purchase_requests.models import generate_pr_number
+    AppSettings.set_setting('document_number_scope', 'branch')
+    db_session.add(PurchaseRequest(pr_number='00007', request_date=date(2026, 8, 19),
+                                   status='draft', branch_id=main_branch.id))
+    db_session.add(PurchaseRequest(pr_number='90000', request_date=date(2026, 8, 19),
+                                   status='draft', branch_id=branch_manila.id))
+    db_session.commit()
+    assert generate_pr_number(main_branch.id) == '00008'
+
+
+def test_generate_pr_number_is_company_wide_by_default(db_session, main_branch,
+                                                       branch_manila):
+    """CONTROL -- no setting row, so the other branch's higher number DOES lead."""
+    from app.purchase_requests.models import generate_pr_number
+    db_session.add(PurchaseRequest(pr_number='00007', request_date=date(2026, 8, 19),
+                                   status='draft', branch_id=main_branch.id))
+    db_session.add(PurchaseRequest(pr_number='90000', request_date=date(2026, 8, 19),
+                                   status='draft', branch_id=branch_manila.id))
+    db_session.commit()
+    assert generate_pr_number(main_branch.id) == '90001'
+
+
 def test_pr_has_no_price_columns(db_session):
     """A requisition line carries product/uom/qty/description only -- no price/amount/vat."""
     li = PurchaseRequestItem(line_number=1, description='Cement', quantity=Decimal('10'))

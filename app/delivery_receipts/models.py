@@ -195,7 +195,5 @@ def generate_dr_number(branch_id=None):
     old 'DR-2026-07-0030' format) are ignored, so a client transitioning off that
     format starts cleanly at 00001 and never collides with old rows.
     """
-    rows = DeliveryReceipt.query.with_entities(DeliveryReceipt.dr_number).all()
-    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
-    next_num = (max(nums) + 1) if nums else 1
-    return f'{next_num:05d}'
+    from app.utils.doc_numbering import next_document_number
+    return next_document_number(DeliveryReceipt, DeliveryReceipt.dr_number, branch_id)
