@@ -53,12 +53,28 @@
          ASAP is the alternative to a date, not an extra qualifier on one: the
          script below clears and disables the date box while it is ticked, and
          _assign_date_needed enforces the same rule server-side, where it counts. #}
+      {# The ASAP box used to be a bare checkbox sitting to the right of the date
+         input, and was missed in use -- a requisition meant as ASAP was saved
+         with neither a date nor the flag, so it printed blank. It is now a
+         bordered pill that lights up when ticked, with a hint naming all three
+         states. Colours come from design tokens, not literals. #}
       <div class="form-group">{{ form.date_needed.label }}
         <div style="display:flex; align-items:center; gap:10px;">
           {{ form.date_needed(class="form-control", id="dateNeeded") }}
-          <label style="display:flex; align-items:center; gap:5px; white-space:nowrap; margin:0; font-weight:600;">
-            {{ form.date_needed_asap(id="dateNeededAsap") }} ASAP
+          <label id="asapPill"
+                 style="display:inline-flex; align-items:center; gap:7px; white-space:nowrap;
+                        margin:0; font-weight:600; cursor:pointer; padding:7px 14px;
+                        border:2px solid var(--form-border); border-radius:6px;
+                        color:var(--text-3); transition:all .15s;">
+            {{ form.date_needed_asap(id="dateNeededAsap",
+                                     style="width:16px; height:16px; accent-color:var(--blue); cursor:pointer; margin:0;") }}
+            ASAP
           </label>
+        </div>
+        <div class="form-hint">
+          Pick a date, or tick <strong>ASAP</strong> if the goods are wanted immediately.
+          Leave both blank only if the date is not yet known -- a blank Date Needed
+          prints as blank, <em>not</em> as ASAP.
         </div>
       </div>
       <div class="form-group">{{ form.pr_number.label }}
@@ -368,11 +384,18 @@
   (function () {
     const asap = document.getElementById('dateNeededAsap');
     const dateEl = document.getElementById('dateNeeded');
+    const pill = document.getElementById('asapPill');
     if (!asap || !dateEl) return;
     function sync() {
       dateEl.disabled = asap.checked;
       if (asap.checked) dateEl.value = '';
       dateEl.style.opacity = asap.checked ? '0.5' : '';
+      // The pill reads as ON/OFF at a glance, which a bare checkbox did not.
+      if (pill) {
+        pill.style.borderColor = asap.checked ? 'var(--blue)' : 'var(--form-border)';
+        pill.style.color = asap.checked ? 'var(--blue)' : 'var(--text-3)';
+        pill.style.background = asap.checked ? 'var(--alert-info-bg)' : '';
+      }
     }
     asap.addEventListener('change', sync);
     sync();   // an edit render arrives with the box already ticked

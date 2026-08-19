@@ -34,6 +34,54 @@ def _create(client, lines=None, reason='Site needs cement', pr_number=None):
     }, follow_redirects=True)
 
 
+def test_create_form_renders_the_asap_pill_and_its_hint(client, accountant_user, main_branch,
+                                                        db_session):
+    """The ASAP box was missed in use -- a requisition meant as ASAP was saved with
+    neither a date nor the flag and printed blank. It is now a bordered pill with a
+    hint naming all three states. Render-asserted because the defect was that the
+    control was not SEEN, which no POST-contract test can observe."""
+    _login(client, accountant_user, main_branch)
+    resp = client.get('/purchase-requests/create')
+    assert resp.status_code == 200
+    assert b'id="asapPill"' in resp.data          # the pill wrapper
+    assert b'id="dateNeededAsap"' in resp.data    # the checkbox it wraps
+    assert b'class="form-hint"' in resp.data      # the hint uses the shared token class
+    # the clause that names the exact trap
+    assert b'prints as blank' in resp.data
+
+
+def test_create_form_still_renders_the_date_needed_input(client, accountant_user, main_branch,
+                                                         db_session):
+    """CONTROL -- the pill sits BESIDE the date box, it does not replace it.
+    Without this, deleting the date input entirely would leave the test above green."""
+    _login(client, accountant_user, main_branch)
+    resp = client.get('/purchase-requests/create')
+    assert resp.status_code == 200
+    assert b'id="dateNeeded"' in resp.data
+    assert b'name="date_needed"' in resp.data
+
+
+def test_pr_records_asap_and_a_blank_date_as_distinct_states(client, accountant_user,
+                                                             main_branch, db_session):
+    """CONTROL for the three-state rule the hint describes: ASAP and 'not known yet'
+    are DIFFERENT records, which is why the hint must not say blank means ASAP."""
+    from app.purchase_requests.models import PurchaseRequest
+    _login(client, accountant_user, main_branch)
+
+    _create(client, reason='asap one', pr_number='90001')
+    neither = PurchaseRequest.query.filter_by(pr_number='90001').first()
+    assert neither.date_needed is None and neither.date_needed_asap is False
+
+    client.post('/purchase-requests/create', data={
+        'request_date': '2026-07-11', 'reason': 'asap two', 'pr_number': '90002',
+        'date_needed_asap': 'y',
+        'line_items': json.dumps([{'product_id': None, 'description': 'Cement',
+                                   'quantity': '10', 'uom_text': 'bag'}]),
+    }, follow_redirects=True)
+    asap = PurchaseRequest.query.filter_by(pr_number='90002').first()
+    assert asap.date_needed is None and asap.date_needed_asap is True
+
+
 def test_create_pr_persists_and_audits(client, accountant_user, main_branch, db_session):
     from app.purchase_requests.models import PurchaseRequest
     from app.audit.models import AuditLog
