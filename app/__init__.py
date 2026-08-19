@@ -5,6 +5,7 @@ and used by multiple companies across different industries: trading,
 services, retail, construction, and any other line of business that
 needs double-entry books.
 """
+import click
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
@@ -533,6 +534,41 @@ def create_app(config_name=None):
             print(f"  {k:>12}: {summary[k]}")
         if summary['unbalanced']:
             print("  [WARN] Some posted JEs are unbalanced — investigate before demo.")
+
+    @app.cli.command('set-document-number-scope')
+    @click.argument('scope')
+    def set_document_number_scope_command(scope):
+        """Set document numbering to 'company' (one shared series) or 'branch'.
+
+        Deliberately a CLI rather than a Company Settings field: this is a
+        once-per-client onboarding decision, and flipping it mid-year is the
+        riskiest action in the numbering system. It should not be a dropdown any
+        admin can nudge.
+        """
+        from app.settings import AppSettings
+        from app.utils.doc_numbering import SCOPE_KEY, COMPANY, BRANCH
+
+        if scope not in (COMPANY, BRANCH):
+            print(f"[ERROR] Unknown scope '{scope}'. Use '{COMPANY}' or '{BRANCH}'.")
+            raise SystemExit(1)
+
+        old = AppSettings.get_setting(SCOPE_KEY) or f'{COMPANY} (unset)'
+        AppSettings.set_setting(SCOPE_KEY, scope, updated_by='cli')
+        print(f"[OK] document_number_scope: {old} -> {scope}")
+
+        if scope == BRANCH:
+            from app.purchase_requests.models import PurchaseRequest
+            from app.purchase_orders.models import PurchaseOrder
+            existing = (db.session.query(PurchaseRequest.id).count()
+                        + db.session.query(PurchaseOrder.id).count())
+            if existing:
+                print("  [WARN] This database already holds numbered documents.")
+                print("  Under company scope both branches drew from ONE interleaved")
+                print("  series, so their highest numbers are ADJACENT. Each branch's")
+                print("  next number is skipped past anything already taken, so nothing")
+                print("  collides -- but the two series stay interleaved until you")
+                print("  separate them. Give each secondary branch a deliberate start")
+                print("  (e.g. type 50001 into its next Purchase Request).")
 
     # Request/Response logging middleware
     @app.before_request

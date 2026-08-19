@@ -90,3 +90,30 @@ def next_document_number(model, column, branch_id=None, filters=None):
 
     next_num = (max(all_nums) + 1) if all_nums else 1
     return f'{next_num:0{PAD}d}'
+
+
+def assigned_number_or_raise(model, column, number, label):
+    """Return `number`, or raise ValueError if it is already taken.
+
+    ONLY for the ASSIGNED call sites -- Quotation, Sales Memo, Vendor Memo --
+    which have no number field on the form, so a collision there would surface
+    as an IntegrityError and a generic "An error occurred" the user cannot
+    escape. All three views already catch ValueError and flash it verbatim, so
+    this needs no new error plumbing.
+
+    Deliberately NOT called by next_document_number itself: the GET prefill call
+    sites sit outside any try/except, where a raise is a 500 rather than a
+    flash. Those sites are already protected by their own duplicate check on
+    POST, which the user can act on because they have a field to retype.
+
+    The collision this catches is a brand-new branch under 'branch' scope: it
+    has no series, so the engine returns the '00001' placeholder, and there is
+    no field for the user to type the real start into.
+    """
+    exists = db.session.query(column).filter(column == number).first()
+    if exists:
+        raise ValueError(
+            f'{label} number {number} is already in use. This branch has no '
+            f'starting number for {label.lower()}s -- ask an administrator to '
+            f'record the first one.')
+    return number

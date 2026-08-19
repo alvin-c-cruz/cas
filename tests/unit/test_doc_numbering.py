@@ -97,6 +97,25 @@ def test_filters_narrow_the_series_under_company_scope(db_session):
 # branch scope
 # --------------------------------------------------------------------------
 
+def test_assigned_number_or_raise_returns_a_free_number(db_session):
+    """CONTROL -- the guard must be transparent when there is no collision."""
+    from app.utils.doc_numbering import assigned_number_or_raise
+    assert assigned_number_or_raise(
+        PurchaseRequest, COL, '00001', 'Quotation') == '00001'
+
+
+def test_assigned_number_or_raise_rejects_a_taken_number(db_session):
+    """The brand-new-branch case: no number field on the form, so a collision
+    must surface as an actionable ValueError the view can flash, not an
+    IntegrityError behind a generic 'An error occurred'."""
+    from app.utils.doc_numbering import assigned_number_or_raise
+    _pr(db_session, '00001')
+    with pytest.raises(ValueError) as exc:
+        assigned_number_or_raise(PurchaseRequest, COL, '00001', 'Quotation')
+    assert '00001 is already in use' in str(exc.value)
+    assert 'ask an administrator' in str(exc.value)
+
+
 def test_branch_scope_gives_each_branch_its_own_series(db_session, main_branch,
                                                        branch_manila):
     from app.utils.doc_numbering import next_document_number

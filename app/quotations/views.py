@@ -11,6 +11,7 @@ from flask_login import login_required, current_user
 
 from app import db
 from app.quotations.models import Quotation, QuotationItem, generate_quotation_number
+from app.utils.doc_numbering import assigned_number_or_raise
 from app.quotations.forms import QuotationForm
 from app.sales_orders.models import copy_salesperson
 from app.customers.models import Customer
@@ -149,7 +150,9 @@ def create():
             branch_id = session.get('selected_branch_id')
             q = Quotation(
                 branch_id=branch_id,
-                quotation_number=generate_quotation_number(branch_id),
+                quotation_number=assigned_number_or_raise(
+                    Quotation, Quotation.quotation_number,
+                    generate_quotation_number(branch_id), 'Quotation'),
                 quotation_date=form.quotation_date.data,
                 valid_until=form.valid_until.data or None,
                 customer_id=cust.id,

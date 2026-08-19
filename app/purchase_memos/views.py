@@ -22,6 +22,7 @@ from flask_login import login_required, current_user
 
 from app import db
 from app.purchase_memos.models import PurchaseMemo, PurchaseMemoItem, generate_purchase_memo_number
+from app.utils.doc_numbering import assigned_number_or_raise
 from app.purchase_memos.forms import PurchaseMemoForm, DESTINATION_CHOICES
 from app.purchase_memos import service
 from app.audit.utils import log_create, log_audit, model_to_dict
@@ -185,9 +186,12 @@ def _create_impl(memo_type):
             flash('Select a cash account.', 'error')
             return _render_form(form, memo_type)
         try:
+            memo_number = assigned_number_or_raise(
+                PurchaseMemo, PurchaseMemo.memo_number,
+                generate_purchase_memo_number(memo_type, branch_id), 'Vendor memo')
             memo = PurchaseMemo(
                 memo_type=memo_type,
-                memo_number=generate_purchase_memo_number(memo_type),
+                memo_number=memo_number,
                 memo_date=form.memo_date.data,
                 branch_id=branch_id,
                 accounts_payable_id=ap.id,
