@@ -79,15 +79,52 @@ function initSearchSelect(selectEl, options) {
 
     // Track deletions so backspace/delete don't re-complete the field.
     let isDeleting = false;
-    if (input) {
-        input.addEventListener('keydown', function (e) {
-            isDeleting = (e.key === 'Backspace' || e.key === 'Delete');
-        });
-    }
+    // Track whether the user has EXPRESSED a choice since this dropdown opened
+    // (typed a query, or moved the highlight with the arrow keys). Tab commits
+    // only then -- see the Tab handler below.
+    let hasNavigated = false;
 
     function dropdownList() {
         return container.querySelector('.choices__list--dropdown .choices__list')
             || container.querySelector('.choices__list--dropdown');
+    }
+
+    function dropdownIsOpen() {
+        if (choices.dropdown && typeof choices.dropdown.isActive === 'boolean') {
+            return choices.dropdown.isActive;
+        }
+        const dd = container.querySelector('.choices__list--dropdown');
+        return !!(dd && dd.classList.contains('is-active'));
+    }
+
+    // The row Tab would commit: the highlighted choice, unless it is the pinned
+    // add-action (native row or injected fallback), which opens a modal.
+    function tabbableTarget() {
+        const list = dropdownList();
+        if (!list) return null;
+        const el = list.querySelector('.choices__item--selectable.is-highlighted');
+        if (!el) return null;
+        const value = el.getAttribute('data-value');
+        if (!value || (add && value === add.value)) return null;
+        return value;
+    }
+
+    if (input) {
+        input.addEventListener('keydown', function (e) {
+            isDeleting = (e.key === 'Backspace' || e.key === 'Delete');
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') hasNavigated = true;
+
+            // Tab-to-select: commit the highlighted row and let Tab still tab.
+            // Gated on an OPEN dropdown plus an expressed choice — tabbing out
+            // of a picker the user merely clicked open must select nothing.
+            if (e.key !== 'Tab' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+            if (!dropdownIsOpen()) return;
+            if (!input.value.trim() && !hasNavigated) return;
+            const value = tabbableTarget();
+            if (!value) return;
+            // No preventDefault: Tab must still move focus to the next field.
+            choices.setChoiceByValue(value);
+        });
     }
 
     function realOptions(list) {
@@ -221,6 +258,7 @@ function initSearchSelect(selectEl, options) {
     // On open (no query yet), keep the list in label order so freshly-added
     // entries land in their sorted position without a page reload.
     selectEl.addEventListener('showDropdown', function () {
+        hasNavigated = false;      // a fresh open expresses nothing yet
         requestAnimationFrame(function () {
             const list = dropdownList();
             if (!list) return;
