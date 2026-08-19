@@ -69,10 +69,11 @@ class AccountsPayableForm(RowVersionFormMixin, FlaskForm):
         ('Advance Payment', 'Advance Payment')
     ], default='Net 30')
 
-    reference = StringField('Reference/PO Number', validators=[
-        Optional(),
-        Length(max=100, message='Reference must be 100 characters or less.')
-    ])
+    # Reference/PO Number was removed from the form 2026-08-19: 0 of 309 AP
+    # vouchers across every client had ever carried one, and the PO number now
+    # reaches the voucher through Notes (Particulars), which the PO/RR pull
+    # fills automatically. The COLUMN stays -- see the note in views.py about
+    # deliberately no longer assigning it.
 
     notes = TextAreaField('Notes (Particulars)', validators=[
         DataRequired(message='Notes are required — this becomes the Particulars in the AP Journal.')

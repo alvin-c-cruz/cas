@@ -841,7 +841,6 @@ def create():
                 vendor_invoice_date=form.vendor_invoice_date.data,
                 payment_terms=form.payment_terms.data,
                 withholding_tax_rate=Decimal('0.00'),
-                reference=form.reference.data,
                 notes=form.notes.data,
                 status='draft',
                 amount_paid=Decimal('0.00'),
@@ -1203,7 +1202,10 @@ def edit(id):
             ap.vendor_invoice_date = form.vendor_invoice_date.data
             ap.payment_terms = form.payment_terms.data
             ap.withholding_tax_rate = Decimal('0.00')
-            ap.reference = form.reference.data
+            # `reference` is deliberately NOT assigned. The form no longer
+            # collects it, so form.reference.data would be empty and this line
+            # would ERASE a reference recorded before the field was removed --
+            # the column is kept precisely so that history survives.
             ap.notes = form.notes.data
             ap.ap_trade_account_id = form.ap_trade_account_id.data
             ap.wht_payable_account_id = form.wht_payable_account_id.data
