@@ -47,6 +47,7 @@
     <div><strong>VAT Treatment:</strong> {{ po.vat_treatment }}</div>
     <div><strong>Payment Terms:</strong> {{ po.payment_terms }}</div>
     {% if po.reference %}<div><strong>Reference:</strong> {{ po.reference }}</div>{% endif %}
+    {% if po.purpose %}<div><strong>Purpose:</strong> {{ po.purpose }}</div>{% endif %}
   </div>
   {% if po.notes %}<p><strong>Notes:</strong> {{ po.notes }}</p>{% endif %}
   <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--text-3);">
