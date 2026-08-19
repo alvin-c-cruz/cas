@@ -37,6 +37,7 @@ def _draft_sources():
     from app.cash_receipts.models import CashReceiptVoucher
     from app.purchase_orders.models import PurchaseOrder
     from app.purchase_requests.models import PurchaseRequest
+    from app.receiving_reports.models import ReceivingReport
     from app.sales_invoices.models import SalesInvoice
     return [
         # Ordered along the Procure-to-Pay chain, as MODULE_REGISTRY is.
@@ -46,6 +47,9 @@ def _draft_sources():
         # from a module the instance never enabled, or that this user cannot
         # open, and link to an edit route the module guard then refuses.
         ('Purchase Order', '🛒', PurchaseOrder, 'po_number', '/purchase-orders/{id}/edit', 'purchase_orders'),
+        # receiving_reports is optional + per_user like the two above it, so it
+        # names its key for the same reason.
+        ('Receiving Report', '📦', ReceivingReport, 'rr_number', '/receiving-reports/{id}/edit', 'receiving_reports'),
         ('Accounts Payable', '🧾', AccountsPayable, 'ap_number', '/accounts-payable/{id}/edit', None),
         ('Cash Disbursement', '💸', CashDisbursementVoucher, 'cdv_number', '/cash-disbursements/{id}/edit', None),
         ('Cash Receipt', '💰', CashReceiptVoucher, 'crv_number', '/cash-receipts/{id}/edit', None),
@@ -132,6 +136,7 @@ def _document_approval_sources():
     """
     from app.purchase_orders.models import PurchaseOrder
     from app.purchase_requests.models import PurchaseRequest
+    from app.receiving_reports.models import ReceivingReport
     return [
         ('Purchase Requisition', '📝', PurchaseRequest, 'pr_number',
          '/purchase-requests/{id}', 'purchase_requests'),
@@ -141,6 +146,8 @@ def _document_approval_sources():
         # are the same rule (accountant or full access).
         ('Purchase Order', '🛒', PurchaseOrder, 'po_number',
          '/purchase-orders/{id}', 'purchase_orders'),
+        ('Receiving Report', '📦', ReceivingReport, 'rr_number',
+         '/receiving-reports/{id}', 'receiving_reports'),
     ]
 
 

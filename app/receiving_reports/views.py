@@ -663,14 +663,57 @@ def edit(id):
 
 # -- lifecycle transitions -----------------------------------------------------
 
+@receiving_reports_bp.route('/receiving-reports/<int:id>/submit', methods=['POST'])
+@login_required
+def submit(id):
+    """draft -> submitted. Mirrors purchase_requests.submit and purchase_orders.submit.
+
+    Gated on the EDIT-level rule (_rr_role_gate), not the approve-level one: the
+    point is that the staff receiver who counted the goods can hand the receipt
+    on. Before this she could record one and move it nowhere.
+
+    Deliberately does NOT re-run the open-quantity guard that approve() runs.
+    Submitting commits nothing -- 'submitted' is absent from COMMITTED_STATUSES,
+    so the stock and the PO line's open quantity are untouched until approval,
+    and approve() re-checks the guard at the moment it does commit. Checking here
+    too would refuse a receipt for a conflict that may well be resolved by the
+    time anyone approves it.
+    """
+    rr = _rr_or_404(id)
+    gate = _rr_role_gate()
+    if gate:
+        return gate
+    if rr.status != 'draft':
+        flash('Only a draft Receiving Report can be submitted.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    if not rr.line_items:
+        flash('Add at least one received line before submitting.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    rr.status = 'submitted'
+    rr.submitted_by_id = current_user.id
+    rr.submitted_at = ph_now()
+    db.session.commit()
+    # action='submit', not 'update': the audit log's Actions filter is built from
+    # the DISTINCT actions present, so a lifecycle event logged as a generic
+    # update is unfilterable and reads as an ordinary edit.
+    log_audit(module='receiving_reports', action='submit', record_id=rr.id,
+              record_identifier=rr.rr_number, notes='Submitted')
+    flash(f'Receiving Report "{rr.rr_number}" submitted for approval.', 'success')
+    return redirect(url_for('receiving_reports.view', id=id))
+
+
 @receiving_reports_bp.route('/receiving-reports/<int:id>/approve', methods=['POST'])
 @login_required
 def approve(id):
     rr = _rr_or_404(id)
     if not _approve_role_gate():
         return redirect(url_for('receiving_reports.view', id=id))
-    if rr.status != 'draft':
-        flash('Only a draft Receiving Report can be approved.', 'error')
+    # 'draft' stays acceptable alongside 'submitted': an approver recording a
+    # receipt herself should not have to submit it to herself first, which is how
+    # the requisition and the purchase order already behave. The submit step
+    # exists to give a STAFF receiver a way forward, not to add a hop.
+    if rr.status not in ('draft', 'submitted'):
+        flash('Only a draft or submitted Receiving Report can be approved.', 'error')
         return redirect(url_for('receiving_reports.view', id=id))
     # Guard: committing these lines must not exceed each PO line's OPEN qty, and
     # every line's PO must belong to this receipt's vendor and branch and still be

@@ -47,6 +47,12 @@ class ReceivingReport(RowVersioned, db.Model):
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
+    # draft -> submitted -> approved, mirroring the Purchase Requisition's and
+    # Purchase Order's. Before this a receipt went draft -> approved directly and
+    # approve is accountant-or-above, so the staff receiver who actually counted
+    # the goods could record the receipt and then move it nowhere.
+    submitted_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    submitted_at = db.Column(db.DateTime)
     approved_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     approved_at = db.Column(db.DateTime)
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
