@@ -89,14 +89,6 @@ function initSearchSelect(selectEl, options) {
             || container.querySelector('.choices__list--dropdown');
     }
 
-    function dropdownIsOpen() {
-        if (choices.dropdown && typeof choices.dropdown.isActive === 'boolean') {
-            return choices.dropdown.isActive;
-        }
-        const dd = container.querySelector('.choices__list--dropdown');
-        return !!(dd && dd.classList.contains('is-active'));
-    }
-
     // The row Tab would commit: the highlighted choice, unless it is the pinned
     // add-action (native row or injected fallback), which opens a modal.
     function tabbableTarget() {
@@ -115,10 +107,21 @@ function initSearchSelect(selectEl, options) {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') hasNavigated = true;
 
             // Tab-to-select: commit the highlighted row and let Tab still tab.
-            // Gated on an OPEN dropdown plus an expressed choice — tabbing out
-            // of a picker the user merely clicked open must select nothing.
+            //
+            // There is deliberately NO "is the dropdown open?" check. It reads
+            // like the obvious guard, but it can never be false here: this
+            // listener is on the search input, which lives INSIDE the dropdown,
+            // so closing the dropdown moves focus to the container and no
+            // further keystroke reaches this handler at all (measured -- after
+            // Escape, document.activeElement is div.choices). A check that can
+            // never fail is worse than none: it reads as the protection and
+            // hides which line is really doing the work.
+            //
+            // The real gate is an EXPRESSED choice. Choices leaves a row
+            // highlighted whether or not the user has engaged with the list, so
+            // without this, clicking a picker open and tabbing straight out
+            // would silently write a vendor nobody chose.
             if (e.key !== 'Tab' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
-            if (!dropdownIsOpen()) return;
             if (!input.value.trim() && !hasNavigated) return;
             const value = tabbableTarget();
             if (!value) return;
