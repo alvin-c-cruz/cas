@@ -36,6 +36,10 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
     SNAPSHOT_HEADER_FIELDS = (
         'po_number', 'order_date', 'expected_date', 'vendor_id', 'vendor_name',
         'vendor_tin', 'vendor_address', 'payment_terms', 'reference', 'notes',
+        # Header state an amendment must preserve: Rev 0 has to record WHO the
+        # order was routed past when it was originally approved.
+        'prepared_by', 'checked_by', 'approved_by',
+        'submitted_by_id', 'submitted_at',
         'vat_treatment', 'status', 'subtotal', 'vat_amount', 'vat_override',
         'total_amount', 'purchase_request_id',
         # accounts_payable_id IS live state -- purchase_billing.py sets it when the
@@ -77,6 +81,22 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
     payment_terms = db.Column(db.String(50), default='Net 30')
     reference = db.Column(db.String(100))
     notes = db.Column(db.Text, nullable=False, default='')
+
+    # Signatories are PER PURCHASE ORDER, not company-wide -- deliberately unlike
+    # the Purchase Requisition's and Receiving Report's, which are AppSettings
+    # rows because the same three people sign every one of those.
+    #
+    # This client runs two purchasers, each holding her own pre-printed PO pad
+    # (see next_po_number_for), and each routes her orders past different people.
+    # A new PO therefore pre-fills from that PURCHASER's own last PO rather than
+    # from a single company setting -- and stays editable, so a one-off signatory
+    # does not become permanent.
+    #
+    # Names match the legacy Philgen form's fields verbatim, and the vocabulary
+    # AP/CD/JE already use in their pre-printed layouts.
+    prepared_by = db.Column(db.String(100))
+    checked_by = db.Column(db.String(100))
+    approved_by = db.Column(db.String(100))
     vat_treatment = db.Column(db.String(10), default='inclusive', nullable=False)
 
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
@@ -98,6 +118,11 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
+    # draft -> submitted -> approved, mirroring the Purchase Requisition's. Before
+    # this, a PO went draft -> approved directly and `approve` was accountant-only,
+    # so a staff purchaser could build an order and then move it nowhere.
+    submitted_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    submitted_at = db.Column(db.DateTime)
     approved_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     approved_at = db.Column(db.DateTime)
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -291,6 +316,38 @@ def generate_po_number(branch_id=None):
 # '30500'. A legacy prefixed number ('PO-2026-07-0030') does not match and is
 # ignored, exactly as generate_po_number() ignores it.
 _PO_NUMBER_RE = re.compile(r'^(\d+)(\D*)$')
+
+
+SIGNATORY_FIELDS = ('prepared_by', 'checked_by', 'approved_by')
+
+
+def next_po_signatories_for(user_id):
+    """{'prepared_by': ..., 'checked_by': ..., 'approved_by': ...} carried
+    forward from THIS purchaser's own last order.
+
+    Scoped by purchaser for the same reason next_po_number_for is: this client
+    runs two purchasers, each holding her own pre-printed pad, and each routes
+    her orders past different people. A company-wide setting would hand one
+    purchaser the other's signatories.
+
+    'Last' is by id, not by order_date -- a backdated order is still the most
+    recently ENTERED one, and it is the last thing this purchaser typed that she
+    expects to see repeated.
+
+    Returns blanks (never None, never a placeholder) when this purchaser has no
+    prior order: her first PO is typed from scratch, and a blank prints an empty
+    ruled line to sign by hand.
+    """
+    blank = {f: '' for f in SIGNATORY_FIELDS}
+    if not user_id:
+        return blank
+    last = (PurchaseOrder.query
+            .filter(PurchaseOrder.created_by_id == user_id)
+            .order_by(PurchaseOrder.id.desc())
+            .first())
+    if last is None:
+        return blank
+    return {f: (getattr(last, f) or '') for f in SIGNATORY_FIELDS}
 
 
 def next_po_number_for(user_id, branch_id=None):

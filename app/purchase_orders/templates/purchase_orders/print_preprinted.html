@@ -110,6 +110,12 @@
   <div class="pp-margin-guide screen-only" style="right:48px;"></div>
   {# Values only — the pre-printed stock supplies every label/header. #}
   {% set date_fmt = date_formats[layout.dateFormat] %}
+  {# Per-order signatories join this map like any other field. A blank prints
+     nothing at all on a pre-printed form, which is correct: the paper already
+     carries the ruled line and the label.
+
+     NOTE: no Jinja comment may sit INSIDE the dict literal below -- `{#` inside
+     a `{% set %}` expression is a TemplateSyntaxError, not a comment. #}
   {% set field_values = {
     'po_no': po.po_number,
     'order_date': po.order_date.strftime(date_fmt) if po.order_date else '',
@@ -121,6 +127,9 @@
     'reference': po.reference or '',
     'vat_treatment': po.vat_treatment_label,
     'total_amount': '{:,.2f}'.format(po.total_amount or 0),
+    'prepared_by': po.prepared_by or '',
+    'checked_by': po.checked_by or '',
+    'approved_by': po.approved_by or '',
   } %}
   {% set field_isos = {
     'order_date': po.order_date.isoformat() if po.order_date else '',

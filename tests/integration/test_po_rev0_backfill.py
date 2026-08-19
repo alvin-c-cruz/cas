@@ -318,7 +318,38 @@ def _comparable_pair(revs, live_po, back_po):
     return live, back
 
 
+# Header fields added to PurchaseOrder.SNAPSHOT_HEADER_FIELDS *after* docrev_0002
+# shipped. A reconstructed Rev 0 genuinely cannot carry them: the columns did not
+# exist when that migration ran, and every live client has already run it, so
+# editing the migration now would make it behave one way for clients past it and
+# another for clients yet to reach it.
+#
+# Narrow and EXPLICIT on purpose. A blanket "ignore keys the backfill lacks"
+# would silently absorb the next field someone forgets, which is the exact class
+# of drift this file exists to catch. Adding a field here is a deliberate act
+# that says "this postdates the backfill"; forgetting to add one still fails.
+POST_BACKFILL_HEADER_FIELDS = frozenset({
+    'prepared_by', 'checked_by', 'approved_by',   # posig_0001
+    'submitted_by_id', 'submitted_at',            # posig_0001
+})
+
+
+def _drop_post_backfill(snapshot):
+    header = {k: v for k, v in snapshot['header'].items()
+              if k not in POST_BACKFILL_HEADER_FIELDS}
+    return {**snapshot, 'header': header}
+
+
 def _assert_identical(live, back):
+    # A live snapshot legitimately carries fields the backfill never knew about.
+    # Compare on the shared surface -- but assert first that the live side really
+    # does carry them, so this exclusion cannot quietly hide their disappearance.
+    assert POST_BACKFILL_HEADER_FIELDS <= set(live['header']), (
+        'a post-backfill field vanished from SNAPSHOT_HEADER_FIELDS; remove it '
+        'from POST_BACKFILL_HEADER_FIELDS rather than leaving a dead exclusion')
+    live = _drop_post_backfill(live)
+    back = _drop_post_backfill(back)
+
     # Key sets first: a missing key fails here with a readable diff rather than
     # inside a 40-key value comparison.
     assert set(back['header']) == set(live['header'])

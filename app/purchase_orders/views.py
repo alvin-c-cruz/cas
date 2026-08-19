@@ -12,7 +12,8 @@ from flask_login import login_required, current_user
 from sqlalchemy.orm import joinedload
 
 from app import db
-from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem, next_po_number_for
+from app.purchase_orders.models import (
+    PurchaseOrder, PurchaseOrderItem, next_po_number_for, next_po_signatories_for)
 from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
 from app.purchase_orders.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
@@ -32,7 +33,8 @@ from app.utils.concurrency import claim_version, conflict_message, submitted_ver
 
 purchase_orders_bp = Blueprint('purchase_orders', __name__, template_folder='templates')
 
-VALID_PO_STATUSES = {'draft', 'approved', 'partially_received', 'closed', 'cancelled'}
+VALID_PO_STATUSES = {'draft', 'submitted', 'approved', 'partially_received',
+                     'closed', 'cancelled'}
 
 
 # ── line-item helpers ────────────────────────────────────────────────────────
@@ -506,6 +508,9 @@ def create():
                 payment_terms=form.payment_terms.data,
                 reference=form.reference.data or None,
                 notes=form.notes.data or '',
+                prepared_by=(form.prepared_by.data or '').strip() or None,
+                checked_by=(form.checked_by.data or '').strip() or None,
+                approved_by=(form.approved_by.data or '').strip() or None,
                 status='draft',
                 created_by_id=current_user.id,
             )
@@ -549,6 +554,11 @@ def create():
         form.po_number.data = next_po_number_for(current_user.id,
                                                  session.get('selected_branch_id'))
         form.order_date.data = ph_now().date()
+        # Signatories carry forward off the SAME pad -- this purchaser's own last
+        # order, not a company-wide setting, which would hand one purchaser the
+        # other's people. A suggestion, editable per order.
+        for field, value in next_po_signatories_for(current_user.id).items():
+            getattr(form, field).data = value
 
     return render_template('purchase_orders/form.html', form=form, po=None,
                            line_items=[], vendors=vendors, **_common_form_ctx())
@@ -631,6 +641,8 @@ def edit(id):
             po.payment_terms = form.payment_terms.data
             po.reference = form.reference.data or None
             po.notes = form.notes.data or ''
+            for _sig in PurchaseOrderForm.SIGNATORY_FIELDS:
+                setattr(po, _sig, (getattr(form, _sig).data or '').strip() or None)
 
             db.session.execute(db.delete(PurchaseOrderItem)
                                .where(PurchaseOrderItem.purchase_order_id == po.id))
@@ -794,6 +806,8 @@ def amend(id):
             po.payment_terms = form.payment_terms.data
             po.reference = form.reference.data or None
             po.notes = form.notes.data or ''
+            for _sig in PurchaseOrderForm.SIGNATORY_FIELDS:
+                setattr(po, _sig, (getattr(form, _sig).data or '').strip() or None)
 
             # UPDATE IN PLACE -- do NOT delete-and-rebuild the way edit() does.
             # See _apply_amended_po_lines: a rebuild strands every
@@ -871,16 +885,54 @@ def amend(id):
     return _render()
 
 
+@purchase_orders_bp.route('/purchase-orders/<int:id>/submit', methods=['POST'])
+@login_required
+def submit(id):
+    """draft -> submitted. Mirrors purchase_requests.submit.
+
+    Gated on the EDIT-level rule (_role_gate), not the approve-level one: the
+    whole point is that a staff purchaser -- who may build an order but may not
+    approve it -- has a way to hand it on. Before this, she could raise a draft
+    and then move it nowhere.
+    """
+    po = _get_po_or_404(id)
+    gate = _role_gate()
+    if gate:
+        return gate
+    if po.status != 'draft':
+        flash('Only a draft Purchase Order can be submitted.', 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
+    if po.vendor_id is None:
+        flash('Set a vendor before submitting this Purchase Order.', 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
+    po.status = 'submitted'
+    po.submitted_by_id = current_user.id
+    po.submitted_at = ph_now()
+    db.session.commit()
+    # action='submit', not 'update': the audit log's Actions filter is built from
+    # the DISTINCT actions present, so a lifecycle event logged as a generic
+    # update is unfilterable and reads as an ordinary edit.
+    log_audit(module='purchase_orders', action='submit', record_id=po.id,
+              record_identifier=po.po_number, notes='Submitted')
+    flash(f'Purchase Order "{po.po_number}" submitted for approval.', 'success')
+    return redirect(url_for('purchase_orders.view', id=id))
+
+
 @purchase_orders_bp.route('/purchase-orders/<int:id>/approve', methods=['POST'])
 @login_required
 def approve(id):
-    """Draft -> approved. No journal entry -- a PO posts nothing."""
+    """Draft or submitted -> approved. No journal entry -- a PO posts nothing."""
     po = _get_po_or_404(id)
     if not _has_approve_level_role():
         flash('You do not have permission to approve Purchase Orders.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
-    if po.status != 'draft':
-        flash('Only draft Purchase Orders can be approved.', 'error')
+    # 'draft' is still accepted alongside 'submitted': an approver who raises an
+    # order herself should not have to submit it to herself first, which is how
+    # the requisition already behaves. The submit step exists so a STAFF
+    # purchaser has a way forward, not to add a hop for someone who never needed
+    # one.
+    if po.status not in ('draft', 'submitted'):
+        flash('Only draft or submitted Purchase Orders can be approved.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
     if po.vendor_id is None:
         flash('Set a vendor before approving this Purchase Order.', 'error')

@@ -35,11 +35,17 @@ def _draft_sources():
     from app.accounts_payable.models import AccountsPayable
     from app.cash_disbursements.models import CashDisbursementVoucher
     from app.cash_receipts.models import CashReceiptVoucher
+    from app.purchase_orders.models import PurchaseOrder
     from app.purchase_requests.models import PurchaseRequest
     from app.sales_invoices.models import SalesInvoice
     return [
         # Ordered along the Procure-to-Pay chain, as MODULE_REGISTRY is.
         ('Purchase Requisition', '📝', PurchaseRequest, 'pr_number', '/purchase-requests/{id}/edit', 'purchase_requests'),
+        # purchase_orders is optional + per_user, like purchase_requests, so it
+        # MUST name its module key -- otherwise Action Items would surface orders
+        # from a module the instance never enabled, or that this user cannot
+        # open, and link to an edit route the module guard then refuses.
+        ('Purchase Order', '🛒', PurchaseOrder, 'po_number', '/purchase-orders/{id}/edit', 'purchase_orders'),
         ('Accounts Payable', '🧾', AccountsPayable, 'ap_number', '/accounts-payable/{id}/edit', None),
         ('Cash Disbursement', '💸', CashDisbursementVoucher, 'cdv_number', '/cash-disbursements/{id}/edit', None),
         ('Cash Receipt', '💰', CashReceiptVoucher, 'crv_number', '/cash-receipts/{id}/edit', None),
@@ -124,10 +130,17 @@ def _document_approval_sources():
     the one state that actually needs somebody's attention was the one state the
     page could not see.
     """
+    from app.purchase_orders.models import PurchaseOrder
     from app.purchase_requests.models import PurchaseRequest
     return [
         ('Purchase Requisition', '📝', PurchaseRequest, 'pr_number',
          '/purchase-requests/{id}', 'purchase_requests'),
+        # A submitted PO is in exactly the state this list exists for: the staff
+        # purchaser has handed it on and it is waiting on an approver. Same
+        # approver audience -- _has_approve_level_role and _can_approve_documents
+        # are the same rule (accountant or full access).
+        ('Purchase Order', '🛒', PurchaseOrder, 'po_number',
+         '/purchase-orders/{id}', 'purchase_orders'),
     ]
 
 

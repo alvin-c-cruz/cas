@@ -152,7 +152,18 @@
 
 {% if can_write or can_approve %}
 <div class="card"><div class="card-body">
-  {% if po.status == 'draft' and can_approve %}
+  {# Submit is gated on can_write, NOT can_approve -- that is the whole point.
+     A staff purchaser may raise an order but not approve it, and before this she
+     could move a draft nowhere. Mirrors the requisition's detail page. #}
+  {% if po.status == 'draft' and can_write %}
+  <form method="POST" action="{{ url_for('purchase_orders.submit', id=po.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-primary">Submit for approval</button>
+  </form>
+  {% endif %}
+  {# An approver keeps the direct draft -> approved path: she should not have to
+     submit an order to herself. The view accepts both statuses. #}
+  {% if po.status in ['draft', 'submitted'] and can_approve %}
   <form method="POST" action="{{ url_for('purchase_orders.approve', id=po.id) }}" style="display:inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-primary">Approve</button>
