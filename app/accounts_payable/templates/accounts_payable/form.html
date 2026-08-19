@@ -7,7 +7,7 @@
 {% from "macros.html" import render_field, render_flash_messages %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=4">
-<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor-form.css') }}?v=3">
 
 <div class="card page-accounts-payable">
@@ -59,7 +59,19 @@
                 </div>
                 <!-- Notes: own grid area so it appears last on small screens -->
                 <div class="notes-col header-fields{% if ap %} header-fields--active{% endif %}">
-                    {{ form.notes.label(class='form-label') }}
+                    <div class="notes-label-row">
+                      {{ form.notes.label(class='form-label') }}
+                      {# Rebuilds the particulars from the pulled PO/RR, picking up a
+                         vendor invoice number typed after the pull. Shown only where a
+                         pull is possible; type="button" because it sits inside the form
+                         and a bare button would submit it. #}
+                      {% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}
+                      <button type="button" id="regenerateParticulars" class="btn btn-secondary btn-sm"
+                              onclick="window.refreshApParticulars && window.refreshApParticulars()">
+                        Regenerate
+                      </button>
+                      {% endif %}
+                    </div>
                     {{ form.notes(class='form-control', style='resize:vertical', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
                     {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
                 </div>
@@ -1319,7 +1331,7 @@ initItems();
 
 {# ap_po_billing.js must load AFTER the block above (needs window.addLineItem to already exist --
    see BUG-AP-PO-BILLING-SCRIPT-LOAD-ORDER, docs/bug-reports/2026-07-15-ap-po-billing-picker-script-order.md) #}
-{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=3"></script>{% endif %}
+{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=4"></script>{% endif %}
 
 <script>
 // ── Create-form attachment queue (held in browser until Save) ────────────────

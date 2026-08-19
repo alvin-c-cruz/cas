@@ -88,16 +88,73 @@
     emptyEl.style.display = 'none';
     pos.forEach(function (po) {
       listEl.appendChild(rowButton('PO ' + po.po_number, '(services / direct)',
-        function () { injectLines(po.lines); pushId(srcPo, po.id); }));
+        function () { injectLines(po.lines); pushId(srcPo, po.id); refreshNotes(false); }));
     });
     rrs.forEach(function (rr) {
       listEl.appendChild(rowButton('RR ' + rr.rr_number,
         rr.purchase_order_number ? '(from ' + rr.purchase_order_number + ')' : '',
-        function () { injectLines(rr.lines); pushId(srcRr, rr.id); }));
+        function () { injectLines(rr.lines); pushId(srcRr, rr.id); refreshNotes(false); }));
     });
     lockIfNeeded();
     section.style.display = '';
   }
+
+
+  // --- Notes (Particulars) ------------------------------------------------
+  // The form refuses to save with Notes empty, and everything the sentence
+  // states is already on the pulled documents, so build it from them. The
+  // WORDING lives server-side (app/accounts_payable/particulars.py) -- it is
+  // business convention measured from the client's own register, and this way
+  // it is unit-testable rather than trapped in a browser.
+
+  function notesBox() { return document.querySelector('textarea[name="notes"]'); }
+
+  function pulledIds() {
+    function parse(el) {
+      try { return JSON.parse((el && el.value) || '[]'); } catch (e) { return []; }
+    }
+    return { po_ids: parse(srcPo), rr_ids: parse(srcRr) };
+  }
+
+  // `force` distinguishes the two entry points: an automatic refresh after a
+  // pull must never overwrite particulars someone typed, but the Regenerate
+  // button is an explicit request to replace them.
+  function refreshNotes(force) {
+    const box = notesBox();
+    if (!box) return Promise.resolve();
+    if (!force && box.value.trim()) return Promise.resolve();
+
+    const ids = pulledIds();
+    if (!ids.po_ids.length && !ids.rr_ids.length) return Promise.resolve();
+
+    const invoiceEl = document.getElementById('vendor_invoice_number');
+    const token = document.querySelector('input[name="csrf_token"]');
+    return fetch('/accounts-payable/particulars', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': (token && token.value) || '',
+      },
+      body: JSON.stringify({
+        po_ids: ids.po_ids,
+        rr_ids: ids.rr_ids,
+        invoice_number: (invoiceEl && invoiceEl.value) || '',
+      }),
+    })
+      .then(function (r) { return r.ok ? r.json() : { notes: '' }; })
+      .then(function (data) {
+        // Never blank a filled box on an empty answer -- that would delete the
+        // user's own words to write nothing in their place.
+        if (!data.notes) return;
+        box.value = data.notes;
+        box.dispatchEvent(new Event('input', { bubbles: true }));  // re-run validateForm
+      })
+      .catch(function () { /* the box stays as it was */ });
+  }
+
+  // Regenerate button: rebuilds from the currently pulled documents, including
+  // the vendor invoice number if it has been typed since the pull.
+  window.refreshApParticulars = function () { return refreshNotes(true); };
 
   function reset() {
     if (srcPo) srcPo.value = '[]';
