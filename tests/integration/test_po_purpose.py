@@ -237,3 +237,32 @@ def test_the_preprinted_layout_declares_purpose_as_a_positionable_field(client, 
     assert pl.FIELD_LABELS['purpose'] == 'Purpose'
     assert 'purpose' in pl.DEFAULT_PO_PREPRINTED_LAYOUT['fields'], \
         'no default box, so it lands at 0,0 on every client that has not customised'
+
+
+def test_the_detail_page_shows_the_purpose(client, db_session, main_branch, admin_user):
+    """Found by the pre-merge browser pass: the purpose saved, rendered back on
+    the edit form and printed correctly -- but the DETAIL page never showed it,
+    so the one screen a user opens to read the order omitted what it was for."""
+    po = PurchaseOrder(branch_id=main_branch.id, po_number='PP-0110',
+                       vendor_name='Acme', purpose=PURPOSE, status='approved')
+    db.session.add(po)
+    db.session.commit()
+
+    _login(client, admin_user, main_branch)
+    body = client.get(f'/purchase-orders/{po.id}').data.decode()
+
+    assert PURPOSE in body
+
+
+def test_the_detail_page_omits_the_purpose_row_when_there_is_none(client, db_session,
+                                                                  main_branch, admin_user):
+    """CONTROL: no empty 'Purpose:' label on the orders that have none (all of them)."""
+    po = PurchaseOrder(branch_id=main_branch.id, po_number='PP-0111',
+                       vendor_name='Acme', status='approved')
+    db.session.add(po)
+    db.session.commit()
+
+    _login(client, admin_user, main_branch)
+    body = client.get(f'/purchase-orders/{po.id}').data.decode()
+
+    assert '<strong>Purpose:</strong>' not in body
