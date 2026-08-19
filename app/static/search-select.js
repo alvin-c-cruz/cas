@@ -126,7 +126,26 @@ function initSearchSelect(selectEl, options) {
             const value = tabbableTarget();
             if (!value) return;
             // No preventDefault: Tab must still move focus to the next field.
+            //
+            // setChoiceByValue leaves the <select> byte-identical to a click or
+            // Enter selection -- same value, same selectedIndex, same option
+            // text -- but this Choices build does NOT dispatch `change` for a
+            // programmatic set. Setting the value is not selecting: the page has
+            // to be told, or everything hanging off the picker silently does not
+            // run. On the AP voucher that meant the vendor was visibly chosen
+            // while the form stayed locked at "Select a payee above to add line
+            // items", with no vendor defaults, no billing picker and no notes.
+            //
+            // Watched rather than assumed: if a future Choices version starts
+            // firing its own change, this sees it and does not double-fire.
+            let sawChange = false;
+            const spy = function () { sawChange = true; };
+            selectEl.addEventListener('change', spy);
             choices.setChoiceByValue(value);
+            selectEl.removeEventListener('change', spy);
+            if (!sawChange) {
+                selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         });
     }
 

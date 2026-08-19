@@ -120,3 +120,38 @@ def test_typing_a_full_code_then_tab_leaves_the_dropdown_closed(logged_in_page, 
     page.wait_for_function(WAIT_VENDOR_CHIP, arg='V002')
 
     page.wait_for_selector(DROPDOWN + '.is-active', state='detached')
+
+
+def test_tab_selection_notifies_everything_that_depends_on_it(logged_in_page, e2e_server):
+    """Setting the value is not selecting -- the page has to be TOLD.
+
+    Reported from the live AP form: Tab picked the vendor and drew the chip, but
+    the voucher stayed locked at "Select a payee above to add line items". The
+    select's value, selectedIndex and option text were byte-identical to the
+    Enter path; the only difference was that no `change` event fired, so none of
+    the work hanging off it ran -- vendor defaults, the line-item unlock, the
+    PO/RR billing picker, the notes autofill.
+
+    Choices' setChoiceByValue() does not dispatch change in this build, so the
+    commit has to. This asserts the OUTCOME a user sees rather than the event,
+    because the event is the mechanism and the unlock is the point.
+    """
+    page = logged_in_page
+    scope = open_vendor_picker(page, e2e_server)
+
+    page.evaluate("""() => {
+        window.__changes = [];
+        const s = document.getElementById('payee');
+        s.addEventListener('change', () => window.__changes.push(s.value));
+    }""")
+
+    page.keyboard.type('V002')
+    page.wait_for_selector(HIGHLIGHTED)
+    page.keyboard.press('Tab')
+    page.wait_for_function(WAIT_VENDOR_CHIP, arg='V002')
+
+    assert page.evaluate("() => window.__changes") != [], (
+        'Tab set the value and drew the chip but fired no change event, so every '
+        'handler hanging off the picker never ran'
+    )
+    assert 'V002' in selected_label(scope)
