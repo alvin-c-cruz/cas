@@ -29,6 +29,11 @@ EXPECTED_FIELDS = {
     'reference':       {'x': 620, 'y': 146, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
     'vat_treatment':   {'x': 620, 'y': 170, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
     'total_amount':    {'x': 700, 'y': 430, 'w': 150, 'fontSize': 13, 'bold': True,  'hidden': False},
+    # Signature band below the totals. A starting point every client nudges to
+    # its own stationery in the layout designer.
+    'prepared_by':     {'x': 60,  'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
+    'checked_by':      {'x': 320, 'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
+    'approved_by':     {'x': 580, 'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
 }
 
 EXPECTED_LINE_ITEMS = {
@@ -53,6 +58,9 @@ def test_it_declares_every_po_header_field():
     assert pl.FIELD_KEYS == [
         'po_no', 'order_date', 'expected_date', 'vendor_name', 'vendor_tin',
         'vendor_address', 'payment_terms', 'reference', 'vat_treatment', 'total_amount',
+        # Per-order signatories (posig_0001). Positioned FIELDS, not the static
+        # TEXT_KEYS other documents use, because the value differs per order.
+        'prepared_by', 'checked_by', 'approved_by',
     ]
 
 
@@ -70,6 +78,9 @@ def test_the_field_labels_are_pinned_exactly():
         'reference': 'Reference',
         'vat_treatment': 'VAT Treatment',
         'total_amount': 'Total Amount',
+        'prepared_by': 'Prepared by',
+        'checked_by': 'Checked by',
+        'approved_by': 'Approved by',
     }
 
 

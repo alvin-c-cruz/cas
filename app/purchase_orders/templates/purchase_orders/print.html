@@ -11,7 +11,18 @@
     td.num, th.num { text-align: right; }
     .meta { margin-top: 8px; }
     .meta div { margin: 2px 0; }
-    @media print { .no-print { display: none; } }
+    .sig-row { display: flex; justify-content: space-between; gap: 36px; margin-top: 48px; }
+    .sig { flex: 1; text-align: center; }
+    .sig-name { min-height: 16px; font-weight: 700; border-bottom: 1px solid #000;
+                padding: 0 4px 3px; }
+    .sig-role { font-size: 10px; color: #333; margin-top: 4px;
+                text-transform: uppercase; letter-spacing: .4px; }
+    @media print {
+      .no-print { display: none; }
+      /* Three ruled lines orphaned onto their own page is the classic print bug
+         for this layout. */
+      .sig-row { page-break-inside: avoid; }
+    }
   </style>
 </head>
 <body>
@@ -51,6 +62,21 @@
       <tr><th colspan="4" class="num">Total</th><th class="num">{{ '{:,.2f}'.format(po.total_amount or 0) }}</th></tr>
     </tfoot>
   </table>
+
+  {# Per-ORDER signatories, typed on the form and carried here. A blank prints an
+     empty ruled line to sign by hand -- never a placeholder, and never a name
+     derived from created_by/approved_by, which are CAS users while the
+     designated signatories frequently are not. #}
+  <div class="sig-row">
+    {% for label, name in [('Prepared by', po.prepared_by),
+                           ('Checked by', po.checked_by),
+                           ('Approved by', po.approved_by)] %}
+    <div class="sig">
+      <div class="sig-name">{{ name or '' }}</div>
+      <div class="sig-role">{{ label }}</div>
+    </div>
+    {% endfor %}
+  </div>
 
   <div class="meta" style="margin-top:24px">Printed {{ printed_at.strftime('%b %d, %Y %I:%M %p') }}</div>
 </body>

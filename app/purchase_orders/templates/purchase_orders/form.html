@@ -68,6 +68,18 @@
       <div class="form-group">{{ form.payment_terms.label }} {{ form.payment_terms(class="form-control") }}</div>
     </div>
     <div class="form-group">{{ form.notes.label }} {{ form.notes(class="form-control", rows=2) }}</div>
+
+    {# Per-ORDER signatories, carried onto the printout. On a NEW order these
+       arrive pre-filled from this purchaser's own last PO (see
+       next_po_signatories_for) -- a suggestion, not a lock: editing one here
+       changes this order only. Left blank, the printout shows an empty ruled
+       line to sign by hand. #}
+    <div class="form-row-3">
+      <div class="form-group">{{ form.prepared_by.label }} {{ form.prepared_by(class="form-control") }}</div>
+      <div class="form-group">{{ form.checked_by.label }} {{ form.checked_by(class="form-control") }}</div>
+      <div class="form-group">{{ form.approved_by.label }} {{ form.approved_by(class="form-control") }}</div>
+    </div>
+    <div class="form-hint">Carried over from your last Purchase Order. Edit for this order, or leave blank to sign by hand.</div>
   </div></div>
 
   {# card--lines: this card holds only the grid and the summary, so `.card`'s own

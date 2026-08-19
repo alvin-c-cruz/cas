@@ -13,6 +13,11 @@ LAYOUT_SETTING_KEY = 'po_preprinted_layout'
 FIELD_KEYS = [
     'po_no', 'order_date', 'expected_date', 'vendor_name', 'vendor_tin',
     'vendor_address', 'payment_terms', 'reference', 'vat_treatment', 'total_amount',
+    # Per-ORDER signatories. Positioned FIELDS rather than static overlay text
+    # (the TEXT_KEYS other documents use) precisely because the value differs per
+    # order -- it is typed on the form and carried forward from this purchaser's
+    # own last PO, not a fixed label printed in the same place every time.
+    'prepared_by', 'checked_by', 'approved_by',
 ]
 
 FIELD_LABELS = {
@@ -26,6 +31,9 @@ FIELD_LABELS = {
     'reference': 'Reference',
     'vat_treatment': 'VAT Treatment',
     'total_amount': 'Total Amount',
+    'prepared_by': 'Prepared by',
+    'checked_by': 'Checked by',
+    'approved_by': 'Approved by',
 }
 
 COLUMN_KEYS = ['line_number', 'product', 'description', 'quantity', 'uom',
@@ -69,6 +77,12 @@ DEFAULT_PO_PREPRINTED_LAYOUT = {
         'reference':       {'x': 620, 'y': 146, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
         'vat_treatment':   {'x': 620, 'y': 170, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
         'total_amount':    {'x': 700, 'y': 430, 'w': 150, 'fontSize': 13, 'bold': True,  'hidden': False},
+        # Signature band, below the totals. Geometry is a STARTING POINT only --
+        # every client nudges these to their own stationery in the layout
+        # designer, which is what it exists for.
+        'prepared_by':     {'x': 60,  'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
+        'checked_by':      {'x': 320, 'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
+        'approved_by':     {'x': 580, 'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
     },
     # Line items: each column is INDEPENDENTLY positioned (its own x) so it can
     # line up with the pre-printed column boxes; all columns share the band top

@@ -37,6 +37,17 @@ class PurchaseOrderForm(RowVersionFormMixin, FlaskForm):
 
     notes = TextAreaField('Notes', validators=[Optional()])
 
+    # Typed per ORDER and carried onto the printout. Optional throughout: an
+    # order may be raised before it is known who will check or approve it, and a
+    # blank simply prints an empty ruled line to sign by hand. The view pre-fills
+    # these from this PURCHASER's own last order (see next_po_signatories_for),
+    # which is a suggestion -- overwriting one here must not change any other PO.
+    prepared_by = StringField('Prepared by', validators=[Optional(), Length(max=100)])
+    checked_by = StringField('Checked by', validators=[Optional(), Length(max=100)])
+    approved_by = StringField('Approved by', validators=[Optional(), Length(max=100)])
+
+    SIGNATORY_FIELDS = ('prepared_by', 'checked_by', 'approved_by')
+
     def set_vendor_choices(self, vendors):
         self.vendor_id.choices = [(0, '-- Select vendor --')] + [(v.id, v.name) for v in vendors]
 
