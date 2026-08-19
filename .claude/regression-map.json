@@ -547,6 +547,14 @@
     "app/purchase_requests/allocation.py": [
       "purchase_orders",
       "purchase_requests"
+    ],
+    "app/static/accounts_payable_form.css": [
+      "accounts_payable",
+      "purchase_orders",
+      "purchase_requests",
+      "quotations",
+      "sales_invoices",
+      "sales_orders"
     ]
   },
   "modules": {

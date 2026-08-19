@@ -705,6 +705,33 @@ def print_list():
                            date_to=request.args.get('date_to', f'{ph_now().year}-12-31'))
 
 
+@accounts_payable_bp.route('/accounts-payable/particulars', methods=['POST'])
+@login_required
+@staff_or_above_required
+def particulars():
+    """JSON: the Notes (Particulars) sentence for the PO/RR pulled into a voucher.
+
+    POST, not GET, for one reason: the id lists are unbounded and would blow the
+    URL length on a voucher billing many documents. It reads and writes nothing,
+    so there is no state to protect beyond the login + role gate above.
+
+    Returns '' when nothing resolvable was pulled -- the caller must not paste a
+    dangling "PAYMENT FOR THE PURCHASE OF" into the box.
+    """
+    from app.accounts_payable.particulars import build_particulars
+    payload = request.get_json(silent=True) or {}
+
+    def _ids(key):
+        raw = payload.get(key) or []
+        return [i for i in raw if isinstance(i, int)] if isinstance(raw, list) else []
+
+    invoice_number = payload.get('invoice_number')
+    if not isinstance(invoice_number, str):
+        invoice_number = ''
+    return jsonify({'notes': build_particulars(_ids('po_ids'), _ids('rr_ids'),
+                                               invoice_number=invoice_number)})
+
+
 @accounts_payable_bp.route('/accounts-payable/create', methods=['GET', 'POST'])
 @login_required
 @staff_or_above_required

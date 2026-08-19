@@ -221,3 +221,14 @@
     margin: 6px 0 0;
     min-height: 18px;
 }
+
+/* Notes (Particulars) label row: the label on the left, the Regenerate action
+   on the right. Its own row so the button never overlaps a wrapped label on a
+   narrow screen. */
+.notes-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.notes-label-row .form-label { margin-bottom: 0; }
