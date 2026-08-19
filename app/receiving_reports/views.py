@@ -44,6 +44,12 @@ RECEIVABLE_PO_STATUSES = ('approved', 'partially_received')
 # purpose.
 RR_EDIT_ROLES = ('staff', 'accountant', 'admin', 'chief_accountant')
 
+# Ruled rows on the printed receipt. A MINIMUM, never a cap: the legacy form
+# emitted exactly 20 rows, so a 21-line receipt silently dropped its last line
+# off the paper the receiver was signing for. 20 matches the legacy sheet's
+# look; a longer receipt simply prints more rows.
+PRINT_MIN_ROWS = 20
+
 
 def _rr_role_gate():
     if current_user.role not in RR_EDIT_ROLES:
@@ -767,8 +773,18 @@ def print_rr(id):
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
             signatory_ids=TEXT_KEYS,
             date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
+    # Company-level signatories, same mechanism as the requisition's but with
+    # their OWN app_settings keys -- a company may name different people on a
+    # receipt than on a requisition. A blank name prints an empty ruled line to
+    # sign by hand, never a placeholder.
+    from app.company_settings.views import get_rr_signatories
+    signatories = get_rr_signatories()
+    can_edit_signatories = (current_user.role == 'accountant'
+                            or current_user.has_full_access)
     return render_template('receiving_reports/print.html', rr=rr, company=company,
-                           printed_at=ph_now())
+                           printed_at=ph_now(), signatories=signatories,
+                           can_edit_signatories=can_edit_signatories,
+                           PRINT_MIN_ROWS=PRINT_MIN_ROWS)
 
 
 @receiving_reports_bp.route('/receiving-reports/print-layout', methods=['POST'])

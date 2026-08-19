@@ -120,22 +120,61 @@ def _accountant_or_full_access():
 # are frequently NOT CAS users, so deriving them from created_by/submitted_by/
 # approved_by is wrong -- it printed "System Administrator" three times on a
 # requisition that one admin happened to create, submit and approve.
-PR_SIGNATORY_SLOTS = (1, 2, 3)
+SIGNATORY_SLOTS = (1, 2, 3)
+
+# Each document keeps its OWN keys and its own defaults. The code is shared; the
+# VALUES are not -- a company can name different people on a requisition than on
+# a receipt, which is the whole point of separating them. `prefix` is what keeps
+# them apart in app_settings ('pr_sig1_name' vs 'rr_sig1_name').
 PR_SIGNATORY_DEFAULT_ROLES = ('Prepared by', 'Noted by', 'Approved by')
+RR_SIGNATORY_DEFAULT_ROLES = ('Prepared by', 'Checked by', 'Received by')
+
+# Back-compat alias: PR_SIGNATORY_SLOTS was the name before RR joined.
+PR_SIGNATORY_SLOTS = SIGNATORY_SLOTS
 
 
-def get_pr_signatories():
-    """[(role, name), ...] for the PR printout.
+def get_signatories(prefix, default_roles):
+    """[(role, name), ...] for a document's printout.
 
     A blank name is meaningful: it prints an empty ruled line to sign by hand,
     which is what an unconfigured instance should produce -- never a placeholder.
     """
     out = []
-    for slot, default_role in zip(PR_SIGNATORY_SLOTS, PR_SIGNATORY_DEFAULT_ROLES):
-        role = (AppSettings.get_setting(f'pr_sig{slot}_role') or '').strip() or default_role
-        name = (AppSettings.get_setting(f'pr_sig{slot}_name') or '').strip()
+    for slot, default_role in zip(SIGNATORY_SLOTS, default_roles):
+        role = (AppSettings.get_setting(f'{prefix}_sig{slot}_role') or '').strip() or default_role
+        name = (AppSettings.get_setting(f'{prefix}_sig{slot}_name') or '').strip()
         out.append((role, name))
     return out
+
+
+def get_pr_signatories():
+    """Signatories for the Purchase Requisition printout."""
+    return get_signatories('pr', PR_SIGNATORY_DEFAULT_ROLES)
+
+
+def get_rr_signatories():
+    """Signatories for the Receiving Report printout -- independent of PR's."""
+    return get_signatories('rr', RR_SIGNATORY_DEFAULT_ROLES)
+
+
+def _save_signatories(prefix, default_roles, audit_identifier):
+    """Persist one document's three signatory slots. Returns True on success.
+
+    Shared by every document's save route; the caller owns the authz check and
+    the redirect, because each returns to its own printout.
+    """
+    saved = {}
+    for slot, default_role in zip(SIGNATORY_SLOTS, default_roles):
+        name = (request.form.get(f'{prefix}_sig{slot}_name') or '').strip()[:100]
+        role = (request.form.get(f'{prefix}_sig{slot}_role') or '').strip()[:60] or default_role
+        AppSettings.set_setting(f'{prefix}_sig{slot}_name', name, updated_by=current_user.username)
+        AppSettings.set_setting(f'{prefix}_sig{slot}_role', role, updated_by=current_user.username)
+        saved[f'{prefix}_sig{slot}'] = f'{role}: {name}'
+
+    log_audit(module='company_settings', action='update', record_id=None,
+              record_identifier=audit_identifier, new_values=saved,
+              user_id=current_user.id)
+    return saved
 
 
 @company_settings_bp.route('/print-signatories', methods=['POST'])
@@ -145,17 +184,7 @@ def save_pr_signatories():
         flash('Only Accountants and Administrators can change the signatories.', 'error')
         return redirect(url_for('dashboard.index'))
 
-    saved = {}
-    for slot, default_role in zip(PR_SIGNATORY_SLOTS, PR_SIGNATORY_DEFAULT_ROLES):
-        name = (request.form.get(f'pr_sig{slot}_name') or '').strip()[:100]
-        role = (request.form.get(f'pr_sig{slot}_role') or '').strip()[:60] or default_role
-        AppSettings.set_setting(f'pr_sig{slot}_name', name, updated_by=current_user.username)
-        AppSettings.set_setting(f'pr_sig{slot}_role', role, updated_by=current_user.username)
-        saved[f'pr_sig{slot}'] = f'{role}: {name}'
-
-    log_audit(module='company_settings', action='update', record_id=None,
-              record_identifier='pr_print_signatories', new_values=saved,
-              user_id=current_user.id)
+    _save_signatories('pr', PR_SIGNATORY_DEFAULT_ROLES, 'pr_print_signatories')
     flash('Signatories saved.', 'success')
 
     # Return to the requisition that was on screen. The id is posted and passed
@@ -164,6 +193,23 @@ def save_pr_signatories():
     pr_id = request.form.get('pr_id', type=int)
     if pr_id:
         return redirect(url_for('purchase_requests.print_pr', id=pr_id))
+    return redirect(url_for('company_settings.edit_settings'))
+
+
+@company_settings_bp.route('/rr-print-signatories', methods=['POST'])
+@login_required
+def save_rr_signatories():
+    if not _accountant_or_full_access():
+        flash('Only Accountants and Administrators can change the signatories.', 'error')
+        return redirect(url_for('dashboard.index'))
+
+    _save_signatories('rr', RR_SIGNATORY_DEFAULT_ROLES, 'rr_print_signatories')
+    flash('Signatories saved.', 'success')
+
+    # Same open-redirect reasoning as the PR route above.
+    rr_id = request.form.get('rr_id', type=int)
+    if rr_id:
+        return redirect(url_for('receiving_reports.print_rr', id=rr_id))
     return redirect(url_for('company_settings.edit_settings'))
 
 

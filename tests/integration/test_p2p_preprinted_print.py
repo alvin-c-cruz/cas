@@ -1075,6 +1075,22 @@ def _plain_rows(body):
             for row in rows]
 
 
+def _plain_col(body, heading):
+    """Index of the column headed `heading` in print.html's line table.
+
+    Located by HEADING, never by a hardcoded position: the printed column ORDER
+    is a layout decision that has already changed once (the legacy Philgen
+    redesign moved PO No. from third to first). A magic index turns any future
+    reorder into three failing tests that say nothing about what actually broke.
+    """
+    thead = re.search(r'<thead>(.*?)</thead>', body, re.S)
+    assert thead, 'the line-item table head is not rendered'
+    headings = [re.sub(r'<[^>]+>', '', c).strip()
+                for c in re.findall(r'<th[^>]*>(.*?)</th>', thead.group(1), re.S)]
+    assert heading in headings, f'no {heading!r} column: {headings}'
+    return headings.index(heading)
+
+
 class TestPurchaseRequisitionPrintForm:
     """`pr_print_form` routes the requisition's print surface. There is deliberately
     NO pr_print_access sibling: a requisition is an INTERNAL document -- it never
@@ -1969,8 +1985,7 @@ class TestReceivingReportPlainPrintPoNumberColumn:
         assert '<th>PO No.</th>' in body
         rows = _plain_rows(body)
         assert len(rows) == 1
-        # Columns are #, Item, PO No., Ordered, Received (print.html's <thead> order).
-        assert rows[0][2] == rr_source_po.po_number
+        assert rows[0][_plain_col(body, 'PO No.')] == rr_source_po.po_number
 
     def test_a_multi_po_receipt_prints_each_lines_own_po_number(
             self, client, db_session, admin_user, branch_manila, multi_po_rr,
@@ -1981,7 +1996,9 @@ class TestReceivingReportPlainPrintPoNumberColumn:
         body = client.get(
             f'/receiving-reports/{multi_po_rr.id}/print').data.decode()
         rows = _plain_rows(body)
-        assert [r[2] for r in rows] == [rr_source_po.po_number, rr_source_po_2.po_number]
+        po_col = _plain_col(body, 'PO No.')
+        assert [r[po_col] for r in rows] == [rr_source_po.po_number,
+                                             rr_source_po_2.po_number]
         assert rr_source_po.po_number != rr_source_po_2.po_number
 
     def test_a_line_with_no_purchase_order_item_prints_an_empty_po_number_without_raising(
@@ -1992,8 +2009,10 @@ class TestReceivingReportPlainPrintPoNumberColumn:
         _login(client, admin_user, branch_manila)
         resp = client.get(f'/receiving-reports/{rr_with_an_orphaned_line.id}/print')
         assert resp.status_code == 200
-        rows = _plain_rows(resp.data.decode())
-        assert [r[2] for r in rows] == [rr_source_po.po_number, '']
+        body = resp.data.decode()
+        rows = _plain_rows(body)
+        po_col = _plain_col(body, 'PO No.')
+        assert [r[po_col] for r in rows] == [rr_source_po.po_number, '']
 
 
 class TestReceivingReportLayoutSave:

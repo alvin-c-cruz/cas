@@ -23,6 +23,12 @@
     "reason": null,
     "waived": false
   },
+  "215b417b002ca20f51c60186900714b85167148f": {
+    "branch": "feat/rr-legacy-print",
+    "date": "2026-08-19",
+    "reason": null,
+    "waived": false
+  },
   "2cad91bcba052623c6ef5f4d7a62a0771b7521b4": {
     "branch": "feat/r07-p1-manufacturing-departments",
     "date": "2026-08-02",
