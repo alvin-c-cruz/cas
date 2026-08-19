@@ -12,7 +12,8 @@ LAYOUT_SETTING_KEY = 'po_preprinted_layout'
 
 FIELD_KEYS = [
     'po_no', 'order_date', 'expected_date', 'vendor_name', 'vendor_tin',
-    'vendor_address', 'payment_terms', 'reference', 'vat_treatment', 'total_amount',
+    'vendor_address', 'payment_terms', 'reference', 'purpose', 'vat_treatment',
+    'total_amount',
     # Per-ORDER signatories. Positioned FIELDS rather than static overlay text
     # (the TEXT_KEYS other documents use) precisely because the value differs per
     # order -- it is typed on the form and carried forward from this purchaser's
@@ -29,6 +30,7 @@ FIELD_LABELS = {
     'vendor_address': 'Address',
     'payment_terms': 'Terms',
     'reference': 'Reference',
+    'purpose': 'Purpose',
     'vat_treatment': 'VAT Treatment',
     'total_amount': 'Total Amount',
     'prepared_by': 'Prepared by',
@@ -76,6 +78,10 @@ DEFAULT_PO_PREPRINTED_LAYOUT = {
         'payment_terms':   {'x': 620, 'y': 122, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
         'reference':       {'x': 620, 'y': 146, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
         'vat_treatment':   {'x': 620, 'y': 170, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
+        # Sits on the LEFT, just above the line-item band (y=300), because it
+        # captions the items rather than belonging to the vendor/order block on
+        # the right. Bold, matching how the legacy form printed it.
+        'purpose':         {'x': 60,  'y': 274, 'w': 500, 'fontSize': 11, 'bold': True,  'hidden': False},
         'total_amount':    {'x': 700, 'y': 430, 'w': 150, 'fontSize': 13, 'bold': True,  'hidden': False},
         # Signature band, below the totals. Geometry is a STARTING POINT only --
         # every client nudges these to their own stationery in the layout
