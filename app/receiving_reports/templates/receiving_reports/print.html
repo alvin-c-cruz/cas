@@ -4,52 +4,249 @@
   <meta charset="utf-8">
   <title>Receiving Report {{ rr.rr_number }}</title>
   <style>
-    body { font-family: Arial, sans-serif; color: #111; margin: 24px; font-size: 12px; }
-    h1 { font-size: 18px; margin: 0 0 4px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
-    td.num, th.num { text-align: right; }
-    .meta div { margin: 2px 0; }
-    @media print { .no-print { display: none; } }
+    /* Print geometry: US Letter portrait, half-inch margins. Stated in inches
+       rather than `letter portrait` so the intent is unambiguous to any engine.
+       The legacy form this replaces declared NO page size at all and inherited
+       whatever the browser dialog happened to be set to, so the same receipt
+       printed differently on different machines. */
+    @page { size: 8.5in 11in; margin: 0.5in; }
+
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000;
+           /* On SCREEN, hold the body to the printable width (8.5in - 2 x 0.5in)
+              so the preview is the sheet, not the browser window. */
+           width: 7.5in; margin: 0.5in auto;
+           /* A column at least one printable page tall, so the footer's
+              `margin-top: auto` pushes the signatures to the bottom edge. */
+           display: flex; flex-direction: column; min-height: 10in;
+           box-sizing: border-box; }
+
+    /* --- heading ---------------------------------------------------------- */
+    .company-name { text-align: center; font-size: 19px; font-weight: 700;
+                    text-transform: uppercase; letter-spacing: .2px; margin: 0 0 2px; }
+    .company-sub { text-align: center; font-size: 9.5px; color: #333; margin-bottom: 4px; }
+    .doc-title { text-align: center; font-size: 14px; font-weight: 700;
+                 text-transform: uppercase; letter-spacing: 1px; margin: 0 0 14px; }
+
+    /* --- header meta ------------------------------------------------------ */
+    /* Label column is wide enough for "Supporting Documents" to sit on ONE line
+       -- owner directive. The legacy wrapped it onto two, which cost a row of
+       height and read as two fields rather than one label. */
+    .hdr { display: grid; grid-template-columns: 1.75in 1fr 1.55in;
+           row-gap: 5px; align-items: end; margin-bottom: 4px; }
+    .hdr .label { font-size: 11px; white-space: nowrap; }
+    .hdr .value { border-bottom: 1px solid #000; min-height: 15px;
+                  font-size: 10.5px; padding: 0 4px 1px; }
+    .hdr .spacer { border: 0; }
+    .rrno { text-align: right; font-size: 12px; white-space: nowrap; }
+    .rrno strong { color: #c00000; font-size: 13px; }
+
+    /* --- line items ------------------------------------------------------- */
+    table.lines { width: 100%; border-collapse: collapse; margin-top: 10px;
+                  table-layout: fixed; }
+    table.lines th { font-size: 10px; font-weight: 700; text-align: center;
+                     text-transform: uppercase; letter-spacing: .3px;
+                     padding: 3px 4px; border-bottom: 2px solid #000; }
+    table.lines td { font-size: 10px; border: 1px solid #cfcfcf;
+                     padding: 3px 5px; vertical-align: middle; }
+    table.lines td.c { text-align: center; }
+    /* Filler rows keep the grid a fixed height. An empty <td> collapses, so the
+       height is set here rather than padded with &nbsp; in the markup -- which
+       would put a real character into a cell that must read as blank. */
+    table.lines tbody tr.filler td { height: 19px; }
+
+    /* --- signatures ------------------------------------------------------- */
+    /* Pinned to the bottom: the signatures sit in the same place on a 1-line
+       receipt and a 30-line one, with the slack above them. */
+    .sheet-footer { margin-top: auto; padding-top: 28px; }
+    .sig-row { display: flex; justify-content: space-between; gap: 36px; }
+    .sig { flex: 1; text-align: center; }
+    .sig .name { min-height: 16px; font-size: 11px; font-weight: 700;
+                 border-bottom: 1px solid #000; padding: 0 4px 3px; }
+    .sig .role { font-size: 9.5px; color: #333; margin-top: 4px;
+                 text-transform: uppercase; letter-spacing: .4px; }
+
+    .printed { margin-top: 18px; font-size: 9px; color: #666; }
+    .no-print { margin-bottom: 12px; }
+
+    /* --- signatory editor (screen only) ----------------------------------- */
+    /* A real HTML modal, not confirm()/prompt(): JS popups are banned app-wide
+       and a native dialog cannot carry a CSRF token anyway. */
+    .sig-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+                 align-items: flex-start; justify-content: center; padding: 40px 16px;
+                 z-index: 100; }
+    .sig-modal.open { display: flex; }
+    .sig-modal .box { background: #fff; border-radius: 6px; padding: 20px 22px;
+                      width: 100%; max-width: 460px; box-shadow: 0 8px 28px rgba(0,0,0,.25); }
+    .sig-modal h2 { font-size: 15px; margin: 0 0 4px; }
+    .sig-modal .hint { font-size: 11px; color: #555; margin: 0 0 14px; }
+    .sig-modal label { display: block; font-size: 10px; font-weight: 700;
+                       text-transform: uppercase; color: #444; margin-bottom: 3px; }
+    .sig-modal input { width: 100%; box-sizing: border-box; padding: 6px 8px;
+                       font: inherit; border: 1px solid #bbb; border-radius: 4px; }
+    .sig-modal .pair { display: flex; gap: 10px; margin-bottom: 12px; }
+    .sig-modal .pair > div:first-child { flex: 0 0 40%; }
+    .sig-modal .pair > div:last-child { flex: 1; }
+    .sig-modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+    @media print {
+      .no-print { display: none; }
+      /* @page owns the margins now; the screen-preview width would otherwise
+         inset the sheet a second time. */
+      body { width: auto; margin: 0; font-size: 10.5px; }
+      /* Repeat the column headings on every page of a long receipt, and never
+         split a line across the page break. */
+      table.lines thead { display: table-header-group; }
+      table.lines tr { page-break-inside: avoid; }
+      /* Keep the signature block whole -- three ruled lines orphaned onto their
+         own page is the classic print bug for this layout. */
+      .sig-row { page-break-inside: avoid; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style>
 </head>
 <body>
-  <div class="no-print" style="margin-bottom:12px">
+  <div class="no-print">
     <button onclick="window.print()">Print</button>
     <button onclick="window.close()">Close</button>
-  </div>
-  {% if company.name %}<div><strong>{{ company.name }}</strong></div>{% endif %}
-  {% if company.address %}<div>{{ company.address }}</div>{% endif %}
-  {% if company.tin %}<div>TIN: {{ company.tin }}</div>{% endif %}
-
-  <h1>RECEIVING REPORT</h1>
-  <div class="meta">
-    <div><strong>RR #:</strong> {{ rr.rr_number }}</div>
-    <div><strong>Date:</strong> {{ rr.receipt_date.strftime('%B %d, %Y') if rr.receipt_date else '' }}</div>
-    <div><strong>Vendor:</strong> {{ rr.vendor_name }}</div>
+    {% if can_edit_signatories %}
+    <button type="button" id="sigModifyBtn">Modify signatories</button>
+    {% endif %}
   </div>
 
-  <table>
+  {% if company.name %}<div class="company-name">{{ company.name }}</div>{% endif %}
+  {% if company.address or company.tin %}
+  <div class="company-sub">
+    {{ company.address }}{% if company.address and company.tin %} &middot; {% endif %}{% if company.tin %}TIN: {{ company.tin }}{% endif %}
+  </div>
+  {% endif %}
+
+  {# Literal capitals, NOT text-transform: the visible text must also be the
+     text in the markup. A CSS-only uppercase renders correctly but leaves the
+     DOM reading "Receiving Report", which silently breaks every assertion --
+     and every reader -- that looks for the document's name in the response. #}
+  <div class="doc-title">RECEIVING REPORT</div>
+
+  <div class="hdr">
+    <div class="label">Date</div>
+    <div class="value">{{ rr.receipt_date.strftime('%d-%b-%Y') if rr.receipt_date else '' }}</div>
+    <div class="rrno">RR No. <strong>{{ rr.rr_number }}</strong></div>
+
+    <div class="label">Vendor</div>
+    <div class="value">{{ rr.vendor_name }}</div>
+    <div class="spacer"></div>
+
+    {# The header `remarks` column carries the supporting-document reference
+       ("CI #67050" on the legacy form). It is the field RR's pre-printed layout
+       already exposes, so no model change was needed to print it here. #}
+    <div class="label">Supporting Documents</div>
+    <div class="value">{{ rr.remarks or '' }}</div>
+    <div class="spacer"></div>
+  </div>
+
+  <table class="lines">
+    <colgroup>
+      <col style="width: 14%;"><col style="width: 12%;"><col style="width: 14%;">
+      <col style="width: 30%;"><col style="width: 30%;">
+    </colgroup>
     <thead>
-      <tr><th>#</th><th>Item</th><th>PO No.</th><th class="num">Ordered</th><th class="num">Received</th></tr>
+      <tr>
+        <th>PO No.</th><th>Quantity</th><th>Measure</th>
+        <th>Description</th><th>Remarks</th>
+      </tr>
     </thead>
     <tbody>
       {% for li in rr.line_items %}
       {% set d = li.to_dict() %}
       <tr>
-        <td>{{ li.line_number }}</td>
+        {# Per-LINE, never a header field: one receipt may settle several of a
+           vendor's orders, so each line carries its own PO number. #}
+        <td class="c">{{ li.po_number }}</td>
+        <td class="c">{{ li | qty_fmt('-') }}</td>
+        <td class="c">{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
         <td>{{ d.product_name or d.description or '' }}</td>
-        {# One receipt may settle several of a vendor's orders (multi-PO
-           receiving) -- the PO reference is per-LINE, derived through
-           purchase_order_item, never a header field. #}
-        <td>{{ li.po_number }}</td>
-        <td class="num">{{ '{:,.4f}'.format(d.ordered_quantity) if d.ordered_quantity is not none else '-' }}</td>
-        <td class="num">{{ '{:,.4f}'.format(li.received_quantity) }}</td>
+        {# Only when a product filled the Description cell -- otherwise the PO
+           line's free text would print twice across the same row. #}
+        <td>{{ d.description if d.product_name else '' }}</td>
       </tr>
+      {% endfor %}
+      {# Pad to a fixed grid so the sheet is the same shape whatever the receipt
+         holds: the signature block lands in the same place every time, and the
+         spare ruled rows give somewhere to add an item by hand.
+
+         A MINIMUM, never a cap. The legacy template emitted exactly 20 rows, so
+         a receipt with 21 lines silently DROPPED the last one off the paper the
+         receiver was signing for. A receipt with more lines than this prints all
+         of them. #}
+      {% for _ in range(rr.line_items|length, PRINT_MIN_ROWS) %}
+      <tr class="filler"><td></td><td></td><td></td><td></td><td></td></tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <div class="meta" style="margin-top:24px">Printed {{ printed_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+  {# Signature block, mirroring the three on the paper form. A blank name prints
+     an empty ruled line to sign by hand -- correct for an instance that has not
+     set its signatories, and never a placeholder. #}
+  <div class="sheet-footer">
+    <div class="sig-row">
+      {% for role, name in signatories %}
+      <div class="sig">
+        <div class="name">{{ name }}</div>
+        <div class="role">{{ role }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="printed">Printed {{ printed_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+  </div>
+
+  {% if can_edit_signatories %}
+  <div class="sig-modal no-print" id="sigModal">
+    <div class="box">
+      <h2>Signatories</h2>
+      <p class="hint">Company-wide &mdash; these appear on every printed Receiving
+        Report, and are kept separately from the Purchase Requisition's. Leave a
+        name blank to print an empty line to sign by hand.</p>
+      <form method="POST" action="{{ url_for('company_settings.save_rr_signatories') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {# Posted as an id and rebuilt with url_for on the server, so returning
+           to this page cannot become an open redirect. #}
+        <input type="hidden" name="rr_id" value="{{ rr.id }}">
+        {% for role, name in signatories %}
+        <div class="pair">
+          <div>
+            <label for="sig{{ loop.index }}role">Label</label>
+            <input id="sig{{ loop.index }}role" name="rr_sig{{ loop.index }}_role"
+                   value="{{ role }}" maxlength="60">
+          </div>
+          <div>
+            <label for="sig{{ loop.index }}name">Name</label>
+            <input id="sig{{ loop.index }}name" name="rr_sig{{ loop.index }}_name"
+                   value="{{ name }}" maxlength="100">
+          </div>
+        </div>
+        {% endfor %}
+        <div class="actions">
+          <button type="button" id="sigCancelBtn">Cancel</button>
+          <button type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var modal = document.getElementById('sigModal');
+      var open  = document.getElementById('sigModifyBtn');
+      var close = document.getElementById('sigCancelBtn');
+      if (!modal || !open) return;
+      open.addEventListener('click', function () { modal.classList.add('open'); });
+      close.addEventListener('click', function () { modal.classList.remove('open'); });
+      modal.addEventListener('click', function (e) {
+        if (e.target === modal) modal.classList.remove('open');
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') modal.classList.remove('open');
+      });
+    })();
+  </script>
+  {% endif %}
 </body>
 </html>
