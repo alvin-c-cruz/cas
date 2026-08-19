@@ -17,6 +17,12 @@
     "reason": null,
     "waived": false
   },
+  "183f8e36b5567b87facc4288ae63e48ac28bfe25": {
+    "branch": "fix/picker-field-border",
+    "date": "2026-08-19",
+    "reason": null,
+    "waived": false
+  },
   "2114b41122a4b813768b71ef1bfe6eac93212d0e": {
     "branch": "fix/ar-aging-expand-all",
     "date": "2026-08-01",
