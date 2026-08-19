@@ -11,7 +11,7 @@ import pytest
 
 from app.sales_memos.models import SalesMemo, SalesMemoItem, generate_memo_number
 
-pytestmark = [pytest.mark.unit, pytest.mark.models]
+pytestmark = [pytest.mark.unit, pytest.mark.models, pytest.mark.credit_memos]
 
 
 def _item(**kw):

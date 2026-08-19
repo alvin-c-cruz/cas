@@ -23,7 +23,7 @@ import pytest
 from app import db
 from app.purchase_memos.models import PurchaseMemo, PurchaseMemoItem, generate_purchase_memo_number
 
-pytestmark = [pytest.mark.unit, pytest.mark.models]
+pytestmark = [pytest.mark.unit, pytest.mark.models, pytest.mark.purchase_memos]
 
 
 def _item(**kw):
