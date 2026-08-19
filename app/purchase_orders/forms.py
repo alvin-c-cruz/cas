@@ -34,6 +34,9 @@ class PurchaseOrderForm(RowVersionFormMixin, FlaskForm):
     ], default='Net 30')
 
     reference = StringField('Reference', validators=[Optional(), Length(max=100)])
+    # What the order is FOR ("FOR PRODUCTION USE") -- printed once above the
+    # line items, not as a per-line column. See migration popurp_0001.
+    purpose = StringField('Purpose', validators=[Optional(), Length(max=200)])
 
     notes = TextAreaField('Notes', validators=[Optional()])
 

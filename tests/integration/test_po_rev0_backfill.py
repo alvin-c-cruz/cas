@@ -331,6 +331,7 @@ def _comparable_pair(revs, live_po, back_po):
 POST_BACKFILL_HEADER_FIELDS = frozenset({
     'prepared_by', 'checked_by', 'approved_by',   # posig_0001
     'submitted_by_id', 'submitted_at',            # posig_0001
+    'purpose',                                    # popurp_0001
 })
 
 

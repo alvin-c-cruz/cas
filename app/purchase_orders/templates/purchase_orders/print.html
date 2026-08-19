@@ -43,6 +43,10 @@
     <div><strong>Payment Terms:</strong> {{ po.payment_terms }}</div>
   </div>
 
+  {# What the order is FOR -- one caption above the items, never a per-line
+     column. Omitted entirely when blank, which is every pre-popurp_0001 order. #}
+  {% if po.purpose %}<div class="po-purpose"><strong>{{ po.purpose }}</strong></div>{% endif %}
+
   <table>
     <thead>
       <tr><th>#</th><th>Item</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Amount</th></tr>

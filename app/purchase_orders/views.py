@@ -507,6 +507,7 @@ def create():
                 vat_treatment=form.vat_treatment.data,
                 payment_terms=form.payment_terms.data,
                 reference=form.reference.data or None,
+                purpose=form.purpose.data or None,
                 notes=form.notes.data or '',
                 prepared_by=(form.prepared_by.data or '').strip() or None,
                 checked_by=(form.checked_by.data or '').strip() or None,
@@ -640,6 +641,7 @@ def edit(id):
             po.vat_treatment = form.vat_treatment.data
             po.payment_terms = form.payment_terms.data
             po.reference = form.reference.data or None
+            po.purpose = form.purpose.data or None
             po.notes = form.notes.data or ''
             for _sig in PurchaseOrderForm.SIGNATORY_FIELDS:
                 setattr(po, _sig, (getattr(form, _sig).data or '').strip() or None)
@@ -805,6 +807,7 @@ def amend(id):
             po.vat_treatment = form.vat_treatment.data
             po.payment_terms = form.payment_terms.data
             po.reference = form.reference.data or None
+            po.purpose = form.purpose.data or None
             po.notes = form.notes.data or ''
             for _sig in PurchaseOrderForm.SIGNATORY_FIELDS:
                 setattr(po, _sig, (getattr(form, _sig).data or '').strip() or None)

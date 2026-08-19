@@ -35,7 +35,7 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
 
     SNAPSHOT_HEADER_FIELDS = (
         'po_number', 'order_date', 'expected_date', 'vendor_id', 'vendor_name',
-        'vendor_tin', 'vendor_address', 'payment_terms', 'reference', 'notes',
+        'vendor_tin', 'vendor_address', 'payment_terms', 'reference', 'purpose', 'notes',
         # Header state an amendment must preserve: Rev 0 has to record WHO the
         # order was routed past when it was originally approved.
         'prepared_by', 'checked_by', 'approved_by',
@@ -80,6 +80,11 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
 
     payment_terms = db.Column(db.String(50), default='Net 30')
     reference = db.Column(db.String(100))
+    # What the order is FOR ("FOR PRODUCTION USE"). Header-level, printed once
+    # above the lines -- PhilGen's legacy system stored the same string on every
+    # line and grouped the print by it, but across 168 real POs (118 multi-line)
+    # not one carries a second distinct value, so it is a header attribute.
+    purpose = db.Column(db.String(200), nullable=True)
     notes = db.Column(db.Text, nullable=False, default='')
 
     # Signatories are PER PURCHASE ORDER, not company-wide -- deliberately unlike

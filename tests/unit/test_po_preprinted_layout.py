@@ -28,6 +28,10 @@ EXPECTED_FIELDS = {
     'payment_terms':   {'x': 620, 'y': 122, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
     'reference':       {'x': 620, 'y': 146, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
     'vat_treatment':   {'x': 620, 'y': 170, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
+    # Captions the ITEMS, so it sits on the left just above the line band
+    # (lineItems y=300), not in the order block on the right. Bold, as the
+    # legacy form printed it. popurp_0001.
+    'purpose':         {'x': 60,  'y': 274, 'w': 500, 'fontSize': 11, 'bold': True,  'hidden': False},
     'total_amount':    {'x': 700, 'y': 430, 'w': 150, 'fontSize': 13, 'bold': True,  'hidden': False},
     # Signature band below the totals. A starting point every client nudges to
     # its own stationery in the layout designer.
@@ -57,7 +61,8 @@ def test_it_declares_the_po_setting_key():
 def test_it_declares_every_po_header_field():
     assert pl.FIELD_KEYS == [
         'po_no', 'order_date', 'expected_date', 'vendor_name', 'vendor_tin',
-        'vendor_address', 'payment_terms', 'reference', 'vat_treatment', 'total_amount',
+        'vendor_address', 'payment_terms', 'reference', 'purpose', 'vat_treatment',
+        'total_amount',
         # Per-order signatories (posig_0001). Positioned FIELDS, not the static
         # TEXT_KEYS other documents use, because the value differs per order.
         'prepared_by', 'checked_by', 'approved_by',
@@ -76,6 +81,7 @@ def test_the_field_labels_are_pinned_exactly():
         'vendor_address': 'Address',
         'payment_terms': 'Terms',
         'reference': 'Reference',
+        'purpose': 'Purpose',
         'vat_treatment': 'VAT Treatment',
         'total_amount': 'Total Amount',
         'prepared_by': 'Prepared by',
