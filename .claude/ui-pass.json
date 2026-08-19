@@ -89,6 +89,12 @@
     "reason": null,
     "waived": false
   },
+  "77a6cf0bcb69142db1676d58fb56f2fded116cc6": {
+    "branch": "fix/pr-asap-visibility",
+    "date": "2026-08-19",
+    "reason": null,
+    "waived": false
+  },
   "786f29ccd6d3f7e0b7523553bf2569304985caf6": {
     "branch": "feat/r07-d5-wo-costing-variance",
     "date": "2026-08-02",
