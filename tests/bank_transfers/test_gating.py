@@ -2,7 +2,7 @@
 import pytest
 from app.utils.cache_helpers import clear_module_config_cache
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_transfers]
 
 
 def test_routes_404_when_module_off(client, admin_user, db_session, main_branch):

@@ -2,7 +2,7 @@
 import pytest
 from app.settings import AppSettings
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_accounts]
 
 
 def login(client, username='admin', password='admin123'):

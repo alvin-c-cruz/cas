@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 from app import db
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_transfers]
 
 
 def _intra_transfer(db_session, branch, cash_acct, revenue_acct):

@@ -5,6 +5,10 @@ from app.accounts.models import Account
 from app.fixed_assets.models import FixedAsset, AssetCategory
 from app.reports.fixed_asset_schedule import generate_fixed_asset_schedule
 
+import pytest
+
+pytestmark = [pytest.mark.fixed_assets]
+
 
 def _asset_with_category(db_session, main_branch, category, code, cost, opening_accum=Decimal('0')):
     cost_acct = Account(code=f'175{code[-2:]}1', name=f'{code} Cost', account_type='Asset',

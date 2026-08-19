@@ -11,7 +11,7 @@ from app.journals.views import VOUCHER_TYPES
 from app.reports.general_journal_data import VOUCHER_ENTRY_TYPES
 from app.journal_entries.models import JournalEntry
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_transfers]
 
 
 def test_transfer_is_a_registered_voucher_type():

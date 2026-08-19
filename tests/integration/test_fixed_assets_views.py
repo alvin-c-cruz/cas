@@ -7,7 +7,7 @@ from app.accounts.models import Account
 from app.fixed_assets.models import FixedAsset
 from app.audit.models import AuditLog
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.fixed_assets]
 
 
 @pytest.fixture(autouse=True)

@@ -13,6 +13,8 @@ from app.fixed_assets.services import (
     leaf_accounts_by_type, create_fixed_asset,
 )
 
+pytestmark = [pytest.mark.fixed_assets]
+
 
 def _posted_ap_with_line(db_session, main_branch, account):
     ap = AccountsPayable(branch_id=main_branch.id, ap_number='AP-2026-01-0001',

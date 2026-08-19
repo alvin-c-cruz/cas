@@ -29,7 +29,7 @@ from flask import render_template
 
 from app.fixed_assets.forms import FixedAssetForm
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.fixed_assets]
 
 
 def _populate_choices(form):

@@ -7,6 +7,8 @@ from app.fixed_assets.models import FixedAsset
 from app.accounts.models import Account
 from app.branches.models import Branch
 
+pytestmark = [pytest.mark.fixed_assets]
+
 
 def _accounts(db_session):
     cost = Account(code='17301', name='Office Equipment - Cost', account_type='Asset',

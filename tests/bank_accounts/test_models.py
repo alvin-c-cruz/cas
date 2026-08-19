@@ -6,7 +6,7 @@ from app import db
 from app.bank_accounts.models import BankAccount
 from app.journal_entries.models import JournalEntry
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_accounts]
 
 
 def _mk(account_id, branch_id, code='BA-1'):

@@ -7,6 +7,8 @@ from app.fixed_asset_disposal.models import FixedAssetDisposal
 from app.fixed_assets.models import FixedAsset
 from app.accounts.models import Account
 
+pytestmark = [pytest.mark.fixed_asset_disposal]
+
 
 def _asset(db_session, main_branch, code='FA-X001'):
     cost = Account(code='17801', name='Vehicle - Cost', account_type='Asset',

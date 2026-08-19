@@ -9,6 +9,8 @@ from app.audit.models import AuditLog
 from tests.integration.test_fixed_asset_dispose_service import _asset, _assign_gain_loss_account, \
     _cash_account
 
+pytestmark = [pytest.mark.fixed_asset_disposal]
+
 
 def test_void_posted_disposal_creates_mirrored_je_and_restores_asset(db_session, main_branch,
                                                                        admin_user):

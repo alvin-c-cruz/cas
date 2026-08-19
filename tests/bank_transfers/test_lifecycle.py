@@ -6,7 +6,7 @@ from app import db
 from app.settings import AppSettings
 from app.utils.cache_helpers import clear_module_config_cache
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_transfers]
 
 
 def _login(client, user, branch):

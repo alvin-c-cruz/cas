@@ -11,7 +11,7 @@ import pytest
 from app.settings import AppSettings
 from app.utils.cache_helpers import clear_module_config_cache
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.fixed_assets]
 
 
 def test_fixed_assets_routes_404_when_module_off(client, db_session, main_branch, admin_user,

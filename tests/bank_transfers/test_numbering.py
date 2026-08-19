@@ -2,7 +2,7 @@
 mirroring generate_invoice_number's contract (no prefix, no reset)."""
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_transfers]
 
 
 def test_generate_bank_transfer_number_format(db_session):

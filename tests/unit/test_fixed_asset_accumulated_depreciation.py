@@ -5,6 +5,10 @@ from app.accounts.models import Account
 from app.fixed_assets.models import FixedAsset
 from app.fixed_asset_depreciation.models import DepreciationRun, DepreciationEntry
 
+import pytest
+
+pytestmark = [pytest.mark.fixed_assets]
+
 
 def _asset_with_opening(db_session, main_branch, opening=Decimal('5000.00')):
     cost = Account(code='17501', name='Equipment - Cost', account_type='Asset',

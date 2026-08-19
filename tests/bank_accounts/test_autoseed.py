@@ -5,7 +5,7 @@ import pytest
 from app import db
 from app.bank_accounts.models import BankAccount
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_accounts]
 
 
 def _posted_je_on(db_session, account, branch, entry_number, debit=True, status='posted'):

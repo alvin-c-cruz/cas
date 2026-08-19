@@ -2,7 +2,7 @@
 import pytest
 from app.utils.concurrency import claim_version
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_transfers]
 
 
 def test_double_confirm_second_writer_loses(db_session, main_branch, branch_manila, cash_account, admin_user):

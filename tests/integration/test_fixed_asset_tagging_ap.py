@@ -4,6 +4,10 @@ from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from app.accounts.models import Account
 from app.fixed_assets.services import create_fixed_asset
 
+import pytest
+
+pytestmark = [pytest.mark.fixed_assets]
+
 
 def _posted_ap(db_session, main_branch, account):
     ap = AccountsPayable(branch_id=main_branch.id, ap_number='AP-2026-01-0005',

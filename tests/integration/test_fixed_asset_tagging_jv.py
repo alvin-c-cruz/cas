@@ -4,6 +4,10 @@ from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.accounts.models import Account
 from app.fixed_assets.services import create_fixed_asset
 
+import pytest
+
+pytestmark = [pytest.mark.fixed_assets]
+
 
 def _posted_jv(db_session, main_branch, debit_account, credit_account):
     entry = JournalEntry(entry_number='JV-2026-01-0001', entry_date=date(2026, 1, 12),

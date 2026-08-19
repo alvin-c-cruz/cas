@@ -10,6 +10,8 @@ from app.journal_entries.models import JournalEntry
 from app.settings import AppSettings
 from app.audit.models import AuditLog
 
+pytestmark = [pytest.mark.fixed_asset_disposal]
+
 
 def _asset(db_session, main_branch, code='FA-D01', cost=Decimal('800000.00'),
           useful_life_months=60, opening_accum=Decimal('0'), cost_code='17901',

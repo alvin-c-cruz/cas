@@ -3,7 +3,7 @@ import pytest
 from tests.unit.test_fixed_asset_schedule_report import _asset_with_category
 from decimal import Decimal
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.fixed_assets]
 
 
 @pytest.fixture(autouse=True)

@@ -5,7 +5,7 @@ import pytest
 from app import db
 from app.bank_transfers.models import BankTransfer
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_transfers]
 
 
 def _mk_bank_account(db_session, branch, account, code):

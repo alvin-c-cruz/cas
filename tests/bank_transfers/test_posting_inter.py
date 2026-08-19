@@ -5,7 +5,7 @@ import pytest
 from app import db
 from app.settings import AppSettings
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bank_transfers]
 
 
 def _assign_clearing_accounts(db_session):

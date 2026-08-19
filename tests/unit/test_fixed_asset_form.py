@@ -1,6 +1,10 @@
 from app import create_app
 from app.fixed_assets.forms import FixedAssetForm
 
+import pytest
+
+pytestmark = [pytest.mark.fixed_assets]
+
 
 def _form(app, **overrides):
     data = {

@@ -6,7 +6,7 @@ from app.fixed_asset_disposal.models import FixedAssetDisposal
 from tests.integration.test_fixed_asset_dispose_service import _asset, _assign_gain_loss_account, \
     _cash_account
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.fixed_asset_disposal]
 
 
 @pytest.fixture(autouse=True)

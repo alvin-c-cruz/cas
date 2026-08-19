@@ -4,10 +4,22 @@
   "blast_radius": {
     "app/static/search-select.js": [
       "accounts_payable",
+      "bank_accounts",
+      "bank_transfers",
       "cash_disbursements",
-      "sales_invoices",
       "cash_receipts",
-      "opening_balances"
+      "company_settings",
+      "fixed_asset_disposal",
+      "fixed_assets",
+      "opening_balances",
+      "payroll",
+      "purchase_orders",
+      "purchase_requests",
+      "quotations",
+      "receiving_reports",
+      "sales_invoices",
+      "sales_orders",
+      "vat_settlement"
     ],
     "app/static/js/cas-ui.js": [
       "vendors",
@@ -636,6 +648,26 @@
     },
     "payroll": {
       "marker": "payroll",
+      "e2e": null
+    },
+    "bank_accounts": {
+      "marker": "bank_accounts",
+      "e2e": null
+    },
+    "bank_transfers": {
+      "marker": "bank_transfers",
+      "e2e": null
+    },
+    "fixed_assets": {
+      "marker": "fixed_assets",
+      "e2e": null
+    },
+    "fixed_asset_disposal": {
+      "marker": "fixed_asset_disposal",
+      "e2e": null
+    },
+    "company_settings": {
+      "marker": "settings",
       "e2e": null
     }
   },
