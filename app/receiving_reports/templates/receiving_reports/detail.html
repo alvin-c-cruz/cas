@@ -55,15 +55,32 @@
   </div>
 </div></div>
 
-{% if can_approve %}
+{# can_write OR can_approve, not can_approve alone: the whole card used to be
+   approver-only, so widening the route without widening this would have left
+   Submit backend-complete with no reachable button -- the exact shape CLAUDE.md
+   records for delete_approved_email. #}
+{% if can_write or can_approve %}
 <div class="card"><div class="card-body">
-  {% if rr.status == 'draft' %}
+  {# Submit is gated on can_write -- that is the point. The staff receiver who
+     counted the goods may record the receipt but not approve it. #}
+  {% if rr.status == 'draft' and can_write %}
+  <form method="POST" action="{{ url_for('receiving_reports.submit', id=rr.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-primary">Submit for approval</button>
+  </form>
+  {% endif %}
+  {% if rr.status in ['draft', 'submitted'] and can_approve %}
   <form method="POST" action="{{ url_for('receiving_reports.approve', id=rr.id) }}" style="display:inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-primary">Approve</button>
   </form>
   {% endif %}
-  {% if rr.status not in ['cancelled', 'billed'] %}
+  {# `and can_approve` is NOT redundant. This button's only authz was the card's
+     outer `{% if can_approve %}`, which now admits can_write so the staff
+     receiver can reach Submit. Without this, staff would see a Cancel button
+     that cancel() refuses -- the route stayed narrow, so it was never an authz
+     hole, but rendering a control that can only fail is its own defect. #}
+  {% if rr.status not in ['cancelled', 'billed'] and can_approve %}
   <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel RR</button>
   {% endif %}
 </div></div>
