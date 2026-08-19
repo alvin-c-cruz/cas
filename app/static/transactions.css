@@ -78,6 +78,37 @@
 }
 .choices[data-type*=select-one] .choices__inner { padding-right: 6px !important; }
 .choices[data-type*=select-one]::after { display: none !important; }
+
+/* ── HEADER pickers opt back out of the flat treatment ───────────────────── */
+/* Everything above is written for a picker sitting INSIDE a line-item grid
+   cell, where a box around every row would be noise: transparent border,
+   transparent background, 28px tall, 13px text, all !important.
+   A picker in the document HEADER sits in a form row beside ordinary
+   .form-control inputs, so the same rules make it render as bare borderless
+   text with no box at all -- which is exactly what the Receiving Report's
+   Vendor field was doing.
+   .picker-field marks a header picker and restores .form-control's own metrics
+   (style.css) so the two match. The !important flags are not decoration: they
+   answer the ones above, which would otherwise win on equal specificity by
+   source order.
+   This lived in accounts_payable_form.css, which only SOME of these forms load
+   -- the Purchase Order form did and looked right, the Receiving Report form
+   did not and did not. It belongs with the rules it overrides, in the file
+   every form carrying a picker already loads. */
+.picker-field .choices__inner {
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    background: white !important;
+}
+.picker-field .choices.is-focused .choices__inner,
+.picker-field .choices.is-open .choices__inner {
+    border-color: var(--blue) !important;
+    border-radius: 6px !important;
+}
 .choices__list--dropdown {
     font-size: 13px;
     border: 1px solid var(--border) !important;

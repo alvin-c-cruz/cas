@@ -4,7 +4,7 @@
 {% block page_title %}Sales Invoice - {{ invoice.invoice_number }}{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=4">
 
 {# ── Image preview modals (one per image attachment) ─────────────────────── #}
 {% for att in invoice.attachments %}{% if att.is_image %}

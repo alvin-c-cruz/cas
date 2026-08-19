@@ -4,7 +4,7 @@
 {% block page_title %}Sales Order — {{ so.so_number }}{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=4">
 
 {# ── Confirm modal (draft only, Task 8 wires the logic) ─────────────────── #}
 {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}

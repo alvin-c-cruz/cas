@@ -9,11 +9,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 {# transactions.css carries the .choices* treatment and the .bsr* totals rows
    used by the summary panel below. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=4">
 {# accounts_payable_form.css is the SHARED line-item grid stylesheet (AP, SI, SO,
    Quotation and PR all load it). Its #lineItemsTable rules are why this table is
    named lineItemsTable rather than the old po-private lineTable. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=11">
 <div class="page-header">
   <h1>{{ 'Amend' if amend_mode else ('Edit' if po else 'Enter') }} Purchase Order</h1>
   <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary btn-sm">Back to list</a>

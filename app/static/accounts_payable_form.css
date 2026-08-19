@@ -174,29 +174,13 @@
 }
 
 /* ── A Choices picker used as a HEADER field, not inside the line grid ───── */
-/* transactions.css styles EVERY .choices__inner as a compact in-grid control:
-   28px tall, transparent background, transparent border, all `!important`. That
-   is right for a picker sitting in a table cell, and wrong for one sitting in a
-   form row next to ordinary .form-control selects -- the field renders as bare
-   text with no box at all, which is what the reworked Purchase Order header did
-   to its Vendor picker.
-   Restores .form-control's own metrics (style.css:786) so the two match. The
-   !important flags are not decoration: they are answering transactions.css's,
-   which would otherwise win on equal specificity by load order. */
-.picker-field .choices__inner {
-    min-height: 0 !important;
-    height: auto !important;
-    padding: 8px 12px !important;
-    font-size: 13px !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 6px !important;
-    background: white !important;
-}
-.picker-field .choices.is-focused .choices__inner,
-.picker-field .choices.is-open .choices__inner {
-    border-color: var(--blue) !important;
-    border-radius: 6px !important;
-}
+/* MOVED to transactions.css, beside the .choices__inner rules it overrides.
+   It lived here, but only SOME forms carrying a header picker load this
+   stylesheet: the Purchase Order form does and looked right, the Receiving
+   Report form does not and rendered its Vendor field as bare borderless text.
+   Every form that loads this file also loads transactions.css, so nothing loses
+   the treatment by the move -- and the forms that never loaded this file gain
+   it. Do not re-add it here. */
 
 /* ── A card whose only content is the line-item grid ─────────────────────── */
 /* `.card` sets `overflow: hidden` (for its rounded corners), which also clips

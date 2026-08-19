@@ -13,13 +13,13 @@
    dropdown item states) and .li-btn-action that give the AP/SI grids their look.
    Its other rules -- .bsr*, .form-main-grid, .left-col-fields -- match nothing
    in this template and are inert here. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=4">
 {# accounts_payable_form.css is the SHARED line-item grid stylesheet, not an AP
    private one: Sales Invoice already loads it for exactly this reason. Its
    #lineItemsTable rules are why this table is named lineItemsTable rather than
    something PR-specific. A third stylesheet duplicating those rules is how the
    three documents drift apart. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=11">
 <div class="page-header">
   <h1>{{ 'Amend' if amend_mode else ('Edit' if pr else 'Enter') }} Purchase Requisition</h1>
   <a href="{{ url_for('purchase_requests.list_pr') }}" class="btn btn-secondary btn-sm">Back to list</a>

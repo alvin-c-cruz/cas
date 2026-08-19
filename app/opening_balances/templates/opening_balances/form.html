@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', filename='opening_balances.css') }}?v=2">
 {# Save only edits drafts: a posted opening is read-only until re-opened (see save_draft guard). #}
 {% set editable = can_edit and not locked and (not entry or entry.status == 'draft') %}
