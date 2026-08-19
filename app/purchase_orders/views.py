@@ -546,7 +546,8 @@ def create():
         # A SUGGESTION off this purchaser's own pre-printed pad -- the two pads'
         # ranges never overlap, so a global next-number points into the other
         # purchaser's range. The user may still overwrite it.
-        form.po_number.data = next_po_number_for(current_user.id)
+        form.po_number.data = next_po_number_for(current_user.id,
+                                                 session.get('selected_branch_id'))
         form.order_date.data = ph_now().date()
 
     return render_template('purchase_orders/form.html', form=form, po=None,

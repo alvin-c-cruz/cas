@@ -32,6 +32,35 @@ def test_generate_rr_number_increments(db_session):
     assert generate_rr_number() == '00002'
 
 
+def test_generate_rr_number_is_per_branch_under_branch_scope(db_session, main_branch,
+                                                             branch_manila):
+    from app.settings import AppSettings
+    from app.receiving_reports.models import ReceivingReport, generate_rr_number
+    AppSettings.set_setting('document_number_scope', 'branch')
+    db_session.add(ReceivingReport(rr_number='00007', receipt_date=date(2026, 8, 19),
+                                   vendor_id=1, vendor_name='Acme', status='draft',
+                                   branch_id=main_branch.id))
+    db_session.add(ReceivingReport(rr_number='90000', receipt_date=date(2026, 8, 19),
+                                   vendor_id=1, vendor_name='Acme', status='draft',
+                                   branch_id=branch_manila.id))
+    db_session.commit()
+    assert generate_rr_number(main_branch.id) == '00008'
+
+
+def test_generate_rr_number_is_company_wide_by_default(db_session, main_branch,
+                                                       branch_manila):
+    """CONTROL -- no setting row."""
+    from app.receiving_reports.models import ReceivingReport, generate_rr_number
+    db_session.add(ReceivingReport(rr_number='00007', receipt_date=date(2026, 8, 19),
+                                   vendor_id=1, vendor_name='Acme', status='draft',
+                                   branch_id=main_branch.id))
+    db_session.add(ReceivingReport(rr_number='90000', receipt_date=date(2026, 8, 19),
+                                   vendor_id=1, vendor_name='Acme', status='draft',
+                                   branch_id=branch_manila.id))
+    db_session.commit()
+    assert generate_rr_number(main_branch.id) == '90001'
+
+
 def test_generate_rr_number_continues_from_legacy_literal_number(db_session):
     from app.receiving_reports.models import ReceivingReport, generate_rr_number
     rr = ReceivingReport(rr_number='19240', receipt_date=date(2026, 7, 11),

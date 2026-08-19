@@ -51,6 +51,37 @@ def _po(number, user_id):
                          created_by_id=user_id)
 
 
+def test_next_po_number_fallback_is_branch_scoped_under_branch_scope(
+        db_session, admin_user, main_branch, branch_manila):
+    """A purchaser with no pad falls back to the company's numbering POLICY,
+    which under branch scope means this branch's own series."""
+    from app.settings import AppSettings
+    AppSettings.set_setting('document_number_scope', 'branch')
+    db_session.add_all([
+        PurchaseOrder(po_number='30500', order_date=None, status='draft',
+                      branch_id=main_branch.id),
+        PurchaseOrder(po_number='90000', order_date=None, status='draft',
+                      branch_id=branch_manila.id),
+    ])
+    db_session.commit()
+    assert next_po_number_for(admin_user.id, main_branch.id) == '30501'
+
+
+def test_next_po_number_still_ignores_branch_when_the_purchaser_has_a_pad(
+        db_session, admin_user, accountant_user, main_branch, branch_manila):
+    """CONTROL -- person beats branch. Even under branch scope, a purchaser
+    holding a pad gets HER next number; splitting one physical pad across two
+    branches would be a regression wearing a feature's clothes."""
+    from app.settings import AppSettings
+    AppSettings.set_setting('document_number_scope', 'branch')
+    po_a = _po('00042E', admin_user.id); po_a.branch_id = main_branch.id
+    po_b = _po('70011F', accountant_user.id); po_b.branch_id = branch_manila.id
+    db_session.add_all([po_a, po_b])
+    db_session.commit()
+    assert next_po_number_for(admin_user.id, main_branch.id) == '00043E'
+    assert next_po_number_for(admin_user.id, branch_manila.id) == '00043E'
+
+
 def test_next_po_number_is_per_purchaser(db_session, admin_user, accountant_user):
     """The headline case: two pads, non-overlapping ranges, each gets her own."""
     db_session.add_all([_po('00042E', admin_user.id), _po('70011F', accountant_user.id)])

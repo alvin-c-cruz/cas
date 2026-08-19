@@ -156,7 +156,5 @@ def generate_quotation_number(branch_id):
     ones. Legacy prefixed numbers (e.g. the old 'QTN-2026-07-0030' format) are
     ignored.
     """
-    rows = Quotation.query.with_entities(Quotation.quotation_number).all()
-    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
-    next_num = (max(nums) + 1) if nums else 1
-    return f'{next_num:05d}'
+    from app.utils.doc_numbering import next_document_number
+    return next_document_number(Quotation, Quotation.quotation_number, branch_id)

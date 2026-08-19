@@ -274,7 +274,7 @@ class PurchaseOrderItem(db.Model):
         }
 
 
-def generate_po_number():
+def generate_po_number(branch_id=None):
     """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
 
     Mirrors generate_invoice_number's contract exactly. Each PO gets the next
@@ -283,10 +283,8 @@ def generate_po_number():
     ones. Legacy prefixed numbers (e.g. the old 'PO-2026-07-0030' format) are
     ignored.
     """
-    rows = PurchaseOrder.query.with_entities(PurchaseOrder.po_number).all()
-    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
-    next_num = (max(nums) + 1) if nums else 1
-    return f'{next_num:05d}'
+    from app.utils.doc_numbering import next_document_number
+    return next_document_number(PurchaseOrder, PurchaseOrder.po_number, branch_id)
 
 
 # Leading digits + an OPTIONAL trailing non-digit marker: '00001E', '00001',
@@ -295,7 +293,7 @@ def generate_po_number():
 _PO_NUMBER_RE = re.compile(r'^(\d+)(\D*)$')
 
 
-def next_po_number_for(user_id):
+def next_po_number_for(user_id, branch_id=None):
     """Suggest the next number off THIS purchaser's own pre-printed PO pad.
 
     The client runs two purchasers, each holding her own physical pad, and the
@@ -312,9 +310,19 @@ def next_po_number_for(user_id):
     PO -- her very first entry has nothing to infer from, and the number is
     typed off the paper form anyway. This function only ever produces a
     SUGGESTION or a starting point; po_number stays user-entered and unique.
+
+    Composition with per-branch numbering scope -- PERSON FIRST, branch only
+    when the person is unknown to the series. The pad belongs to a purchaser (a
+    physical booklet in her hands), not to a branch: filtering her own POs by
+    branch as well would split ONE pad into two series and hand her two
+    different suggestions off the same paper. So the query below stays scoped by
+    created_by_id alone, and branch_id is forwarded only to the two
+    generate_po_number() fallbacks, which is exactly where the purchaser has no
+    series of her own and the company's numbering policy is the right authority.
+    Under 'company' scope branch_id is ignored entirely.
     """
     if not user_id:
-        return generate_po_number()
+        return generate_po_number(branch_id)
     rows = (db.session.query(PurchaseOrder.po_number)
             .filter(PurchaseOrder.created_by_id == user_id).all())
     best = None
@@ -327,6 +335,6 @@ def next_po_number_for(user_id):
         if best is None or value > best[0]:
             best = (value, len(digits), marker)
     if best is None:
-        return generate_po_number()
+        return generate_po_number(branch_id)
     value, width, marker = best
     return f'{value + 1:0{width}d}{marker}'

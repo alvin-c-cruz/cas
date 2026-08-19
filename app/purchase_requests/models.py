@@ -243,7 +243,5 @@ def generate_pr_number(branch_id=None):
     legacy-migrated literal numbers, not just CAS-generated ones. Legacy prefixed
     numbers (e.g. the old 'PR-2026-07-0030' format) are ignored.
     """
-    rows = PurchaseRequest.query.with_entities(PurchaseRequest.pr_number).all()
-    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
-    next_num = (max(nums) + 1) if nums else 1
-    return f'{next_num:05d}'
+    from app.utils.doc_numbering import next_document_number
+    return next_document_number(PurchaseRequest, PurchaseRequest.pr_number, branch_id)

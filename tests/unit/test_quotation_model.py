@@ -23,6 +23,35 @@ def test_generate_quotation_number_starts_at_00001(db_session, main_branch):
     assert generate_quotation_number(main_branch.id) == '00001'
 
 
+def test_generate_quotation_number_is_per_branch_under_branch_scope(db_session, main_branch,
+                                                                    branch_manila):
+    from app.settings import AppSettings
+    from app.quotations.models import generate_quotation_number
+    AppSettings.set_setting('document_number_scope', 'branch')
+    db_session.add(Quotation(quotation_number='00007', quotation_date=date(2026, 8, 19),
+                             customer_id=1, customer_name='Acme',
+                             branch_id=main_branch.id, status='draft'))
+    db_session.add(Quotation(quotation_number='90000', quotation_date=date(2026, 8, 19),
+                             customer_id=1, customer_name='Acme',
+                             branch_id=branch_manila.id, status='draft'))
+    db_session.commit()
+    assert generate_quotation_number(main_branch.id) == '00008'
+
+
+def test_generate_quotation_number_is_company_wide_by_default(db_session, main_branch,
+                                                              branch_manila):
+    """CONTROL -- no setting row."""
+    from app.quotations.models import generate_quotation_number
+    db_session.add(Quotation(quotation_number='00007', quotation_date=date(2026, 8, 19),
+                             customer_id=1, customer_name='Acme',
+                             branch_id=main_branch.id, status='draft'))
+    db_session.add(Quotation(quotation_number='90000', quotation_date=date(2026, 8, 19),
+                             customer_id=1, customer_name='Acme',
+                             branch_id=branch_manila.id, status='draft'))
+    db_session.commit()
+    assert generate_quotation_number(main_branch.id) == '90001'
+
+
 def test_generate_quotation_number_continues_from_legacy_literal_number(db_session, main_branch):
     from app.quotations.models import generate_quotation_number
     q = Quotation(quotation_number='4200', quotation_date=date(2026, 7, 9),

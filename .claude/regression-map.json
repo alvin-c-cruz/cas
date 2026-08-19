@@ -477,6 +477,23 @@
       "cash_receipts",
       "customers"
     ],
+    "app/utils/doc_numbering.py": [
+      "purchase_requests",
+      "purchase_orders",
+      "receiving_reports",
+      "delivery_receipts",
+      "quotations",
+      "purchase_memos",
+      "credit_memos",
+      "debit_memos"
+    ],
+    "app/purchase_requests/models.py": [
+      "purchase_requests",
+      "purchase_orders"
+    ],
+    "app/purchase_memos/models.py": [
+      "purchase_memos"
+    ],
     "app/customers/views.py": [
       "customers",
       "sales_invoices",
@@ -603,6 +620,10 @@
     },
     "purchase_orders": {
       "marker": "purchase_orders",
+      "e2e": null
+    },
+    "purchase_memos": {
+      "marker": "purchase_memos",
       "e2e": null
     },
     "receiving_reports": {

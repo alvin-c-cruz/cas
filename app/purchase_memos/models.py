@@ -180,7 +180,7 @@ class PurchaseMemoItem(db.Model):
         }
 
 
-def generate_purchase_memo_number(memo_type):
+def generate_purchase_memo_number(memo_type, branch_id=None):
     """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
 
     Mirrors generate_invoice_number's contract exactly. Each memo_type ('debit'/
@@ -192,8 +192,8 @@ def generate_purchase_memo_number(memo_type):
     CAS-generated ones. Legacy prefixed numbers (e.g. the old 'VDM-2026-07-0030'
     format) are ignored.
     """
-    rows = (PurchaseMemo.query.filter_by(memo_type=memo_type)
-            .with_entities(PurchaseMemo.memo_number).all())
-    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
-    next_num = (max(nums) + 1) if nums else 1
-    return f'{next_num:05d}'
+    from app.utils.doc_numbering import next_document_number
+    # memo_type is an UNCONDITIONAL filter, not a scope axis -- see the twin
+    # comment in app/sales_memos/models.py.
+    return next_document_number(PurchaseMemo, PurchaseMemo.memo_number, branch_id,
+                                filters=[PurchaseMemo.memo_type == memo_type])

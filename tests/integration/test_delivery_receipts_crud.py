@@ -154,6 +154,31 @@ def test_generate_dr_number_continues_from_legacy_literal_number(db_session, mai
     assert generate_dr_number(main_branch.id) == '25013'
 
 
+def test_generate_dr_number_is_per_branch_under_branch_scope(db_session, main_branch,
+                                                             branch_manila):
+    from app.settings import AppSettings
+    from app.delivery_receipts.models import generate_dr_number
+    AppSettings.set_setting('document_number_scope', 'branch')
+    for number, branch in (('00007', main_branch), ('90000', branch_manila)):
+        db.session.add(DeliveryReceipt(dr_number=number, branch_id=branch.id,
+                                       delivery_date=date(2026, 8, 19), sales_order_id=1,
+                                       customer_id=1, customer_name='Acme', status='draft'))
+    db.session.commit()
+    assert generate_dr_number(main_branch.id) == '00008'
+
+
+def test_generate_dr_number_is_company_wide_by_default(db_session, main_branch,
+                                                       branch_manila):
+    """CONTROL -- no setting row."""
+    from app.delivery_receipts.models import generate_dr_number
+    for number, branch in (('00007', main_branch), ('90000', branch_manila)):
+        db.session.add(DeliveryReceipt(dr_number=number, branch_id=branch.id,
+                                       delivery_date=date(2026, 8, 19), sales_order_id=1,
+                                       customer_id=1, customer_name='Acme', status='draft'))
+    db.session.commit()
+    assert generate_dr_number(main_branch.id) == '90001'
+
+
 def test_generate_dr_number_ignores_legacy_prefixed_numbers(db_session, main_branch):
     from app.delivery_receipts.models import generate_dr_number
     dr = DeliveryReceipt(dr_number='DR-2026-07-0030', branch_id=main_branch.id,

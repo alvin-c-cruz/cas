@@ -342,7 +342,7 @@ def create():
             flash('An error occurred creating the Purchase Requisition.', 'error')
 
     if request.method == 'GET':
-        form.pr_number.data = generate_pr_number()
+        form.pr_number.data = generate_pr_number(session.get('selected_branch_id'))
         form.request_date.data = ph_now().date()
     return render_template('purchase_requests/form.html', form=form, pr=None,
                            line_items=[], **_common_form_ctx())
@@ -706,7 +706,8 @@ def convert(id):
             # ASSIGNED, not suggested -- there is no form to overwrite it here,
             # so a global next-number would silently issue this purchaser a
             # number off the OTHER purchaser's pre-printed pad.
-            po_number=next_po_number_for(current_user.id), branch_id=pr.branch_id,
+            po_number=next_po_number_for(current_user.id, pr.branch_id),
+            branch_id=pr.branch_id,
             order_date=ph_now().date(), status='draft', vat_treatment='inclusive',
             notes='', purchase_request_id=pr.id, created_by_id=current_user.id)
         # Built from the SAME open-line query the picker uses, so the shortcut
