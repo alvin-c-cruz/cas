@@ -1,5 +1,5 @@
 """Employee master views (opt-in payroll module)."""
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, abort
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -11,6 +11,34 @@ from app.users.utils import get_accessible_branches
 from app.users.models import User
 
 employees_bp = Blueprint('employees', __name__, template_folder='templates')
+
+
+def _accessible_branch_ids():
+    """The branches this user may act in. Full-access users get every active
+    branch, so admin/CA crossing a branch boundary stays correct behaviour."""
+    return {b.id for b in get_accessible_branches(current_user)}
+
+
+def _get_scoped(id):
+    """Fetch by id WITHIN the user's accessible branches -- 404 otherwise.
+
+    Set MEMBERSHIP, deliberately NOT equality against
+    `session['selected_branch_id']`. The list route scopes to the same set, so a
+    record in ANY assigned branch must stay openable while a different branch is
+    selected; the single-branch `_get_scoped()` used by
+    work_centers/bank_accounts/petty_cash would hide records this user is
+    entitled to see -- a regression wearing a security fix's clothes.
+    `test_second_assigned_branch_is_not_refused` pins the distinction.
+
+    BUG-BRANCH-SCOPED-MASTERS-EDIT-NOT-BRANCH-FILTERED, third sub-shape.
+    `employees` is the reachable one: it is `optional` AND `per_user: True`, so a
+    branch-limited accountant/staff can hold the module and could previously type
+    another branch's employee id straight into edit/toggle-status/delete.
+    """
+    e = db.get_or_404(Employee, id)
+    if e.branch_id not in _accessible_branch_ids():
+        abort(404)
+    return e
 
 
 def _wants_json():
@@ -78,7 +106,12 @@ def _apply(form, e):
 @login_required
 def list_employees():
     q = (request.args.get('q') or '').strip()
-    query = Employee.query
+    # Scoped to the SAME set the by-id guard uses, so the list can never show a
+    # row whose own Edit button would then 404 (owner decision, 2026-08-20 --
+    # the alternative, a global list over branch-restricted edits, was declined
+    # for exactly that inconsistency). Applied BEFORE the search filter: `?q=`
+    # builds its own query and would otherwise read across branches.
+    query = Employee.query.filter(Employee.branch_id.in_(_accessible_branch_ids()))
     if q:
         like = f'%{q}%'
         query = query.filter(db.or_(Employee.employee_no.ilike(like),
@@ -126,7 +159,7 @@ def create():
 @login_required
 @staff_or_above_required
 def edit(id):
-    e = db.get_or_404(Employee, id)
+    e = _get_scoped(id)
     form = EmployeeForm(obj=e)
     _set_choices(form)
     if form.validate_on_submit():
@@ -153,7 +186,7 @@ def edit(id):
 @login_required
 @staff_or_above_required
 def toggle_status(id):
-    e = db.get_or_404(Employee, id)
+    e = _get_scoped(id)
     old = model_to_dict(e, ['is_active'])
     e.is_active = not e.is_active
     db.session.commit()
@@ -168,7 +201,7 @@ def toggle_status(id):
 @login_required
 @staff_or_above_required
 def delete(id):
-    e = db.get_or_404(Employee, id)
+    e = _get_scoped(id)
     # Delete guard - SQLite FK enforcement is off app-wide; block if referenced by an
     # AP voucher. The polymorphic payee columns land in Phase 2 (Task 6); until then
     # no AP row can reference an employee, so hasattr() keeps this a safe no-op that

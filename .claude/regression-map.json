@@ -666,6 +666,7 @@
       "marker": "bank_transfers",
       "e2e": null
     },
+    "employees": {"marker": "employees", "e2e": null},
     "fixed_assets": {
       "marker": "fixed_assets",
       "e2e": null
