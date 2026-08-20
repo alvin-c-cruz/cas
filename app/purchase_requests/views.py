@@ -13,7 +13,7 @@ from sqlalchemy.orm import joinedload
 from app import db
 from app.purchase_requests.models import (
     PurchaseRequest, PurchaseRequestItem, generate_pr_number)
-from app.purchase_requests.forms import PurchaseRequestForm, PurchaseRequestAmendForm
+from app.purchase_requests.forms import PurchaseRequestForm, PurchaseRequestAmendForm, PurchaseRequestAmendmentRequestForm
 from app.purchase_requests.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
 from app.common.preprinted_base import (
@@ -383,10 +383,15 @@ def _revision_panel_rows(pr):
 @purchase_requests_bp.route('/purchase-requests/<int:id>')
 @login_required
 def view(id):
+    from app.purchase_requests.amendment_service import pending_request_for
     pr = _get_pr_or_404(id)
     created_by_user = db.session.get(User, pr.created_by_id) if pr.created_by_id else None
     return render_template('purchase_requests/detail.html', pr=pr,
                            created_by_user=created_by_user,
+                           # Resolved HERE, not in the template, for the same
+                           # reason pr_print_form is: the button's condition and
+                           # the route's guard must read one value.
+                           pending_amendment=pending_request_for(pr.id),
                            # Read HERE rather than in the template, so the Print
                            # button and print_pr()'s own guard read one value.
                            pr_print_form=AppSettings.get_setting('pr_print_form',
@@ -698,6 +703,18 @@ def convert(id):
     if pr.status not in ('approved', 'partially_converted'):
         flash('Only an approved Purchase Requisition can be converted to a Purchase Order.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
+    # A pending amendment request BLOCKS conversion (owner decision, 2026-08-20).
+    # Converting first would strand the request: `amend` refuses a converted
+    # requisition, so the approver's only remaining options would be to reject a
+    # legitimate request or amend the resulting order instead -- a different
+    # document, with prices the requester never saw. Refusing here removes the
+    # race rather than cleaning up after it, and names the way out.
+    from app.purchase_requests.amendment_service import pending_request_for
+    if pending_request_for(pr.id) is not None:
+        flash('Purchase Requisition "%s" has an amendment request awaiting review. '
+              'Approve or reject that request before converting it to a Purchase Order.'
+              % pr.pr_number, 'error')
+        return redirect(url_for('purchase_requests.view', id=id))
     # Import inside the function to avoid an import cycle at module load.
     from app.purchase_orders.models import (
         PurchaseOrder, PurchaseOrderItem, next_po_number_for)
@@ -848,3 +865,185 @@ def export_csv_route():
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
     return export_to_csv(data=rows, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
                          filename=f'purchase_requests_{timestamp}.csv')
+
+
+# ---------------------------------------------------------------------------
+# Staff-initiated amendment requests
+#
+# The whole point of this seam: `amend` is approver-gated because gating it on
+# the edit rule shipped a Critical on the Purchase Order side. So staff get a
+# route that writes ONLY to pr_amendment_requests -- never to the requisition.
+# ---------------------------------------------------------------------------
+
+@purchase_requests_bp.route('/purchase-requests/<int:id>/request-amendment',
+                            methods=['GET', 'POST'])
+@login_required
+def request_amendment(id):
+    """Staff propose changes to an approved requisition; an approver decides."""
+    from app.purchase_requests.amendment_service import (
+        AmendmentRequestError, create_request, current_lines, pending_request_for)
+
+    gate = _pr_role_gate()          # admits staff -- deliberately NOT _approve_gate
+    if gate:
+        return gate
+    pr = _get_pr_or_404(id)
+
+    existing = pending_request_for(pr.id)
+    if existing is not None:
+        flash('This requisition already has an amendment request awaiting review.', 'error')
+        return redirect(url_for('purchase_requests.view', id=pr.id))
+
+    form = PurchaseRequestAmendmentRequestForm(obj=pr)
+
+    # Parse the payload ONCE, exactly as `amend` does, so an absent hidden field
+    # is never confused with "the user deleted every row".
+    submitted_lines = []
+    line_items_error = None
+    if request.method == 'POST':
+        if 'line_items' not in request.form:
+            line_items_error = ('The line items did not reach the server. '
+                                'Reload the page and try again.')
+        else:
+            try:
+                submitted_lines = json.loads(request.form.get('line_items') or '[]')
+            except ValueError:
+                line_items_error = ('The line items could not be read. '
+                                    'Reload the page and try again.')
+            else:
+                if not isinstance(submitted_lines, list):
+                    line_items_error = ('The line items could not be read. '
+                                        'Reload the page and try again.')
+                    submitted_lines = []
+
+    restore = (current_lines(pr)
+               if request.method == 'GET' or line_items_error else submitted_lines)
+
+    def _render():
+        return render_template('purchase_requests/form.html',
+                               form=form, pr=pr, request_mode=True,
+                               line_items=restore, **_common_form_ctx())
+
+    if line_items_error:
+        flash(line_items_error, 'error')
+        return _render()
+
+    if form.validate_on_submit():
+        try:
+            req = create_request(pr, current_user,
+                                 form.request_reason.data, submitted_lines)
+            db.session.commit()
+        except AmendmentRequestError as e:
+            db.session.rollback()
+            flash(str(e), 'error')
+            return _render()
+        except Exception as e:
+            db.session.rollback()
+            log_exception(e, severity='ERROR',
+                          module='purchase_requests.request_amendment')
+            flash('An error occurred while filing the request. Please try again.', 'error')
+            return _render()
+
+        # action='amend_request': an auditor must be able to separate ASKING to
+        # amend from actually amending, which is the entire point of this seam.
+        log_audit(module='purchase_requests', action='amend_request',
+                  record_id=pr.id, record_identifier=pr.pr_number,
+                  notes='Amendment requested by %s (request %s)'
+                        % (current_user.username, req.id))
+        flash('Amendment request submitted for Purchase Requisition "%s". '
+              'An approver will review it.' % pr.pr_number, 'success')
+        return redirect(url_for('purchase_requests.view', id=pr.id))
+
+    elif request.method == 'POST':
+        for field_errors in form.errors.values():
+            for message in field_errors:
+                flash(message, 'error')
+
+    return _render()
+
+
+def _get_amendment_request_or_404(req_id):
+    """Fetch a request within the user's accessible branches -- 404 otherwise.
+
+    Set MEMBERSHIP over accessible branches, matching the fixes landed on
+    2026-08-20: an approver assigned two branches must open a request in either,
+    while a branch they do not hold must not exist for them at all.
+    """
+    from app.purchase_requests.amendment_models import PurchaseRequestAmendmentRequest
+    from app.users.utils import get_accessible_branches
+    req = db.get_or_404(PurchaseRequestAmendmentRequest, req_id)
+    if req.branch_id not in {b.id for b in get_accessible_branches(current_user)}:
+        abort(404)
+    return req
+
+
+@purchase_requests_bp.route('/purchase-requests/amendment-requests/<int:req_id>')
+@login_required
+def review_amendment(req_id):
+    """Approver's before/after view of one request."""
+    from app.purchase_requests.amendment_service import (
+        change_count, current_lines, diff_lines)
+    if not _approve_gate():
+        return redirect(url_for('purchase_requests.list_pr'))
+    req = _get_amendment_request_or_404(req_id)
+    pr = db.session.get(PurchaseRequest, req.purchase_request_id)
+    rows = diff_lines(current_lines(pr), req.proposed_lines())
+    return render_template('purchase_requests/review_amendment.html',
+                           req=req, pr=pr, rows=rows, change_count=change_count(rows))
+
+
+@purchase_requests_bp.route('/purchase-requests/amendment-requests/<int:req_id>/approve',
+                            methods=['POST'])
+@login_required
+def approve_amendment(req_id):
+    from app.purchase_requests.amendment_service import AmendmentRequestError, apply_request
+    if not _approve_gate():
+        return redirect(url_for('purchase_requests.list_pr'))
+    req = _get_amendment_request_or_404(req_id)
+    try:
+        rev = apply_request(req, current_user)
+        db.session.commit()
+    except AmendmentRequestError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+        return redirect(url_for('purchase_requests.review_amendment', req_id=req_id))
+    except Exception as e:
+        db.session.rollback()
+        log_exception(e, severity='ERROR', module='purchase_requests.approve_amendment')
+        flash('An error occurred while applying the amendment. Please try again.', 'error')
+        return redirect(url_for('purchase_requests.review_amendment', req_id=req_id))
+
+    pr = db.session.get(PurchaseRequest, req.purchase_request_id)
+    log_audit(module='purchase_requests', action='amend', record_id=pr.id,
+              record_identifier=pr.pr_number,
+              notes='Amended to Rev %s via request %s from %s'
+                    % (rev.revision_number, req.id, req.requested_by.username))
+    flash('Purchase Requisition "%s" amended (Rev %s).'
+          % (pr.pr_number, rev.revision_number), 'success')
+    return redirect(url_for('purchase_requests.view', id=pr.id))
+
+
+@purchase_requests_bp.route('/purchase-requests/amendment-requests/<int:req_id>/reject',
+                            methods=['POST'])
+@login_required
+def reject_amendment(req_id):
+    from app.purchase_requests.amendment_service import AmendmentRequestError, reject_request
+    if not _approve_gate():
+        return redirect(url_for('purchase_requests.list_pr'))
+    req = _get_amendment_request_or_404(req_id)
+    try:
+        reject_request(req, current_user, request.form.get('review_notes'))
+        db.session.commit()
+    except AmendmentRequestError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+        return redirect(url_for('purchase_requests.review_amendment', req_id=req_id))
+
+    pr = db.session.get(PurchaseRequest, req.purchase_request_id)
+    # action='reject' -- the same verb the master-data approval flow logs, so an
+    # auditor reads rejections uniformly across the app.
+    log_audit(module='purchase_requests', action='reject', record_id=pr.id,
+              record_identifier=pr.pr_number,
+              notes='Amendment request %s rejected' % req.id)
+    flash('Amendment request for "%s" rejected. The requisition is unchanged.'
+          % pr.pr_number, 'success')
+    return redirect(url_for('purchase_requests.view', id=pr.id))

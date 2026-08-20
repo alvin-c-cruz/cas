@@ -38,3 +38,19 @@ class PurchaseRequestAmendForm(PurchaseRequestForm):
     amend_reason = TextAreaField('Reason for amendment', validators=[
         DataRequired(message='Please provide a reason for this amendment.'),
         Length(min=10, message='Please provide a reason (at least 10 characters).')])
+
+
+class PurchaseRequestAmendmentRequestForm(PurchaseRequestForm):
+    """What STAFF submits to ask for an amendment.
+
+    Extends the ordinary PR form so the line-item widget, its validators and its
+    hidden `line_items` payload are identical to the screens staff already use --
+    a separate form would drift from the applier's expected shape.
+
+    `request_reason` mirrors PurchaseRequestAmendForm.amend_reason's >=10 rule
+    because it becomes the reason on the DocumentRevision if the request is
+    approved; the shared amendment service requires that length there.
+    """
+    request_reason = TextAreaField('Reason for amendment', validators=[
+        DataRequired(message='Please give a reason for this amendment request.'),
+        Length(min=10, message='Please give a reason (at least 10 characters).')])

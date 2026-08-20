@@ -28,8 +28,33 @@
     {% if can_approve and pr.status in pr.AMEND_STATUSES and not pr.is_converted() %}
     <a href="{{ url_for('purchase_requests.amend', id=pr.id) }}" class="btn btn-primary btn-sm">Amend</a>
     {% endif %}
+    {# Request Amendment: shown to a NON-approver who may write (staff), on the
+       same status/conversion conditions the amend button uses, and only while no
+       request is already pending. An approver never sees it -- they have Amend,
+       which does the change directly. Mirrors the amend button's rule that the
+       control and its route must not drift: request_amendment() re-checks every
+       one of these conditions server-side. #}
+    {% if can_write and not can_approve and pr.status in pr.AMEND_STATUSES
+          and not pr.is_converted() and not pending_amendment %}
+    <a href="{{ url_for('purchase_requests.request_amendment', id=pr.id) }}"
+       class="btn btn-primary btn-sm">Request Amendment</a>
+    {% endif %}
   </div>
 </div>
+
+{% if pending_amendment %}
+{# Visible to everyone who can open the requisition, not just approvers: the
+   REQUESTER needs to see that their request is in flight, and anyone else needs
+   to know why conversion is refused right now. #}
+<div class="alert alert-warning">
+  An amendment request from <strong>{{ pending_amendment.requested_by.username }}</strong>
+  is awaiting review. This requisition cannot be converted to a Purchase Order until it is
+  approved or rejected.
+  {% if can_approve %}
+  <a href="{{ url_for('purchase_requests.review_amendment', req_id=pending_amendment.id) }}">Review it</a>.
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="card"><div class="card-body">
   <div class="detail-grid">

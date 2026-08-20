@@ -195,6 +195,35 @@ def gather_approval_items(user):
         return []
     items = []
 
+    # Purchase Requisition amendment requests. Unlike the master-data requests
+    # below, this one is BRANCH-SCOPED and MODULE-GATED, for the reason
+    # _draft_sources() already records: "Action Items must never be a side
+    # channel around a gate the rest of the app enforces." purchase_requests is
+    # optional + per_user, and the requests themselves carry a branch_id, so an
+    # approver must see only requests in branches they can actually reach --
+    # exactly the hole three fixes closed on 2026-08-20.
+    from app.purchase_requests.amendment_service import (
+        change_count, current_lines, diff_lines, pending_requests_for_branches)
+    from app.users.module_access import can_access_module, module_enabled
+    from app.users.utils import get_accessible_branches
+
+    if module_enabled('purchase_requests') and can_access_module(user, 'purchase_requests'):
+        branch_ids = {b.id for b in get_accessible_branches(user)}
+        for req in pending_requests_for_branches(branch_ids):
+            pr = req.purchase_request
+            if pr is None:
+                continue
+            n = change_count(diff_lines(current_lines(pr), req.proposed_lines()))
+            items.append({
+                'type': 'PR Amendment', 'icon': '\U0001F4DD',
+                'id': pr.pr_number, 'desc': 'Amendment requested — %d line%s changed'
+                                            % (n, '' if n == 1 else 's'),
+                'by': req.requested_by.username if req.requested_by else '—',
+                'when': req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '—',
+                'state': 'Pending', 'reason': req.request_reason,
+                'reviewUrl': '/purchase-requests/amendment-requests/%d' % req.id,
+            })
+
     for req in AccountChangeRequest.query.filter_by(status='pending').all():
         cd = req.get_change_data()
         desc = cd.get('name', 'Account') if req.change_type == 'create' \
@@ -330,6 +359,16 @@ def count_action_items(user, branch_id):
         # the draft sources guard against.
         n += len(gather_document_approval_items(user, branch_id))
     if user.has_full_access or user.role == 'accountant':
+        # Same gate AND same branch scoping as gather_approval_items' PR block.
+        # Counting them ungated would put a number on the badge that the page
+        # then refuses to show -- the list/badge divergence this function's own
+        # comments guard against twice already.
+        from app.purchase_requests.amendment_service import pending_requests_for_branches
+        from app.users.module_access import can_access_module, module_enabled
+        from app.users.utils import get_accessible_branches
+        if module_enabled('purchase_requests') and can_access_module(user, 'purchase_requests'):
+            n += len(pending_requests_for_branches(
+                {b.id for b in get_accessible_branches(user)}))
         n += AccountChangeRequest.query.filter_by(status='pending').count()
         n += VATCategoryChangeRequest.query.filter_by(status='pending').count()
         n += SalesVATCategoryChangeRequest.query.filter_by(status='pending').count()

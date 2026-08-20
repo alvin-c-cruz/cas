@@ -2132,3 +2132,18 @@ tr.pc-row-excluded { background: var(--bg); }
 /* Links to the read-only revision viewer (Task 13). */
 .view-link { float: right; font-size: 12px; font-weight: 600; color: var(--blue); text-decoration: none; }
 .view-link:hover { text-decoration: underline; }
+
+/* --- Amendment-request diff (purchase_requests/review_amendment.html) -------
+   Rides the existing --red/--green tokens rather than introducing new colours,
+   same choice the variance cells above made. The OLD value is struck through
+   and red, the NEW value green and bold: the approver's eye needs to land on
+   what differs without reading the whole row. Unchanged cells use the muted
+   text token so they recede instead of competing. */
+.diff-old { color: var(--red); text-decoration: line-through; }
+.diff-new { color: var(--green); font-weight: 700; }
+.quote-block {
+  border-left: 3px solid var(--border);
+  padding: 4px 0 4px 12px;
+  color: var(--text-2);
+  margin: 6px 0;
+}

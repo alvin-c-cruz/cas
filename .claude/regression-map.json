@@ -165,7 +165,10 @@
       "accounts_payable",
       "cash_disbursements",
       "sales_invoices",
-      "vendors"
+      "vendors",
+      "purchase_requests",
+      "purchase_orders",
+      "receiving_reports"
     ],
     "app/vendors/utils.py": [
       "accounts_payable",

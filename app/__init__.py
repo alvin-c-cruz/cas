@@ -274,6 +274,7 @@ def create_app(config_name=None):
     from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
+    from app.purchase_requests.amendment_models import PurchaseRequestAmendmentRequest
     from app.sales_memos.models import SalesMemo, SalesMemoItem
     from app.purchase_memos.models import PurchaseMemo, PurchaseMemoItem  # noqa: F401
     from app.backup.models import BackupRun

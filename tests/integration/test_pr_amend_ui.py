@@ -158,6 +158,13 @@ class TestAmendModeChangesTheForm:
             assert m and 'novalidate' not in m.group(0)
 
 
+
+def _amend_href(pr):
+    """The amend control is a LINK TO THE AMEND ROUTE -- assert on that, not on
+    the word 'Amend', which the staff-facing "Request Amendment" button also
+    contains."""
+    return '/purchase-requests/%d/amend' % pr.id
+
 class TestAmendButton:
 
     def test_an_accountant_sees_it_on_an_approved_pr(self, client, approved_pr):
@@ -174,10 +181,15 @@ class TestAmendButton:
         pr = _pr(db_session, main_branch, status='approved', number='PR-STAFF-2')
         _login(client, staff_user, main_branch)
         html = _detail(client, pr)
-        assert 'Amend' not in html, (
+        assert _amend_href(pr) not in html, (
             'the button must follow the same APPROVE-level rule as the route, or '
             'staff sees a control that refuses on click -- the '
             'delete_approved_email shape')
+        # Staff DO get the request-an-amendment control instead: it writes only
+        # to pr_amendment_requests, never to the requisition. Asserted here so
+        # the two controls stay distinguishable -- the substring assertion this
+        # replaced could not tell them apart.
+        assert '/purchase-requests/%d/request-amendment' % pr.id in html
         # Positive control: prove the page rendered for this user at all, rather
         # than the absence coming from a 404 or an empty body.
         assert pr.pr_number in html
@@ -187,7 +199,7 @@ class TestAmendButton:
         _login(client, accountant_user, main_branch)
         pr = _pr(db_session, main_branch, status='draft', number='PR-DRAFT-7')
         html = _detail(client, pr)
-        assert 'Amend' not in html
+        assert _amend_href(pr) not in html
         assert pr.pr_number in html
 
     def test_no_amend_button_on_a_converted_pr(self, client, db_session, approved_pr):
@@ -201,7 +213,7 @@ class TestAmendButton:
         approved_pr.purchase_order_id = po.id
         db.session.commit()
         html = _detail(client, approved_pr)
-        assert 'Amend' not in html
+        assert _amend_href(approved_pr) not in html
         assert approved_pr.pr_number in html
 
 
@@ -229,7 +241,7 @@ class TestAmendButton:
         approved_pr.purchase_order_id = po.id      # status stays 'approved'
         db.session.commit()
         html = _detail(client, approved_pr)
-        assert 'Amend' not in html
+        assert _amend_href(approved_pr) not in html
         assert approved_pr.pr_number in html
 
     def test_the_amend_button_survives_a_partial_pull(
