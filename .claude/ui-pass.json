@@ -227,6 +227,12 @@
     "reason": null,
     "waived": false
   },
+  "f317795b0f9049406e42c929ff2147e6038ee1af": {
+    "branch": "feat/pr-amendment-request",
+    "date": "2026-08-20",
+    "reason": null,
+    "waived": false
+  },
   "f81c9a000852d6b8260f4e26a12a6cff7abfa7b6": {
     "branch": "feat/rr-submit",
     "date": "2026-08-19",
