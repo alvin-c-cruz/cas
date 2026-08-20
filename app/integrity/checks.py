@@ -102,8 +102,25 @@ def compare_aggregates(before, after):
     for t in sorted(tables):
         b = before.get('table_counts', {}).get(t)
         a = after.get('table_counts', {}).get(t)
-        if b != a:
-            drift.append(f'{t}:{b}->{a}')
+        if b == a:
+            continue
+        # A table that did not exist before and is EMPTY after is what an
+        # additive migration does -- it is a schema change with no data in it,
+        # which is exactly what this tier permits. Flagging it blocked a real
+        # philgen deploy of pramd_0001 (`drift: pr_amendment_requests:None->0`)
+        # with every other check green.
+        #
+        # ONE-DIRECTIONAL AND COUNT-SENSITIVE, deliberately:
+        #   * None -> N>0 stays drift: the migration CREATED DATA, which this
+        #     tier does not permit and which is the case worth catching.
+        #   * N -> None (dropped) stays drift at any count, including 0: a table
+        #     vanishing is never routine, and the aggregate snapshot is the last
+        #     place it would otherwise be visible.
+        # Skipping the entry rather than passing the whole finding keeps this
+        # per-table, so a genuine drift in the same migration still fails.
+        if b is None and a == 0:
+            continue
+        drift.append(f'{t}:{b}->{a}')
     findings.append(_finding('aggregate_row_counts', not drift,
                              ('drift: ' + ', '.join(drift)) if drift else 'unchanged'))
     return findings

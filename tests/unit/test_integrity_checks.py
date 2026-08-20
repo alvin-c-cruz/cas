@@ -87,3 +87,69 @@ def test_compare_aggregates_identical_ok(db_session, main_branch):
     a = compute_aggregates(db_session)
     findings = compare_aggregates(a, dict(a))
     assert all(f['ok'] for f in findings)
+
+
+# --- new-table drift: a CREATE TABLE is not data drift -----------------------
+#
+# `--compare-aggregates` is the schema-only deploy tier's assertion that a
+# migration left DATA unchanged. It compared the union of table names, so a
+# table that was ABSENT before and is PRESENT-AND-EMPTY after read as drift --
+# which is precisely what an additive migration does. That blocked a real
+# philgen deploy of pramd_0001 on 2026-08-20 with
+# `drift: pr_amendment_requests:None->0`, every other check green.
+#
+# A gate that refuses routine, provably-safe migrations is worse than one that
+# is merely strict: it trains whoever runs it to override, and then it protects
+# nothing. Only the None->0 case is exempted; every other shape stays drift.
+
+def _aggs(counts, dr='0', cr='0'):
+    return {'table_counts': dict(counts), 'tb_debit': dr, 'tb_credit': cr}
+
+
+def _row_counts_finding(findings):
+    return next(f for f in findings if f['check'] == 'aggregate_row_counts')
+
+
+def test_a_new_empty_table_is_not_drift():
+    """The additive-migration case. THE fix."""
+    before = _aggs({'users': 2})
+    after = _aggs({'users': 2, 'pr_amendment_requests': 0})
+    assert _row_counts_finding(compare_aggregates(before, after))['ok'] is True
+
+
+def test_a_new_table_WITH_rows_is_still_drift():
+    """CONTROL: a migration that CREATED DATA must still be caught. This is the
+    assertion the exemption must not swallow."""
+    before = _aggs({'users': 2})
+    after = _aggs({'users': 2, 'backfilled_thing': 7})
+    f = _row_counts_finding(compare_aggregates(before, after))
+    assert f['ok'] is False
+    assert 'backfilled_thing' in f['detail']
+
+
+def test_a_dropped_table_is_still_drift():
+    """CONTROL: a table vanishing is never routine, even when it was empty --
+    the exemption is deliberately one-directional."""
+    for count in (0, 5):
+        before = _aggs({'users': 2, 'gone': count})
+        after = _aggs({'users': 2})
+        f = _row_counts_finding(compare_aggregates(before, after))
+        assert f['ok'] is False, 'dropping a %d-row table was not flagged' % count
+
+
+def test_an_existing_table_changing_count_is_still_drift():
+    """CONTROL: the original purpose of the check is untouched."""
+    before = _aggs({'users': 2})
+    after = _aggs({'users': 3})
+    assert _row_counts_finding(compare_aggregates(before, after))['ok'] is False
+
+
+def test_a_new_empty_table_alongside_real_drift_still_fails():
+    """CONTROL: the exemption is per-table, not a blanket pass for the finding."""
+    before = _aggs({'users': 2})
+    after = _aggs({'users': 3, 'pr_amendment_requests': 0})
+    f = _row_counts_finding(compare_aggregates(before, after))
+    assert f['ok'] is False
+    assert 'users' in f['detail']
+    assert 'pr_amendment_requests' not in f['detail'], \
+        'the exempt table should not be listed as drift'
