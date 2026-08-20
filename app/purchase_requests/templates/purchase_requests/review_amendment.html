@@ -98,12 +98,15 @@
 {% else %}
 <div class="card"><div class="card-body">
   <div class="alert alert-info">
+    {# ONE child -- see the flex note in production_runs/detail.html. #}
+    <div>
     This request was <strong>{{ req.status }}</strong>
     {%- if req.reviewed_by %} by {{ req.reviewed_by.username }}{% endif %}
     {%- if req.reviewed_at %} on {{ req.reviewed_at.strftime('%b %d, %Y %H:%M') }}{% endif %}.
     {%- if req.applied_revision_number is not none %}
     Applied as Revision {{ req.applied_revision_number }}.
     {%- endif %}
+    </div>
   </div>
   {% if req.review_notes %}<p><strong>Notes:</strong> {{ req.review_notes }}</p>{% endif %}
 </div></div>

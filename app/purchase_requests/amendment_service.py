@@ -60,10 +60,51 @@ def diff_lines(current, proposed):
     """
     FIELDS = ('product_name', 'description', 'quantity', 'uom_label')
 
+    def _product_name(row):
+        """Resolve the product label from whichever key this side carries.
+
+        Stored rows carry product_name; submitted rows carry only product_id. A
+        raw-dict comparison therefore reported every proposed row as clearing its
+        product -- shown live as `COAL -> —` on a row nobody touched.
+        """
+        if row.get('product_name'):
+            return row['product_name']
+        pid = row.get('product_id')
+        if pid in (None, '', 'null'):
+            return ''
+        from app.products.models import Product
+        p = db.session.get(Product, int(pid))
+        return p.name if p else ''
+
+    def _uom_label(row):
+        for key in ('uom_label', 'uom_display'):
+            if row.get(key):
+                return row[key]
+        uid = row.get('unit_of_measure_id') or row.get('uom_id')
+        if uid not in (None, '', 'null'):
+            from app.units_of_measure.models import UnitOfMeasure
+            u = db.session.get(UnitOfMeasure, int(uid))
+            if u:
+                return u.code
+        return row.get('uom_text') or ''
+
     def norm(row):
+        resolved = {
+            'product_name': _product_name(row),
+            'description': row.get('description'),
+            'quantity': row.get('quantity'),
+            'uom_label': _uom_label(row),
+        }
         out = {}
         for f in FIELDS:
-            v = row.get(f)
+            v = resolved[f]
+            if f == 'quantity' and v not in (None, '', 'null'):
+                # 1 and 1.00 are the same quantity; comparing their strings is
+                # how an untouched line reads as MODIFIED.
+                try:
+                    v = ('%g' % float(v))
+                except (TypeError, ValueError):
+                    pass
             out[f] = '' if v is None else str(v).strip()
         return out
 

@@ -369,3 +369,47 @@ def test_the_form_will_not_even_open_while_a_request_is_pending(
                       follow_redirects=True)
     assert b'already has an amendment request awaiting review' in resp.data
     assert b'Submit Request' not in resp.data, 'the form was rendered anyway'
+
+
+def test_diff_does_not_claim_an_untouched_product_was_cleared(db_session, main_branch,
+                                                              staff_user, approved_pr):
+    """Regression for a defect only the browser gate could see.
+
+    The stored line carries product_name; the SUBMITTED line carries product_id
+    and no label. Diffing the raw dicts read every proposed row as "product
+    cleared" -- the review screen showed `COAL -> —` on a row whose product had
+    not changed. The earlier tests missed it because their payloads were
+    description-only.
+    """
+    from app.products.models import Product
+    from app.purchase_requests.amendment_service import current_lines, diff_lines
+
+    product = Product(code='RM0138', name='COAL', is_active=True)
+    db_session.add(product)
+    db_session.commit()
+    approved_pr.line_items[0].product_id = product.id
+    db_session.commit()
+
+    # As the form submits it: product_id, no product_name.
+    proposed = [{'pr_item_id': approved_pr.line_items[0].id,
+                 'product_id': product.id, 'description': 'FOR BOILER USE',
+                 'quantity': 2, 'uom_id': None, 'uom_text': None}]
+
+    row = diff_lines(current_lines(approved_pr), proposed)[0]
+    assert row['kind'] == 'modified'
+    assert 'quantity' in row['changed']
+    assert 'product_name' not in row['changed'], \
+        'the untouched product was reported as changed'
+    assert row['after']['product_name'] == 'COAL'
+
+
+def test_diff_treats_1_and_1_00_as_the_same_quantity(db_session, staff_user,
+                                                     main_branch, approved_pr):
+    """Numeric equality, not string equality -- otherwise an untouched line
+    round-tripped through the form reads as MODIFIED."""
+    from app.purchase_requests.amendment_service import current_lines, diff_lines
+    proposed = [{'pr_item_id': approved_pr.line_items[0].id, 'product_id': None,
+                 'description': 'FOR BOILER USE', 'quantity': '1.00',
+                 'uom_id': None, 'uom_text': None}]
+    row = diff_lines(current_lines(approved_pr), proposed)[0]
+    assert row['kind'] == 'unchanged', row

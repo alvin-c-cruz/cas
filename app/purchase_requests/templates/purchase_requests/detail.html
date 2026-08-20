@@ -47,12 +47,15 @@
    REQUESTER needs to see that their request is in flight, and anyone else needs
    to know why conversion is refused right now. #}
 <div class="alert alert-warning">
-  An amendment request from <strong>{{ pending_amendment.requested_by.username }}</strong>
-  is awaiting review. This requisition cannot be converted to a Purchase Order until it is
-  approved or rejected.
-  {% if can_approve %}
-  <a href="{{ url_for('purchase_requests.review_amendment', req_id=pending_amendment.id) }}">Review it</a>.
-  {% endif %}
+  {# ONE child -- see the flex note in production_runs/detail.html. #}
+  <div>
+    An amendment request from <strong>{{ pending_amendment.requested_by.username }}</strong>
+    is awaiting review. This requisition cannot be converted to a Purchase Order until it is
+    approved or rejected.
+    {% if can_approve %}
+    <a href="{{ url_for('purchase_requests.review_amendment', req_id=pending_amendment.id) }}">Review it</a>.
+    {% endif %}
+  </div>
 </div>
 {% endif %}
 

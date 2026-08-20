@@ -136,10 +136,14 @@
   {# Same single-channel rule as amend below: request_amendment() flashes
      form.errors, so per-field errors are NOT rendered here. #}
   <div class="card"><div class="card-body">
+    {# ONE child: .alert is display:flex, so a bare <strong> beside text runs
+       becomes its own column (BUG-CLOSED-RUN-SUMMARY-ALERT-SPLITS-INTO-THREE-COLUMNS). #}
     <div class="alert alert-warning">
-      This Purchase Requisition is approved, so it cannot be edited directly.
-      Submitting this form does <strong>not</strong> change the requisition &mdash;
-      it creates a request an approver must review.
+      <div>
+        This Purchase Requisition is approved, so it cannot be edited directly.
+        Submitting this form does <strong>not</strong> change the requisition &mdash;
+        it creates a request an approver must review.
+      </div>
     </div>
     <div class="form-group">
       {{ form.request_reason.label }} <span class="required">*</span>
