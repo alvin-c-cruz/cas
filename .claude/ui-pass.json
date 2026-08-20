@@ -161,6 +161,12 @@
     "reason": null,
     "waived": false
   },
+  "a13e5e3c2ddaba761dfe1e4a2f700c610971ae2f": {
+    "branch": "fix/employees-branch-scope",
+    "date": "2026-08-20",
+    "reason": null,
+    "waived": false
+  },
   "a83a1951b612b3ac5c1abb595a65f244c5a30287": {
     "branch": "feat/ap-notes-autofill",
     "date": "2026-08-19",
