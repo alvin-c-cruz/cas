@@ -20,7 +20,7 @@
         <a href="{{ url_for('customers.export_csv_route') }}" class="btn btn-secondary">
             📄 Export CSV
         </a>
-        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
+        {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
         <a href="{{ url_for('customers.create') }}" class="btn btn-primary">
             + Create Customer
         </a>
