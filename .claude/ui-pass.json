@@ -203,6 +203,12 @@
     "reason": null,
     "waived": false
   },
+  "e624469c9d48743d3b13a614e6e99419147510a0": {
+    "branch": "fix/customers-create-button",
+    "date": "2026-08-20",
+    "reason": null,
+    "waived": false
+  },
   "e724bc126c68ab0bf74db05b0738b0259573b9c6": {
     "branch": "fix/stock-movement-effective-date",
     "date": "2026-08-15",
