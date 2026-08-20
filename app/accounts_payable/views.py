@@ -290,13 +290,50 @@ def _parse_payee(raw):
     return None, None
 
 
+def _accessible_branch_ids():
+    """Branches this user may act in. Full-access users get every active branch."""
+    from app.users.utils import get_accessible_branches
+    return {b.id for b in get_accessible_branches(current_user)}
+
+
+def _employee_payee_query():
+    """Active employees this user may name as a payee.
+
+    AccountsPayable carries a `branch_id`, so an employee payee from a branch the
+    user cannot reach is incoherent for the document it sits on. Set MEMBERSHIP,
+    not equality against `session['selected_branch_id']` -- a user assigned two
+    branches must still pay an employee in the branch that is not currently
+    selected. BUG-AP-EMPLOYEE-PAYEE-PICKER-NOT-BRANCH-FILTERED.
+
+    Vendors are deliberately NOT scoped here: they carry no `branch_id` at all
+    and are company-wide, exactly like customers.
+    """
+    from app.employees.models import Employee
+    return (Employee.query
+            .filter(Employee.is_active.is_(True),
+                    Employee.branch_id.in_(_accessible_branch_ids()))
+            .order_by(Employee.employee_no))
+
+
 def _resolve_payee(payee_type, payee_id):
-    """Return the Vendor/Employee row for the payee, or None."""
+    """Return the Vendor/Employee row for the payee, or None.
+
+    The employee branch check lives HERE, at the single choke point both create
+    and edit already call, because filtering the picker only removes the
+    <option> -- it does not stop a hand-posted `payee=employee:<id>`, which is
+    how the original cross-branch row was actually written. Returning None (not
+    raising) hands the caller its existing "Selected payee not found." path: no
+    new error plumbing, and it does not confirm to the caller that the record
+    exists in some other branch.
+    """
     if not payee_id:
         return None
     if payee_type == 'employee':
         from app.employees.models import Employee
-        return db.session.get(Employee, payee_id)
+        employee = db.session.get(Employee, payee_id)
+        if employee is not None and employee.branch_id not in _accessible_branch_ids():
+            return None
+        return employee
     if payee_type == 'vendor':
         return db.session.get(Vendor, payee_id)
     return None
@@ -769,8 +806,7 @@ def create():
         quick_add_form.is_active.data = '1'
         quick_add_form.payment_terms.data = 'Net 30'
         quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
-        from app.employees.models import Employee
-        employees = Employee.query.filter_by(is_active=True).order_by(Employee.employee_no).all()
+        employees = _employee_payee_query().all()
         current_payee = request.form.get('payee', '') if request.method == 'POST' else ''
         return render_template('accounts_payable/form.html',
                                form=form, ap=None, restore_lines=restore_lines,
@@ -1125,8 +1161,7 @@ def edit(id):
         quick_add_form.is_active.data = '1'
         quick_add_form.payment_terms.data = 'Net 30'
         quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
-        from app.employees.models import Employee
-        employees = Employee.query.filter_by(is_active=True).order_by(Employee.employee_no).all()
+        employees = _employee_payee_query().all()
         if request.method == 'POST':
             current_payee = request.form.get('payee', '')
         else:
