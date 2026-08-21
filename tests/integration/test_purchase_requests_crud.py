@@ -34,20 +34,27 @@ def _create(client, lines=None, reason='Site needs cement', pr_number=None):
     }, follow_redirects=True)
 
 
-def test_create_form_renders_the_asap_pill_and_its_hint(client, accountant_user, main_branch,
-                                                        db_session):
+def test_create_form_renders_the_asap_pill(client, accountant_user, main_branch,
+                                           db_session):
     """The ASAP box was missed in use -- a requisition meant as ASAP was saved with
-    neither a date nor the flag and printed blank. It is now a bordered pill with a
-    hint naming all three states. Render-asserted because the defect was that the
-    control was not SEEN, which no POST-contract test can observe."""
+    neither a date nor the flag and printed blank. It is a bordered pill.
+    Render-asserted because the defect was that the control was not SEEN, which no
+    POST-contract test can observe.
+
+    THE EXPLANATORY HINT WAS REMOVED 2026-08-21 (owner directive), so this no
+    longer asserts it. The pill assertions stay -- they are what guard the
+    original defect. Note the hint assertions could NOT simply be left in place:
+    `class="form-hint"` would now pass on the signatory hint added the same day,
+    so the test would have gone green while asserting nothing about ASAP at all.
+    The BEHAVIOUR the hint described is unchanged and guarded elsewhere --
+    _assign_date_needed() clears the date when ASAP is ticked, and
+    test_pr_records_asap_and_a_blank_date_as_distinct_states (below) pins that
+    ASAP and 'not known yet' remain different records."""
     _login(client, accountant_user, main_branch)
     resp = client.get('/purchase-requests/create')
     assert resp.status_code == 200
     assert b'id="asapPill"' in resp.data          # the pill wrapper
     assert b'id="dateNeededAsap"' in resp.data    # the checkbox it wraps
-    assert b'class="form-hint"' in resp.data      # the hint uses the shared token class
-    # the clause that names the exact trap
-    assert b'prints as blank' in resp.data
 
 
 def test_create_form_still_renders_the_date_needed_input(client, accountant_user, main_branch,
@@ -63,8 +70,13 @@ def test_create_form_still_renders_the_date_needed_input(client, accountant_user
 
 def test_pr_records_asap_and_a_blank_date_as_distinct_states(client, accountant_user,
                                                              main_branch, db_session):
-    """CONTROL for the three-state rule the hint describes: ASAP and 'not known yet'
-    are DIFFERENT records, which is why the hint must not say blank means ASAP."""
+    """CONTROL for the three-state rule: ASAP and 'not known yet' are DIFFERENT
+    records, and a blank date must never be stored as ASAP.
+
+    The on-screen hint that used to explain this was removed 2026-08-21 (owner
+    directive). The RULE did not change, and this test is now the whole of its
+    coverage -- it is the reason removing the hint was a text change rather than
+    a behaviour change."""
     from app.purchase_requests.models import PurchaseRequest
     _login(client, accountant_user, main_branch)
 

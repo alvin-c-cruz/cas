@@ -219,3 +219,19 @@ def test_an_rr_predating_this_feature_still_prints_the_company_names(
     resp = client.get('/receiving-reports/%d/print' % rr.id)
     assert resp.status_code == 200
     assert b'RR PREPARER' in resp.data and b'RR RECEIVER' in resp.data
+
+
+def test_the_date_needed_hint_is_gone(client, db_session, admin_user, main_branch):
+    """Owner directive 2026-08-21: the explanatory paragraph under Date Needed
+    was removed from the requisition form.
+
+    The BEHAVIOUR it described is unchanged and still guarded elsewhere --
+    _assign_date_needed() clears the date when ASAP is ticked, and a blank Date
+    Needed still prints blank rather than ASAP. Only the on-screen text went.
+    """
+    _login(client, admin_user, main_branch)
+    resp = client.get('/purchase-requests/create')
+    assert resp.status_code == 200
+    assert b'name="date_needed"' in resp.data, \
+        'anti-vacuity: the Date Needed field itself is gone, not just its hint'
+    assert b'if the goods are wanted immediately' not in resp.data
