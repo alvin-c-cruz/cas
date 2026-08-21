@@ -5,7 +5,7 @@
 <title>Sales Order {{ so.so_number }}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: #fff; }
+  body { font-family: Arial, sans-serif; font-size: 13.2px; color: #111; background: #fff; }
 
   .screen-only { }
   @media print {
@@ -39,61 +39,61 @@
 
   .so-header { text-align: center; border-bottom: 2px solid #111;
                padding-bottom: 10px; margin-bottom: 12px; }
-  .so-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
-  .so-header .company-sub { font-size: 10px; color: #444; margin-top: 2px; }
-  .so-header .doc-title { font-size: 14px; font-weight: 700; letter-spacing: 2px; margin-top: 8px; }
+  .so-header .company-name { font-size: 19.2px; font-weight: 700; letter-spacing: .5px; }
+  .so-header .company-sub { font-size: 12px; color: #444; margin-top: 2px; }
+  .so-header .doc-title { font-size: 16.8px; font-weight: 700; letter-spacing: 2px; margin-top: 8px; }
 
   .info-row { display: flex; gap: 16px; margin-bottom: 10px; }
-  .info-row table { border-collapse: collapse; flex: 1; font-size: 10px; }
+  .info-row table { border-collapse: collapse; flex: 1; font-size: 12px; }
   .info-row td { border: 1px solid #aaa; padding: 3px 7px; }
   .info-row td.label { background: #f0f0f0; font-weight: 600; width: 42%; }
   .customer-header { background: #222; color: #fff; font-weight: 700; }
 
-  .particulars { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 10px; }
+  .particulars { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
   .particulars th { background: #222; color: #fff; padding: 4px 7px;
                     text-align: left; border: 1px solid #555; }
   .particulars td { border: 1px solid #aaa; padding: 3px 7px; }
   .particulars td.amount { text-align: right; font-family: monospace; }
 
   .summary-block { max-width: 240px; margin-left: auto; margin-bottom: 10px; }
-  .section-label { font-weight: 700; font-size: 10px; border: 1px solid #aaa;
+  .section-label { font-weight: 700; font-size: 12px; border: 1px solid #aaa;
                    border-bottom: none; padding: 3px 7px; background: #f0f0f0; }
-  .summary-inner { border: 1px solid #aaa; padding: 10px 12px; font-size: 10px; }
+  .summary-inner { border: 1px solid #aaa; padding: 10px 12px; font-size: 12px; }
   .summary-row { display: flex; justify-content: space-between; margin-bottom: 7px; }
   .summary-row .slabel { color: #555; }
   .summary-row .sval { font-family: monospace; font-weight: 600; }
   .summary-divider { height: 1px; background: #ccc; margin: 6px 0; }
   .summary-divider-double { height: 2px; background: #888; margin: 8px 0; }
   .summary-net { display: flex; justify-content: space-between; }
-  .summary-net .netlabel { font-weight: 700; font-size: 11px; }
+  .summary-net .netlabel { font-weight: 700; font-size: 13.2px; }
   .summary-net .netval { font-family: monospace; font-weight: 700;
-                          font-size: 13px; color: #1565c0; }
+                          font-size: 15.6px; color: #1565c0; }
 
   /* flex: 1 -- the box STRETCHES from the bottom of the 20-row grid down to the
      foot-anchored signature block, instead of hugging its own text and leaving
      the gap empty (owner directive 2026-08-21). This only works because the box
      is a direct child of .page-wrap, which is the flex column. */
   .notes-box { border: 1px solid #aaa; padding: 5px 8px; margin-bottom: 10px;
-               background: #fffde7; font-size: 10px; flex: 1; }
-  .notes-box .notes-label { font-weight: 700; font-size: 9px; color: #555;
+               background: #fffde7; font-size: 12px; flex: 1; }
+  .notes-box .notes-label { font-weight: 700; font-size: 10.8px; color: #555;
                              text-transform: uppercase; margin-right: 8px; }
 
   .sig-row { display: flex; margin-top: 8px; }
   .sig-box { flex: 1; border: 1px solid #aaa; border-right: none;
              padding: 5px 7px; min-height: 56px; }
   .sig-box:last-child { border-right: 1px solid #aaa; }
-  .sig-box .sig-title { font-size: 9px; font-weight: 700; color: #555; margin-bottom: 24px; }
+  .sig-box .sig-title { font-size: 10.8px; font-weight: 700; color: #555; margin-bottom: 24px; }
   .sig-box .sig-line { border-top: 1px solid #666; padding-top: 2px;
-                        font-size: 9px; color: #555; }
-  .sig-box .sig-line--named { font-size: 10px; font-weight: 700; color: #111; }
+                        font-size: 10.8px; color: #555; }
+  .sig-box .sig-line--named { font-size: 12px; font-weight: 700; color: #111; }
 
-  .audit-footer { margin-top: 6px; font-size: 9px; color: #888; text-align: center;
+  .audit-footer { margin-top: 6px; font-size: 10.8px; color: #888; text-align: center;
                   border-top: 1px solid #ddd; padding-top: 4px; }
 
   .print-rev-banner { border: 2px solid #c00; background: #fff3f3; color: #c00;
                        padding: 6px 10px; margin-bottom: 10px; text-align: center; }
-  .print-rev-banner .print-rev { font-size: 14px; font-weight: 700; letter-spacing: 1px; }
-  .print-rev-banner .print-rev-supersede { font-size: 10px; font-weight: 700; margin-top: 2px; }
+  .print-rev-banner .print-rev { font-size: 16.8px; font-weight: 700; letter-spacing: 1px; }
+  .print-rev-banner .print-rev-supersede { font-size: 12px; font-weight: 700; margin-top: 2px; }
 
   .print-bar { margin-bottom: 20px; display: flex; gap: 8px; }
   .btn-print { padding: 8px 20px; background: #1565c0; color: #fff;
