@@ -150,18 +150,11 @@
     </div>
     {% endif %}
 
-    {# Totals. The form previously showed NONE, so a buyer could not see what an
-       order came to without saving it. Rows mirror PurchaseOrder.calculate_totals
-       exactly, including its branch on vat_treatment -- see recalcTotals(). #}
+    {# Totals. TOTAL ONLY (owner directive, 2026-08-21): the Gross Amount and
+       Less: Input VAT rows were removed from this panel. The VAT arithmetic is
+       NOT removed -- recalcTotals() still computes it, because an `exclusive`
+       order totals gross + VAT. Only the two display rows are gone. #}
     <div class="ap-summary-panel">
-      <div class="bsr">
-        <span class="bsr-label" id="grossLabel">Gross Amount</span>
-        <span id="subtotalDisplay" class="bsr-amt">0.00</span>
-      </div>
-      <div class="bsr bsr--sep">
-        <span class="bsr-label" id="vatLabel">Less: Input VAT</span>
-        <span id="vatDisplay" class="bsr-amt">0.00</span>
-      </div>
       <div class="bsr bsr--total">
         <span class="bsr-label bsr-label--total">Total Amount</span>
         <span id="totalDisplay" class="bsr-amt">0.00</span>
@@ -420,8 +413,10 @@
   //   inclusive  -> subtotal = gross; VAT extracted per line; total = gross
   //   exclusive  -> subtotal = gross; VAT = gross x 12%;      total = gross + VAT
   //   zero_rated -> subtotal = gross; VAT = 0;                total = gross
-  // The labels change with it, because "Less: Input VAT" is simply wrong on an
-  // exclusive order where the VAT is added on top.
+  // Only the TOTAL is displayed (owner directive, 2026-08-21), so the per-row
+  // labels this function used to swap are gone -- but the BRANCHES are not:
+  // an exclusive order totals net + VAT, so dropping them would produce a wrong
+  // number rather than a missing row.
   function recalcTotals() {
     const trEl = document.getElementById('vatTreatment');
     const treatment = (trEl && trEl.value) || 'inclusive';
@@ -436,22 +431,17 @@
       if (rate > 0) vat += amt - Math.round(amt / (1 + rate / 100) * 100) / 100;
     });
 
-    let total = gross, vatShown = vat, grossLabel = 'Gross Amount', vatLabel = 'Less: Input VAT';
+    let total = gross, vatShown = vat;
     if (treatment === 'exclusive') {
       vatShown = Math.round(gross * STANDARD_VAT_RATE) / 100;
       total = gross + vatShown;
-      grossLabel = 'Net Amount';
-      vatLabel = 'Add: Input VAT';
     } else if (treatment === 'zero_rated') {
       vatShown = 0;
-      vatLabel = 'VAT (zero-rated)';
     }
 
+    // Only the TOTAL is displayed. `gross` and `vatShown` are still computed
+    // because `total` is derived from them (exclusive = gross + VAT).
     const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
-    set('grossLabel', grossLabel);
-    set('vatLabel', vatLabel);
-    set('subtotalDisplay', amtFmt(gross));
-    set('vatDisplay', amtFmt(vatShown));
     set('totalDisplay', amtFmt(total));
   }
 
