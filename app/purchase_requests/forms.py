@@ -26,6 +26,17 @@ class PurchaseRequestForm(RowVersionFormMixin, FlaskForm):
     # payloads and the export columns, for a change the user only ever reads.
     reason = TextAreaField('Note', validators=[Optional()])
 
+    # --- Printed signatories (owner directive 2026-08-21) --------------------
+    # Free text, Optional, max 100 -- identical shape to PurchaseOrderForm's.
+    # NOT derived from the approving USER: signatories are frequently not CAS
+    # users, and deriving them once printed "System Administrator" three times
+    # on one requisition. A blank prints an empty ruled line to sign by hand,
+    # which is the correct output for an unconfigured instance -- never a
+    # placeholder.
+    prepared_by = StringField('Prepared by', validators=[Optional(), Length(max=100)])
+    noted_by = StringField('Noted by', validators=[Optional(), Length(max=100)])
+    approved_by = StringField('Approved by', validators=[Optional(), Length(max=100)])
+
 
 class PurchaseRequestAmendForm(PurchaseRequestForm):
     """The PR form plus the reason a post-approval amendment must record.

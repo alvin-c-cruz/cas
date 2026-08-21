@@ -32,6 +32,7 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
         # Provenance: Rev 0 is "the PR as originally approved", so losing who
         # moved it through each state makes that snapshot incomplete. PR has a
         # longer state history than PO -- submitted and rejected as well.
+        'prepared_by', 'noted_by', 'approved_by',
         'submitted_by_id', 'submitted_at',
         'approved_by_id', 'approved_at',
         'rejected_by_id', 'rejected_at', 'reject_reason',
@@ -109,6 +110,25 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     cancelled_at = db.Column(db.DateTime)
     cancel_reason = db.Column(db.String(500))
+    # --- Printed signatories -------------------------------------------------
+    # FREE TEXT, and deliberately NOT derived from created_by/submitted_by/
+    # approved_by_id: the people who sign a requisition are frequently NOT CAS users.
+    # Deriving them once printed "System Administrator" three times on a single
+    # requisition (see app/company_settings/views.py). `approved_by` therefore
+    # sits alongside `approved_by_id` and means something different -- the same
+    # pairing PurchaseOrder already carries.
+    #
+    # Per-DOCUMENT (owner directive, 2026-08-21), matching PurchaseOrder. They
+    # were company-wide settings, so a one-off signatory became permanent for
+    # every future printout. A new document still pre-fills from that company
+    # setting, which is what keeps existing installs printing what they print
+    # today; once saved the document prints its OWN values.
+    #
+    # Role labels are requisition's own, not PurchaseOrder's -- they match the
+    # defaults already used on the printout.
+    prepared_by = db.Column(db.String(100))
+    noted_by = db.Column(db.String(100))
+    approved_by = db.Column(db.String(100))
 
     line_items = db.relationship('PurchaseRequestItem', backref='purchase_request',
                                  lazy='select', cascade='all, delete-orphan',
@@ -232,6 +252,14 @@ class PurchaseRequestItem(db.Model):
             'product_code': self.product.code if self.product else None,
             'product_name': self.product.name if self.product else None,
         }
+
+
+#: The printed signatory columns, in print order. Named per THIS document.
+SIGNATORY_FIELDS = ('prepared_by', 'noted_by', 'approved_by')
+
+#: Role label for each, matching company_settings' PR defaults exactly so the
+#: printout wording does not change when the value moves onto the document.
+SIGNATORY_ROLES = ('Prepared by', 'Noted by', 'Approved by')
 
 
 def generate_pr_number(branch_id=None):

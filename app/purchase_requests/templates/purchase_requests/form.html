@@ -84,6 +84,15 @@
         {% else %}{{ form.pr_number(class="form-control") }}{% endif %}</div>
     </div>
     <div class="form-group">{{ form.reason.label }} {{ form.reason(class="form-control", rows=2) }}</div>
+    {# Printed signatories -- per document (owner directive 2026-08-21), the same
+       shape PurchaseOrder's form uses. A NEW document pre-fills these from the
+       company-wide default; blanks print an empty ruled line to sign by hand. #}
+    <div class="form-row-3">
+      <div class="form-group">{{ form.prepared_by.label }} {{ form.prepared_by(class="form-control") }}</div>
+      <div class="form-group">{{ form.noted_by.label }} {{ form.noted_by(class="form-control") }}</div>
+      <div class="form-group">{{ form.approved_by.label }} {{ form.approved_by(class="form-control") }}</div>
+    </div>
+    <div class="form-hint">Pre-filled from Company Settings. Edit for this document only, or leave blank to sign by hand.</div>
   </div></div>
 
   {# card--lines: this card holds ONLY the grid, so it ends just below the last

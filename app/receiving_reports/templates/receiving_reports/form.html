@@ -44,6 +44,15 @@
       <div class="form-group">{{ form.receipt_date.label }} {{ form.receipt_date(class="form-control") }}</div>
     </div>
     <div class="form-group">{{ form.remarks.label }} {{ form.remarks(class="form-control", rows=2) }}</div>
+    {# Printed signatories -- per document (owner directive 2026-08-21), the same
+       shape PurchaseOrder's form uses. A NEW document pre-fills these from the
+       company-wide default; blanks print an empty ruled line to sign by hand. #}
+    <div class="form-row-3">
+      <div class="form-group">{{ form.prepared_by.label }} {{ form.prepared_by(class="form-control") }}</div>
+      <div class="form-group">{{ form.checked_by.label }} {{ form.checked_by(class="form-control") }}</div>
+      <div class="form-group">{{ form.received_by.label }} {{ form.received_by(class="form-control") }}</div>
+    </div>
+    <div class="form-hint">Pre-filled from Company Settings. Edit for this document only, or leave blank to sign by hand.</div>
   </div></div>
 
   <div class="card"><div class="card-body">

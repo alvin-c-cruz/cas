@@ -12,7 +12,9 @@ from sqlalchemy.orm import joinedload
 
 from app import db
 from app.purchase_requests.models import (
-    PurchaseRequest, PurchaseRequestItem, generate_pr_number)
+    PurchaseRequest, PurchaseRequestItem, generate_pr_number,
+    SIGNATORY_FIELDS, SIGNATORY_ROLES)
+from app.common.signatories import assign as assign_signatories, prefill_form
 from app.purchase_requests.forms import PurchaseRequestForm, PurchaseRequestAmendForm, PurchaseRequestAmendmentRequestForm
 from app.purchase_requests.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
@@ -317,6 +319,10 @@ def create():
     if gate:
         return gate
     form = PurchaseRequestForm()
+    if request.method == 'GET':
+        # A NEW requisition starts from the company default, so an install that
+        # configured its signatories keeps printing the same names.
+        prefill_form(form, SIGNATORY_FIELDS, 'pr', SIGNATORY_ROLES)
     if form.validate_on_submit():
         pr_number = (form.pr_number.data or '').strip()
         if PurchaseRequest.query.filter(PurchaseRequest.pr_number == pr_number).first():
@@ -331,6 +337,7 @@ def create():
                 reason=form.reason.data or None,
                 status='draft', created_by_id=current_user.id)
             _assign_date_needed(pr, form)
+            assign_signatories(pr, form, SIGNATORY_FIELDS)
             _parse_and_attach_pr_lines(pr, request.form.get('line_items', '[]'))
             db.session.add(pr); db.session.commit()
             log_create(module='purchase_requests', record_id=pr.id,
@@ -431,6 +438,7 @@ def edit(id):
             pr.request_date = form.request_date.data
             _assign_date_needed(pr, form)
             pr.reason = form.reason.data or None
+            assign_signatories(pr, form, SIGNATORY_FIELDS)
             pr.line_items.clear()
             _parse_and_attach_pr_lines(pr, request.form.get('line_items', '[]'))
             db.session.commit()
@@ -546,6 +554,7 @@ def amend(id):
             pr.request_date = form.request_date.data
             _assign_date_needed(pr, form)
             pr.reason = form.reason.data or None
+            assign_signatories(pr, form, SIGNATORY_FIELDS)
 
             _apply_amended_pr_lines(pr, submitted_lines)
             db.session.flush()
@@ -809,8 +818,12 @@ def print_pr(id):
     # approved_by: the designated signatories are often not CAS users at all, and
     # deriving them printed "System Administrator" three times whenever one admin
     # created, submitted and approved the same requisition.
-    from app.company_settings.views import get_pr_signatories
-    signatories = get_pr_signatories()
+    from app.common.signatories import for_print
+    from app.purchase_requests.models import SIGNATORY_FIELDS, SIGNATORY_ROLES
+    # The DOCUMENT's own names now, falling back per slot to the company setting
+    # so a requisition saved before this feature still prints the configured
+    # names rather than three blank lines.
+    signatories = for_print(pr, SIGNATORY_FIELDS, SIGNATORY_ROLES, 'pr')
     can_edit_signatories = (current_user.role == 'accountant'
                             or current_user.has_full_access)
     return render_template('purchase_requests/print.html', pr=pr, company=company,

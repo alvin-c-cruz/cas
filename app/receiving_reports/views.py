@@ -15,7 +15,9 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from app import db
 from app.receiving_reports.models import (
-    ReceivingReport, ReceivingReportItem, po_line_open_qty, generate_rr_number)
+    ReceivingReport, ReceivingReportItem, po_line_open_qty, generate_rr_number,
+    SIGNATORY_FIELDS, SIGNATORY_ROLES)
+from app.common.signatories import assign as assign_signatories, prefill_form
 from app.receiving_reports.forms import ReceivingReportForm
 from app.receiving_reports.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
@@ -533,6 +535,10 @@ def create():
     branch_id = session.get('selected_branch_id')
     form = ReceivingReportForm()
     form.set_vendor_choices(_active_vendors())
+    if request.method == 'GET':
+        # A NEW receipt starts from the company default, so an install that
+        # configured its signatories keeps printing the same names.
+        prefill_form(form, SIGNATORY_FIELDS, 'rr', SIGNATORY_ROLES)
     # The create view has no vendor until the user picks one: on a fresh GET
     # there is nothing submitted yet, so eligible is deliberately []. On a
     # bounced POST, re-scope by whatever vendor was actually submitted so the
@@ -558,6 +564,7 @@ def create():
                 vendor_id=vendor.id, vendor_name=vendor.name,
                 remarks=form.remarks.data or None, status='draft',
                 created_by_id=current_user.id)
+            assign_signatories(rr, form, SIGNATORY_FIELDS)
             _parse_rr_lines(rr, request.form.get('lines', '[]'))
             # No header PO to derive: the receipt's orders live on its lines
             # (rr.purchase_orders), and the header column was dropped in rrmulti_0001.
@@ -633,6 +640,7 @@ def edit(id):
                 flash(conflict_message('receiving_reports', rr.id), 'error')
                 return _render_edit(rr, form, eligible)
             rr.receipt_date = form.receipt_date.data
+            assign_signatories(rr, form, SIGNATORY_FIELDS)
             rr.remarks = form.remarks.data or None
             rr.line_items.clear()
             _parse_rr_lines(rr, request.form.get('lines', '[]'))
@@ -820,8 +828,10 @@ def print_rr(id):
     # their OWN app_settings keys -- a company may name different people on a
     # receipt than on a requisition. A blank name prints an empty ruled line to
     # sign by hand, never a placeholder.
-    from app.company_settings.views import get_rr_signatories
-    signatories = get_rr_signatories()
+    from app.common.signatories import for_print
+    # The DOCUMENT's own names now, falling back per slot to the company setting
+    # so a receipt saved before this feature still prints the configured names.
+    signatories = for_print(rr, SIGNATORY_FIELDS, SIGNATORY_ROLES, 'rr')
     can_edit_signatories = (current_user.role == 'accountant'
                             or current_user.has_full_access)
     return render_template('receiving_reports/print.html', rr=rr, company=company,

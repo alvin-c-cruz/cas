@@ -161,6 +161,10 @@
       "purchase_orders",
       "receiving_reports"
     ],
+    "app/common/signatories.py": [
+      "purchase_requests",
+      "receiving_reports"
+    ],
     "app/dashboard/action_items_service.py": [
       "accounts_payable",
       "cash_disbursements",

@@ -58,6 +58,25 @@ class ReceivingReport(RowVersioned, db.Model):
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     cancelled_at = db.Column(db.DateTime)
     cancel_reason = db.Column(db.String(500))
+    # --- Printed signatories -------------------------------------------------
+    # FREE TEXT, and deliberately NOT derived from created_by/submitted_by/
+    # approved_by_id: the people who sign a receiving report are frequently NOT CAS users.
+    # Deriving them once printed "System Administrator" three times on a single
+    # requisition (see app/company_settings/views.py). `approved_by` therefore
+    # sits alongside `approved_by_id` and means something different -- the same
+    # pairing PurchaseOrder already carries.
+    #
+    # Per-DOCUMENT (owner directive, 2026-08-21), matching PurchaseOrder. They
+    # were company-wide settings, so a one-off signatory became permanent for
+    # every future printout. A new document still pre-fills from that company
+    # setting, which is what keeps existing installs printing what they print
+    # today; once saved the document prints its OWN values.
+    #
+    # Role labels are receiving report's own, not PurchaseOrder's -- they match the
+    # defaults already used on the printout.
+    prepared_by = db.Column(db.String(100))
+    checked_by = db.Column(db.String(100))
+    received_by = db.Column(db.String(100))
 
     line_items = db.relationship('ReceivingReportItem', backref='receiving_report',
                                  lazy='select', cascade='all, delete-orphan',
@@ -192,3 +211,12 @@ def generate_rr_number(branch_id=None):
     """
     from app.utils.doc_numbering import next_document_number
     return next_document_number(ReceivingReport, ReceivingReport.rr_number, branch_id)
+
+
+#: The printed signatory columns, in print order. RR's own roles -- NOT the
+#: Purchase Order's: a receipt is checked and received, not approved.
+SIGNATORY_FIELDS = ('prepared_by', 'checked_by', 'received_by')
+
+#: Role labels, matching company_settings' RR defaults exactly so the printout
+#: wording does not change when the value moves onto the document.
+SIGNATORY_ROLES = ('Prepared by', 'Checked by', 'Received by')

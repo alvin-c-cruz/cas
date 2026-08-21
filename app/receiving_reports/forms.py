@@ -19,6 +19,17 @@ class ReceivingReportForm(RowVersionFormMixin, FlaskForm):
 
     receipt_date = DateField('Receipt Date', validators=[
         DataRequired(message='Receipt date is required.')], format='%Y-%m-%d', default=date.today)
+
+    # --- Printed signatories (owner directive 2026-08-21) --------------------
+    # Free text, Optional, max 100 -- identical shape to PurchaseOrderForm's.
+    # NOT derived from the approving USER: signatories are frequently not CAS
+    # users, and deriving them once printed "System Administrator" three times
+    # on one requisition. A blank prints an empty ruled line to sign by hand,
+    # which is the correct output for an unconfigured instance -- never a
+    # placeholder.
+    prepared_by = StringField('Prepared by', validators=[Optional(), Length(max=100)])
+    checked_by = StringField('Checked by', validators=[Optional(), Length(max=100)])
+    received_by = StringField('Received by', validators=[Optional(), Length(max=100)])
     remarks = TextAreaField('Remarks', validators=[Optional()])
 
     def set_vendor_choices(self, vendors):
