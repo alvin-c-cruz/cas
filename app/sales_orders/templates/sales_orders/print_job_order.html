@@ -66,8 +66,11 @@
 
   {% macro jo_copy() %}
   <div class="jo-copy">
+    {# Screen-only (owner directive 2026-08-21): the red revision box warns
+       whoever is about to press Print, but must not reach the paper. Inside
+       jo_copy(), so this covers all three copies on the sheet at once. #}
     {% if current_revision and current_revision.revision_number > 0 %}
-    <div class="print-rev-banner">
+    <div class="print-rev-banner screen-only">
         <span class="print-rev">REV. {{ current_revision.revision_number }}</span>
         <div class="print-rev-supersede">
             Supersedes Rev. {{ current_revision.revision_number - 1 }}
