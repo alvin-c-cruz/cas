@@ -10,17 +10,30 @@
   .screen-only { }
   @media print {
     .screen-only { display: none !important; }
-    @page { size: A4 portrait; margin: 5mm; }
+    @page { size: letter portrait; margin: 5mm; }
     /* .page-wrap's 24px is screen breathing room and used to print too, adding
        ~6.3mm on top of the paper margin. Zero it here so the PRINTED margin is
        the 5mm @page states, and only there -- the screen keeps its padding. */
     /* !important because `.page-wrap { padding: 24px }` is declared LATER at
        equal specificity and @media adds none -- a plain padding:0 here loses
        the cascade, same reason .screen-only above needs it. */
-    .page-wrap { padding: 0 !important; }
+    /* letter is 11in tall; the @page margin takes 5mm off each end. min-height
+       rather than height so an order longer than the grid flows to page 2
+       instead of overflowing this one. */
+    .page-wrap { padding: 0 !important; min-height: calc(11in - 10mm); }
   }
 
-  .page-wrap { max-width: 740px; margin: 0 auto; padding: 24px; }
+  /* A flex column so .page-bottom can take the slack and sit at the foot of
+     the sheet however little of the 20-row grid is filled. min-height gives
+     the column something to distribute; print overrides it with the real
+     letter height below. */
+  .page-wrap { max-width: 740px; margin: 0 auto; padding: 24px;
+               display: flex; flex-direction: column; min-height: 100vh; }
+  .page-bottom { margin-top: auto; }
+
+  /* Filler rows keep the grid at 20. Empty on purpose -- ruled space to write
+     on, never the em-dash the real rows use for a missing value. */
+  table.particulars tr.so-filler td { height: 17px; }
 
   .so-header { text-align: center; border-bottom: 2px solid #111;
                padding-bottom: 10px; margin-bottom: 12px; }
@@ -179,6 +192,14 @@
         <td>{{ item.delivery_site.name if item.delivery_site else '—' }}</td>
       </tr>
       {% endfor %}
+      {# Pad to a 20-row grid so every printed order has the same body, the way
+         a pre-printed pad does. range() of a negative number is empty, so an
+         order with MORE than 20 lines prints all of them -- 20 is a minimum,
+         never a cap: silently dropping lines off a printed order would be far
+         worse than a short page. #}
+      {% for _ in range(20 - so.line_items|length) %}
+      <tr class="so-filler"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      {% endfor %}
     </tbody>
     <tfoot>
       <tr>
@@ -197,6 +218,10 @@
   </div>
   {% endif %}
 
+  {# Everything from here sits at the FOOT of the sheet (owner directive
+     2026-08-21: "The signatories should always be at the very bottom"), via
+     .page-bottom's margin-top:auto inside the flex column. #}
+  <div class="page-bottom">
   {# Per-ORDER signatories, typed on the form and carried here. The name prints
      ON the ruled line, where a printed name belongs; a blank keeps the original
      "Name & Date" hint so the line is still signed by hand. Never a fabricated
@@ -216,6 +241,7 @@
   <div class="audit-footer">
     SO {{ so.so_number }} &nbsp;&middot;&nbsp; Status: {{ so.status | title }}
     &nbsp;|&nbsp; Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+  </div>
   </div>
 
 </div>
