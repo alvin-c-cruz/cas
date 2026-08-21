@@ -41,6 +41,10 @@
     /* The PR Number pair spans the two date rows; top-aligning a double-height
        cell leaves its text floating against the rule above it. */
     table.meta th.span, table.meta td.span { vertical-align: middle; }
+    /* An empty <td> collapses to its padding, so the always-on Note row would
+       print as a hairline -- present but useless for the hand-written note it
+       exists to hold. height acts as a MINIMUM, so a long note still grows. */
+    table.meta td.note { height: 34px; }
 
     /* --- line items ------------------------------------------------------- */
     table.lines { width: 100%; border-collapse: collapse; }
@@ -170,9 +174,12 @@
         {%- elif pr.date_needed %}{{ pr.date_needed.strftime('%B %d, %Y') }}
         {%- endif %}</td>
     </tr>
-    {% if pr.reason %}
-    <tr><th>Note</th><td colspan="3">{{ pr.reason }}</td></tr>
-    {% endif %}
+    {# ALWAYS present (owner directive 2026-08-21). The row used to be
+       {% raw %}{% if pr.reason %}{% endraw %}, so a requisition with no note printed no Note row
+       at all -- the odd one out on a sheet that is otherwise a fixed form, and
+       nowhere to write one by hand. `or ''` because a NULL reason would
+       otherwise render the literal text "None". #}
+    <tr><th>Note</th><td class="note" colspan="3">{{ pr.reason or '' }}</td></tr>
   </table>
 
   <table class="lines">
