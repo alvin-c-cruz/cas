@@ -47,7 +47,14 @@
   .info-row table { border-collapse: collapse; flex: 1; font-size: 12px; }
   .info-row td { border: 1px solid #aaa; padding: 3px 7px; }
   .info-row td.label { background: #f0f0f0; font-weight: 600; width: 42%; }
-  .customer-header { background: #222; color: #fff; font-weight: 700; }
+  /* Black on the shared .label grey, like TIN / Address / PO No. beside it
+     (owner directive 2026-08-21) -- it was the one inverted cell in the table.
+     Only the heavier weight is kept, so it still reads as a section header.
+     border-bottom:none here and border-top:none on .customer-name: collapsed
+     borders MERGE, so removing the rule between the label and the name takes
+     both sides -- dropping one leaves the neighbour's border drawn. */
+  .customer-header { font-weight: 700; border-bottom: none; }
+  .customer-name { border-top: none; }
 
   .particulars { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
   .particulars th { background: #222; color: #fff; padding: 4px 7px;
@@ -151,7 +158,7 @@
     </table>
     <table>
       <tr><td colspan="2" class="label customer-header">CUSTOMER</td></tr>
-      <tr><td colspan="2"><strong>{{ so.customer_name }}</strong></td></tr>
+      <tr><td colspan="2" class="customer-name"><strong>{{ so.customer_name }}</strong></td></tr>
       {% if so.customer_tin %}
       <tr><td class="label">TIN</td><td>{{ so.customer_tin }}</td></tr>
       {% endif %}
