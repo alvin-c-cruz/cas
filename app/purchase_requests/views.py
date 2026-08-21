@@ -278,10 +278,17 @@ def list_pr():
     branch_id = session.get('selected_branch_id')
     summary = compute_pr_summary(branch_id)
 
+    # Resolved for the PAGE in one query, not per row -- the list paginates at
+    # 50. A pending request blocks conversion, so withholding it until the detail
+    # page sends a buyer to click Convert on a row that will refuse.
+    from app.purchase_requests.amendment_service import pending_request_pr_ids
+    pending_amendment_ids = pending_request_pr_ids([p.id for p in pagination.items])
+
     return render_template('purchase_requests/list.html',
                            pr_list=pagination.items,
                            pagination=pagination,
                            summary=summary,
+                           pending_amendment_ids=pending_amendment_ids,
                            status_filter=request.args.get('status', 'all'),
                            q=request.args.get('q', ''),
                            date_from=request.args.get('date_from', ''),

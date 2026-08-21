@@ -75,7 +75,18 @@
                     <td><a href="{{ url_for('purchase_requests.view', id=pr.id) }}" style="font-weight:600;color:var(--blue);">{{ pr.pr_number }}</a></td>
                     <td>{{ pr.request_date.strftime('%b %d, %Y') if pr.request_date else '' }}</td>
                     <td>{{ (pr.reason or '')[:60] }}</td>
-                    <td><span class="badge badge-{{ badge_map.get(pr.status, 'draft') }}">{{ pr.status|replace('_', ' ')|title }}</span></td>
+                    <td>
+                        <span class="badge badge-{{ badge_map.get(pr.status, 'draft') }}">{{ pr.status|replace('_', ' ')|title }}</span>
+                        {# A pending amendment request BLOCKS conversion to a PO, so the
+                           list has to say so -- otherwise a buyer picks this row to
+                           convert and only meets the refusal on the detail page.
+                           `pending_amendment_ids` is resolved once for the page in
+                           list_pr(); never query per row here. #}
+                        {% if pending_amendment_ids and pr.id in pending_amendment_ids %}
+                        <span class="badge badge-warning pending-amendment-chip"
+                              title="An amendment request is awaiting review. This requisition cannot be converted to a Purchase Order until it is approved or rejected.">Amendment Requested</span>
+                        {% endif %}
+                    </td>
                     <td>{{ pr.purchase_order.po_number if pr.purchase_order else '—' }}</td>
                     <td>
                         <a href="{{ url_for('purchase_requests.view', id=pr.id) }}" class="pb-btn-action">👁️</a>

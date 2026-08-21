@@ -29,6 +29,27 @@ def pending_request_for(pr_id):
             .first())
 
 
+def pending_request_pr_ids(pr_ids):
+    """The subset of `pr_ids` that carry a PENDING amendment request.
+
+    ONE query for the whole page, never one per row: the list paginates at 50, so
+    a per-row lookup would put 50 extra round-trips on a full page.
+    `test_the_indicator_costs_a_constant_number_of_queries` pins that.
+
+    Only PENDING counts -- an approved or rejected request no longer blocks
+    conversion, so it must not keep marking the row.
+    """
+    ids = [i for i in (pr_ids or []) if i is not None]
+    if not ids:
+        return set()
+    rows = (db.session.query(PurchaseRequestAmendmentRequest.purchase_request_id)
+            .filter(PurchaseRequestAmendmentRequest.status == PENDING,
+                    PurchaseRequestAmendmentRequest.purchase_request_id.in_(ids))
+            .distinct()
+            .all())
+    return {r[0] for r in rows}
+
+
 def pending_requests_for_branches(branch_ids):
     """Every pending request in the given branches, newest first.
 
