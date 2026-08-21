@@ -80,6 +80,53 @@ def _has_committed_reference(pr_item, exclude_po_id=None):
 PULLABLE_PR = ('approved', 'partially_converted')
 
 
+def pr_ids_blocked_by_pending_amendment(pr_ids=None):
+    """Requisitions that may NOT be pulled from because an amendment request is
+    awaiting review (owner decision, 2026-08-20).
+
+    ONE query. Pass `pr_ids` to scope it; omit for every pending request.
+
+    Status alone cannot express this: an `approved` requisition with a pending
+    request is still `approved`, which is why PULLABLE_PR did not catch it and
+    the PO form pulled PR 00001 while the shortcut route refused it
+    (BUG-PENDING-AMENDMENT-BLOCK-BYPASSED-BY-THE-PO-FORM).
+    """
+    from app.purchase_requests.amendment_models import PurchaseRequestAmendmentRequest
+    q = (db.session.query(PurchaseRequestAmendmentRequest.purchase_request_id)
+         .filter(PurchaseRequestAmendmentRequest.status ==
+                 PurchaseRequestAmendmentRequest.STATUS_PENDING))
+    if pr_ids is not None:
+        ids = [i for i in pr_ids if i is not None]
+        if not ids:
+            return set()
+        q = q.filter(PurchaseRequestAmendmentRequest.purchase_request_id.in_(ids))
+    return {r[0] for r in q.distinct().all()}
+
+
+def assert_no_pending_amendment(allocations):
+    """Refuse a submitted payload that pulls from a requisition under amendment.
+
+    The picker already hides these, but hiding an option is not enforcing a rule
+    -- a hand-posted `source_pr_item_id` reaches the same code path. Same
+    two-layer shape the AP employee-payee fix proved (cas afa15b8a).
+
+    Deliberately NOT folded into assert_payload_within_open_qty: that function is
+    shared with Receiving Reports, which allocate against PURCHASE ORDERS and
+    have nothing to do with requisition amendments.
+    """
+    blocked = pr_ids_blocked_by_pending_amendment(
+        [pr_item.purchase_request_id for pr_item, _qty, _idx in allocations])
+    if not blocked:
+        return
+    for pr_item, _qty, idx in allocations:
+        if pr_item.purchase_request_id in blocked:
+            pr = pr_item.purchase_request
+            raise ValueError(
+                'Line %d: Purchase Requisition "%s" has an amendment request '
+                'awaiting review and cannot be ordered until it is approved or '
+                'rejected.' % (idx, pr.pr_number if pr else '(unknown)'))
+
+
 def _pr_item_label(pr_item):
     """How a requisition line is named in a refusal message."""
     return (pr_item.product.name if pr_item.product
@@ -172,6 +219,11 @@ def open_lines_for_branch(branch_id, exclude_po_id=None):
                    PurchaseRequest.status.in_(PULLABLE_PR))
            .order_by(PurchaseRequest.request_date.asc(), PurchaseRequest.id.asc())
            .all())
+    # A pending amendment request blocks ordering, and status cannot say so --
+    # the requisition is still `approved`. Resolved ONCE for the whole set, not
+    # per requisition.
+    blocked = pr_ids_blocked_by_pending_amendment([pr.id for pr in prs])
+    prs = [pr for pr in prs if pr.id not in blocked]
     out = []
     for pr in prs:
         for li in pr.line_items:

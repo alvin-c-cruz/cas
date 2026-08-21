@@ -92,7 +92,8 @@ def _assert_payload_allocations(items, exclude_po_id=None):
     a refusal to a line that is being refused anyway.
     """
     from app.purchase_requests.models import PurchaseRequestItem
-    from app.purchase_requests.allocation import assert_payload_within_open_qty
+    from app.purchase_requests.allocation import (assert_no_pending_amendment,
+                                                  assert_payload_within_open_qty)
     allocations = []
     for idx, d in enumerate(items or [], start=1):
         if not isinstance(d, dict) or _po_line_is_blank(d):
@@ -104,6 +105,11 @@ def _assert_payload_allocations(items, exclude_po_id=None):
         if pr_item is None:
             continue
         allocations.append((pr_item, _po_line_dec(d.get('quantity')), idx))
+    # Refuse an amendment-blocked requisition BEFORE the quantity maths: the
+    # quantities are irrelevant if the requisition may not be ordered at all,
+    # and checking first gives the accurate refusal rather than a confusing
+    # over-quantity message.
+    assert_no_pending_amendment(allocations)
     assert_payload_within_open_qty(allocations, exclude_po_id=exclude_po_id)
 
 
