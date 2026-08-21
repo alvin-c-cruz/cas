@@ -56,10 +56,13 @@
     table.lines td.idx, table.lines th.idx { text-align: center; width: 28px; }
     /* Zebra striping survives print only with print-color-adjust (below). */
     table.lines tbody tr:nth-child(even) { background: #fafafa; }
-    /* Filler rows keep the grid a fixed height. An empty <td> collapses, so the
-       height is set here rather than padded with &nbsp; in the markup -- which
-       would put a real character into a cell that must read as blank. */
-    table.lines tbody tr.filler td { height: 17px; }
+    /* One height for EVERY row in the grid, data and filler alike. Scoped to
+       .filler alone (as it was until 2026-08-21) a data row collapsed to its
+       own content and printed visibly shorter than the blank rows around it.
+       In table layout `height` acts as a MINIMUM, so a cell that wraps still
+       grows. It is set in CSS rather than padded with &nbsp; in the markup --
+       that would put a real character into a cell that must read as blank. */
+    table.lines tbody td { height: 17px; }
 
     /* --- signatures ------------------------------------------------------- */
     /* Pinned to the bottom of the page: the signatures sit in the same place on
