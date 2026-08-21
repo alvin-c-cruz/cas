@@ -9,6 +9,10 @@
     table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
     td.num, th.num { text-align: right; }
+    /* Group heading: the line's free-text Description, printed once above the
+       lines it covers. Lines with no description get no heading row. */
+    td.grp { background: #f0f0f0; font-weight: 700; letter-spacing: .3px; }
+    td.grp-sub { font-weight: 700; }
     .meta { margin-top: 8px; }
     .meta div { margin: 2px 0; }
     .sig-row { display: flex; justify-content: space-between; gap: 36px; margin-top: 48px; }
@@ -51,15 +55,32 @@
     <thead>
       <tr><th>#</th><th>Item</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Amount</th></tr>
     </thead>
+    {# Grouped by the line's Description (owner directive 2026-08-21). The
+       grouping itself is group_lines_by_description() in models.py -- first
+       appearance order, line numbers preserved, undescribed lines kept. The
+       Item cell shows the PRODUCT now; the description is the heading, so
+       printing it in both places would just repeat it. #}
     <tbody>
-      {% for li in po.line_items %}
+      {% for description, items, subtotal in line_groups %}
+      {% if description %}
+      <tr><td class="grp" colspan="5">{{ description }}</td></tr>
+      {% endif %}
+      {% for li in items %}
       <tr>
         <td>{{ li.line_number }}</td>
-        <td>{{ li.product.name if li.product else li.description }}</td>
+        <td>{{ li.product.name if li.product else '' }}</td>
         <td class="num">{{ '{:,.4f}'.format(li.quantity) if li.quantity is not none else '-' }}</td>
         <td class="num">{{ '{:,.2f}'.format(li.unit_price) if li.unit_price is not none else '-' }}</td>
         <td class="num">{{ '{:,.2f}'.format(li.amount or 0) }}</td>
       </tr>
+      {% endfor %}
+      {# One group means the subtotal would sit directly above an identical
+         Total and read as a mistake, so it is drawn only when grouping is
+         actually doing something. #}
+      {% if line_groups | length > 1 %}
+      <tr><td colspan="4" class="num">Subtotal</td>
+          <td class="num grp-sub">{{ '{:,.2f}'.format(subtotal) }}</td></tr>
+      {% endif %}
       {% endfor %}
     </tbody>
     <tfoot>

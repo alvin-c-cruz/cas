@@ -326,6 +326,40 @@ _PO_NUMBER_RE = re.compile(r'^(\d+)(\D*)$')
 SIGNATORY_FIELDS = ('prepared_by', 'checked_by', 'approved_by')
 
 
+def group_lines_by_description(line_items):
+    """[(description, [items], subtotal), ...] for the printed Purchase Order.
+
+    Owner directive 2026-08-21: the printout groups its lines by the free-text
+    Description rather than listing them flat.
+
+    Three decisions worth stating, because each could reasonably go the other
+    way and the tests pin all three:
+
+    * **First-appearance order, not alphabetical.** Jinja's `groupby` (and
+      itertools') sorts by the key, which would silently reshuffle an order the
+      buyer typed deliberately. Groups appear in the order their first line
+      does.
+    * **Line numbers are NOT renumbered.** The paper has to tie back to the
+      record; renumbering would print line 3 as line 1.
+    * **Undescribed lines form a real group under the empty key**, so they still
+      print. The template decides not to draw a heading for that one -- dropping
+      them here would silently lose billable lines off a supplier's copy.
+
+    A NULL amount counts as zero: a service line can legitimately carry none.
+    """
+    groups = {}
+    order = []
+    for li in sorted(line_items, key=lambda x: (x.line_number or 0)):
+        key = (li.description or '').strip()
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(li)
+    return [(key, groups[key],
+             sum((i.amount or Decimal('0')) for i in groups[key]))
+            for key in order]
+
+
 def next_po_signatories_for(user_id):
     """{'prepared_by': ..., 'checked_by': ..., 'approved_by': ...} carried
     forward from THIS purchaser's own last order.

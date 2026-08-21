@@ -13,7 +13,8 @@ from sqlalchemy.orm import joinedload
 
 from app import db
 from app.purchase_orders.models import (
-    PurchaseOrder, PurchaseOrderItem, next_po_number_for, next_po_signatories_for)
+    PurchaseOrder, PurchaseOrderItem, next_po_number_for, next_po_signatories_for,
+    group_lines_by_description)
 from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
 from app.purchase_orders.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
@@ -1059,7 +1060,9 @@ def print_po(id):
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
             signatory_ids=TEXT_KEYS,
             date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
-    return render_template('purchase_orders/print.html', po=po, company=company, printed_at=ph_now())
+    return render_template('purchase_orders/print.html', po=po, company=company,
+                           printed_at=ph_now(),
+                           line_groups=group_lines_by_description(po.line_items))
 
 
 @purchase_orders_bp.route('/purchase-orders/print-layout', methods=['POST'])
