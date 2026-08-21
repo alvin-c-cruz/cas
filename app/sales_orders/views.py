@@ -12,7 +12,9 @@ from flask import (Blueprint, render_template, redirect, url_for, flash,
 from flask_login import login_required, current_user
 
 from app import db
-from app.sales_orders.models import SalesOrder, SalesOrderItem
+from app.sales_orders.models import (
+    SalesOrder, SalesOrderItem, SIGNATORY_FIELDS, next_so_signatories_for)
+from app.common.signatories import assign as assign_signatories
 from app.branches.models import Branch
 from app.sales_orders.forms import SalesOrderForm, SalesOrderAmendForm
 from app.customers.models import Customer, CustomerDeliverySite
@@ -504,6 +506,7 @@ def create():
                 status='draft',
                 created_by_id=current_user.id,
             )
+            assign_signatories(so, form, SIGNATORY_FIELDS)
             _parse_and_attach_so_lines(so, request.form.get('line_items', '[]'))
             so.calculate_totals()
             db.session.add(so)
@@ -535,6 +538,12 @@ def create():
         form.order_date.data = ph_now().date()
         branch = db.session.get(Branch, session.get('selected_branch_id'))
         form.so_number.data = generate_so_number(branch, form.order_date.data)
+        # Carried forward from THIS user's own last order (see
+        # next_so_signatories_for) -- a suggestion, not a lock: editing one
+        # here changes this order only. Left blank, the printout shows an
+        # empty ruled line to sign by hand.
+        for _field, _value in next_so_signatories_for(current_user.id).items():
+            getattr(form, _field).data = _value
 
     return render_template('sales_orders/form.html', form=form, so=None,
                            line_items=restore_items, **_common_form_ctx())
@@ -612,6 +621,7 @@ def edit(id):
             so.reference = form.reference.data or None
             so.salesperson_id = form.salesperson_id.data or None
             so.notes = form.notes.data or ''
+            assign_signatories(so, form, SIGNATORY_FIELDS)
 
             db.session.execute(db.delete(SalesOrderItem).where(SalesOrderItem.sales_order_id == so.id))
             _parse_and_attach_so_lines(so, request.form.get('line_items', '[]'))
@@ -753,6 +763,7 @@ def amend(id):
             so.reference = form.reference.data or None
             so.salesperson_id = form.salesperson_id.data or None
             so.notes = form.notes.data or ''
+            assign_signatories(so, form, SIGNATORY_FIELDS)
 
             # UPDATE IN PLACE -- do NOT delete-and-rebuild the way edit() does.
             # A rebuild resets line_status to 'open', silently RE-OPENING a line

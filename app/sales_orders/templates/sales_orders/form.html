@@ -72,6 +72,20 @@
                                   **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
                     {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
                 </div>
+
+                {# Printed signatories -- per ORDER, the same shape PurchaseOrder uses.
+                   A NEW order carries these forward from this user's own last one
+                   (next_so_signatories_for); blanks print an empty ruled line to
+                   sign by hand. There is deliberately no company-wide default and
+                   no "Modify signatories" button on the printout (owner, 2026-08-21). #}
+                <div class="notes-col header-fields{% if so %} header-fields--active{% endif %}">
+                  <div class="form-row-3">
+                    <div class="form-group">{{ form.prepared_by.label(class='form-label') }} {{ form.prepared_by(class='form-control') }}</div>
+                    <div class="form-group">{{ form.noted_by.label(class='form-label') }} {{ form.noted_by(class='form-control') }}</div>
+                    <div class="form-group">{{ form.approved_by.label(class='form-label') }} {{ form.approved_by(class='form-control') }}</div>
+                  </div>
+                  <div class="form-hint">Carried over from your last Sales Order. Edit for this order, or leave blank to sign by hand.</div>
+                </div>
             </div>
 
             {# ── Line Items Locked Placeholder (create only) ── #}

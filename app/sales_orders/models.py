@@ -57,6 +57,15 @@ class SalesOrder(RowVersioned, db.Model):
     cancelled_at = db.Column(db.DateTime)
     cancel_reason = db.Column(db.String(500), nullable=True)
 
+    # Per-ORDER printed signatories -- typed on the form, printed on the document.
+    # Owner directive 2026-08-21: the SO uses the PurchaseOrder shape (carried
+    # forward from this user's own last order, see next_so_signatories_for), NOT
+    # the company-wide setting PR and RR read. Blank is meaningful: it prints an
+    # empty ruled line to sign by hand, and is never back-filled.
+    prepared_by = db.Column(db.String(100))
+    noted_by = db.Column(db.String(100))
+    approved_by = db.Column(db.String(100))
+
     line_items = db.relationship('SalesOrderItem', backref='order', lazy='select',
                                  cascade='all, delete-orphan', order_by='SalesOrderItem.line_number')
 
@@ -181,6 +190,41 @@ class SalesOrderItem(db.Model):
             'delivery_site_id': self.delivery_site_id,
             'delivery_site_name': self.delivery_site.name if self.delivery_site else None,
         }
+
+
+#: The SO's printed signatory slots. Roles match the Purchase Requisition's trio
+#: (owner directive 2026-08-21) -- NOT the PO's, whose middle slot is "Checked by".
+SIGNATORY_FIELDS = ('prepared_by', 'noted_by', 'approved_by')
+SIGNATORY_ROLES = ('Prepared by', 'Noted by', 'Approved by')
+
+
+def next_so_signatories_for(user_id):
+    """{'prepared_by': ..., 'noted_by': ..., 'approved_by': ...} carried forward
+    from THIS user's own last sales order.
+
+    Scoped by user, mirroring next_po_signatories_for: the owner chose the
+    PurchaseOrder shape over the company-wide setting PR and RR read, so one
+    salesperson's routing never overwrites another's.
+
+    'Last' is by id, not by order_date -- a backdated order is still the most
+    recently ENTERED one, and the last thing this user typed is what they expect
+    to see repeated.
+
+    Returns blanks (never None, never a placeholder) when this user has no prior
+    order: their first SO is typed from scratch, and a blank prints an empty
+    ruled line to sign by hand. NEVER derive these from created_by/confirmed_by
+    -- those are CAS users, while the designated signatories frequently are not.
+    """
+    blank = {f: '' for f in SIGNATORY_FIELDS}
+    if not user_id:
+        return blank
+    last = (SalesOrder.query
+            .filter(SalesOrder.created_by_id == user_id)
+            .order_by(SalesOrder.id.desc())
+            .first())
+    if last is None:
+        return blank
+    return {f: (getattr(last, f) or '') for f in SIGNATORY_FIELDS}
 
 
 def copy_salesperson(src, dst):

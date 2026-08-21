@@ -59,6 +59,7 @@
   .sig-box .sig-title { font-size: 9px; font-weight: 700; color: #555; margin-bottom: 24px; }
   .sig-box .sig-line { border-top: 1px solid #666; padding-top: 2px;
                         font-size: 9px; color: #555; }
+  .sig-box .sig-line--named { font-size: 10px; font-weight: 700; color: #111; }
 
   .audit-footer { margin-top: 6px; font-size: 9px; color: #888; text-align: center;
                   border-top: 1px solid #ddd; padding-top: 4px; }
@@ -183,19 +184,20 @@
   </div>
   {% endif %}
 
+  {# Per-ORDER signatories, typed on the form and carried here. The name prints
+     ON the ruled line, where a printed name belongs; a blank keeps the original
+     "Name & Date" hint so the line is still signed by hand. Never a fabricated
+     name, and never one derived from created_by/confirmed_by -- those are CAS
+     users while the designated signatories frequently are not. #}
   <div class="sig-row">
+    {% for role, name in [('PREPARED BY', so.prepared_by),
+                          ('NOTED BY', so.noted_by),
+                          ('APPROVED BY', so.approved_by)] %}
     <div class="sig-box">
-      <div class="sig-title">PREPARED BY</div>
-      <div class="sig-line">Name &amp; Date</div>
+      <div class="sig-title">{{ role }}</div>
+      <div class="sig-line{% if name %} sig-line--named{% endif %}">{{ name or 'Name & Date' }}</div>
     </div>
-    <div class="sig-box">
-      <div class="sig-title">NOTED BY</div>
-      <div class="sig-line">Name &amp; Date</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-title">APPROVED BY</div>
-      <div class="sig-line">Name &amp; Date</div>
-    </div>
+    {% endfor %}
   </div>
 
   <div class="audit-footer">

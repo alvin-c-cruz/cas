@@ -163,7 +163,8 @@
     ],
     "app/common/signatories.py": [
       "purchase_requests",
-      "receiving_reports"
+      "receiving_reports",
+      "sales_orders"
     ],
     "app/dashboard/action_items_service.py": [
       "accounts_payable",
