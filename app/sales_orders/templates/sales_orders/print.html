@@ -10,7 +10,14 @@
   .screen-only { }
   @media print {
     .screen-only { display: none !important; }
-    @page { size: A4 portrait; margin: 15mm; }
+    @page { size: A4 portrait; margin: 5mm; }
+    /* .page-wrap's 24px is screen breathing room and used to print too, adding
+       ~6.3mm on top of the paper margin. Zero it here so the PRINTED margin is
+       the 5mm @page states, and only there -- the screen keeps its padding. */
+    /* !important because `.page-wrap { padding: 24px }` is declared LATER at
+       equal specificity and @media adds none -- a plain padding:0 here loses
+       the cascade, same reason .screen-only above needs it. */
+    .page-wrap { padding: 0 !important; }
   }
 
   .page-wrap { max-width: 740px; margin: 0 auto; padding: 24px; }
