@@ -85,8 +85,12 @@
     <button type="button" class="btn-close" onclick="window.close()">Close</button>
   </div>
 
+  {# Screen-only (owner directive 2026-08-21): the red revision box warns whoever
+     is about to press Print that this copy supersedes an earlier one, but it must
+     NOT reach the printed document. `.screen-only` is this file's own mechanism,
+     already hiding the print bar. #}
   {% if current_revision and current_revision.revision_number > 0 %}
-  <div class="print-rev-banner">
+  <div class="print-rev-banner screen-only">
       <span class="print-rev">REV. {{ current_revision.revision_number }}</span>
       <div class="print-rev-supersede">
           Supersedes Rev. {{ current_revision.revision_number - 1 }}
