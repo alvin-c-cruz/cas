@@ -155,7 +155,13 @@
     <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('amount', 'unit_price', 'quantity') else '' }}"
          data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
          style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
-      {%- for item in po.line_items %}
+      {#- Grouped by Description (owner directive 2026-08-21) via
+          grouped_lines_for_overlay(): the SAME rows, reordered so a group is
+          contiguous. NO heading or subtotal rows -- every column stack must
+          keep one cell per line or the columns drift off the pre-printed
+          boxes. Each stack iterates this identical list, so alignment holds
+          by construction. -#}
+      {%- for item, show_description in overlay_lines %}
       {# The `uom` column prints the unit CODE ('KG'), never its long name
          ('Kilogram'): the pre-printed box is ~50px wide, so a name clips on real
          stationery. Same expression and same fallback chain as
@@ -165,7 +171,9 @@
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
         {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code ~ ' — ' ~ item.product.name }}{% else %}{{ '' }}{% endif %}
-        {%- elif col.key == 'description' -%}{{ item.description or '' }}
+        {#- Written ONCE at the top of its group; blank on the lines beneath.
+            Only the description de-duplicates -- see the helper's docstring. -#}
+        {%- elif col.key == 'description' -%}{{ (item.description or '') if show_description else '' }}
         {%- elif col.key == 'quantity' -%}{{ item | qty_fmt }}
         {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '') }}
         {%- elif col.key == 'unit_price' -%}{{ '{:,.2f}'.format(item.unit_price) if item.unit_price is not none else '' }}

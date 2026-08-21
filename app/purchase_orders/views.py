@@ -14,7 +14,7 @@ from sqlalchemy.orm import joinedload
 from app import db
 from app.purchase_orders.models import (
     PurchaseOrder, PurchaseOrderItem, next_po_number_for, next_po_signatories_for,
-    group_lines_by_description)
+    group_lines_by_description, grouped_lines_for_overlay)
 from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
 from app.purchase_orders.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
@@ -1053,6 +1053,7 @@ def print_po(id):
     if po_print_form == 'preprinted':
         return render_template(
             'purchase_orders/print_preprinted.html', po=po, company=company,
+            overlay_lines=grouped_lines_for_overlay(po.line_items),
             printed_at=ph_now(), layout=get_layout(po.branch_id),
             can_edit_layout=current_user.has_full_access,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,

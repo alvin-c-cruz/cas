@@ -360,6 +360,37 @@ def group_lines_by_description(line_items):
             for key in order]
 
 
+def grouped_lines_for_overlay(line_items):
+    """[(item, show_description), ...] for the PRE-PRINTED overlay.
+
+    Owner directive 2026-08-21: group the overlay by Description too.
+
+    The overlay is not a table. Each column is an absolutely-positioned stack of
+    fixed-height cells, and the columns line up ONLY because every stack holds
+    the same number of rows (see print_preprinted.html: "all share the band top
+    and rowHeight so rows align").
+
+    So grouping cannot be done the way the standard printout does it. Heading
+    and subtotal rows would consume boxes on the client's real pre-printed
+    stationery and, unless inserted identically into every stack, would drift
+    the columns down the page relative to the physical form -- a defect you only
+    discover on paper.
+
+    Grouping is therefore expressed the way a pre-printed form expresses it: the
+    SAME rows, reordered so each group sits together, with the Description
+    printed ONCE at the top of its group and blank beneath. Row count is
+    unchanged, so alignment is structurally untouched.
+
+    Only the DESCRIPTION is de-duplicated -- blanking a repeated quantity or
+    amount would understate the order on the supplier's copy.
+    """
+    rows = []
+    for _key, items, _subtotal in group_lines_by_description(line_items):
+        for n, item in enumerate(items):
+            rows.append((item, n == 0))
+    return rows
+
+
 def next_po_signatories_for(user_id):
     """{'prepared_by': ..., 'checked_by': ..., 'approved_by': ...} carried
     forward from THIS purchaser's own last order.
