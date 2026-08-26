@@ -307,6 +307,13 @@ def open_lines_for_branch(branch_id, exclude_po_id=None):
                 'pr_item_id': li.id,
                 'pr_id': pr.id,
                 'pr_number': pr.pr_number,
+                # The picker offers `submitted` requisitions alongside approved
+                # ones (2026-08-26), and the two are otherwise indistinguishable
+                # in the modal. Without this the buyer only learns the demand was
+                # never authorised at PO approval -- after building and pricing
+                # the whole order. Rendered as a chip, not as a filter: pulling
+                # early is the POINT, so the row stays offered.
+                'pr_status': pr.status,
                 'date_needed': pr.date_needed.isoformat() if pr.date_needed else None,
                 'date_needed_asap': bool(pr.date_needed_asap),
                 'product_id': li.product_id,

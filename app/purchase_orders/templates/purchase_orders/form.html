@@ -125,7 +125,9 @@
         <div class="card-body">
           <h3>Open Requisition Lines</h3>
           <p class="text-muted" id="prPickerEmpty" style="display:none">
-            No approved requisition lines are waiting for a purchase order.
+            {# "approved" would now be wrong: the picker offers submitted
+               requisitions too (2026-08-26). #}
+            No requisition lines are waiting for a purchase order.
           </p>
           <table class="table" id="prPickerTable">
             <thead>
@@ -553,9 +555,22 @@
               ? escHtml(row.product_code + ': ' + row.product_name)
               : escHtml(row.description || '');
             const needed = row.date_needed_asap ? 'ASAP' : escHtml(row.date_needed || '');
+            // A `submitted` requisition may be pulled (2026-08-26) but its
+            // order cannot be APPROVED until the requisition is. Chipped rather
+            // than hidden or disabled: preparing the order early is the point of
+            // the change, and the buyer simply needs to know which signature is
+            // still outstanding. Only `submitted` earns a chip -- approved and
+            // partially_converted have both been approved, and a chip on every
+            // row carries no information.
+            const chip = row.pr_status === 'submitted'
+              ? ` <span class="badge badge-warning pr-status-chip"`
+                + ` title="This requisition is still awaiting approval. You can`
+                + ` order against it now, but the Purchase Order cannot be`
+                + ` approved until the requisition is.">Pending approval</span>`
+              : '';
             return `<tr data-row='${escHtml(JSON.stringify(row))}'>`
                  + `<td><input type="checkbox" class="pr-pick"></td>`
-                 + `<td>${escHtml(row.pr_number)}</td>`
+                 + `<td>${escHtml(row.pr_number)}${chip}</td>`
                  + `<td>${needed}</td>`
                  + `<td>${item}</td>`
                  + `<td>${escHtml(row.uom_code || '')}</td>`
