@@ -953,6 +953,34 @@ def approve(id):
     if not po.has_approvable_line():
         flash('Set a unit price on at least one line before approving this Purchase Order.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
+    # THE approval control for the 2026-08-26 widening. PULLABLE_PR now admits a
+    # `submitted` requisition so a staff purchaser can prepare the order while it
+    # is still with its approver -- the wait was for a signature, not for
+    # information. Nothing may be COMMITTED to a vendor on that basis, so the
+    # authorisation check lands here instead.
+    #
+    # Deliberately NOT on submit(): submit exists so a staff purchaser, who may
+    # build an order but not approve one, has a way to hand it on. Blocking it
+    # would strand the order in draft and undo the point of pulling early.
+    #
+    # One predicate covers submitted, rejected AND cancelled sources -- they are
+    # one rule ("the demand behind this line was never authorised"), and three
+    # spellings of one rule is how three guards drift apart. Rejected and
+    # cancelled matter especially: a requisition pulled while submitted can still
+    # take either exit afterwards, and nothing unwinds the purchase-order lines
+    # when it does, so this is the only place left to catch it.
+    from app.purchase_requests.allocation import unapproved_source_prs
+    unapproved = unapproved_source_prs(po)
+    if unapproved:
+        flash('This Purchase Order draws on %s that %s not been approved: %s. '
+              'Approve %s first, or remove the affected lines.'
+              % ('a Purchase Requisition' if len(unapproved) == 1
+                 else '%d Purchase Requisitions' % len(unapproved),
+                 'has' if len(unapproved) == 1 else 'have',
+                 ', '.join('"%s" (%s)' % (p.pr_number, p.status.replace('_', ' '))
+                           for p in unapproved),
+                 'it' if len(unapproved) == 1 else 'them'), 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
 
     old_values = model_to_dict(po, ['status'])
     po.status = 'approved'
