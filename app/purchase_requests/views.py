@@ -58,9 +58,24 @@ def _pr_role_gate():
     return None
 
 
-def _approve_gate():
+def _approve_gate(action):
+    """APPROVE-level guard, shared by every action only an approver may take.
+
+    *action* is the verb phrase for the refusal, e.g. 'convert' or
+    'reject'. It is REQUIRED rather than defaulted: the message used to be one
+    fixed string naming 'approve' for all EIGHT callers, so a staff user who
+    pressed Convert was told they could not approve -- which is not what they
+    tried to do (BUG-PR-APPROVE-GATE-MESSAGE-NAMES-THE-WRONG-ACTION).
+
+    A default would have quietly reintroduced exactly that for the next caller
+    added, which is how the three amendment-review routes inherited the wrong
+    wording after the bug was first written up against five.
+
+    The GUARD is unchanged -- it was always correct, and only the text was wrong.
+    """
     if not (current_user.has_full_access or current_user.role == 'accountant'):
-        flash('Only an approver (accountant/admin) can approve Purchase Requisitions.', 'error')
+        flash('Only an approver (accountant/admin) can %s Purchase Requisitions.'
+              % action, 'error')
         return False
     return True
 
@@ -469,7 +484,7 @@ def amend(id):
     # gating it on the edit rule is exactly the Critical shipped on the Purchase
     # Order side, where a staff user who could not approve a PO could rewrite an
     # approved one.
-    if not _approve_gate():
+    if not _approve_gate('amend'):
         return redirect(url_for('purchase_requests.view', id=id))
 
     if pr.status == 'draft':
@@ -636,7 +651,7 @@ def submit(id):
 @login_required
 def approve(id):
     pr = _get_pr_or_404(id)
-    if not _approve_gate():
+    if not _approve_gate('approve'):
         return redirect(url_for('purchase_requests.view', id=id))
     if pr.status != 'submitted':
         flash('Only a submitted Purchase Requisition can be approved.', 'error')
@@ -693,7 +708,7 @@ def approve(id):
 @login_required
 def reject(id):
     pr = _get_pr_or_404(id)
-    if not _approve_gate():
+    if not _approve_gate('reject'):
         return redirect(url_for('purchase_requests.view', id=id))
     if pr.status != 'submitted':
         flash('Only a submitted Purchase Requisition can be rejected.', 'error')
@@ -718,7 +733,7 @@ def reject(id):
 @login_required
 def cancel(id):
     pr = _get_pr_or_404(id)
-    if not _approve_gate():
+    if not _approve_gate('cancel'):
         return redirect(url_for('purchase_requests.view', id=id))
     if pr.status in ('converted', 'cancelled', 'rejected'):
         flash('This Purchase Requisition can no longer be cancelled.', 'error')
@@ -745,7 +760,7 @@ def convert(id):
     """Approved PR -> a NEW draft Purchase Order (buyer adds vendor + prices).
     Mirror of quotations.accept -> draft SO."""
     pr = _get_pr_or_404(id)
-    if not _approve_gate():
+    if not _approve_gate('convert'):
         return redirect(url_for('purchase_requests.view', id=id))
     if pr.status not in ('approved', 'partially_converted'):
         flash('Only an approved Purchase Requisition can be converted to a Purchase Order.', 'error')
@@ -1033,7 +1048,7 @@ def review_amendment(req_id):
     """Approver's before/after view of one request."""
     from app.purchase_requests.amendment_service import (
         change_count, current_lines, diff_lines)
-    if not _approve_gate():
+    if not _approve_gate('review amendment requests for'):
         return redirect(url_for('purchase_requests.list_pr'))
     req = _get_amendment_request_or_404(req_id)
     pr = db.session.get(PurchaseRequest, req.purchase_request_id)
@@ -1047,7 +1062,7 @@ def review_amendment(req_id):
 @login_required
 def approve_amendment(req_id):
     from app.purchase_requests.amendment_service import AmendmentRequestError, apply_request
-    if not _approve_gate():
+    if not _approve_gate('approve amendment requests for'):
         return redirect(url_for('purchase_requests.list_pr'))
     req = _get_amendment_request_or_404(req_id)
     try:
@@ -1078,7 +1093,7 @@ def approve_amendment(req_id):
 @login_required
 def reject_amendment(req_id):
     from app.purchase_requests.amendment_service import AmendmentRequestError, reject_request
-    if not _approve_gate():
+    if not _approve_gate('reject amendment requests for'):
         return redirect(url_for('purchase_requests.list_pr'))
     req = _get_amendment_request_or_404(req_id)
     try:
