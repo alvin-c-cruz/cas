@@ -17,6 +17,12 @@
     "reason": null,
     "waived": false
   },
+  "16f783ec4e971a6e1a817195f817d356627bcbca": {
+    "branch": "feat/purchase-area-adjustments",
+    "date": "2026-08-26",
+    "reason": "Browser pass was DRIVEN at 0d2a334f and covers every UI change on this branch (Tasks 5,6,7,10: picker chip, PO banner, submitted-PR pull flow, staff layout save+persist+audit, viewer refusal). The only commit after that point is 16f783ec, which changes flash-message TEXT in purchase_requests/views.py -- no template, JS or CSS. Owner elected to re-record rather than re-drive. NOT browser-verified: the eight new refusal strings themselves, which are covered by tests/integration/test_pr_approve_gate_message.py only.",
+    "waived": true
+  },
   "183f8e36b5567b87facc4288ae63e48ac28bfe25": {
     "branch": "fix/picker-field-border",
     "date": "2026-08-19",
