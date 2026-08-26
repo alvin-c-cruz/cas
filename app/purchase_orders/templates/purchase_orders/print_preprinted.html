@@ -170,7 +170,7 @@
          (purchase_orders/models.py:259) which every on-screen PO surface already uses. #}
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
-        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code ~ ' — ' ~ item.product.name }}{% else %}{{ '' }}{% endif %}
+        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.name }}{% else %}{{ '' }}{% endif %}
         {#- Written ONCE at the top of its group; blank on the lines beneath.
             Only the description de-duplicates -- see the helper's docstring. -#}
         {%- elif col.key == 'description' -%}{{ (item.description or '') if show_description else '' }}
