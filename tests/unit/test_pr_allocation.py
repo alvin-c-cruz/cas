@@ -123,6 +123,23 @@ class TestIsOpen:
 
 def test_cancelled_is_the_only_excluded_status():
     """Control on the constant itself -- adding 'cancelled' here would silently
-    stop lines reopening."""
+    stop lines reopening.
+
+    The exclusion is the rule; the membership is not. This test used to also
+    assert `set(COMMITTED_PO) == {'draft', 'approved', 'partially_received',
+    'closed'}`, freezing the tuple's exact contents -- and that snapshot was
+    taken while `submitted` was MISSING, so the assertion pinned
+    BUG-SUBMITTED-PO-NOT-COUNTED-IN-PR-ALLOCATION in place and went red the
+    moment the bug was fixed on 2026-08-26. A test that fails when the codebase
+    gets better is pinning the defect, not the rule.
+
+    What replaces it is not another snapshot: see
+    tests/unit/test_committed_po_covers_the_lifecycle.py::
+    TestEveryLifecycleStatusIsClassified, which scrapes the purchase order's
+    REAL status writers out of the source and demands each be classified. That
+    catches a newly added status, which a frozen set never could -- it only ever
+    catches someone editing the tuple, which is the safe direction.
+    """
     assert 'cancelled' not in COMMITTED_PO
-    assert set(COMMITTED_PO) == {'draft', 'approved', 'partially_received', 'closed'}
+    # The statuses this module's own tests depend on counting.
+    assert {'draft', 'submitted', 'approved'} <= set(COMMITTED_PO)

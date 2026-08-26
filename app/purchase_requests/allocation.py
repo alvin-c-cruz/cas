@@ -14,8 +14,35 @@ from decimal import Decimal
 from app import db
 
 #: Every PO status except 'cancelled'. Draft counts on purpose -- a line pulled
-#: onto a draft is spoken for, so two buyers cannot both claim it.
-COMMITTED_PO = ('draft', 'approved', 'partially_received', 'closed')
+#: onto a draft is spoken for, so two buyers cannot both claim it. `submitted`
+#: counts for the same reason, with more force: that order has already been
+#: handed to an approver.
+#:
+#: `submitted` was MISSING here until 2026-08-26
+#: (BUG-SUBMITTED-PO-NOT-COUNTED-IN-PR-ALLOCATION). It arrived with the purchase
+#: order's submit step (cas 579e12ed) and this tuple, written when
+#: draft -> approved was the entire lifecycle, was never widened -- so a
+#: requisition line fully ordered on a submitted order was offered again at its
+#: full original quantity, and accepting it ordered 20 against a requisition for
+#: 10 with nothing refusing it.
+#:
+#: THIS TUPLE IS THE ONLY THING that decides whether a purchase-order line is
+#: spoken for. Exactly two functions read it -- pr_line_ordered_qty and
+#: _has_committed_reference -- and the picker (open_lines_for_branch), the
+#: save-time ceiling (assert_payload_within_open_qty) and recompute_pr_status all
+#: derive from those. A status missing here is therefore invisible to the whole
+#: allocation system at once, on BOTH doors: it is why the two-door guard from
+#: cas 5892bf0a did not help, since both doors read this same input.
+#:
+#: Adding a status to the purchase order's lifecycle? Classify it here or in
+#: tests/unit/test_committed_po_covers_the_lifecycle.py::
+#: TestEveryLifecycleStatusIsClassified.EXCLUDED_ON_PURPOSE. That test scrapes
+#: the real writers out of the source and fails until the decision is made,
+#: because leaving one unclassified is precisely how this happened.
+#:
+#: ('partially_received' is inert -- nothing in the app writes it. Kept because
+#: removing it would change behaviour only if something started to.)
+COMMITTED_PO = ('draft', 'submitted', 'approved', 'partially_received', 'closed')
 
 
 def pr_line_ordered_qty(pr_item, exclude_po_id=None):
