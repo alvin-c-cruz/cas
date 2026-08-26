@@ -126,6 +126,32 @@ class User(UserMixin, db.Model):
         Does NOT grant the 4 system-administration areas (those stay is_admin)."""
         return self.role in ('admin', 'chief_accountant')
 
+    @property
+    def can_edit_print_layout(self):
+        """Who may reposition fields on a pre-printed form overlay.
+
+        Owner decision 2026-08-26. Was `has_full_access` -- admin or Chief
+        Accountant -- copied identically into all ELEVEN pre-printed documents
+        (PR, PO, RR, AP, CDV, CRV, DR, SI, SO, JV, Payslip), in both the save
+        route and the render-time `can_edit_layout` flag. One name here so those
+        22 call sites cannot drift apart, and so the rule has one docstring
+        rather than eleven comments.
+
+        Widened to each module's EDIT-level role set. `accountant` is included
+        deliberately alongside `staff`: admitting staff but not accountants
+        would leave an accountant unable to do something staff can, which is
+        backwards from every other permission in the app.
+
+        A WHITELIST, not `role != 'viewer'`. A layout edit changes what prints
+        on a client's real, BIR-registered stationery, and the stored layout is
+        BRANCH-WIDE -- one person's drag changes every future printout for that
+        branch. So an unrecognised, new or blank role must fail closed rather
+        than inherit the ability by not being the one role named as excluded.
+        Saves stay sanitized and audited (app/common/preprinted_base.py), which
+        is what makes the wider access recoverable.
+        """
+        return self.role in ('admin', 'chief_accountant', 'accountant', 'staff')
+
     def has_book_access(self, book_name):
         """Check if user has access to a specific book."""
         # Admins and Chief Accountants have access to all books
