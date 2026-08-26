@@ -79,6 +79,66 @@ def _has_committed_reference(pr_item, exclude_po_id=None):
 #: Requisition statuses whose lines may be pulled onto a purchase order.
 PULLABLE_PR = ('approved', 'partially_converted')
 
+#: Requisition statuses that count as APPROVED when releasing a purchase order.
+#:
+#: NOT `status == 'approved'`. `partially_converted` and `converted` are
+#: POST-approval states -- a requisition reaches either one only by being
+#: approved and then ordered against -- so reading them as unapproved would
+#: block the SECOND purchase order raised against a partially ordered
+#: requisition, which is the ordinary case partial allocation exists to serve.
+#:
+#: Decided on STATUS rather than on `approved_at is not None` because cancel()
+#: accepts an already-approved requisition: a cancelled one can carry a real
+#: approved_at while its demand has been withdrawn.
+APPROVED_PR = ('approved', 'partially_converted', 'converted')
+
+
+def unapproved_source_prs(po):
+    """The distinct requisitions behind *po*'s lines that are NOT yet approved.
+
+    ONE query, and the ONE predicate behind the owner decision of 2026-08-26: a
+    submitted requisition may be pulled onto a draft purchase order so a staff
+    purchaser can prepare the order early, but that order may not be APPROVED
+    until every requisition feeding it has been.
+
+    Deliberately one predicate rather than separate guards on submitted /
+    rejected / cancelled sources. Those are one rule -- "the demand behind this
+    line was never authorised" -- and three spellings of one rule is how three
+    guards drift apart. Asked at approval, not at pull and not at submit:
+    pulling is data entry, submit is how a staff purchaser hands the order on,
+    and approval is the control.
+
+    Does NOT filter on the purchase order's own status, unlike every allocation
+    sum in this module. Those ask what QUANTITY is spoken for and must therefore
+    ignore cancelled orders; this asks about THIS order's own lines, so
+    COMMITTED_PO has no bearing on it. Reusing that tuple here is the
+    obvious-looking wrong move, and `test_a_cancelled_purchase_order_is_still_measured`
+    pins it.
+
+    Ordered by requisition number so a refusal message naming several does not
+    reshuffle between identical attempts and read as a different problem.
+
+    The `.distinct()` is belt-and-braces, and measured as such: deleting it
+    leaves every test green, because `Query.all()` over a single full entity
+    already collapses duplicate rows through the identity map. It is kept so the
+    guarantee survives a rewrite to `select()` + `session.scalars()`, where that
+    implicit dedup does NOT apply and `.unique()` becomes mandatory. Neither
+    mechanism is observable alone, which is why the test pins the RESULT -- one
+    requisition appears once -- rather than claiming to pin this clause.
+    """
+    from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
+    from app.purchase_orders.models import PurchaseOrderItem
+    return (db.session.query(PurchaseRequest)
+            .join(PurchaseRequestItem,
+                  PurchaseRequestItem.purchase_request_id == PurchaseRequest.id)
+            .join(PurchaseOrderItem,
+                  PurchaseOrderItem.source_pr_item_id == PurchaseRequestItem.id)
+            .filter(PurchaseOrderItem.purchase_order_id == po.id)
+            .filter(PurchaseRequest.status.notin_(APPROVED_PR))
+            .order_by(PurchaseRequest.pr_number.asc())
+            .distinct()
+            .all())
+
 
 def pr_ids_blocked_by_pending_amendment(pr_ids=None):
     """Requisitions that may NOT be pulled from because an amendment request is
