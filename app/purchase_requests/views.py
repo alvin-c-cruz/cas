@@ -644,6 +644,26 @@ def approve(id):
     pr.status = 'approved'
     pr.approved_by_id = current_user.id
     pr.approved_at = ph_now()
+    # Settle the status against what has ALREADY been ordered, before the
+    # baseline is taken. Since 2026-08-26 a `submitted` requisition may be pulled
+    # onto a purchase order, and it stays `submitted` while that happens --
+    # RECOMPUTABLE_PR excludes that status on purpose, because approve() and
+    # reject() both require it exactly and recomputing early would delete the
+    # approval step. So a requisition can arrive here already fully or partly
+    # ordered, and plain 'approved' would be a lie: it would offer a requisition
+    # with nothing left to order back to the picker.
+    #
+    # ORDER MATTERS, and this is the line that makes it matter. Recomputing
+    # after write_revision would leave Rev 0 permanently recording 'approved' for
+    # a requisition that was already converted -- and Rev 0 is the baseline every
+    # later amendment is measured against, so it has to be true. Both directions
+    # are pinned by tests/integration/test_pr_approve_recomputes_status.py.
+    #
+    # Safe for the ordinary path: recompute_pr_status derives from the lines'
+    # open state, so an untouched requisition recomputes to 'approved' -- the
+    # value just assigned.
+    from app.purchase_requests.allocation import recompute_pr_status
+    recompute_pr_status(pr)
     # Rev 0 -- the baseline every later amendment is measured against. Written
     # AFTER the status assignment so the snapshot records the PR as approved, and
     # inside the same transaction so approval and baseline land atomically.
@@ -654,7 +674,18 @@ def approve(id):
     db.session.commit()
     log_audit(module='purchase_requests', action='approve', record_id=pr.id,
               record_identifier=pr.pr_number, notes='Approved')
-    flash(f'Purchase Requisition "{pr.pr_number}" approved. Convert it to a Purchase Order.', 'success')
+    # The follow-up instruction has to match what the recompute just settled on.
+    # "Convert it to a Purchase Order" is wrong advice for a requisition that was
+    # already ordered against before it was approved -- the picker has nothing
+    # left to offer, and convert() would refuse it.
+    if pr.status == 'converted':
+        flash(f'Purchase Requisition "{pr.pr_number}" approved. Every line is '
+              f'already on a Purchase Order.', 'success')
+    elif pr.status == 'partially_converted':
+        flash(f'Purchase Requisition "{pr.pr_number}" approved. Some lines are '
+              f'already on a Purchase Order; convert the rest when ready.', 'success')
+    else:
+        flash(f'Purchase Requisition "{pr.pr_number}" approved. Convert it to a Purchase Order.', 'success')
     return redirect(url_for('purchase_requests.view', id=id))
 
 
