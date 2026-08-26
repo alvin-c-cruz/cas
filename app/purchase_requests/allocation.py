@@ -77,7 +77,20 @@ def _has_committed_reference(pr_item, exclude_po_id=None):
 
 
 #: Requisition statuses whose lines may be pulled onto a purchase order.
-PULLABLE_PR = ('approved', 'partially_converted')
+#:
+#: `submitted` was added 2026-08-26 by owner decision so a staff purchaser can
+#: prepare the purchase order while the requisition is still with its approver
+#: -- the wait was for a signature, not for information.
+#:
+#: THE APPROVAL CONTROL DID NOT MOVE INTO THIS TUPLE. It moved to purchase-order
+#: APPROVAL, via unapproved_source_prs() below: pulling is data entry, submit is
+#: how a staff purchaser hands the order on, and approval is the control. Note
+#: what is deliberately still absent -- `draft` (nobody has been handed it yet),
+#: and `rejected`/`cancelled`, which are the two exits FROM submitted and so the
+#: statuses this widening is most likely to leak into.
+#:
+#: RECOMPUTABLE_PR was deliberately NOT widened to match. See its own note.
+PULLABLE_PR = ('submitted', 'approved', 'partially_converted')
 
 #: Requisition statuses that count as APPROVED when releasing a purchase order.
 #:
@@ -318,8 +331,25 @@ def _qty_str(v):
 
 
 #: Statuses recompute_pr_status may move between. A draft, submitted, cancelled
-#: or rejected requisition is left exactly as it is -- ordering against one is
-#: impossible, and resurrecting a cancelled requisition would be a real defect.
+#: or rejected requisition is left exactly as it is.
+#:
+#: For draft, cancelled and rejected the reason is the original one: nothing can
+#: order against them, and resurrecting a cancelled requisition would be a real
+#: defect.
+#:
+#: `submitted` IS now orderable (PULLABLE_PR admits it since 2026-08-26) and is
+#: kept out ANYWAY -- this is the load-bearing half of that change, not an
+#: oversight. approve() and reject() both require `status == 'submitted'`
+#: exactly. Recomputing a pulled requisition would move it to
+#: partially_converted or converted, at which point it can no longer be approved
+#: OR rejected: the approval step would vanish silently, leaving an unauthorised
+#: requisition looking like a completed one. A pulled requisition therefore
+#: stays `submitted` and settles to its true status when approve() recomputes it
+#: -- which is why approve() calls recompute_pr_status BEFORE writing its Rev 0
+#: baseline.
+#:
+#: `tests/unit/test_pr_allocation_rules.py::TestRecomputableExcludesSubmitted`
+#: fails if anyone widens this to match PULLABLE_PR.
 RECOMPUTABLE_PR = ('approved', 'partially_converted', 'converted')
 
 

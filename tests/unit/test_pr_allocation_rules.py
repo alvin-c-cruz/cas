@@ -6,7 +6,8 @@ import pytest
 
 from app import db
 from app.purchase_requests.allocation import (
-    assert_within_open_qty, open_lines_for_branch)
+    PULLABLE_PR, RECOMPUTABLE_PR, assert_within_open_qty, open_lines_for_branch,
+    recompute_pr_status)
 from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 
@@ -104,7 +105,109 @@ class TestThePickerPayload:
         assert open_lines_for_branch(branch_manila.id) == []
 
     def test_a_draft_requisition_is_not_offered(self, db_session, main_branch, pr):
-        """Only approved and partially_converted requisitions may be pulled."""
+        """A draft has not been handed to anybody yet -- there is nothing to buy
+        against. The line between draft and submitted is the whole of what
+        PULLABLE_PR admits (owner decision 2026-08-26)."""
         pr.status = 'draft'
         db_session.commit()
         assert open_lines_for_branch(main_branch.id) == []
+
+
+class TestWhichStatusesMayBePulled:
+    """PULLABLE_PR, one status per test.
+
+    Widened on 2026-08-26 to admit `submitted`, so a staff purchaser can prepare
+    the purchase order while the requisition is still with its approver. The
+    approval control did not move to the picker -- it moved to PO APPROVAL, via
+    unapproved_source_prs(). Pulling is data entry; approving is the control.
+    """
+
+    def _statuses(self, db_session, pr, status):
+        pr.status = status
+        db_session.commit()
+        return open_lines_for_branch(pr.branch_id)
+
+    def test_a_submitted_requisition_is_offered(self, db_session, main_branch, pr):
+        """THE change. Everything else in this class is a control on it."""
+        rows = self._statuses(db_session, pr, 'submitted')
+        assert [r['pr_number'] for r in rows] == ['RULE-1']
+        assert rows[0]['open'] == '20'
+
+    def test_an_approved_requisition_is_still_offered(self, db_session, main_branch, pr):
+        assert len(self._statuses(db_session, pr, 'approved')) == 1
+
+    def test_a_partially_converted_requisition_is_still_offered(
+            self, db_session, main_branch, pr):
+        assert len(self._statuses(db_session, pr, 'partially_converted')) == 1
+
+    def test_a_rejected_requisition_is_not_offered(self, db_session, main_branch, pr):
+        """Widening to `submitted` must not drag its two exits along with it:
+        reject() fires FROM submitted, so this is the status the change is most
+        likely to leak into."""
+        assert self._statuses(db_session, pr, 'rejected') == []
+
+    def test_a_cancelled_requisition_is_not_offered(self, db_session, main_branch, pr):
+        assert self._statuses(db_session, pr, 'cancelled') == []
+
+    def test_a_submitted_requisition_under_amendment_is_not_offered(
+            self, db_session, main_branch, admin_user, pr):
+        """The pending-amendment block must survive the widening.
+
+        This is the guard cas 5892bf0a added after the block proved bypassable
+        through the PO form, and it is filtered independently of status
+        (`pr_ids_blocked_by_pending_amendment`) precisely because status cannot
+        express it. Pinned on a SUBMITTED requisition -- a status that could not
+        reach this filter before today -- so the two rules are known to compose
+        rather than assumed to.
+
+        Unreachable through the UI at present (AMEND_STATUSES excludes
+        `submitted`, so no amendment request can be raised against one), which
+        is why the row is written directly. Defence in depth: the filter is
+        status-agnostic by design, and this pins that it stays so.
+        """
+        from app.purchase_requests.amendment_models import (
+            PurchaseRequestAmendmentRequest as Req)
+        pr.status = 'submitted'
+        db_session.add(Req(purchase_request_id=pr.id, branch_id=pr.branch_id,
+                           requested_by_id=admin_user.id,
+                           request_reason='Quantity was misread off the paper form.',
+                           proposed_json='{}', status=Req.STATUS_PENDING))
+        db_session.commit()
+        assert open_lines_for_branch(main_branch.id) == []
+
+
+class TestRecomputableExcludesSubmitted:
+    """The load-bearing half of the 2026-08-26 widening.
+
+    PULLABLE_PR gained `submitted`; RECOMPUTABLE_PR deliberately did NOT. These
+    two tuples now disagree on purpose, which is exactly the kind of asymmetry a
+    later reader tidies up -- so it is pinned, with the consequence spelled out.
+    """
+
+    def test_recompute_leaves_a_pulled_submitted_requisition_submitted(
+            self, db_session, main_branch, admin_user, pr):
+        """Behavioural. Fully order a submitted requisition, recompute, and it
+        must still be `submitted` -- still approvable, still rejectable."""
+        pr.status = 'submitted'
+        db_session.commit()
+        _order(db_session, main_branch, admin_user, pr.line_items[0], 20)
+        assert recompute_pr_status(pr) == 'submitted'
+        assert pr.status == 'submitted'
+
+    def test_submitted_is_absent_from_the_tuple(self):
+        """Structural, and the one that names the damage.
+
+        If `submitted` is ever added here, a pulled requisition recomputes to
+        partially_converted/converted -- and since approve() and reject() both
+        require status == 'submitted' exactly, it can then be neither approved
+        nor rejected. The approval step disappears with no error anywhere.
+        """
+        assert 'submitted' not in RECOMPUTABLE_PR
+
+    def test_the_two_tuples_disagree_on_exactly_one_status(self):
+        """PULLABLE_PR minus RECOMPUTABLE_PR is {'submitted'} and nothing else.
+
+        Guards the asymmetry from BOTH directions: widening RECOMPUTABLE_PR
+        empties this set, and widening PULLABLE_PR any further grows it.
+        """
+        assert set(PULLABLE_PR) - set(RECOMPUTABLE_PR) == {'submitted'}
