@@ -234,7 +234,7 @@ def print_entry(id):
             entry=entry,
             lines=entry.lines.order_by(JournalEntryLine.line_number).all(),
             layout=get_layout(entry.branch_id),
-            can_edit_layout=current_user.has_full_access,
+            can_edit_layout=current_user.can_edit_print_layout,
             field_labels=FIELD_LABELS, column_labels=COLUMN_LABELS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, date_labels=date_labels,
@@ -254,7 +254,7 @@ def print_entry(id):
 @login_required
 def save_jv_print_layout():
     """Persist the JV pre-printed layout JSON (full-access only)."""
-    if not current_user.has_full_access:
+    if not current_user.can_edit_print_layout:
         abort(403)
     data = request.get_json(silent=True) or {}
     clean = save_layout(data, current_user.username, session.get('selected_branch_id'))

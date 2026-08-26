@@ -1336,7 +1336,7 @@ def print_crv(id):
         return render_template(
             'cash_receipts/print_preprinted.html', crv=crv,
             je_entries=je_entries, company=company, printed_at=ph_now(),
-            layout=get_layout(crv.branch_id), can_edit_layout=current_user.has_full_access,
+            layout=get_layout(crv.branch_id), can_edit_layout=current_user.can_edit_print_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
@@ -1351,7 +1351,7 @@ def print_crv(id):
 @login_required
 def save_crv_print_layout():
     """Persist the CRV pre-printed layout JSON (full-access: admin or Chief Accountant)."""
-    if not current_user.has_full_access:
+    if not current_user.can_edit_print_layout:
         abort(403)
     from app.cash_receipts.preprinted_layout import save_layout
     data = request.get_json(silent=True) or {}

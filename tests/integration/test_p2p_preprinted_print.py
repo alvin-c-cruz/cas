@@ -170,9 +170,12 @@ class TestTheLoginHelperSwitchesIdentity:
     directly."""
 
     def test_a_second_login_changes_who_the_server_serves(
-            self, client, db_session, admin_user, staff_user, branch_manila,
+            self, client, db_session, admin_user, viewer_user, branch_manila,
             approved_po):
-        _grant_po_access(staff_user, branch_manila, db_session)
+        # admin vs VIEWER, not vs staff: staff may edit layouts since 2026-08-26,
+        # so the two would render identically and this would stop observing the
+        # identity switch it exists to prove.
+        _grant_po_access(viewer_user, branch_manila, db_session)
         AppSettings.set_setting('po_print_form', 'preprinted')
         db_session.commit()
         # A request MUST run as admin BEFORE the switch: `g._login_user` is populated
@@ -181,7 +184,7 @@ class TestTheLoginHelperSwitchesIdentity:
         _login(client, admin_user, branch_manila)
         assert 'data-can-edit="true"' in client.get(
             f'/purchase-orders/{approved_po.id}/print').data.decode()
-        _login(client, staff_user, branch_manila)
+        _login(client, viewer_user, branch_manila)
         assert 'data-can-edit="false"' in client.get(
             f'/purchase-orders/{approved_po.id}/print').data.decode(), \
             '_login did not switch identity -- still served as the first user'
@@ -293,16 +296,19 @@ class TestPurchaseOrderPrintForm:
                 f'{key} rendered without its declared designer label: {tag}'
 
     def test_a_non_full_access_user_is_offered_no_edit_layout_button(
-            self, client, db_session, staff_user, branch_manila, approved_po):
-        """`can_edit_layout` is has_full_access (admin/chief accountant) -- the same
-        rule save_print_layout enforces with a 403. Not a security hole on its own,
-        but a staff user shown an 'Edit Layout' button would drag a layout around and
-        discover only at Save that the server refuses it. Mutating the flag to True
-        left the suite green."""
-        _grant_po_access(staff_user, branch_manila, db_session)
+            self, client, db_session, viewer_user, branch_manila, approved_po):
+        """`can_edit_layout` mirrors whatever save_print_layout enforces -- a user
+        shown an 'Edit Layout' button they cannot save would drag a layout around
+        and discover the refusal only at Save.
+
+        The subject is a VIEWER since 2026-08-26: staff and accountants may now
+        edit layouts (owner decision), so the old staff-based version of this
+        test pinned the superseded rule. Mutating the flag to True left the suite
+        green, which is why this exists at all."""
+        _grant_po_access(viewer_user, branch_manila, db_session)
         AppSettings.set_setting('po_print_form', 'preprinted')
         db_session.commit()
-        _login(client, staff_user, branch_manila)
+        _login(client, viewer_user, branch_manila)
         resp = client.get(f'/purchase-orders/{approved_po.id}/print')
         assert resp.status_code == 200
         body = resp.data.decode()
@@ -739,21 +745,23 @@ class TestLayoutSave:
         assert resp.status_code == 200
         assert resp.get_json()['layout']['fields']['po_no']['w'] == 250
 
-    def test_a_staff_user_is_refused(self, client, db_session, staff_user, branch_manila):
+    def test_a_viewer_is_refused(self, client, db_session, viewer_user, branch_manila):
         """Layout edits change what prints on a client's real stationery.
 
-        The staff user is given the purchase_orders module permission and the PO's
-        branch FIRST: without either, enforce_module_access / validate_branch_session
-        redirect before purchase_orders.save_print_layout ever runs, and the test
-        would 'pass' on a 302 that says nothing about the view's own role guard
+        A VIEWER, not staff: staff and accountants may edit layouts since
+        2026-08-26 (owner decision), so a staff-based refusal test would pin
+        the superseded rule. The role still needs the module permission and
+        the branch FIRST -- without either, enforce_module_access /
+        validate_branch_session redirect before the view's own role guard
+        ever runs, and the test would 'pass' on a 302 that says nothing
         (memory feedback-outer-gate-masks-inner-guard)."""
-        perms = staff_user.get_book_permissions()
+        perms = viewer_user.get_book_permissions()
         perms.update({'purchase_orders': True, 'products': True})
-        staff_user.set_book_permissions(perms)
-        if branch_manila not in staff_user.branches:
-            staff_user.branches.append(branch_manila)
+        viewer_user.set_book_permissions(perms)
+        if branch_manila not in viewer_user.branches:
+            viewer_user.branches.append(branch_manila)
         db_session.commit()
-        _login(client, staff_user, branch_manila)
+        _login(client, viewer_user, branch_manila)
         assert client.post('/purchase-orders/print-layout', json={}).status_code == 403
 
 
@@ -1208,15 +1216,19 @@ class TestPurchaseRequisitionPrintForm:
                 f'{key} rendered without its declared designer label: {tag}'
 
     def test_a_non_full_access_user_is_offered_no_edit_layout_button(
-            self, client, db_session, staff_user, branch_manila, approved_pr):
-        """`can_edit_layout` is has_full_access -- the same rule save_print_layout
-        enforces with a 403. A staff user shown an 'Edit Layout' button would drag a
-        layout around and discover only at Save that the server refuses it."""
-        _grant_module_access(staff_user, branch_manila, db_session,
+            self, client, db_session, viewer_user, branch_manila, approved_pr):
+        """`can_edit_layout` mirrors whatever save_print_layout enforces, so a user
+        shown an 'Edit Layout' button they cannot save would drag a layout around
+        and learn of the refusal only at Save.
+
+        The subject is a VIEWER since 2026-08-26: staff and accountants may now
+        edit layouts (owner decision), so a staff-based version of this pins the
+        superseded rule."""
+        _grant_module_access(viewer_user, branch_manila, db_session,
                              'purchase_requests', 'purchase_orders', 'products')
         AppSettings.set_setting('pr_print_form', 'preprinted')
         db_session.commit()
-        _login(client, staff_user, branch_manila)
+        _login(client, viewer_user, branch_manila)
         resp = client.get(f'/purchase-requests/{approved_pr.id}/print')
         assert resp.status_code == 200
         body = resp.data.decode()
@@ -1413,16 +1425,19 @@ class TestPurchaseRequisitionLayoutSave:
                        .data.decode(), 'pr_number')
         assert tag and 'width:250px' in tag, tag
 
-    def test_a_staff_user_is_refused(self, client, db_session, staff_user, branch_manila):
+    def test_a_viewer_is_refused(self, client, db_session, viewer_user, branch_manila):
         """Layout edits change what prints on a client's real stationery.
 
-        The staff user is given the module permissions and the branch FIRST: without
-        either, enforce_module_access / validate_branch_session redirect before
-        purchase_requests.save_print_layout ever runs, and the test would 'pass' on a
-        302 that says nothing about the view's own role guard."""
-        _grant_module_access(staff_user, branch_manila, db_session,
+        A VIEWER, not staff: staff and accountants may edit layouts since
+        2026-08-26 (owner decision), so a staff-based refusal test would pin
+        the superseded rule. The role still needs the module permission and
+        the branch FIRST -- without either, enforce_module_access /
+        validate_branch_session redirect before the view's own role guard
+        ever runs, and the test would 'pass' on a 302 that says nothing
+        (memory feedback-outer-gate-masks-inner-guard)."""
+        _grant_module_access(viewer_user, branch_manila, db_session,
                              'purchase_requests', 'purchase_orders', 'products')
-        _login(client, staff_user, branch_manila)
+        _login(client, viewer_user, branch_manila)
         assert client.post('/purchase-requests/print-layout', json={}).status_code == 403
 
 
@@ -1687,14 +1702,19 @@ class TestReceivingReportPrintForm:
                 f'{key} rendered without its declared designer label: {tag}'
 
     def test_a_non_full_access_user_is_offered_no_edit_layout_button(
-            self, client, db_session, staff_user, branch_manila, approved_rr):
-        """`can_edit_layout` is has_full_access -- the same rule save_print_layout
-        enforces with a 403."""
-        _grant_module_access(staff_user, branch_manila, db_session,
+            self, client, db_session, viewer_user, branch_manila, approved_rr):
+        """`can_edit_layout` mirrors whatever save_print_layout enforces, so a user
+        shown an 'Edit Layout' button they cannot save would drag a layout around
+        and learn of the refusal only at Save.
+
+        The subject is a VIEWER since 2026-08-26: staff and accountants may now
+        edit layouts (owner decision), so a staff-based version of this pins the
+        superseded rule."""
+        _grant_module_access(viewer_user, branch_manila, db_session,
                              'receiving_reports', 'purchase_orders', 'products')
         AppSettings.set_setting('rr_print_form', 'preprinted')
         db_session.commit()
-        _login(client, staff_user, branch_manila)
+        _login(client, viewer_user, branch_manila)
         resp = client.get(f'/receiving-reports/{approved_rr.id}/print')
         assert resp.status_code == 200
         body = resp.data.decode()
@@ -2100,16 +2120,19 @@ class TestReceivingReportLayoutSave:
         assert pr == 'letter', pr
         assert rr == 'continuous', 'the PR save reached the receiving-report layout'
 
-    def test_a_staff_user_is_refused(self, client, db_session, staff_user, branch_manila):
+    def test_a_viewer_is_refused(self, client, db_session, viewer_user, branch_manila):
         """Layout edits change what prints on a client's real stationery.
 
-        The staff user is given the module permissions and the branch FIRST: without
-        either, enforce_module_access / validate_branch_session redirect before
-        receiving_reports.save_print_layout ever runs, and the test would 'pass' on a
-        302 that says nothing about the view's own role guard."""
-        _grant_module_access(staff_user, branch_manila, db_session,
+        A VIEWER, not staff: staff and accountants may edit layouts since
+        2026-08-26 (owner decision), so a staff-based refusal test would pin
+        the superseded rule. The role still needs the module permission and
+        the branch FIRST -- without either, enforce_module_access /
+        validate_branch_session redirect before the view's own role guard
+        ever runs, and the test would 'pass' on a 302 that says nothing
+        (memory feedback-outer-gate-masks-inner-guard)."""
+        _grant_module_access(viewer_user, branch_manila, db_session,
                              'receiving_reports', 'purchase_orders', 'products')
-        _login(client, staff_user, branch_manila)
+        _login(client, viewer_user, branch_manila)
         assert client.post('/receiving-reports/print-layout', json={}).status_code == 403
 
 

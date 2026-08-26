@@ -1098,7 +1098,7 @@ def print_po(id):
             'purchase_orders/print_preprinted.html', po=po, company=company,
             overlay_lines=grouped_lines_for_overlay(po.line_items),
             printed_at=ph_now(), layout=get_layout(po.branch_id),
-            can_edit_layout=current_user.has_full_access,
+            can_edit_layout=current_user.can_edit_print_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
@@ -1117,7 +1117,7 @@ def save_print_layout():
     Mirrors sales_orders.save_print_layout: a layout edit changes what prints on a
     client's real, BIR-registered stationery, so it is deliberately narrower than
     the module's edit-level role rule."""
-    if not current_user.has_full_access:
+    if not current_user.can_edit_print_layout:
         abort(403)
     data = request.get_json(silent=True) or {}
     # The layout is per-branch; the print page requires the selected branch to equal

@@ -147,11 +147,12 @@ def test_note_lines_truncated_on_print(client, db_session, admin_user, main_bran
     assert f'ROW {MAX_NOTE_LINES}' not in body
 
 
-def test_save_layout_requires_full_access(client, db_session, admin_user, staff_user, main_branch):
-    staff_user.set_branches([main_branch])
-    staff_user.set_book_permissions({'delivery_receipts': True})
+def test_save_layout_refuses_a_viewer(client, db_session, admin_user, viewer_user, main_branch):
+    """the negative case is now `viewer`: staff and accountants may edit layouts since 2026-08-26 (owner decision), so a staff-based refusal test would pin the OLD rule."""
+    viewer_user.set_branches([main_branch])
+    viewer_user.set_book_permissions({'delivery_receipts': True})
     db_session.commit()
-    _login(client, 'staff', 'staff123')
+    _login(client, 'viewer', 'viewer123')
     resp = client.post('/delivery-receipts/print-layout', json={'paper': 'letter'})
     assert resp.status_code == 403
 

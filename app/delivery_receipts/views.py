@@ -470,7 +470,7 @@ def print_dr(id):
         return render_template(
             'delivery_receipts/print_preprinted.html', dr=dr, company=company,
             printed_at=ph_now(), layout=get_layout(dr.branch_id),
-            can_edit_layout=current_user.has_full_access,
+            can_edit_layout=current_user.can_edit_print_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
@@ -487,7 +487,7 @@ def print_dr(id):
 @login_required
 def save_dr_print_layout():
     """Persist the pre-printed layout JSON (full-access: admin or Chief Accountant)."""
-    if not current_user.has_full_access:
+    if not current_user.can_edit_print_layout:
         abort(403)
     data = request.get_json(silent=True) or {}
     # The layout is per-branch; the print page requires the selected branch to equal

@@ -235,10 +235,11 @@ class TestApPrintRoutes:
         assert 'pp-canvas' not in body             # NOT the pre-printed canvas
         assert 'ACCOUNTS PAYABLE VOUCHER' in body  # the standard form header
 
-    def test_save_layout_requires_full_access(
-            self, client, db_session, staff_user, main_branch):
-        staff_user.set_branches([main_branch]); db_session.commit()
-        login(client, username='staff', password='staff123')
+    def test_save_layout_refuses_a_viewer(
+            self, client, db_session, viewer_user, main_branch):
+        """the negative case is now `viewer`: staff and accountants may edit layouts since 2026-08-26 (owner decision), so a staff-based refusal test would pin the OLD rule."""
+        viewer_user.set_branches([main_branch]); db_session.commit()
+        login(client, username='viewer', password='viewer123')
         resp = client.post('/accounts-payable/print-layout',
                            json={'fields': {'apv_no': {'x': 5, 'y': 5}}})
         assert resp.status_code == 403

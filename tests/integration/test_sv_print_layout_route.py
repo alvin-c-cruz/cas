@@ -24,8 +24,9 @@ def test_admin_saves_layout(client, db_session, admin_user, main_branch):
     assert stored['fields']['invoice_no']['x'] == 333
 
 
-def test_non_admin_forbidden(client, db_session, accountant_user, main_branch):
-    login(client, 'accountant', 'accountant123')
+def test_a_viewer_is_forbidden(client, db_session, viewer_user, main_branch):
+    """the negative case is now `viewer`: staff and accountants may edit layouts since 2026-08-26 (owner decision), so a staff-based refusal test would pin the OLD rule -- an accountant now saves successfully, so this pinned the old rule."""
+    login(client, 'viewer', 'viewer123')
     resp = client.post(URL, json={'fields': {}})
     assert resp.status_code in (302, 403)               # gated
     assert AppSettings.get_setting(LAYOUT_SETTING_KEY) is None   # nothing written

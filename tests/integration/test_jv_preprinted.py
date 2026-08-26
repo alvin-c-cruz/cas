@@ -66,9 +66,10 @@ def test_print_hidden_is_refused(client, db_session, admin_user, main_branch):
     assert resp.status_code in (302, 403)  # refused (mirror print_ap's hidden handling)
 
 
-def test_save_layout_requires_full_access(client, db_session, admin_user, staff_user, main_branch):
-    staff_user.set_branches([main_branch]); db_session.commit()
-    _login(client, 'staff', 'staff123')
+def test_save_layout_refuses_a_viewer(client, db_session, admin_user, viewer_user, main_branch):
+    """the negative case is now `viewer`: staff and accountants may edit layouts since 2026-08-26 (owner decision), so a staff-based refusal test would pin the OLD rule."""
+    viewer_user.set_branches([main_branch]); db_session.commit()
+    _login(client, 'viewer', 'viewer123')
     resp = client.post('/journal-entries/print-layout', json={'paper': 'letter'})
     assert resp.status_code == 403
 

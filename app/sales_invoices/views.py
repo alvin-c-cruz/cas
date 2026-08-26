@@ -1430,7 +1430,7 @@ def print_invoice(id):
         # the invoice branch id the designer echoes back in the POST body
         # against session['selected_branch_id'] at SAVE time (catches the
         # selected branch changing between this render and that POST).
-        can_edit_layout = (current_user.has_full_access
+        can_edit_layout = (current_user.can_edit_print_layout
                            and invoice.branch_id == session.get('selected_branch_id'))
         return render_template(
             'sales_invoices/print_preprinted.html', invoice=invoice,
@@ -1449,7 +1449,7 @@ def print_invoice(id):
 @login_required
 def save_print_layout():
     """Persist the pre-printed layout JSON (full-access: admin or Chief Accountant)."""
-    if not current_user.has_full_access:
+    if not current_user.can_edit_print_layout:
         abort(403)
     data = request.get_json(silent=True) or {}
     # The layout is per-branch, keyed on session['selected_branch_id']. This route

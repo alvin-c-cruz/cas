@@ -621,7 +621,7 @@ def payslip_view(id, line_id):
         return render_template(
             'payroll/payslip_print_preprinted.html', run=run, line=line, ytd=ytd,
             company=company, printed_at=ph_now(),
-            layout=get_layout(run.branch_id), can_edit_layout=current_user.has_full_access,
+            layout=get_layout(run.branch_id), can_edit_layout=current_user.can_edit_print_layout,
             field_labels=FIELD_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, signatory_ids=TEXT_KEYS,
@@ -634,14 +634,33 @@ def payslip_view(id, line_id):
 @login_required
 @accountant_or_admin_required
 def save_payslip_print_layout():
-    """Persist the payslip pre-printed layout JSON (full-access: admin or Chief
-    Accountant). Mirrors sales_invoices.save_print_layout's shape exactly: a JSON
-    POST from payslip_preprinted_designer.js (which reads resp.ok), guarded by
-    has_full_access -> 403, returning the sanitized layout as JSON. The layout is
-    per-branch; viewing the print page requires the selected branch to equal the
-    run's branch (_get_run_or_404), so the session branch is the run's branch."""
+    """Persist the payslip pre-printed layout JSON.
+
+    Mirrors sales_invoices.save_print_layout's shape exactly: a JSON POST from
+    payslip_preprinted_designer.js (which reads resp.ok), returning the sanitized
+    layout as JSON. The layout is per-branch; viewing the print page requires the
+    selected branch to equal the run's branch (_get_run_or_404), so the session
+    branch is the run's branch.
+
+    TWO gates, and the outer one is the strict one. The body check moved to
+    can_edit_print_layout with the other ten documents (2026-08-26), but
+    @accountant_or_admin_required stays -- so in practice this is
+    accountant-or-above, NOT the staff-inclusive rule the other ten now use.
+
+    That is deliberate. The payslip VIEW route carries the same decorator, so a
+    staff user cannot open a payslip at all; letting them change what prints on
+    every payslip in the branch while never seeing one would be a gap, not
+    consistency. The decorator is also shared by four other payroll routes
+    (posting and cancelling runs), so loosening it here would loosen those.
+
+    What the widening DID fix here is a real contradiction: the decorator
+    admitted accountants and the body then refused them with has_full_access, so
+    an accountant passed the door and was 403'd inside. See
+    tests/integration/test_print_layout_permission_sweep.py::
+    TestPayrollKeepsItsStricterDoor.
+    """
     from app.payroll.preprinted_layout import save_layout
-    if not current_user.has_full_access:
+    if not current_user.can_edit_print_layout:
         abort(403)
     data = request.get_json(silent=True) or {}
     clean = save_layout(session.get('selected_branch_id'), data,
