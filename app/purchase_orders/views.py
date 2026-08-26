@@ -575,6 +575,10 @@ def create():
 @purchase_orders_bp.route('/purchase-orders/<int:id>')
 @login_required
 def view(id):
+    # Function-local, matching _assert_payload_allocations above: this module and
+    # purchase_requests.allocation reference each other, so the import stays
+    # inside the call rather than at module load.
+    from app.purchase_requests.allocation import unapproved_source_prs
     po = _get_po_or_404(id)
     created_by_user = (db.session.get(User, po.created_by_id) if po.created_by_id else None)
     approved_by_user = (db.session.get(User, po.approved_by_id) if po.approved_by_id else None)
@@ -589,6 +593,17 @@ def view(id):
                            po_print_form=AppSettings.get_setting('po_print_form', 'current'),
                            po_print_access=AppSettings.get_setting('po_print_access',
                                                                    'approved_only'),
+                           # Why approval is refused, resolved HERE so the page
+                           # and approve()'s own guard read the same predicate
+                           # rather than two spellings of it. Only asked while
+                           # approval is still possible: the banner explains a
+                           # block on approving, so on an already-approved or
+                           # cancelled order it would warn about nothing the
+                           # reader can act on. A source CAN be cancelled after
+                           # the fact, so that case is real, not theoretical.
+                           unapproved_sources=(
+                               unapproved_source_prs(po)
+                               if po.status in ('draft', 'submitted') else []),
                            revisions=_revision_panel_rows(po))
 
 

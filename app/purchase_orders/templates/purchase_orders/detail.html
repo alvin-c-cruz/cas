@@ -38,6 +38,38 @@
   </div>
 </div>
 
+{% if unapproved_sources %}
+{# Why approve() will refuse, said BEFORE the click. Mirrors the requisition's
+   own pending-amendment alert (purchase_requests/detail.html:48).
+
+   Shown to everyone who can open the order, not only approvers: the staff
+   purchaser who pulled the line is the one who has to chase the signature, and
+   she is precisely the person who cannot approve.
+
+   The Approve button below is deliberately NOT hidden. The rule this template
+   follows elsewhere -- never offer a button the route will refuse, "the
+   delete_approved_email shape" -- is about a PERMANENTLY dead control. This
+   block is transient and is cleared by somebody else approving the requisition,
+   exactly like the requisition's pending-amendment block, which likewise leaves
+   Convert in place. Hiding the button would also read as "you lack permission",
+   which is the wrong diagnosis; the banner gives the right one. #}
+<div class="alert alert-warning unapproved-source-alert">
+  {# ONE child -- see the flex note in production_runs/detail.html. #}
+  <div>
+    This Purchase Order draws on
+    {% if unapproved_sources|length == 1 %}a Purchase Requisition that has
+    {% else %}Purchase Requisitions that have{% endif %}
+    not been approved:
+    {% for pr in unapproved_sources %}
+    <strong>{{ pr.pr_number }}</strong> ({{ pr.status.replace('_', ' ') }}){% if not loop.last %}, {% endif %}
+    {%- endfor %}.
+    It cannot be approved until
+    {% if unapproved_sources|length == 1 %}it is{% else %}they are{% endif %}
+    approved, or the affected lines are removed.
+  </div>
+</div>
+{% endif %}
+
 <div class="card"><div class="card-body">
   <div class="detail-grid">
     <div><strong>Vendor:</strong> {{ po.vendor_name }}</div>
