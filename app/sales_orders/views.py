@@ -13,7 +13,8 @@ from flask_login import login_required, current_user
 
 from app import db
 from app.sales_orders.models import (
-    SalesOrder, SalesOrderItem, SIGNATORY_FIELDS, next_so_signatories_for)
+    SalesOrder, SalesOrderItem, SIGNATORY_FIELDS, SIGNATORY_ROLES,
+    next_so_signatories_for)
 from app.common.signatories import assign as assign_signatories
 from app.branches.models import Branch
 from app.sales_orders.forms import SalesOrderForm, SalesOrderAmendForm
@@ -931,8 +932,13 @@ def print_so(id):
             signatory_ids=TEXT_KEYS,
             date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     current_revision = latest_revision(so.id)
+    # Zipped here rather than in the template so the roles and the field
+    # names stay one list -- the template used to carry its own copy.
+    signatories = [(role.upper(), getattr(so, field) or '')
+                   for field, role in zip(SIGNATORY_FIELDS, SIGNATORY_ROLES)]
     return render_template('sales_orders/print.html', so=so,
                            company=company, printed_at=ph_now(),
+                           signatories=signatories,
                            current_revision=current_revision)
 
 

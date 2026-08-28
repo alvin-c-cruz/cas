@@ -63,6 +63,7 @@ class SalesOrder(RowVersioned, db.Model):
     # the company-wide setting PR and RR read. Blank is meaningful: it prints an
     # empty ruled line to sign by hand, and is never back-filled.
     prepared_by = db.Column(db.String(100))
+    checked_by = db.Column(db.String(100))
     noted_by = db.Column(db.String(100))
     approved_by = db.Column(db.String(100))
 
@@ -192,14 +193,23 @@ class SalesOrderItem(db.Model):
         }
 
 
-#: The SO's printed signatory slots. Roles match the Purchase Requisition's trio
-#: (owner directive 2026-08-21) -- NOT the PO's, whose middle slot is "Checked by".
-SIGNATORY_FIELDS = ('prepared_by', 'noted_by', 'approved_by')
-SIGNATORY_ROLES = ('Prepared by', 'Noted by', 'Approved by')
+#: The SO's printed signatory slots, in SIGNING order -- which is also PRINT
+#: order, so this tuple is the single source for both.
+#:
+#: FOUR since 2026-08-28 (owner request): PhilGen's Sales Order pad carries
+#: Prepared / Checked / Noted / Approved, and `checked_by` was the one missing.
+#: Applied app-wide by owner decision, CAS being one codebase across every
+#: instance -- an instance that does not use the slot leaves it blank, and a
+#: blank prints the same ruled line the other three already print.
+#:
+#: This started as the Purchase Requisition's trio (owner directive
+#: 2026-08-21) and is now a superset of both it and the PO's.
+SIGNATORY_FIELDS = ('prepared_by', 'checked_by', 'noted_by', 'approved_by')
+SIGNATORY_ROLES = ('Prepared by', 'Checked by', 'Noted by', 'Approved by')
 
 
 def next_so_signatories_for(user_id):
-    """{'prepared_by': ..., 'noted_by': ..., 'approved_by': ...} carried forward
+    """Every SIGNATORY_FIELDS slot, carried forward
     from THIS user's own last sales order.
 
     Scoped by user, mirroring next_po_signatories_for: the owner chose the

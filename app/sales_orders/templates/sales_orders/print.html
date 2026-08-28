@@ -240,10 +240,11 @@
      "Name & Date" hint so the line is still signed by hand. Never a fabricated
      name, and never one derived from created_by/confirmed_by -- those are CAS
      users while the designated signatories frequently are not. #}
+  {# Driven from SIGNATORY_ROLES/FIELDS, never a second inline list: the roles
+     were hardcoded here as well as in models.py, so the fourth slot would have
+     printed three boxes while the form offered four. #}
   <div class="sig-row">
-    {% for role, name in [('PREPARED BY', so.prepared_by),
-                          ('NOTED BY', so.noted_by),
-                          ('APPROVED BY', so.approved_by)] %}
+    {% for role, name in signatories %}
     <div class="sig-box">
       <div class="sig-title">{{ role }}</div>
       <div class="sig-line{% if name %} sig-line--named{% endif %}">{{ name or 'Name & Date' }}</div>

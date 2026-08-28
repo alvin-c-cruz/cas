@@ -1,15 +1,17 @@
-"""The Sales Order printout's three signatory captions.
+"""The Sales Order printout's FOUR signatory captions.
 
-Owner directive 2026-08-21: the SO's signatories are Prepared By / Noted By /
-Approved By -- the same trio the Purchase Requisition already prints. Before
-this, the SO printed PREPARED BY / APPROVED BY / RECEIVED BY, which both named
-a role the owner does not use (RECEIVED BY) and put Approved in the middle slot.
+Owner request 2026-08-28: Prepared / Checked / Noted / Approved -- PhilGen's
+Sales Order pad has four blocks and `checked_by` was the missing one. It sits
+SECOND, the order the blocks are signed in.
 
-These are blank ruled lines signed by hand: the SO has no signatory COLUMNS and
-no company setting, unlike PR/RR/PO. So this is purely what the printout says,
-and the test asserts the captions IN ORDER -- a presence-only assertion would
-still pass if two captions swapped slots, which is exactly the defect being
-fixed.
+History, because this list has now moved twice. The SO originally printed
+PREPARED BY / APPROVED BY / RECEIVED BY, which named a role the owner does not
+use and put Approved in the middle. Owner directive 2026-08-21 made it the
+Purchase Requisition's trio; 2026-08-28 added Checked, so the SO is now a
+superset of both the PR's and the PO's sets.
+
+The captions are asserted IN ORDER -- a presence-only assertion would still
+pass if two captions swapped slots, which was the original defect.
 """
 import datetime
 import pytest
@@ -23,7 +25,7 @@ from tests.integration._so_helpers import (
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
-EXPECTED_ROLES = ['PREPARED BY', 'NOTED BY', 'APPROVED BY']
+EXPECTED_ROLES = ['PREPARED BY', 'CHECKED BY', 'NOTED BY', 'APPROVED BY']
 RETIRED_ROLE = 'RECEIVED BY'
 
 
@@ -49,7 +51,7 @@ def _sig_titles(html):
     return re.findall(r'<div class="sig-title">([^<]+)</div>', html)
 
 
-def test_so_print_signatory_captions_are_prepared_noted_approved(
+def test_so_print_signatory_captions_are_prepared_checked_noted_approved(
         client, db_session, admin_user, main_branch, sales_orders_module_enabled):
     so = _so_with_a_line(db_session, main_branch, 'SO-2026-06-SIG1')
     _login(client, admin_user)
@@ -77,4 +79,4 @@ def test_so_print_no_longer_names_received_by(
     html = client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
 
     assert RETIRED_ROLE not in html
-    assert len(_sig_titles(html)) == 3      # the block DID render -- not a vacuous pass
+    assert len(_sig_titles(html)) == 4      # the block DID render -- not a vacuous pass

@@ -24,7 +24,9 @@ from tests.integration._so_helpers import (
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
+# Four since 2026-08-28 -- `checked_by` joined the set, SECOND.
 SIGS = {'prepared_by': 'MARIA SANTOS',
+        'checked_by': 'ANA LIM',
         'noted_by': 'JUAN DELA CRUZ',
         'approved_by': 'PEDRO REYES'}
 
@@ -55,8 +57,8 @@ def _bare_so(db_session, customer, main_branch, number, created_by_id=None,
 
 # ── the columns ──────────────────────────────────────────────────────────────
 
-def test_create_stores_the_three_signatories(client, db_session, admin_user, main_branch,
-                                             sales_orders_module_enabled):
+def test_create_stores_every_signatory(client, db_session, admin_user, main_branch,
+                                       sales_orders_module_enabled):
     c = _customer(db_session); p = _product(db_session, code='SF-1')
     _login(client, admin_user); _select_branch(client, main_branch.id)
 
@@ -64,8 +66,8 @@ def test_create_stores_the_three_signatories(client, db_session, admin_user, mai
 
     so = SalesOrder.query.filter_by(so_number='SO-SIG-0001').first()
     assert so is not None
-    assert (so.prepared_by, so.noted_by, so.approved_by) == (
-        'MARIA SANTOS', 'JUAN DELA CRUZ', 'PEDRO REYES')
+    assert (so.prepared_by, so.checked_by, so.noted_by, so.approved_by) == (
+        'MARIA SANTOS', 'ANA LIM', 'JUAN DELA CRUZ', 'PEDRO REYES')
 
 
 def test_blank_signatory_is_stored_as_null_not_empty_string(client, db_session, admin_user,
@@ -77,10 +79,12 @@ def test_blank_signatory_is_stored_as_null_not_empty_string(client, db_session, 
     _login(client, admin_user); _select_branch(client, main_branch.id)
 
     _post_so(client, c, p, 'SO-SIG-0002',
-             prepared_by='  MARIA SANTOS  ', noted_by='   ', approved_by='')
+             prepared_by='  MARIA SANTOS  ', checked_by='  ANA LIM  ',
+             noted_by='   ', approved_by='')
 
     so = SalesOrder.query.filter_by(so_number='SO-SIG-0002').first()
     assert so.prepared_by == 'MARIA SANTOS'      # trimmed
+    assert so.checked_by == 'ANA LIM'            # the new slot trims too
     assert so.noted_by is None                   # whitespace-only -> NULL
     assert so.approved_by is None
 
@@ -98,11 +102,13 @@ def test_edit_updates_the_signatories(client, db_session, admin_user, main_branc
         'so_number': 'SO-SIG-0003', 'order_date': '2026-06-15',
         'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
         'notes': '', 'line_items': lines, 'row_version': str(so.row_version),
-        'prepared_by': 'NEW PREPARER', 'noted_by': '', 'approved_by': 'PEDRO REYES',
+        'prepared_by': 'NEW PREPARER', 'checked_by': '', 'noted_by': '',
+        'approved_by': 'PEDRO REYES',
     }, follow_redirects=True)
 
     db_session.refresh(so)
     assert so.prepared_by == 'NEW PREPARER'
+    assert so.checked_by is None          # cleared, not left at the old value
     assert so.noted_by is None            # cleared, not left at the old value
     assert so.approved_by == 'PEDRO REYES'
 
@@ -201,6 +207,7 @@ def test_print_shows_the_stored_names_under_the_right_roles(client, db_session, 
     html = client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
 
     assert _sig_pairs(html) == [('PREPARED BY', 'MARIA SANTOS'),
+                                ('CHECKED BY', 'ANA LIM'),
                                 ('NOTED BY', 'JUAN DELA CRUZ'),
                                 ('APPROVED BY', 'PEDRO REYES')]
 
@@ -208,7 +215,7 @@ def test_print_shows_the_stored_names_under_the_right_roles(client, db_session, 
 def test_print_blank_signatory_is_an_empty_line_not_a_placeholder(client, db_session, admin_user,
                                                                   main_branch,
                                                                   sales_orders_module_enabled):
-    """A pre-feature SO (all NULL) prints three empty ruled lines.
+    """A pre-feature SO (all NULL) prints four empty ruled lines.
 
     There is no company-setting fallback for the SO by owner decision, so NULL
     keeps the original "Name & Date" hint -- never a dash, never a derived user
@@ -221,9 +228,12 @@ def test_print_blank_signatory_is_an_empty_line_not_a_placeholder(client, db_ses
     html = client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
 
     pairs = _sig_pairs(html)
-    assert [role for role, _ in pairs] == ['PREPARED BY', 'NOTED BY', 'APPROVED BY']
+    assert [role for role, _ in pairs] == ['PREPARED BY', 'CHECKED BY',
+                                           'NOTED BY', 'APPROVED BY']
     # The pre-existing hand-sign hint survives; it is a CAPTION, not a name.
-    assert [name for _, name in pairs] == ['Name &amp; Date'] * 3
+    # This is also the shape EVERY other instance's orders keep: four blanks,
+    # four ruled lines, nothing missing.
+    assert [name for _, name in pairs] == ['Name &amp; Date'] * 4
     # Scoped to the APPLIED attribute, not the bare class name: the CSS rule
     # `.sig-box .sig-line--named` lives in the page's own <style> block, so a
     # substring assertion on the class name alone can never fail. (CLAUDE.md:

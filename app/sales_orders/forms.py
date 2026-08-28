@@ -58,10 +58,11 @@ class SalesOrderForm(RowVersionFormMixin, FlaskForm):
     # ruled line to sign by hand, which is the correct output for an order whose
     # signatories are not yet decided -- never a placeholder.
     prepared_by = StringField('Prepared by', validators=[Optional(), Length(max=100)])
+    checked_by = StringField('Checked by', validators=[Optional(), Length(max=100)])
     noted_by = StringField('Noted by', validators=[Optional(), Length(max=100)])
     approved_by = StringField('Approved by', validators=[Optional(), Length(max=100)])
 
-    SIGNATORY_FIELDS = ('prepared_by', 'noted_by', 'approved_by')
+    SIGNATORY_FIELDS = ('prepared_by', 'checked_by', 'noted_by', 'approved_by')
 
     # Hidden JSON blob carrying the line items submitted from the JS line-item grid.
     line_items_json = HiddenField('Line Items JSON')
