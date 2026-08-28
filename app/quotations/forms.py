@@ -30,7 +30,8 @@ class QuotationForm(RowVersionFormMixin, FlaskForm):
 
     payment_terms = SelectField('Payment Terms', validators=[DataRequired()], choices=[
         ('Net 15', 'Net 15'), ('Net 30', 'Net 30'), ('Net 45', 'Net 45'),
-        ('Net 60', 'Net 60'), ('Cash on Delivery', 'Cash on Delivery'),
+        ('Net 60', 'Net 60'), ('Net 90', 'Net 90'),
+        ('Cash on Delivery', 'Cash on Delivery'),
         ('Advance Payment', 'Advance Payment'),
     ], default='Net 30')
 

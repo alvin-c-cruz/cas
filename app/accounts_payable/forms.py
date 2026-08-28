@@ -65,6 +65,7 @@ class AccountsPayableForm(RowVersionFormMixin, FlaskForm):
         ('Net 30', 'Net 30'),
         ('Net 45', 'Net 45'),
         ('Net 60', 'Net 60'),
+        ('Net 90', 'Net 90'),
         ('Cash on Delivery', 'Cash on Delivery'),
         ('Advance Payment', 'Advance Payment')
     ], default='Net 30')
