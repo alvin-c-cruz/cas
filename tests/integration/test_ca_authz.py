@@ -241,8 +241,17 @@ def test_ca_cannot_change_own_role(client, db_session, chief_accountant_user, ma
 
 
 # ---------------------------------------------------------------------------
-# Task 7 — SI save_print_layout: CA allowed (accounting-doc config); accountant
-# and staff forbidden (403).
+# SI save_print_layout — who may reposition fields on a pre-printed overlay.
+#
+# OWNER DECISION 2026-08-26 (D4) WIDENED THIS from `has_full_access` to
+# `User.can_edit_print_layout` = admin | chief_accountant | accountant | staff.
+# The two tests below asserted 403 for accountant and staff, which was correct
+# until that decision and wrong after it: they went RED the moment the code got
+# BETTER, and stayed red on main, pinning the superseded rule.
+#
+# `viewer` is the negative case now. It is not decoration -- without it this
+# block would assert only that the route says yes, and deleting the guard
+# outright would leave every test green.
 # ---------------------------------------------------------------------------
 
 def test_ca_can_save_print_layout(client, db_session, chief_accountant_user, main_branch):
@@ -252,17 +261,29 @@ def test_ca_can_save_print_layout(client, db_session, chief_accountant_user, mai
     assert resp.status_code == 200
 
 
-def test_accountant_forbidden_from_save_print_layout(client, db_session, accountant_user, main_branch):
+def test_accountant_can_save_print_layout(client, db_session, accountant_user, main_branch):
+    """Widened by D4. Was asserted forbidden until 2026-08-26."""
     _login(client, accountant_user)
     _select_branch(client, main_branch.id)
     resp = client.post('/sales-invoices/print-layout', json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
-def test_staff_forbidden_from_save_print_layout(client, db_session, staff_user, main_branch):
+def test_staff_can_save_print_layout(client, db_session, staff_user, main_branch):
+    """Widened by D4 -- staff are the people who actually align the pads."""
     staff_user.set_branches([main_branch])
     db.session.commit()
     _login(client, staff_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/sales-invoices/print-layout', json={})
+    assert resp.status_code == 200
+
+
+def test_viewer_forbidden_from_save_print_layout(client, db_session, viewer_user, main_branch):
+    """THE CONTROL. D4 widened the rule; it did not remove it."""
+    viewer_user.set_branches([main_branch])
+    db.session.commit()
+    _login(client, viewer_user)
     _select_branch(client, main_branch.id)
     resp = client.post('/sales-invoices/print-layout', json={})
     assert resp.status_code == 403
