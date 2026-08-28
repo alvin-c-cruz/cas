@@ -197,6 +197,12 @@
     "reason": null,
     "waived": false
   },
+  "be40cfb12b74ef37c8b17e770336ccf2b9553004": {
+    "branch": "feat/effective-access-viewer",
+    "date": "2026-08-28",
+    "reason": null,
+    "waived": false
+  },
   "c457d1b3da3463e53083c90f5aab14abf32ec07f": {
     "branch": "feat/rr-vendor-first",
     "date": "2026-08-16",
