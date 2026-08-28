@@ -426,6 +426,30 @@ def list_users():
 # edit_user below. There is intentionally no /users/create route.
 
 
+@users_bp.route('/users/<int:id>/effective-access')
+@login_required
+@admin_panel_required
+def effective_access_view(id):
+    """What *id* can actually reach, and why. Admin-only, GET-only, read-only.
+
+    Answers the question an admin previously could not: a permission grant can
+    be confirmed in the database and in this form, and neither shows what the
+    app will DO for that user -- a gate can deny for its own reason at a layer
+    the database never exposes. The two obvious ways to check were both closed:
+    logging in as them needs their password, and resetting it to look changes a
+    live user's credentials for a convenience (and locks them out until told).
+
+    So: no impersonation, no session switching, no credential handling. It reads
+    the same gate the request would and explains the answer. See
+    app/users/effective_access.py for why the verdict is delegated, not copied.
+    """
+    from app.users.effective_access import effective_access, grouped_rows
+    user = db.get_or_404(User, id)
+    result = effective_access(user)
+    return render_template('users/effective_access.html', target=user,
+                           result=result, groups=grouped_rows(result['rows']))
+
+
 @users_bp.route('/users/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 @admin_panel_required

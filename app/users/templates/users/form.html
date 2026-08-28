@@ -153,6 +153,15 @@
                 <div class="form-group">
                     <label class="form-label">Access Permissions</label>
                     <div class="form-hint" style="margin-bottom: 12px;">Select which modules this user can access. Admins have access to everything by default.</div>
+                    {# A ticked box here is not the same as access: the module can be off
+                       company-wide, or ungrantable, or the user may hold no branch. The
+                       viewer resolves what the app will actually do. #}
+                    {% if user %}
+                    <div class="form-hint" style="margin-bottom: 12px;">
+                        <a href="{{ url_for('users.effective_access_view', id=user.id) }}">Preview effective access →</a>
+                        &nbsp;What {{ user.username }} can actually reach, and why.
+                    </div>
+                    {% endif %}
 
                     <label class="checkbox-label" style="margin-bottom: 14px;">
                         <input type="checkbox" id="book_select_all">

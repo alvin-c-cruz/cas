@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Effective Access — {{ target.username }}{% endblock %}
+{% block page_title %}Effective Access{% endblock %}
+
+{% block content %}
+{#
+  BUG-NO-ADMIN-PATH-TO-VERIFY-ANOTHER-USERS-ACCESS, owner option 2.
+  Read-only. Built entirely from existing style.css classes on purpose: adding a
+  selector here would touch a regression-map key and force a cache-buster bump
+  across every template that loads it, for a page that needs no new vocabulary.
+  Jinja comments, not HTML ones -- an HTML comment naming a gated module leaks
+  into the response body and defeats absence assertions.
+#}
+
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('users.edit_user', id=target.id) }}" class="btn btn-secondary">
+            <span class="btn-icon">←</span> Back to {{ target.username }}
+        </a>
+        <a href="{{ url_for('users.list_users') }}" class="btn btn-secondary">All Users</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div style="display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start;">
+            <div>
+                <div class="form-hint">Username</div>
+                <div style="font-size:16px;font-weight:600;">{{ target.username }}</div>
+            </div>
+            <div>
+                <div class="form-hint">Full name</div>
+                <div style="font-size:16px;font-weight:600;">{{ target.full_name }}</div>
+            </div>
+            <div>
+                <div class="form-hint">Role</div>
+                <div style="font-size:16px;font-weight:600;">{{ target.role|replace('_', ' ')|title }}</div>
+            </div>
+            <div>
+                <div class="form-hint">Status</div>
+                <div>
+                    {% if target.is_active %}
+                        <span class="badge badge-active">Active</span>
+                    {% else %}
+                        <span class="badge badge-inactive">Inactive</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div>
+                <div class="form-hint">Branches</div>
+                <div style="font-size:16px;font-weight:600;">
+                    {% if result.summary.branches %}
+                        {{ result.summary.branches|join(', ') }}
+                    {% else %}
+                        <span class="badge badge-error">None</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div style="margin-left:auto;text-align:right;">
+                <div style="font-size:24px;font-weight:700;line-height:1.1;">
+                    {{ result.summary.reachable }}<span class="form-hint" style="font-weight:400;"> / {{ result.summary.total }}</span>
+                </div>
+                <div class="form-hint">modules reachable</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if result.notices.no_branch %}
+<div class="alert alert-danger">
+    <strong>{{ target.username }} cannot reach any page.</strong>
+    A user with no assigned branch is redirected to the branch picker on every request,
+    before any module gate is consulted. The permissions below are irrelevant until a
+    branch is assigned.
+</div>
+{% else %}
+<div class="alert alert-success">
+    <strong>Branch assignment OK.</strong>
+    Assigned to {{ result.summary.branches|join(', ') }}, so this user reaches the app and
+    the module gates below apply as shown.
+</div>
+{% endif %}
+
+{% set dead = result.notices.dead_grants %}
+{% set ungrantable = result.notices.ungrantable_but_enabled %}
+{% if dead or ungrantable %}
+<div class="alert alert-warning">
+    <strong>{{ dead|length + ungrantable|length }} notice{{ '' if (dead|length + ungrantable|length) == 1 else 's' }}.</strong>
+    <ul style="margin:8px 0 0;padding-left:20px;">
+        {% for row in dead %}
+        <li>
+            <strong>Dead grant — {{ row.label }}.</strong>
+            This user is granted <code>{{ row.key }}</code>, but the module is switched off
+            for the whole company, so the grant has no effect. Either enable the module or
+            remove the grant, so the permission grid stops implying access that does not exist.
+        </li>
+        {% endfor %}
+        {% for row in ungrantable %}
+        <li>
+            <strong>{{ row.label }} is enabled company-wide but unreachable for this role.</strong>
+            It is an instance-only module — it cannot be granted per user at all, so only
+            Admin and Chief Accountant will ever see it. Nothing is misconfigured.
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Module</th>
+                    <th>Instance package</th>
+                    <th>Per-user grant</th>
+                    <th>Effective</th>
+                    <th>Why</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for area, rows in groups %}
+                <tr>
+                    <td colspan="5" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:11px;">
+                        {{ area }}
+                    </td>
+                </tr>
+                {% for row in rows %}
+                <tr>
+                    <td>
+                        <strong>{{ row.label }}</strong>
+                        <div class="form-hint"><code>{{ row.key }}</code></div>
+                    </td>
+                    <td>
+                        {% if row.instance_enabled %}
+                            <span class="badge badge-active">On</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Off</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not row.grantable %}
+                            <span class="badge badge-error">Not grantable</span>
+                        {% elif row.granted %}
+                            <span class="badge badge-active">Granted</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Not granted</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.effective %}
+                            <span class="badge badge-approved">Yes</span>
+                        {% else %}
+                            <span class="badge badge-inactive">No</span>
+                        {% endif %}
+                    </td>
+                    <td class="form-hint">{{ row.reason }}</td>
+                </tr>
+                {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

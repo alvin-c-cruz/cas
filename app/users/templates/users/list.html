@@ -45,6 +45,7 @@
                     <td>
                         <div class="action-buttons">
                             <a href="{{ url_for('users.edit_user', id=user.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                            <a href="{{ url_for('users.effective_access_view', id=user.id) }}" class="btn-action" title="What this user can actually reach, and why">Access</a>
                             {% if current_user.role == 'admin' and user.id != current_user.id %}
                             <form method="POST" action="{{ url_for('users.delete_user', id=user.id) }}" style="display: inline;" data-confirm="Are you sure you want to delete user {{ user.username }}?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
