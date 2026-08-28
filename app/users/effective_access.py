@@ -41,11 +41,11 @@ REASON_VERDICT = {
 #: has to imply what to DO about it -- which control to reach for -- or the row
 #: is just a red cross with extra words.
 REASON_TEXT = {
-    'no_branch': 'No branch assigned -- blocked before the module gate',
-    'instance_off': 'Module is off company-wide -- this grant has no effect',
+    'no_branch': 'No branch assigned — blocked before the module gate',
+    'instance_off': 'Module is off company-wide — this grant has no effect',
     'full_access': 'Full access by role',
     'granted': 'Granted to this user',
-    'not_grantable': ('Instance-gated only -- cannot be granted per user, so '
+    'not_grantable': ('Instance-gated only — cannot be granted per user, so '
                       'Admin and Chief Accountant only'),
     'not_granted': 'Not granted to this user',
 }
