@@ -17,9 +17,18 @@ widened. A requisition line fully ordered on a submitted order was offered again
 at its full original quantity.
 
 The suite could not see it: every allocation test built its purchase order as
-`draft`, which IS in the tuple. There was no submitted-PO case anywhere. Hence
-TestEveryLifecycleStatusIsClassified below -- the one-word fix is not the
-durable part, the recurrence is.
+`draft`, which IS in the tuple. There was no submitted-PO case anywhere.
+
+THE DURABLE HALF NOW LIVES IN test_lifecycle_tuples_are_classified.py. This
+file kept a TestEveryLifecycleStatusIsClassified class that source-scraped the
+purchase order's lifecycle and demanded COMMITTED_PO classify every status in
+it. That guard was generalised over all ten purchase-area status tuples
+(backlog 304) and MOVED rather than copied: two classifiers over one lifecycle
+would be a second enumeration to drift, which is the exact defect being
+guarded against.
+
+What remains here is the bug's own regression -- the five behaviours a
+submitted order must show and the three the whitelist must still refuse.
 """
 from datetime import date
 from decimal import Decimal
@@ -122,63 +131,3 @@ class TestTheWhitelistStillExcludes:
                                             admin_user, pr_line):
         _order(db_session, main_branch, admin_user, pr_line, 10, 'approved')
         assert pr_line_ordered_qty(pr_line) == Decimal('10')
-
-
-class TestEveryLifecycleStatusIsClassified:
-    """THE DURABLE HALF. The one-word fix is not what stops this recurring.
-
-    `submitted` fell through because a status was added to the purchase order's
-    lifecycle and nobody revisited a tuple in another module that silently
-    enumerates that lifecycle. Nothing failed; the new state was simply invisible.
-
-    This reads the REAL writers out of the source and demands that each one be
-    deliberately classified -- either it counts, or it is named here as
-    excluded-on-purpose. A status added tomorrow fails this test until somebody
-    makes that decision, which is the only thing that generalises.
-    """
-
-    #: Statuses that deliberately do NOT consume requisition quantity, with the
-    #: reason. Anything not here and not in COMMITTED_PO fails the test below.
-    EXCLUDED_ON_PURPOSE = {
-        'cancelled': 'a cancelled order releases its lines -- the reason '
-                     'allocation is derived and never stored',
-    }
-
-    def _statuses_written_by_the_app(self):
-        """Every literal assigned to a PurchaseOrder's status, read from source.
-
-        Deliberately source-scraped rather than compared against a hand-kept
-        constant: a hand-kept list is the same kind of second enumeration that
-        caused this bug, and it would drift the same way.
-        """
-        import pathlib
-        import re
-        root = pathlib.Path(__file__).resolve().parents[2] / 'app'
-        found = set()
-        for path in (root / 'purchase_orders' / 'views.py',
-                     root / 'purchase_billing.py'):
-            for m in re.finditer(r"\bpo\.status\s*=\s*'([a-z_]+)'",
-                                 path.read_text(encoding='utf-8')):
-                found.add(m.group(1))
-        # The column default -- an order's first status is never assigned.
-        found.add('draft')
-        return found
-
-    def test_the_scraper_finds_the_known_statuses(self):
-        """Guard on the guard. If the scrape returns nothing (a refactor renamed
-        the variable, the files moved), the real test below would pass
-        vacuously against an empty set."""
-        found = self._statuses_written_by_the_app()
-        assert {'draft', 'submitted', 'approved', 'cancelled'} <= found, found
-
-    def test_every_written_status_is_either_committed_or_excluded(self):
-        unclassified = {s for s in self._statuses_written_by_the_app()
-                        if s not in COMMITTED_PO
-                        and s not in self.EXCLUDED_ON_PURPOSE}
-        assert not unclassified, (
-            'These PurchaseOrder statuses are written by the app but appear '
-            'neither in COMMITTED_PO nor in EXCLUDED_ON_PURPOSE: %s. Decide '
-            'whether each one consumes requisition quantity and say so in one '
-            'place or the other -- leaving it unclassified is exactly how '
-            "'submitted' became invisible to the whole allocation system."
-            % sorted(unclassified))

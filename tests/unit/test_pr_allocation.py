@@ -134,9 +134,9 @@ def test_cancelled_is_the_only_excluded_status():
     gets better is pinning the defect, not the rule.
 
     What replaces it is not another snapshot: see
-    tests/unit/test_committed_po_covers_the_lifecycle.py::
-    TestEveryLifecycleStatusIsClassified, which scrapes the purchase order's
-    REAL status writers out of the source and demands each be classified. That
+    tests/unit/test_lifecycle_tuples_are_classified.py, which scrapes the
+    purchase order's REAL status writers out of the source and demands each be
+    classified -- by COMMITTED_PO and by the nine sibling tuples too. That
     catches a newly added status, which a frozen set never could -- it only ever
     catches someone editing the tuple, which is the safe direction.
     """

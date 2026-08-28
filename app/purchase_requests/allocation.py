@@ -35,10 +35,11 @@ from app import db
 #: cas 5892bf0a did not help, since both doors read this same input.
 #:
 #: Adding a status to the purchase order's lifecycle? Classify it here or in
-#: tests/unit/test_committed_po_covers_the_lifecycle.py::
-#: TestEveryLifecycleStatusIsClassified.EXCLUDED_ON_PURPOSE. That test scrapes
-#: the real writers out of the source and fails until the decision is made,
-#: because leaving one unclassified is precisely how this happened.
+#: tests/unit/test_lifecycle_tuples_are_classified.py, in this tuple's own
+#: REGISTRY entry. That test scrapes the real writers out of the source and
+#: fails until the decision is made, because leaving one unclassified is
+#: precisely how this happened. It guards the nine sibling tuples the same way
+#: -- PULLABLE_PR and RECOMPUTABLE_PR below included.
 #:
 #: ('partially_received' is inert -- nothing in the app writes it. Kept because
 #: removing it would change behaviour only if something started to.)
