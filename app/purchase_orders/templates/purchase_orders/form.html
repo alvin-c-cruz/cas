@@ -40,47 +40,62 @@
   <input type="hidden" name="line_items" id="lineItemsJson" value="[]">
 
   <div class="card"><div class="card-body">
-    {# form-row-2/-3, NOT form-grid: `.form-grid` is not defined in style.css at
-       all, so it rendered as a plain block and stacked all seven header fields
-       full-width down the page. The Purchase Requisition form had the identical
-       bug and was moved to the same real classes. Receiving Reports still
-       carries the dead class. #}
-    <div class="form-row-3">
-      <div class="form-group">{{ form.po_number.label }}
-        {# An amendment revises an order, it does not renumber it -- amend() already
-           declines to reassign po_number, so an editable box would silently discard
-           whatever the user typed. #}
-        {% if amend_mode %}{{ form.po_number(class="form-control", readonly=true) }}
-        {% else %}{{ form.po_number(class="form-control") }}{% endif %}</div>
-      <div class="form-group">{{ form.order_date.label }} {{ form.order_date(class="form-control") }}</div>
-      <div class="form-group">{{ form.expected_date.label }} {{ form.expected_date(class="form-control") }}</div>
-    </div>
-    <div class="form-row-2">
+    {# HEADER: the Accounts Payable layout, not a stack of full-width rows.
+       `.form-main-grid` (transactions.css) is a 1fr/2fr grid with areas
+       "left vendor" / "left notes"; `.left-col-fields` turns each .form-group
+       into an inline LABEL | INPUT row on ONE line (150px label column) instead
+       of label-above-input. Both stylesheets were ALREADY loaded by this form.
+
+       Measured before this change: header 701px, Line Items starting at y=865 --
+       below the fold on a 777px viewport. The AP form fits 8 fields plus vendor
+       plus notes into 391px by this same layout, which is why it is the model.
+
+       The signatories sit inside `.notes-col` rather than in a row of their own:
+       the grid's height is set by the LEFT column, so the right column has spare
+       vertical space and they cost nothing there. #}
+    <div class="form-main-grid">
+      <div class="left-col-fields">
+        <div class="form-group">{{ form.po_number.label(class='form-label') }}
+          {# An amendment revises an order, it does not renumber it -- amend() already
+             declines to reassign po_number, so an editable box would silently discard
+             whatever the user typed. #}
+          {% if amend_mode %}{{ form.po_number(class="form-control", readonly=true) }}
+          {% else %}{{ form.po_number(class="form-control") }}{% endif %}</div>
+        <div class="form-group">{{ form.order_date.label(class='form-label') }} {{ form.order_date(class="form-control") }}</div>
+        <div class="form-group">{{ form.expected_date.label(class='form-label') }} {{ form.expected_date(class="form-control") }}</div>
+        <div class="form-group">{{ form.reference.label(class='form-label') }} {{ form.reference(class="form-control") }}</div>
+        <div class="form-group">{{ form.purpose.label(class='form-label') }} {{ form.purpose(class="form-control", placeholder="e.g. FOR PRODUCTION USE") }}</div>
+        <div class="form-group">{{ form.vat_treatment.label(class='form-label') }} {{ form.vat_treatment(class="form-control", id="vatTreatment") }}</div>
+        <div class="form-group">{{ form.payment_terms.label(class='form-label') }} {{ form.payment_terms(class="form-control") }}</div>
+      </div>
+
       {# picker-field: this select becomes a Choices control, and transactions.css
          renders every .choices__inner as a transparent 28px in-grid box. Without
-         this class the Vendor field renders as bare text with no border beside
-         the ordinary selects next to it. #}
-      <div class="form-group picker-field">{{ form.vendor_id.label }} {{ form.vendor_id(class="form-control", id="vendorSelect") }}</div>
-      <div class="form-group">{{ form.reference.label }} {{ form.reference(class="form-control") }}</div>
-      <div class="form-group">{{ form.purpose.label }} {{ form.purpose(class="form-control", placeholder="e.g. FOR PRODUCTION USE") }}</div>
-    </div>
-    <div class="form-row-2">
-      <div class="form-group">{{ form.vat_treatment.label }} {{ form.vat_treatment(class="form-control", id="vatTreatment") }}</div>
-      <div class="form-group">{{ form.payment_terms.label }} {{ form.payment_terms(class="form-control") }}</div>
-    </div>
-    <div class="form-group">{{ form.notes.label }} {{ form.notes(class="form-control", rows=2) }}</div>
+         this class the Vendor field renders as bare text with no border. #}
+      <div class="right-col">
+        <div class="form-group picker-field">{{ form.vendor_id.label(class='form-label') }} {{ form.vendor_id(class="form-control", id="vendorSelect") }}</div>
+      </div>
 
-    {# Per-ORDER signatories, carried onto the printout. On a NEW order these
-       arrive pre-filled from this purchaser's own last PO (see
-       next_po_signatories_for) -- a suggestion, not a lock: editing one here
-       changes this order only. Left blank, the printout shows an empty ruled
-       line to sign by hand. #}
-    <div class="form-row-3">
-      <div class="form-group">{{ form.prepared_by.label }} {{ form.prepared_by(class="form-control") }}</div>
-      <div class="form-group">{{ form.checked_by.label }} {{ form.checked_by(class="form-control") }}</div>
-      <div class="form-group">{{ form.approved_by.label }} {{ form.approved_by(class="form-control") }}</div>
+      <div class="notes-col">
+        {{ form.notes.label(class='form-label') }}
+        {# No rows= here: `.notes-col .form-control` sets min-height 60px and beats
+           base.html's app-wide `textarea.form-control { min-height: 100px }`, which
+           is what made this box 100px tall on the old layout. #}
+        {{ form.notes(class="form-control", style="resize:vertical") }}
+
+        {# Per-ORDER signatories, carried onto the printout. On a NEW order these
+           arrive pre-filled from this purchaser's own last PO (see
+           next_po_signatories_for) -- a suggestion, not a lock: editing one here
+           changes this order only. Left blank, the printout shows an empty ruled
+           line to sign by hand. #}
+        <div class="form-row-3" style="margin-top:12px;">
+          <div class="form-group">{{ form.prepared_by.label(class='form-label') }} {{ form.prepared_by(class="form-control") }}</div>
+          <div class="form-group">{{ form.checked_by.label(class='form-label') }} {{ form.checked_by(class="form-control") }}</div>
+          <div class="form-group">{{ form.approved_by.label(class='form-label') }} {{ form.approved_by(class="form-control") }}</div>
+        </div>
+        <div class="form-hint">Carried over from your last Purchase Order. Edit for this order, or leave blank to sign by hand.</div>
+      </div>
     </div>
-    <div class="form-hint">Carried over from your last Purchase Order. Edit for this order, or leave blank to sign by hand.</div>
   </div></div>
 
   {# card--lines: this card holds only the grid and the summary, so `.card`'s own
