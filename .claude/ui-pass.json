@@ -131,6 +131,12 @@
     "reason": null,
     "waived": false
   },
+  "6d4c21d4fa9126a901eca01e5b46a023fdbd155a": {
+    "branch": "fix/show-uom-on-po-rr",
+    "date": "2026-08-29",
+    "reason": "PARTIAL browser pass, and the gap is named rather than papered over. VERIFIED LIVE against philgen data on the branch templates: purchase_orders/detail.html -- PO 00004 renders '1 | OLD NEWSPAPER | 1,000.0000 | KG | 50.00 | 50,000.00', headers # Item Qty UOM Unit Price Amount, footer colspan 5, every row's cell count equal to the header count; and receiving_reports/detail.html -- RR 00002 renders '1 | NITRILE SURGICAL GLOVES (LARGE) | 5.0000 | 5.0000 | BOXES', confirming the RR resolves its unit THROUGH the purchase-order line it receives (it has no unit column of its own). PO 00004 is the exact record the owner asked about. NOT SEEN IN A BROWSER: purchase_orders/print.html. philgen runs po_print_form = preprinted, so /purchase-orders/<id>/print serves the pre-printed overlay -- which already had a UOM column and is unchanged by this branch -- and print.html is unreachable on this instance without flipping a company setting on the owner's data mid-session, which was declined. That template is covered by a render assertion (test_the_printout_shows_the_unit) plus mutation U3, which drops its UOM cell and is caught. Its two spanning rows (group heading colspan 5->6, per-group subtotal colspan 4->5) are markup-only and asserted by the same test rendering without error.",
+    "waived": true
+  },
   "77a6cf0bcb69142db1676d58fb56f2fded116cc6": {
     "branch": "fix/pr-asap-visibility",
     "date": "2026-08-19",
