@@ -29,6 +29,12 @@
     "reason": null,
     "waived": false
   },
+  "1b3542cbe5104380376ead5c7a49a9b89009278a": {
+    "branch": "feat/so-checked-by-signatory",
+    "date": "2026-08-29",
+    "reason": null,
+    "waived": false
+  },
   "2114b41122a4b813768b71ef1bfe6eac93212d0e": {
     "branch": "fix/ar-aging-expand-all",
     "date": "2026-08-01",
