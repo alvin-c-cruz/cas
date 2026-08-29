@@ -38,7 +38,7 @@
   <div class="table-responsive">
     <table class="table">
       <thead>
-        <tr><th>#</th><th>Item</th><th class="text-end">Ordered</th><th class="text-end">Received</th></tr>
+        <tr><th>#</th><th>Item</th><th class="text-end">Ordered</th><th class="text-end">Received</th><th>UOM</th></tr>
       </thead>
       <tbody>
         {% for li in rr.line_items %}
@@ -48,6 +48,10 @@
           <td>{{ d.product_name or d.description or '' }}</td>
           <td class="text-end">{{ '{:,.4f}'.format(d.ordered_quantity) if d.ordered_quantity is not none else '-' }}</td>
           <td class="text-end">{{ '{:,.4f}'.format(li.received_quantity) }}</td>
+          {# The RR has no unit of its own: `unit_of_measure`/`uom_text` are
+             properties delegating to the purchase-order line being received,
+             which is the same source print.html already reads. #}
+          <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
         </tr>
         {% endfor %}
       </tbody>

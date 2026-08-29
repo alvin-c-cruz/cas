@@ -98,8 +98,8 @@
   <div class="table-responsive">
     <table class="table">
       <thead>
-        <tr><th>#</th><th>Item</th><th class="text-end">Qty</th><th class="text-end">Unit Price</th>
-            <th class="text-end">Amount</th></tr>
+        <tr><th>#</th><th>Item</th><th class="text-end">Qty</th><th>UOM</th>
+            <th class="text-end">Unit Price</th><th class="text-end">Amount</th></tr>
       </thead>
       <tbody>
         {% for li in po.line_items %}
@@ -107,13 +107,16 @@
           <td>{{ li.line_number }}</td>
           <td>{{ li.product.name if li.product else li.description }}</td>
           <td class="text-end">{{ '{:,.4f}'.format(li.quantity) if li.quantity is not none else '-' }}</td>
+          {# NOT li.uom_display: that is a key inside to_dict(), not a model
+             property, so it renders empty. Same expression as PR/RR/SO. #}
+          <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
           <td class="text-end">{{ '{:,.2f}'.format(li.unit_price) if li.unit_price is not none else '-' }}</td>
           <td class="text-end">{{ '{:,.2f}'.format(li.amount or 0) }}</td>
         </tr>
         {% endfor %}
       </tbody>
       <tfoot>
-        <tr><th colspan="4" class="text-end">Total</th>
+        <tr><th colspan="5" class="text-end">Total</th>
             <th class="text-end">{{ '{:,.2f}'.format(po.total_amount or 0) }}</th></tr>
       </tfoot>
     </table>

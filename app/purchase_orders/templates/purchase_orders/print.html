@@ -53,7 +53,7 @@
 
   <table>
     <thead>
-      <tr><th>#</th><th>Item</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Amount</th></tr>
+      <tr><th>#</th><th>Item</th><th class="num">Qty</th><th>UOM</th><th class="num">Unit Price</th><th class="num">Amount</th></tr>
     </thead>
     {# Grouped by the line's Description (owner directive 2026-08-21). The
        grouping itself is group_lines_by_description() in models.py -- first
@@ -63,13 +63,14 @@
     <tbody>
       {% for description, items, subtotal in line_groups %}
       {% if description %}
-      <tr><td class="grp" colspan="5">{{ description }}</td></tr>
+      <tr><td class="grp" colspan="6">{{ description }}</td></tr>
       {% endif %}
       {% for li in items %}
       <tr>
         <td>{{ li.line_number }}</td>
         <td>{{ li.product.name if li.product else '' }}</td>
         <td class="num">{{ '{:,.4f}'.format(li.quantity) if li.quantity is not none else '-' }}</td>
+        <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
         <td class="num">{{ '{:,.2f}'.format(li.unit_price) if li.unit_price is not none else '-' }}</td>
         <td class="num">{{ '{:,.2f}'.format(li.amount or 0) }}</td>
       </tr>
@@ -78,13 +79,13 @@
          Total and read as a mistake, so it is drawn only when grouping is
          actually doing something. #}
       {% if line_groups | length > 1 %}
-      <tr><td colspan="4" class="num">Subtotal</td>
+      <tr><td colspan="5" class="num">Subtotal</td>
           <td class="num grp-sub">{{ '{:,.2f}'.format(subtotal) }}</td></tr>
       {% endif %}
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr><th colspan="4" class="num">Total</th><th class="num">{{ '{:,.2f}'.format(po.total_amount or 0) }}</th></tr>
+      <tr><th colspan="5" class="num">Total</th><th class="num">{{ '{:,.2f}'.format(po.total_amount or 0) }}</th></tr>
     </tfoot>
   </table>
 
