@@ -194,18 +194,46 @@ def test_viewer_cannot_create_delivery_site(client, db_session, viewer_user, mai
 
 
 @pytest.mark.integration
-def test_staff_cannot_create_delivery_site(client, db_session, staff_user, main_branch):
-    """Staff can view/manage customers via staff_or_above_required elsewhere, but
-    delivery-site writes mirror customers.edit's accountant-or-admin gate."""
+def test_staff_can_create_a_delivery_site_on_an_unlocked_customer(
+        client, db_session, staff_user, main_branch):
+    """SUPERSEDED POLICY, rewritten rather than deleted.
+
+    This asserted the opposite until 2026-08-30 -- "delivery-site writes mirror
+    customers.edit's accountant-or-admin gate" -- and that mirroring still holds;
+    it is the gate on the other side that moved. Staff may now maintain customer
+    data, delivery sites included (owner: "include new delivery site to staffs"),
+    and a record is protected per-record by its LOCK rather than per-role.
+
+    Kept here, inverted, instead of removed: a delete would leave this file with
+    no staff case at all, and the next person would have to infer the rule from
+    the lock suite instead of reading it where delivery sites are tested.
+    """
     c = _customer(db_session)
     _login_staff(client, staff_user, main_branch, db_session)
 
-    resp = client.post(f'/customers/{c.id}/delivery-sites/create',
-                       data={'name': 'SHOULD NOT EXIST'}, follow_redirects=False)
+    client.post(f'/customers/{c.id}/delivery-sites/create',
+                data={'name': 'TAGUIG COLD STORE'}, follow_redirects=True)
 
-    assert resp.status_code == 302
-    assert '/dashboard' in resp.headers.get('Location', '')
-    assert CustomerDeliverySite.query.filter_by(customer_id=c.id).count() == 0
+    sites = CustomerDeliverySite.query.filter_by(customer_id=c.id).all()
+    assert [s.name for s in sites] == ['TAGUIG COLD STORE'], \
+        'staff could not add a delivery site to an unlocked customer'
+
+
+@pytest.mark.integration
+def test_staff_cannot_create_a_delivery_site_on_a_LOCKED_customer(
+        client, db_session, staff_user, admin_user, main_branch):
+    """The other half of the same rule, asserted in the same place: widening
+    staff's access is only safe because the lock can take it back."""
+    c = _customer(db_session)
+    c.lock(admin_user)
+    db_session.commit()
+    _login_staff(client, staff_user, main_branch, db_session)
+
+    client.post(f'/customers/{c.id}/delivery-sites/create',
+                data={'name': 'SHOULD NOT EXIST'}, follow_redirects=True)
+
+    assert CustomerDeliverySite.query.filter_by(customer_id=c.id).count() == 0, \
+        'a delivery site was added to a locked customer by staff'
 
 
 @pytest.mark.integration

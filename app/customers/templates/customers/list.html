@@ -85,17 +85,38 @@
                         {% else %}
                             <span class="badge badge-inactive">Inactive</span>
                         {% endif %}
+                        {% if customer.is_locked %}<span class="badge badge-warning" title="Locked{% if customer.locked_by %} by {{ customer.locked_by.username }}{% endif %}{% if customer.locked_at %} on {{ customer.locked_at.strftime('%b %d, %Y') }}{% endif %} -- staff cannot edit this record">Locked</span>{% endif %}
                     </td>
                     <td>
-                        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
+                        {# Per RECORD, not per role: the same predicate the route uses
+                           (Customer.can_be_edited_by), so a rendered Edit and a refused
+                           POST cannot disagree. Delete stays approver-only. #}
+                        {% set may_edit = customer.can_be_edited_by(current_user) %}
+                        {% set may_lock = customer.can_manage_lock_by(current_user) %}
+                        {% if may_edit or may_lock %}
                         <div class="action-buttons">
+                            {% if may_edit %}
                             <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                            {% endif %}
+                            {% if may_lock %}
+                            <form method="POST" action="{{ url_for('customers.unlock_customer' if customer.is_locked else 'customers.lock_customer', id=customer.id) }}" style="display:inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action" title="{{ 'Unlock this record' if customer.is_locked else 'Lock this record against staff edits' }}">{{ 'Unlock' if customer.is_locked else 'Lock' }}</button>
+                            </form>
+                            {% endif %}
+                            {# Delete is NOT part of the widening -- it stays approver-only.
+                               Wrapping it in the outer may_edit-or-may_lock block handed it to
+                               staff; the pre-existing scope-guard test caught that. #}
+                            {% if may_lock %}
                             <button type="button" class="btn-action btn-action-delete"
                                     onclick="document.getElementById('delete-modal-{{ customer.id }}').style.display='flex'">
                                 Delete
                             </button>
+                            {% endif %}
                         </div>
-                        <!-- Delete confirmation modal -->
+                        {% if may_lock %}
+                        {# Jinja comment, not HTML: an emitted <!-- Delete ... --> defeats the
+                           absence assertion that proves staff cannot reach delete. #}
                         <div id="delete-modal-{{ customer.id }}"
                              style="display:none; position:fixed; inset:0; background:var(--backdrop); z-index:1000; align-items:center; justify-content:center;">
                             <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%; box-shadow:0 8px 24px rgba(0,0,0,0.2);">
@@ -117,6 +138,7 @@
                         </div>
                         {% else %}
                         —
+                        {% endif %}
                         {% endif %}
                     </td>
                 </tr>

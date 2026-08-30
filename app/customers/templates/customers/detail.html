@@ -14,10 +14,21 @@
         </span>
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
+        {% if customer.is_locked %}
+        <span class="badge badge-warning" title="Staff cannot edit this record">Locked{% if customer.locked_by %} by {{ customer.locked_by.username }}{% endif %}</span>
+        {% endif %}
         {% if (current_user.has_full_access or current_user.role == 'accountant') %}
         <a href="{{ url_for('reports.statement_of_account', customer_id=customer.id) }}"
            class="btn btn-secondary btn-sm">Statement</a>
+        {% endif %}
+        {% if customer.can_be_edited_by(current_user) %}
         <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn btn-primary btn-sm">Edit Customer</a>
+        {% endif %}
+        {% if customer.can_manage_lock_by(current_user) %}
+        <form method="POST" action="{{ url_for('customers.unlock_customer' if customer.is_locked else 'customers.lock_customer', id=customer.id) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-secondary btn-sm">{{ 'Unlock' if customer.is_locked else 'Lock' }}</button>
+        </form>
         {% endif %}
     </div>
 </div>

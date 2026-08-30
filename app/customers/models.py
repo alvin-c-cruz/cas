@@ -46,6 +46,15 @@ class Customer(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     po_required = db.Column(db.Boolean, default=False, nullable=False)
 
+    # Record lock. Staff may maintain customer data (owner directive 2026-08-30 --
+    # they could already CREATE one through quick-add but not correct it, and
+    # vendors have allowed staff to edit all along); an approver freezes a record
+    # once it is settled. Provenance is stored alongside the flag because "who
+    # froze this, and when" is the question a bare boolean cannot answer.
+    is_locked = db.Column(db.Boolean, default=False, nullable=False)
+    locked_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    locked_at = db.Column(db.DateTime, nullable=True)
+
     # Default salesperson to auto-fill on Sales Orders for this customer (optional).
     default_salesperson_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True)
     default_salesperson = db.relationship('Employee', foreign_keys=[default_salesperson_id])
@@ -59,6 +68,55 @@ class Customer(db.Model):
     # Relationships
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='customers_created')
     updated_by = db.relationship('User', foreign_keys=[updated_by_id], backref='customers_updated')
+    locked_by = db.relationship('User', foreign_keys=[locked_by_id])
+
+    # -- record lock ------------------------------------------------------
+    #
+    # ONE spelling of each rule, on the model, because the view and the template
+    # both need it: a route that refuses and a button that still renders is the
+    # delete_approved_email shape, and that is exactly the defect this feature
+    # inherits (the Edit control is currently rendered unconditionally). Two
+    # copies of the predicate would drift the moment either side changed.
+
+    @staticmethod
+    def _is_approver(user):
+        """Accountant, chief accountant or admin -- the roles `edit` already
+        required before staff were let in. `has_full_access` covers admin AND
+        chief accountant, so it is not spelled out twice."""
+        return bool(user is not None
+                    and getattr(user, 'is_authenticated', False)
+                    and (user.role == 'accountant' or user.has_full_access))
+
+    def can_be_edited_by(self, user):
+        """A lock removes STAFF's write access and never restricts an approver.
+
+        An approver keeps write access THROUGH the lock deliberately: freezing a
+        record must not make a typo in it uncorrectable, which would leave the
+        database as the only way to fix one.
+        """
+        if self._is_approver(user):
+            return True
+        if user is None or not getattr(user, 'is_authenticated', False):
+            return False
+        return (not self.is_locked) and user.role == 'staff'
+
+    def can_manage_lock_by(self, user):
+        """Who may lock and unlock: the same three roles that can edit through a
+        lock. If staff could lift it, it would protect nothing."""
+        return self._is_approver(user)
+
+    def lock(self, user):
+        from app.utils import ph_now
+        self.is_locked = True
+        self.locked_by_id = getattr(user, 'id', None)
+        self.locked_at = ph_now()
+
+    def unlock(self):
+        """Clears the provenance too -- leaving a stale locked_by/locked_at on an
+        unlocked record would read as "frozen by X" long after it was lifted."""
+        self.is_locked = False
+        self.locked_by_id = None
+        self.locked_at = None
 
     # Named delivery sites (e.g. warehouses) a customer's Sales Order lines can ship to.
     delivery_sites = db.relationship('CustomerDeliverySite', backref='customer',

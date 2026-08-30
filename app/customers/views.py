@@ -45,6 +45,62 @@ def staff_or_above_required(f):
     return decorated_function
 
 
+def customer_writable_required(f):
+    """Refuse a write the RECORD itself does not allow this user.
+
+    Replaces accountant_or_admin_required on the customer write routes. The role
+    question moved onto the record when staff were let in: "may this user edit
+    customers" became "may this user edit THIS customer", and only the record
+    knows whether it is frozen.
+
+    The rule lives on the model (Customer.can_be_edited_by) and is called from
+    here AND from the templates, so a refused route and a rendered button cannot
+    disagree -- which is precisely the defect this feature inherits.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        customer = db.session.get(Customer, kwargs.get('id'))
+        if customer is None:
+            abort(404)
+        if not customer.can_be_edited_by(current_user):
+            # Two different refusals, two destinations. A ROLE denial goes to the
+            # dashboard like every other permission gate in the app; a LOCK denial
+            # sends the user back to the list they came from, because they are
+            # allowed to be here -- this one record is frozen, not the module.
+            if customer.is_locked and current_user.role == 'staff':
+                msg = ('This customer record is locked. Ask an accountant or an '
+                       'administrator to unlock it.')
+                target = url_for('customers.list_customers')
+            else:
+                msg = 'You do not have permission to edit customers.'
+                target = url_for('dashboard.home')
+            if _wants_json():
+                return jsonify({'success': False, 'error': msg}), 403
+            flash(msg, 'error')
+            return redirect(target)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def customer_lock_manager_required(f):
+    """Lock and unlock: accountant, chief accountant, admin."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        customer = db.session.get(Customer, kwargs.get('id'))
+        if customer is None:
+            abort(404)
+        if not customer.can_manage_lock_by(current_user):
+            flash('Only accountants and administrators can lock or unlock a '
+                  'customer record.', 'error')
+            return redirect(url_for('customers.list_customers'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 def _wants_json():
     """True when the request is an AJAX/JSON call (modal quick-add)."""
     return (
@@ -67,7 +123,12 @@ def build_customer_quick_add_form():
 # Adding a Customer column means editing this one list, not 6 scattered literals.
 CUSTOMER_FIELDS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
                    'payment_terms', 'address', 'postal_code', 'default_vat_category',
-                   'default_wt_code', 'default_salesperson_id', 'withholding_taxes_str', 'is_active']
+                   'default_wt_code', 'default_salesperson_id', 'withholding_taxes_str', 'is_active',
+                   # is_locked is snapshotted so lock/unlock produces a real DIFF.
+                   # Without it both sides of the lock audit are identical and the
+                   # entry records "nothing changed" about the one thing it exists
+                   # to record. Export columns are a separate list and unaffected.
+                   'is_locked']
 
 CUSTOMER_EXPORT_HEADERS = ['Customer Code', 'Customer Name', 'Contact Person', 'Phone',
                            'Email', 'TIN', 'Payment Terms', 'Address', 'Postal Code',
@@ -254,7 +315,7 @@ def detail(id):
 
 @customers_bp.route('/customers/<int:id>/delivery-sites/create', methods=['POST'])
 @login_required
-@accountant_or_admin_required
+@customer_writable_required
 def create_delivery_site(id):
     """Create a delivery site under a customer, from the Delivery Sites tab's
     add modal. Also supports an AJAX branch (X-Requested-With) returning JSON
@@ -296,7 +357,7 @@ def create_delivery_site(id):
 
 @customers_bp.route('/customers/<int:id>/delivery-sites/<int:site_id>/edit', methods=['POST'])
 @login_required
-@accountant_or_admin_required
+@customer_writable_required
 def edit_delivery_site(id, site_id):
     """Rename a delivery site, from the Delivery Sites tab's edit modal."""
     customer = db.get_or_404(Customer, id)
@@ -326,7 +387,7 @@ def edit_delivery_site(id, site_id):
 
 @customers_bp.route('/customers/<int:id>/delivery-sites/<int:site_id>/toggle-active', methods=['POST'])
 @login_required
-@accountant_or_admin_required
+@customer_writable_required
 def toggle_delivery_site_active(id, site_id):
     """Deactivate/reactivate a delivery site -- mirrors the shared status-toggle
     pattern (bank_accounts.toggle_active et al)."""
@@ -448,7 +509,7 @@ def create():
 
 @customers_bp.route('/customers/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@customer_writable_required
 def edit(id):
     """Edit customer"""
     customer = db.get_or_404(Customer, id)
@@ -541,6 +602,45 @@ def edit(id):
     return render_template('customers/form.html', form=form, customer=customer,
                            withholding_taxes=withholding_taxes,
                            selected_wt_ids=selected_wt_ids)
+
+
+@customers_bp.route('/customers/<int:id>/lock', methods=['POST'])
+@login_required
+@customer_lock_manager_required
+def lock_customer(id):
+    """Freeze a settled customer record against staff edits."""
+    customer = db.get_or_404(Customer, id)
+    if not customer.is_locked:
+        old_values = model_to_dict(customer, CUSTOMER_FIELDS)
+        customer.lock(current_user)
+        db.session.commit()
+        # Logged as an UPDATE on the customer, not a bespoke action: the lock is
+        # a change to the record, and the audit log is where "who froze this"
+        # gets answered from.
+        log_update(module='customer', record_id=customer.id,
+                   record_identifier=f'{customer.code} - {customer.name}',
+                   old_values=old_values,
+                   new_values=model_to_dict(customer, CUSTOMER_FIELDS))
+        flash(f'Customer "{customer.name}" is now locked.', 'success')
+    return redirect(request.referrer or url_for('customers.list_customers'))
+
+
+@customers_bp.route('/customers/<int:id>/unlock', methods=['POST'])
+@login_required
+@customer_lock_manager_required
+def unlock_customer(id):
+    """Lift the freeze. Same three roles that may edit through a lock."""
+    customer = db.get_or_404(Customer, id)
+    if customer.is_locked:
+        old_values = model_to_dict(customer, CUSTOMER_FIELDS)
+        customer.unlock()
+        db.session.commit()
+        log_update(module='customer', record_id=customer.id,
+                   record_identifier=f'{customer.code} - {customer.name}',
+                   old_values=old_values,
+                   new_values=model_to_dict(customer, CUSTOMER_FIELDS))
+        flash(f'Customer "{customer.name}" is now unlocked.', 'success')
+    return redirect(request.referrer or url_for('customers.list_customers'))
 
 
 @customers_bp.route('/customers/<int:id>/delete', methods=['POST'])
