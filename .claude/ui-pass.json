@@ -59,6 +59,12 @@
     "reason": null,
     "waived": false
   },
+  "34747b1ee86a65a2df8fbf5291e475e559dc8264": {
+    "branch": "fix/line-loss-siblings-and-map",
+    "date": "2026-08-30",
+    "reason": "Browser pass on the PURCHASE REQUISITION port -- the one that matters, since the identical Purchase Order fix had a defect NO pytest assertion written at the time could see, found only by driving it. Throwaway copy of the philgen data (_uitest-ll.db, port 5051), driven as ANGILYN, the staff purchaser who reported the original bug and whose module this is. Built a real line through the pickers -- RM0009: CEMENT / 75.00 / BAGS: BAGS / 'BROWSER GATE - line must survive' -- then forced the refusal with an existing number (00006). Result: the flash reads 'Purchase Requisition number already exists.' AND the whole line comes back, product, quantity, remarks AND THE UNIT. The unit is the specific half that the PO fix lost (form posts uom_id, renderer reads unit_of_measure_id) and that only a browser exposed; here it is carried by the shared restore_posted_lines() and confirmed live. bill_of_materials was NOT driven in a browser: it needs Discrete or Process manufacturing enabled in Company Settings, which philgen does not have, so the form is unreachable on this data without flipping a company setting on a copy of the owner's records mid-session. It is covered by 5 render tests plus mutations B1-B3 (reading the PO key spelling, discarding operations, discarding components), each of which fails without the fix.",
+    "waived": true
+  },
   "3c68a4ab6e538401d1e694c49f63a1a5fbfd87a5": {
     "branch": "feat/amendment-slice2",
     "date": "2026-08-10",
