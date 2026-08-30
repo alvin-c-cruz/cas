@@ -125,6 +125,12 @@
     "reason": null,
     "waived": false
   },
+  "61d828086e8f6005168355b66e73160a5f4d66e5": {
+    "branch": "fix/so-permission-gate-trio",
+    "date": "2026-08-30",
+    "reason": null,
+    "waived": false
+  },
   "621e98dceb93789a7ef71547b23279657874bd68": {
     "branch": "feat/p2p-preprinted-designer",
     "date": "2026-08-16",
