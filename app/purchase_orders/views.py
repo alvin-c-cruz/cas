@@ -18,6 +18,7 @@ from app.purchase_orders.models import (
 from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
 from app.purchase_orders.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
+from app.common.form_restore import restore_posted_lines
 from app.common.preprinted_base import (
     DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
 from app.vendors.models import Vendor
@@ -68,34 +69,6 @@ def _po_line_is_blank(d):
             and (amount is None or amount == 0)
             and _po_line_dec(d.get('quantity')) is None
             and _po_line_dec(d.get('unit_price')) is None)
-
-
-def _restore_posted_lines(raw):
-    """Parse a POSTed `line_items` payload into the shape the form's row renderer
-    reads back, for redisplaying a REFUSED save.
-
-    The two ends of the round trip spell the unit differently: the form serialises
-    `uom_id` (form.html:505) while `addRow` reads `d.unit_of_measure_id`
-    (form.html:336), which is what `to_dict()` emits. Restoring the payload
-    verbatim therefore gave every line back with an EMPTY unit -- the buyer keeps
-    her products and prices and re-picks every UOM, which is still lost work.
-
-    Normalised here rather than by teaching the JS a second spelling: this is the
-    layer the tests can hold, and both create() and edit() feed the same renderer
-    from the same payload, so one translation covers both.
-
-    Only fills the key when it is ABSENT: a line already carrying the renderer's
-    spelling (edit()'s GET path, straight off to_dict()) is authoritative. A
-    services line with no master FK keeps `unit_of_measure_id` None and relies on
-    `uom_text` -- inventing an id would bind it to an unrelated unit.
-    """
-    items = json.loads(raw or '[]')
-    for d in items:
-        if not isinstance(d, dict):
-            continue
-        if d.get('unit_of_measure_id') is None and d.get('uom_id') is not None:
-            d['unit_of_measure_id'] = d['uom_id']
-    return items
 
 
 def _assert_payload_allocations(items, exclude_po_id=None):
@@ -530,7 +503,7 @@ def create():
     # could tell it from its absence, and a branch nothing can pin is a branch that
     # breaks silently. edit() needs that guard only because ITS GET must load the
     # saved lines off the order -- create has no order to load.
-    restore_items = _restore_posted_lines(request.form.get('line_items', '[]'))
+    restore_items = restore_posted_lines(request.form.get('line_items', '[]'))
 
     if form.validate_on_submit():
         po_number = (form.po_number.data or '').strip()
@@ -674,7 +647,7 @@ def edit(id):
 
     restore_items = ([li.to_dict() for li in po.line_items]
                      if request.method == 'GET'
-                     else _restore_posted_lines(request.form.get('line_items', '[]')))
+                     else restore_posted_lines(request.form.get('line_items', '[]')))
 
     if form.validate_on_submit():
         po_number = (form.po_number.data or '').strip()

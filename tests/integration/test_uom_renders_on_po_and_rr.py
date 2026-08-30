@@ -46,7 +46,9 @@ from app.units_of_measure.models import UnitOfMeasure
 from app.utils.cache_helpers import clear_module_config_cache
 from app.vendors.models import Vendor
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration,
+              pytest.mark.purchase_orders,
+              pytest.mark.receiving_reports]
 
 
 @pytest.fixture(autouse=True)

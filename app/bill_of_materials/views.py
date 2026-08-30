@@ -7,6 +7,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 
 from app import db
+from app.common.form_restore import restore_posted_lines
 from app.audit.utils import log_create, log_update, model_to_dict
 from app.utils.cache_helpers import get_active_products, get_active_units
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
@@ -80,6 +81,18 @@ def new_bom():
     form.product_id.choices = _unclaimed_product_choices()
     form.manufacturing_mode.choices = modes
 
+    # Hand BOTH lists back on a refusal (BUG-BOM-CREATE-DROPS-LINES-ON-REJECT).
+    # The POST key is `lines` while the template variable is `line_items`; reusing
+    # the Purchase Order spelling would read an absent key, restore nothing, and
+    # look exactly like a working fix. normalise_uom is OFF because this form both
+    # writes and reads `uom_id` -- translating would add a key its renderer never
+    # consults. The single render below also serves the fresh GET, where
+    # request.form is empty and the '[]' default is what parses.
+    restore_lines = restore_posted_lines(request.form.get('lines', '[]'),
+                                         normalise_uom=False)
+    restore_operations = restore_posted_lines(request.form.get('operations', '[]'),
+                                              normalise_uom=False)
+
     if request.method == 'POST' and form.validate_on_submit():
         try:
             bom = BillOfMaterial(product_id=form.product_id.data,
@@ -101,9 +114,9 @@ def new_bom():
     return render_template('bill_of_materials/form.html', form=form, bom=None,
                            units=[u.to_dict() for u in get_active_units()],
                            components=[p.to_dict() for p in get_active_products()],
-                           line_items=[],
+                           line_items=restore_lines,
                            work_centers=[wc.to_dict() for wc in WorkCenter.query.filter_by(is_active=True).all()],
-                           operations=[])
+                           operations=restore_operations)
 
 
 @bill_of_materials_bp.route('/bill-of-materials/<int:bom_id>/edit', methods=['GET', 'POST'])

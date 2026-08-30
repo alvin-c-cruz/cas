@@ -14,6 +14,7 @@ from app import db
 from app.purchase_requests.models import (
     PurchaseRequest, PurchaseRequestItem, generate_pr_number,
     SIGNATORY_FIELDS, SIGNATORY_ROLES)
+from app.common.form_restore import restore_posted_lines
 from app.common.signatories import assign as assign_signatories, prefill_form
 from app.purchase_requests.forms import PurchaseRequestForm, PurchaseRequestAmendForm, PurchaseRequestAmendmentRequestForm
 from app.purchase_requests.preprinted_layout import (
@@ -339,6 +340,11 @@ def create():
     if gate:
         return gate
     form = PurchaseRequestForm()
+    # Hand the requester her lines back on ANY refusal -- all three renders
+    # below used a hardcoded [] (BUG-PR-CREATE-DROPS-LINES-ON-REJECT). The
+    # final one also serves the fresh GET, where request.form is empty and
+    # the '[]' default is what parses, so no method guard is needed.
+    restore_items = restore_posted_lines(request.form.get('line_items', '[]'))
     if request.method == 'GET':
         # A NEW requisition starts from the company default, so an install that
         # configured its signatories keeps printing the same names.
@@ -348,7 +354,7 @@ def create():
         if PurchaseRequest.query.filter(PurchaseRequest.pr_number == pr_number).first():
             flash('Purchase Requisition number already exists.', 'error')
             return render_template('purchase_requests/form.html', form=form, pr=None,
-                                   line_items=[], **_common_form_ctx())
+                                   line_items=restore_items, **_common_form_ctx())
         try:
             pr = PurchaseRequest(
                 branch_id=session.get('selected_branch_id'),
@@ -368,7 +374,7 @@ def create():
         except ValueError as e:
             db.session.rollback(); flash(str(e), 'error')
             return render_template('purchase_requests/form.html', form=form, pr=None,
-                                   line_items=[], **_common_form_ctx())
+                                   line_items=restore_items, **_common_form_ctx())
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error creating purchase request', exc_info=True)
@@ -379,7 +385,7 @@ def create():
         form.pr_number.data = generate_pr_number(session.get('selected_branch_id'))
         form.request_date.data = ph_now().date()
     return render_template('purchase_requests/form.html', form=form, pr=None,
-                           line_items=[], **_common_form_ctx())
+                           line_items=restore_items, **_common_form_ctx())
 
 
 def _revision_panel_rows(pr):

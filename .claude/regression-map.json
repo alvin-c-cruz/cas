@@ -530,12 +530,20 @@
     "app/customers/views.py": [
       "customers",
       "sales_invoices",
-      "cash_receipts"
+      "cash_receipts",
+      "sales_orders",
+      "delivery_receipts",
+      "quotations",
+      "reports"
     ],
     "app/customers/models.py": [
       "customers",
       "sales_invoices",
-      "cash_receipts"
+      "cash_receipts",
+      "sales_orders",
+      "delivery_receipts",
+      "quotations",
+      "reports"
     ],
     "app/common/preprinted_base.py": [
       "purchase_orders",
@@ -576,6 +584,11 @@
       "quotations",
       "sales_invoices",
       "sales_orders"
+    ],
+    "app/common/form_restore.py": [
+      "purchase_orders",
+      "purchase_requests",
+      "bill_of_materials"
     ]
   },
   "modules": {
@@ -701,6 +714,10 @@
     },
     "company_settings": {
       "marker": "settings",
+      "e2e": null
+    },
+    "bill_of_materials": {
+      "marker": "bill_of_materials",
       "e2e": null
     }
   },
