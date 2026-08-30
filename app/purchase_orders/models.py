@@ -464,4 +464,20 @@ def next_po_number_for(user_id, branch_id=None):
     if best is None:
         return generate_po_number(branch_id)
     value, width, marker = best
-    return f'{value + 1:0{width}d}{marker}'
+    # Never offer a number the save will refuse. The pad design above assumes the
+    # two pads' ranges do not overlap; PhilGen's real data broke that assumption
+    # (four orders, all plain numeric, one branch, no markers), so the form handed
+    # two of its three users a number already in use -- deterministically, on every
+    # attempt, which is why retrying never helped the purchaser
+    # (BUG-PO-CREATE-DROPS-LINES-ON-VALIDATION-REJECT).
+    #
+    # This walks HER OWN series past the collision rather than falling back to the
+    # global maximum: staying on her pad is the whole point of the function, and a
+    # global answer would drop her onto the other purchaser's range -- the exact
+    # thing the pad logic exists to avoid. Width and marker are carried through
+    # unchanged, so '00002E' skips to '00003E', never to a bare '00003'.
+    taken = {n for (n,) in db.session.query(PurchaseOrder.po_number).all() if n}
+    candidate = value + 1
+    while f'{candidate:0{width}d}{marker}' in taken:
+        candidate += 1
+    return f'{candidate:0{width}d}{marker}'
