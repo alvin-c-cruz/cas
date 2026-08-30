@@ -300,9 +300,14 @@ def list_pr():
     # page sends a buyer to click Convert on a row that will refuse.
     from app.purchase_requests.amendment_service import pending_request_pr_ids
     pending_amendment_ids = pending_request_pr_ids([p.id for p in pagination.items])
+    # Which purchase orders each requisition is actually on -- derived from the
+    # LINE links, not the convert()-only header FK. See po_links_for_pr_ids.
+    from app.purchase_requests.allocation import po_links_for_pr_ids
+    po_links = po_links_for_pr_ids([p.id for p in pagination.items])
 
     return render_template('purchase_requests/list.html',
                            pr_list=pagination.items,
+                           po_links=po_links,
                            pagination=pagination,
                            summary=summary,
                            pending_amendment_ids=pending_amendment_ids,
@@ -415,7 +420,10 @@ def view(id):
     from app.purchase_requests.amendment_service import pending_request_for
     pr = _get_pr_or_404(id)
     created_by_user = db.session.get(User, pr.created_by_id) if pr.created_by_id else None
+    from app.purchase_requests.allocation import po_links_for_pr_ids
+    po_links = po_links_for_pr_ids([pr.id]).get(pr.id, [])
     return render_template('purchase_requests/detail.html', pr=pr,
+                           po_links=po_links,
                            created_by_user=created_by_user,
                            # Resolved HERE, not in the template, for the same
                            # reason pr_print_form is: the button's condition and

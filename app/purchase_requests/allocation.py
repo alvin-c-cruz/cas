@@ -181,6 +181,58 @@ def unapproved_source_prs(po):
             .all())
 
 
+def po_links_for_pr_ids(pr_ids):
+    """``{pr_id: [(po_id, po_number), ...]}`` -- the purchase orders each
+    requisition's LINES have been pulled onto.
+
+    ONE query for a whole page, mirroring pr_ids_blocked_by_pending_amendment.
+    A per-requisition property would be N+1 on the list.
+
+    NOT `PurchaseRequest.purchase_order_id`. That header FK is set only by
+    convert() -- its own comment calls it "a back-link to the most recent PO" --
+    so a requisition reaching an order through the FORM'S PICKER never sets it
+    and read as unordered (BUG-PR-PO-COLUMN-READS-HEADER-FK-NOT-LINE-LINKS).
+    Since 2026-08-26 that is the ORDINARY case: PULLABLE_PR admits `submitted`
+    while convert() still refuses anything not approved, so for a submitted
+    requisition the FK cannot be set at all.
+
+    Reading the line links instead is a strict SUPERSET, not an alternative:
+    convert() also stamps `source_pr_item_id` on every line it builds, so the
+    shortcut path is covered here too and the FK needs no fallback.
+
+    Filtered by COMMITTED_PO for the same reason every allocation sum is --
+    cancelling an order releases its lines, so a cancelled order must not be
+    named as the destination of a requisition that is once again open.
+
+    Ordered by po_number so a requisition split across several orders lists them
+    the same way twice running.
+    """
+    from app.purchase_requests.models import PurchaseRequestItem
+    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+    ids = [i for i in (pr_ids or []) if i is not None]
+    if not ids:
+        return {}
+    rows = (db.session.query(PurchaseRequestItem.purchase_request_id,
+                             PurchaseOrder.id, PurchaseOrder.po_number)
+            .join(PurchaseOrderItem,
+                  PurchaseOrderItem.source_pr_item_id == PurchaseRequestItem.id)
+            .join(PurchaseOrder,
+                  PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
+            .filter(PurchaseRequestItem.purchase_request_id.in_(ids))
+            .filter(PurchaseOrder.status.in_(COMMITTED_PO))
+            .order_by(PurchaseOrder.po_number.asc())
+            .distinct()
+            .all())
+    out = {}
+    for pr_id, po_id, po_number in rows:
+        # distinct() is on the whole row, so one order feeding TWO lines of the
+        # same requisition arrives twice -- dedup on the order itself.
+        seen = out.setdefault(pr_id, [])
+        if (po_id, po_number) not in seen:
+            seen.append((po_id, po_number))
+    return out
+
+
 def pr_ids_blocked_by_pending_amendment(pr_ids=None):
     """Requisitions that may NOT be pulled from because an amendment request is
     awaiting review (owner decision, 2026-08-20).
