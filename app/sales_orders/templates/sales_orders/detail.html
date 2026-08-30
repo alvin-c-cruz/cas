@@ -110,15 +110,31 @@
             </span>
         </div>
         <div class="card-header-actions">
+            {# Print: `so_print_form: hidden` turns SO printing off entirely, so the page
+               must not offer a button print_so() refuses. Mirrors delivery_receipts --
+               the right sibling, since SO has no `*_print_access` status tier the way
+               SI/APV/CDV do. The Job Order Slip is deliberately NOT covered by this
+               setting (see print_job_order's docstring) and is linked elsewhere. #}
+            {% if so_print_form != 'hidden' %}
             <a href="{{ url_for('sales_orders.print_so', id=so.id) }}"
                target="_blank" rel="noopener noreferrer"
                class="btn btn-secondary">Print</a>
-            {# Deliver against this SO -- only once it is confirmed and the DR module is on. #}
-            {% if so.status == 'confirmed' and module_enabled('delivery_receipts') %}
+            {% endif %}
+            {# Deliver against this SO -- only once it is confirmed and this USER may reach
+               the DR module. can_access_module() is the instance package gate AND the
+               per-user book_permissions grant -- the same predicate enforce_module_access
+               applies to delivery_receipts.create, and the one base.html builds the sidebar
+               from. Its first statement is module_enabled(), so this replaces that check
+               rather than adding to it. #}
+            {% if so.status == 'confirmed' and can_access_module(current_user, 'delivery_receipts') %}
             <a href="{{ url_for('delivery_receipts.create', so=so.id) }}"
                class="btn btn-secondary">+ Delivery Receipt</a>
             {% endif %}
-            {% if so.status == 'confirmed' %}
+            {# Amend: the role list is _role_gate()'s, which amend() calls as its first
+               statement -- the same list the Confirm and Edit controls below already
+               carry. Staff MUST stay in it (deliberate; see test_amend_is_reachable_by_staff);
+               this is NOT cancel()'s stricter accountant-or-full-access rule. #}
+            {% if so.status == 'confirmed' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <a href="{{ url_for('sales_orders.amend', id=so.id) }}" class="btn btn-primary">Amend</a>
             {% endif %}
             {# Confirm: staff/accountant/admin, draft only (logic wired in Task 8) #}

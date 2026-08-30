@@ -900,6 +900,11 @@ def view(id):
                            confirmed_by_user=confirmed_by_user,
                            cancelled_by_user=cancelled_by_user,
                            so_billed=so_is_billed(so),
+                           # Same setting print_so() gates on, so the page cannot offer a
+                           # Print button the route will refuse. Passed in explicitly: an
+                           # undefined name in Jinja compares unequal to 'hidden', so a
+                           # forgotten context key would silently re-open the button.
+                           so_print_form=AppSettings.get_setting('so_print_form', 'current'),
                            revisions=parsed_revisions)
 
 
