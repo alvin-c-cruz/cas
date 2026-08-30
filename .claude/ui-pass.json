@@ -209,6 +209,12 @@
     "reason": null,
     "waived": false
   },
+  "b36b8dfdf5030b7f749ed3a644c61c279ffed2d2": {
+    "branch": "fix/po-create-preserves-lines",
+    "date": "2026-08-30",
+    "reason": "FULL browser pass on a THROWAWAY copy of the philgen data (instance/_uitest-po.db, port 5051; the real philgen.db was never opened), driven as ANGILYN -- the user who reported the defect -- not as admin, because the defect is per-user: the suggested number comes off each purchaser's own pad and only some of them collide. BEFORE the fix, on this same data, her form offered 00004 (alvin's) and every save was refused with all line items wiped. AFTER: her suggested number is 00006, free, and the order SAVES -- 'Purchase Order \"00006\" created successfully!'. Forcing a collision by typing 00004 shows the refusal AND returns the whole line intact: RM0009: CEMENT / 'PORTLAND CEMENT - angilyn repro' / 50.00 / BAGS: BAGS / 280.00 / 14,000.00, total 14,000.00, vendor CITI HARDWARE still selected. The UNIT half of that was a genuine browser-only finding: the first pass restored product, description, qty and price but rendered an EMPTY UOM cell, because the form posts uom_id while the row renderer reads unit_of_measure_id. pytest could not have seen it from the assertions written at that point -- the render check that now pins it (test_the_unit_survives_a_refused_save) was written BECAUSE of this browser pass, and the fix moved to the Python layer so it is testable. Server restarted between the code change and the re-check (CAS does not hot-reload .py), so the verified behaviour is the branch's, not a stale process.",
+    "waived": false
+  },
   "b9964f3bcaafa95c36e4c45f496a29041644ea60": {
     "branch": "feat/amendment-slice3",
     "date": "2026-08-11",
