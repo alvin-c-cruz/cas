@@ -11,6 +11,12 @@
     "reason": null,
     "waived": false
   },
+  "130a6da81581972b7d5ab39c2844f59bd5023272": {
+    "branch": "fix/pr-po-column-from-line-links",
+    "date": "2026-08-30",
+    "reason": "FULL browser pass on the branch templates against a THROWAWAY copy of the philgen data (instance/_uitest-philgen.db, port 5051; the real philgen.db was never opened by this server). Both changed templates driven live. LIST /purchase-requests -- the whole PO # column read row by row: 00006 SUBMITTED -> 00004 (THE REPRODUCTION: the picker-pulled case the header FK structurally cannot express, previously an em dash), 00003 CONVERTED -> 00003 and 00001 CONVERTED -> 00001 (the convert() path still resolves, confirming live that line links are a SUPERSET of the FK and no fallback is needed), 00005 / 00004 / 00002 -> em dash (the column does not print for every row). The 00006 cell carries ONE anchor, href=/purchase-orders/4. DETAIL /purchase-requests/6 -- the grid renders 'Purchase Order: 00004' singular, as a link; CLICKING it lands on /purchase-orders/4 titled 'Purchase Order 00004', so the destination is real and not just markup. 7-point check clean on both pages: right destination, data matches the philgen records and the status tiles (Draft 0 / Pending 3 / Approved 1 / Converted 2 against the six rows), module + branch gates both traversed (login -> select-branch CORP), links styled consistently with the PR # column, no layout break, and the lifecycle gating still correct (no edit pencil on converted rows). Screenshots: scratchpad 2026-08-30-pr-list-po-column.png, 2026-08-30-pr-detail-po-link.png, 2026-08-30-pr-link-destination.png.",
+    "waived": false
+  },
   "13f1467e62eaeb2c8a2e19385acc5031687ef15d": {
     "branch": "feat/r07-p4-period-close",
     "date": "2026-08-03",
