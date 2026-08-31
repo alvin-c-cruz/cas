@@ -227,6 +227,12 @@
     "reason": null,
     "waived": false
   },
+  "af048962994a490db5f064cfa3ae96e1f0e0e231": {
+    "branch": "fix/so-print-row-grid",
+    "date": "2026-08-31",
+    "reason": null,
+    "waived": false
+  },
   "afa15b8ad333fbe70a90e7132bc634cad597926e": {
     "branch": "fix/ap-employee-payee-branch-scope",
     "date": "2026-08-20",
