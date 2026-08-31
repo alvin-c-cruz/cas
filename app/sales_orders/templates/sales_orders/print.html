@@ -98,10 +98,21 @@
   .sig-box .sig-title { font-size: 10.8px; font-weight: 700; color: #555; margin-bottom: 24px; }
   .sig-box .sig-line { border-top: 1px solid #666; padding-top: 2px;
                         font-size: 10.8px; color: #555; }
-  /* 11px, not the 1.2x-scaled 12px: owner 2026-08-31, "reduce the size of the
-     signatory names by 1px". The placeholder .sig-line ("Name & Date") and the
-     .sig-title role label keep their scaled sizes -- only the NAME shrank. */
-  .sig-box .sig-line--named { font-size: 11px; font-weight: 700; color: #111; }
+  /* 10px, not the 1.2x-scaled 12px. Measured, not guessed: the signature boxes
+     give a name 158px, and the longest real signatory on file -- "ANISSA THERESE
+     VILLAREAL", 24 chars -- needs 187.6px at 11px bold, a 19% overflow that wrapped
+     it onto two lines. letter-spacing:-0.5px only reached 175.6px and dropping the
+     bold gained nothing in Arial; 10px measures 142.1px and fits with 16px spare.
+     One size for all four boxes so the block stays even.
+
+     CEILING: ~26-27 characters. A longer name wraps again, and no further size cut
+     is the answer -- CSS cannot shrink text to fit its own box (container-query
+     units scale off the container, identical across all four boxes). That case
+     needs JS auto-fit or a deliberate two-line treatment.
+
+     The placeholder .sig-line ("Name & Date") and the .sig-title role label keep
+     their scaled sizes -- only the NAME shrank. */
+  .sig-box .sig-line--named { font-size: 10px; font-weight: 700; color: #111; }
 
   .audit-footer { margin-top: 6px; font-size: 10.8px; color: #888; text-align: center;
                   border-top: 1px solid #ddd; padding-top: 4px; }

@@ -14,11 +14,20 @@ type scale is exactly the thing that drifts one selector at a time -- a later
 "just bump the total" leaves the ladder inconsistent, and this is where that
 gets caught.
 
-ONE DELIBERATE EXCEPTION to the 1.2x ladder: `.sig-box .sig-line--named` is 11px,
-not the scaled 12px (owner, 2026-08-31: "reduce the size of the signatory names
-by 1px"). It is recorded here rather than silently edited precisely because this
-file exists to catch a single selector drifting -- an unexplained 11px would look
-like exactly that drift to whoever reads it next.
+ONE DELIBERATE EXCEPTION to the 1.2x ladder: `.sig-box .sig-line--named` is 10px,
+not the scaled 12px. It went 12 -> 11 -> 10 on 2026-08-31: the first cut was the
+owner asking for "1px", the second was measurement. The NOTED BY box gives its
+name 158px, and "ANISSA THERESE VILLAREAL" needs 187.6px at 11px bold -- a 19%
+overflow that letter-spacing (-0.5px still needed 175.6px) and un-bolding (no gain
+at all in Arial) cannot close. 10px measures 142.1px and fits with 16px to spare.
+
+Recorded here rather than silently edited precisely because this file exists to
+catch a single selector drifting -- an unexplained 10px would look like exactly
+that drift to whoever reads it next. NOTE THE CEILING: 10px holds a name of about
+26-27 characters. CSS cannot shrink text to fit its own box (container-query units
+scale off the container, which is identical for all four signature boxes), so a
+longer name than Anissa's needs JS or a graceful two-line treatment, not another
+size cut.
 
 WHY THIS READS THE TEMPLATE SOURCE: the rules are static CSS in the template's
 own <style> block, identical in every render. It asserts the declared sizes,
@@ -51,7 +60,7 @@ EXPECTED = {
     '.notes-box .notes-label': '10.8px',
     '.sig-box .sig-title': '10.8px',
     '.sig-box .sig-line': '10.8px',
-    '.sig-box .sig-line--named': '11px',   # 12px scaled, less 1px -- owner 2026-08-31
+    '.sig-box .sig-line--named': '10px',   # measured to fit the longest real name
     '.audit-footer': '10.8px',
     '.print-rev-banner .print-rev': '16.8px',
     '.print-rev-banner .print-rev-supersede': '12px',
