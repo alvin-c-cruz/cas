@@ -206,8 +206,15 @@
   </table>
   <div class="info-row">
     <table>
-      <tr><td class="label">SO No.</td><td><strong>{{ so.so_number }}</strong></td></tr>
-      <tr><td class="label">Order Date</td><td>{{ so.order_date.strftime('%d %B %Y') }}</td></tr>
+      {# The customer's own PO leads this column, and SO No. / Order Date sit in the
+         right-hand one (owner, 2026-08-31: the two pairs traded places). #}
+      {% if so.customer_po_number %}
+      <tr><td class="label">PO No.</td><td>{{ so.customer_po_number }}</td></tr>
+      {% endif %}
+      {% if so.customer_po_date %}
+      <tr><td class="label">PO Date</td>
+          <td>{{ so.customer_po_date.strftime('%d %B %Y') }}</td></tr>
+      {% endif %}
       {% if so.expected_delivery_date %}
       <tr><td class="label">Expected Delivery</td>
           <td>{{ so.expected_delivery_date.strftime('%d %B %Y') }}</td></tr>
@@ -229,13 +236,12 @@
       {% if so.customer_address %}
       <tr><td class="label">Address</td><td>{{ so.customer_address }}</td></tr>
       {% endif %}
-      {% if so.customer_po_number %}
-      <tr><td class="label">PO No.</td><td>{{ so.customer_po_number }}</td></tr>
-      {% endif %}
-      {% if so.customer_po_date %}
-      <tr><td class="label">PO Date</td>
-          <td>{{ so.customer_po_date.strftime('%d %B %Y') }}</td></tr>
-      {% endif %}
+      {# SO No. and Order Date moved here from the left column. They are the only
+         UNCONDITIONAL fields in this block, so this column can no longer render
+         empty for a customer with no TIN / address / PO -- the left one is the
+         sparse one now. #}
+      <tr><td class="label">SO No.</td><td><strong>{{ so.so_number }}</strong></td></tr>
+      <tr><td class="label">Order Date</td><td>{{ so.order_date.strftime('%d %B %Y') }}</td></tr>
     </table>
   </div>
 
