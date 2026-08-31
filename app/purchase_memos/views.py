@@ -188,7 +188,10 @@ def _create_impl(memo_type):
         try:
             memo_number = assigned_number_or_raise(
                 PurchaseMemo, PurchaseMemo.memo_number,
-                generate_purchase_memo_number(memo_type, branch_id), 'Vendor memo')
+                generate_purchase_memo_number(memo_type, branch_id), 'Vendor memo',
+                # Same filter generate_purchase_memo_number used -- see the
+                # sales_memos twin.
+                filters=[PurchaseMemo.memo_type == memo_type])
             memo = PurchaseMemo(
                 memo_type=memo_type,
                 memo_number=memo_number,

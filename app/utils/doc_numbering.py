@@ -92,7 +92,7 @@ def next_document_number(model, column, branch_id=None, filters=None):
     return f'{next_num:0{PAD}d}'
 
 
-def assigned_number_or_raise(model, column, number, label):
+def assigned_number_or_raise(model, column, number, label, filters=None):
     """Return `number`, or raise ValueError if it is already taken.
 
     ONLY for the ASSIGNED call sites -- Quotation, Sales Memo, Vendor Memo --
@@ -109,8 +109,22 @@ def assigned_number_or_raise(model, column, number, label):
     The collision this catches is a brand-new branch under 'branch' scope: it
     has no series, so the engine returns the '00001' placeholder, and there is
     no field for the user to type the real start into.
+
+    `filters` MUST be the same list the caller passed to next_document_number.
+    Without it this guard asks a different question than the generator answered,
+    and rejects exactly the number the generator was built to produce. That is
+    not hypothetical: the memo generators filter by `memo_type` so Credit and
+    Debit notes climb independent series, both starting at 1 -- and an unfiltered
+    guard found the other type's 00001 every time. Because the second type's
+    series stays empty forever, its generator returned 00001 on every attempt, so
+    once a Credit Memo existed a Debit Note could NEVER be created (and
+    symmetrically). Single-series callers (Quotation) pass nothing and keep the
+    table-wide check they have always had.
     """
-    exists = db.session.query(column).filter(column == number).first()
+    query = db.session.query(column)
+    for criterion in (filters or []):
+        query = query.filter(criterion)
+    exists = query.filter(column == number).first()
     if exists:
         raise ValueError(
             f'{label} number {number} is already in use. This branch has no '

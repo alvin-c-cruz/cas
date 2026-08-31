@@ -24,8 +24,21 @@ class SalesMemo(db.Model):
     branch = db.relationship('Branch', foreign_keys=[branch_id])
 
     memo_type = db.Column(db.String(10), nullable=False, index=True)   # 'credit' | 'debit'
-    memo_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    memo_number = db.Column(db.String(50), nullable=False, index=True)
     memo_date = db.Column(db.Date, nullable=False, index=True)
+
+    # memo_number is unique PER TYPE, not table-wide. generate_memo_number filters
+    # by memo_type so Credit and Debit notes climb independent series -- both
+    # therefore start at 00001, which a table-wide unique constraint can never
+    # allow. The old `unique=True` on the column made the second memo type
+    # permanently uncreatable. See BUG-SALES-MEMO-SERIES-VS-UNIQUE-CONSTRAINT.
+    __table_args__ = (
+        # A unique INDEX, not a UniqueConstraint: the uniqueness this replaces
+        # was itself a unique index (`ix_<table>_memo_number`), so matching that
+        # shape keeps create_all() and the migration structurally identical and
+        # avoids a SQLite batch table rebuild.
+        db.Index('uq_sales_memos_type_number', 'memo_type', 'memo_number', unique=True),
+    )
 
     # The referenced posted Sales Invoice + snapshot.
     sales_invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'),

@@ -177,7 +177,11 @@ def _create_impl(memo_type):
         try:
             memo_number = assigned_number_or_raise(
                 SalesMemo, SalesMemo.memo_number,
-                generate_memo_number(memo_type, branch_id), 'Sales memo')
+                generate_memo_number(memo_type, branch_id), 'Sales memo',
+                # Same filter generate_memo_number used -- guard and generator
+                # must ask the same question or the guard rejects what the
+                # generator produces.
+                filters=[SalesMemo.memo_type == memo_type])
             memo = SalesMemo(
                 memo_type=memo_type,
                 memo_number=memo_number,
