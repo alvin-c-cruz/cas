@@ -187,3 +187,16 @@ def test_the_amount_cells_are_still_right_aligned(printed):
     assert re.search(r'text-align:\s*right', rule.group(0))
     assert 'monospace' in rule.group(0)
     assert re.search(r'<td class="amount"', _particulars(html))
+
+
+def test_the_column_widths_are_the_agreed_split_and_total_100(printed):
+    """Widths are declared inline per <th>, so they drift silently -- nothing
+    complains if they stop summing to 100%, the browser just reflows.
+
+    Qty and Unit Price were swapped on owner request (2026-08-31); Product keeps
+    the 51% it gained when VT / Delivery Date / Delivery Site were dropped.
+    """
+    so, html = printed
+    widths = re.findall(r'<th style="width:(\d+)%"', _particulars(html))
+    assert [int(w) for w in widths] == [4, 51, 14, 7, 7, 17]
+    assert sum(int(w) for w in widths) == 100

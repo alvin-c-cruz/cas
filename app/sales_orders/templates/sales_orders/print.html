@@ -53,14 +53,29 @@
   .info-row table { border-collapse: collapse; flex: 1; font-size: 12px; }
   .info-row td { border: 1px solid #aaa; padding: 3px 7px; }
   .info-row td.label { background: #f0f0f0; font-weight: 600; width: 42%; }
-  /* Black on the shared .label grey, like TIN / Address / PO No. beside it
-     (owner directive 2026-08-21) -- it was the one inverted cell in the table.
-     Only the heavier weight is kept, so it still reads as a section header.
-     border-bottom:none here and border-top:none on .customer-name: collapsed
-     borders MERGE, so removing the rule between the label and the name takes
-     both sides -- dropping one leaves the neighbour's border drawn. */
-  .customer-header { font-weight: 700; border-bottom: none; }
-  .customer-name { border-top: none; }
+  /* CUSTOMER is an ordinary label-left / value-right field (owner, 2026-08-31),
+     but on its OWN FULL-WIDTH table above the two-column block rather than inside
+     the right-hand one. Measured reason: in the right-hand table the value cell is
+     208px, and the real customer name "HILAS MARKETING CORPORATION" needs 409px at
+     24px -- it wrapped to three lines and the row rendered 91px (~4x an ordinary
+     row) instead of the 2x asked for. Only the ORIGINAL 12px fits 208px on one
+     line, so 2x-font and 2x-height were not simultaneously satisfiable there.
+     Full width gives the value ~587px, the name fits one line, and the 42px floor
+     is what actually decides the height.
+
+     Two doublings, each measured against what it doubles rather than picked:
+       height    42px == 2 x the 21px an ordinary info row renders at
+       font      24px == 2 x the 12px info-table font
+     24px text + 6px padding + 2px border is ~35.6px, under the 42px floor, so the
+     height rule is LIVE -- not inert the way .sig-box's old min-height was. */
+  .info-wide { width: 100%; border-collapse: collapse; font-size: 12px;
+               margin-bottom: 10px; }
+  .info-wide td { border: 1px solid #aaa; padding: 3px 7px; }
+  /* 20.5% of the full width == the 151.6px the 42% label column occupies in the
+     narrow tables, so the CUSTOMER label lines up with SO No. / Order Date below. */
+  .info-wide td.label { background: #f0f0f0; font-weight: 600; width: 20.5%; }
+  tr.customer-row td { height: 42px; }
+  .customer-name { font-size: 24px; font-weight: 700; }
 
   .particulars { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
   /* Black text on the SAME pale grey the .label cells use, and CENTERED
@@ -181,6 +196,14 @@
     <div class="doc-title">SALES ORDER</div>
   </div>
 
+  {# CUSTOMER spans the whole block: at 24px the name needs 409px and the
+     right-hand column only offers 208px, so inside it the name wrapped to three
+     lines and defeated the double-height ask. #}
+  <table class="info-wide">
+    <tr class="customer-row">
+      <td class="label">CUSTOMER</td>
+      <td class="customer-name">{{ so.customer_name }}</td></tr>
+  </table>
   <div class="info-row">
     <table>
       <tr><td class="label">SO No.</td><td><strong>{{ so.so_number }}</strong></td></tr>
@@ -200,8 +223,6 @@
          keeps its badge; only this header field went. #}
     </table>
     <table>
-      <tr><td colspan="2" class="label customer-header">CUSTOMER</td></tr>
-      <tr><td colspan="2" class="customer-name"><strong>{{ so.customer_name }}</strong></td></tr>
       {% if so.customer_tin %}
       <tr><td class="label">TIN</td><td>{{ so.customer_tin }}</td></tr>
       {% endif %}
@@ -231,9 +252,9 @@
            Slip; only the customer-facing printout drops them. #}
         <th style="width:4%">#</th>
         <th style="width:51%">Product</th>
-        <th style="width:7%">Qty</th>
+        <th style="width:14%">Qty</th>
         <th style="width:7%">UOM</th>
-        <th style="width:14%">Unit Price</th>
+        <th style="width:7%">Unit Price</th>
         <th style="width:17%">Amount</th>
       </tr>
     </thead>
@@ -294,9 +315,12 @@
     {% endfor %}
   </div>
 
+  {# Printed timestamp only (owner, 2026-08-31). The SO number and Status were
+     dropped: the number is already the most prominent field in the header block,
+     and Status was removed from that block in the same pass -- leaving it down
+     here would have reinstated on the footer exactly what was taken off the top. #}
   <div class="audit-footer">
-    SO {{ so.so_number }} &nbsp;&middot;&nbsp; Status: {{ so.status | title }}
-    &nbsp;|&nbsp; Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+    Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
   </div>
   </div>
 

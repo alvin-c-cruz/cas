@@ -73,8 +73,14 @@ def test_notes_box_is_a_direct_child_of_the_flex_column(client, db_session, admi
     html = client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
 
     body = html[html.index('<div class="page-wrap">'):]
-    # the grid closes, then the notes box, then the foot block -- nothing between
-    tail = body[body.index('</table>'):]
+    # the grid closes, then the notes box, then the foot block -- nothing between.
+    # Anchor on the PARTICULARS table specifically: `the first </table>` used to
+    # mean the same thing only because the info block was the sheet's first table.
+    # A full-width CUSTOMER table was added above it on 2026-08-31, which moved
+    # that anchor and made this read a slice starting two tables too early.
+    grid = body.index('<table class="particulars">')
+    tail = body[grid:]
+    tail = tail[tail.index('</table>'):]
     tail = tail[:tail.index('<div class="page-bottom">')]
     assert 'notes-box' in tail, 'the notes box is not between the grid and the foot block'
     assert tail.count('<div') == tail.count('notes-box'), \

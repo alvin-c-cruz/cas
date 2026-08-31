@@ -87,14 +87,22 @@ def test_no_status_word_leaks_into_the_header_for_any_state(
     assert so.so_number in head.group(0)        # positive control: the block rendered
 
 
-def test_the_audit_footer_still_records_the_status(printed):
-    """CONTROL: only the FIELD went. The footer line is provenance for whoever
-    holds the printed sheet, and the directive named the header field."""
+def test_the_audit_footer_carries_only_the_printed_timestamp(printed):
+    """The footer was trimmed to the timestamp alone (owner, 2026-08-31).
+
+    It previously read "SO <number> - Status: <state> | Printed: <ts>". Keeping
+    Status there would have put back on the footer exactly what the directive
+    above took off the header, and the SO number is already the most prominent
+    field on the sheet. Asserted as a WHOLE-footer shape rather than two absence
+    checks, so anything new appearing here has to be deliberate.
+    """
     so, html = printed
-    foot = re.search(r'<div class="audit-footer">.*?</div>', html, re.S)
+    foot = re.search(r'<div class="audit-footer">(.*?)</div>', html, re.S)
     assert foot, 'audit-footer not found'
-    assert 'Status:' in foot.group(0)
-    assert 'Draft' in foot.group(0)
+    text = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', foot.group(1))).strip()
+    assert text.startswith('Printed:'), f'footer is not timestamp-only: {text!r}'
+    assert 'Status' not in text
+    assert so.so_number not in text
 
 
 def test_the_detail_screen_still_shows_the_status_badge(

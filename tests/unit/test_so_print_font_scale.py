@@ -51,6 +51,7 @@ EXPECTED = {
     '.so-header .company-sub': '12px',
     '.so-header .doc-title': '16.8px',
     '.info-row table': '12px',
+    '.info-wide': '12px',          # the full-width CUSTOMER table, same base
     '.particulars': '12px',
     '.section-label': '12px',
     '.summary-inner': '12px',
@@ -58,6 +59,8 @@ EXPECTED = {
     '.summary-net .netval': '15.6px',
     '.notes-box': '12px',
     '.notes-box .notes-label': '10.8px',
+    # 2x the 12px table font -- owner 2026-08-31, the CUSTOMER value cell
+    '.customer-name': '24px',
     '.sig-box .sig-title': '10.8px',
     '.sig-box .sig-line': '10.8px',
     '.sig-box .sig-line--named': '10px',   # measured to fit the longest real name
