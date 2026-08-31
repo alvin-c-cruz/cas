@@ -31,11 +31,17 @@
                display: flex; flex-direction: column; min-height: 100vh; }
   .page-bottom { margin-top: auto; }
 
-  /* One height for EVERY row in the 20-row grid, data and filler alike -- see
+  /* One height for EVERY row in the 10-row grid, data and filler alike -- see
      the same note on the RR/PR printouts. Filler cells stay empty on purpose:
      ruled space to write on, never the em-dash the real rows use for a missing
-     value. `height` is a MINIMUM in table layout, so a wrapping cell grows. */
-  table.particulars tbody td { height: 25.5px; }
+     value. `height` is a MINIMUM in table layout, so a wrapping cell grows.
+
+     51px, paired with the 10-row grid below (owner, 2026-08-31: half the rows,
+     taller rows). 10 x 51 == the old 20 x 25.5 == 510px, so the body occupies
+     the same slice of the sheet and the signature block does not move. Change
+     one of the two numbers and test_the_grid_still_occupies_the_same_total_height
+     goes red. */
+  table.particulars tbody td { height: 51px; }
 
   .so-header { text-align: center; border-bottom: 2px solid #111;
                padding-bottom: 10px; margin-bottom: 12px; }
@@ -92,7 +98,10 @@
   .sig-box .sig-title { font-size: 10.8px; font-weight: 700; color: #555; margin-bottom: 24px; }
   .sig-box .sig-line { border-top: 1px solid #666; padding-top: 2px;
                         font-size: 10.8px; color: #555; }
-  .sig-box .sig-line--named { font-size: 12px; font-weight: 700; color: #111; }
+  /* 11px, not the 1.2x-scaled 12px: owner 2026-08-31, "reduce the size of the
+     signatory names by 1px". The placeholder .sig-line ("Name & Date") and the
+     .sig-title role label keep their scaled sizes -- only the NAME shrank. */
+  .sig-box .sig-line--named { font-size: 11px; font-weight: 700; color: #111; }
 
   .audit-footer { margin-top: 6px; font-size: 10.8px; color: #888; text-align: center;
                   border-top: 1px solid #ddd; padding-top: 4px; }
@@ -207,12 +216,12 @@
         <td class="amount">{{ '{:,.2f}'.format(item.amount) }}</td>
       </tr>
       {% endfor %}
-      {# Pad to a 20-row grid so every printed order has the same body, the way
+      {# Pad to a 10-row grid so every printed order has the same body, the way
          a pre-printed pad does. range() of a negative number is empty, so an
-         order with MORE than 20 lines prints all of them -- 20 is a minimum,
+         order with MORE than 10 lines prints all of them -- 10 is a minimum,
          never a cap: silently dropping lines off a printed order would be far
          worse than a short page. #}
-      {% for _ in range(20 - so.line_items|length) %}
+      {% for _ in range(10 - so.line_items|length) %}
       <tr class="so-filler"><td></td><td></td><td></td><td></td><td></td><td></td></tr>
       {% endfor %}
     </tbody>

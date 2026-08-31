@@ -1,9 +1,15 @@
-"""The Sales Order printout's page shape: letter, a fixed 20-line grid, and
+"""The Sales Order printout's page shape: letter, a fixed 10-line grid, and
 signatories anchored to the foot of the page.
 
 Owner directive 2026-08-21: "SO should be letter size portrait. the lines
 should be 20 regardless if there are less lines recorded. The signatories
 should always be at the very bottom."
+
+Owner directive 2026-08-31 SUPERSEDES the row count: "cut the number of line
+items into half. Increase the height of the surviving line items." So the grid
+is 10 rows at double height. GRID_ROWS * ROW_HEIGHT_PX is deliberately unchanged
+(10 x 51 == 20 x 25.5 == 510px), which keeps the signature block and page foot
+exactly where they were -- the rows got roomier, the sheet did not change shape.
 
 Three rules, three separate concerns:
 
@@ -32,7 +38,9 @@ from tests.integration._so_helpers import (
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
-GRID_ROWS = 20
+GRID_ROWS = 10
+ROW_HEIGHT_PX = 51           # was 25.5 across 20 rows
+GRID_TOTAL_PX = 510          # GRID_ROWS * ROW_HEIGHT_PX -- unchanged by the halving
 
 
 def _so_with_lines(db_session, main_branch, n, number='SO-LAYOUT-1'):
@@ -90,9 +98,9 @@ def test_page_size_is_letter_portrait(client, db_session, admin_user, main_branc
     assert 'A4' not in block
 
 
-# ── the fixed 20-line grid ───────────────────────────────────────────────────
+# ── the fixed 10-line grid, at double row height ─────────────────────────────
 
-def test_a_short_order_still_prints_twenty_rows(client, db_session, admin_user, main_branch,
+def test_a_short_order_still_prints_ten_rows(client, db_session, admin_user, main_branch,
                                                 sales_orders_module_enabled):
     so = _so_with_lines(db_session, main_branch, 2)
     _login(client, admin_user); _select_branch(client, main_branch.id)
@@ -122,11 +130,11 @@ def test_the_padding_rows_are_blank_not_placeholder_text(client, db_session, adm
     assert not re.search(r'\d', joined), 'a filler row carries a number'
 
 
-def test_twenty_rows_exactly_when_the_order_has_twenty_lines(client, db_session, admin_user,
+def test_ten_rows_exactly_when_the_order_has_ten_lines(client, db_session, admin_user,
                                                              main_branch,
                                                              sales_orders_module_enabled):
-    """CONTROL: at exactly 20 real lines nothing is padded."""
-    so = _so_with_lines(db_session, main_branch, GRID_ROWS, number='SO-LAYOUT-20')
+    """CONTROL: at exactly 10 real lines nothing is padded."""
+    so = _so_with_lines(db_session, main_branch, GRID_ROWS, number='SO-LAYOUT-10')
     _login(client, admin_user); _select_branch(client, main_branch.id)
 
     rows = _tbody_rows(_print(client, so))
@@ -134,13 +142,14 @@ def test_twenty_rows_exactly_when_the_order_has_twenty_lines(client, db_session,
     assert not [r for r in rows if 'so-filler' in r]
 
 
-def test_a_long_order_is_not_truncated_to_twenty(client, db_session, admin_user, main_branch,
+def test_a_long_order_is_not_truncated_to_ten(client, db_session, admin_user, main_branch,
                                                  sales_orders_module_enabled):
-    """20 is a MINIMUM, not a cap.
+    """10 is a MINIMUM, not a cap.
 
-    Mutation target: implement the grid by slicing the line items to 20 and this
+    Mutation target: implement the grid by slicing the line items to 10 and this
     goes RED -- silently dropping billed lines off a printed order is far worse
-    than a short page.
+    than a short page. Halving the grid doubles the stakes here: an order of 12
+    lines used to fit inside the padding and now exceeds it.
     """
     so = _so_with_lines(db_session, main_branch, 23, number='SO-LAYOUT-23')
     _login(client, admin_user); _select_branch(client, main_branch.id)
@@ -148,6 +157,48 @@ def test_a_long_order_is_not_truncated_to_twenty(client, db_session, admin_user,
     rows = _tbody_rows(_print(client, so))
     assert len(rows) == 23
     assert not [r for r in rows if 'so-filler' in r]
+
+
+
+def test_every_grid_row_carries_the_doubled_height(client, db_session, admin_user, main_branch,
+                                                   sales_orders_module_enabled):
+    """The rule applies to EVERY tbody cell -- data rows and filler alike.
+
+    Halving the grid without raising the height would leave the body occupying
+    half the sheet and the signature block floating up to meet it; raising the
+    height without halving would overflow onto a second page. The two numbers
+    only make sense together, which is what the next test pins.
+    """
+    so = _so_with_lines(db_session, main_branch, 2)
+    _login(client, admin_user); _select_branch(client, main_branch.id)
+    html = _print(client, so)
+
+    rule = re.search(r'table\.particulars tbody td \{[^}]*\}', html)
+    assert rule, 'no height rule for particulars tbody cells'
+    m = re.search(r'height:\s*([\d.]+)px', rule.group(0))
+    assert m, f'the rule sets no px height: {rule.group(0)!r}'
+    assert float(m.group(1)) == ROW_HEIGHT_PX
+
+
+def test_the_grid_still_occupies_the_same_total_height(client, db_session, admin_user,
+                                                       main_branch,
+                                                       sales_orders_module_enabled):
+    """rows x height is the invariant the page shape actually depends on.
+
+    This is the test that fails if someone later changes ONE of the two numbers:
+    the sheet is letter, the signature block is anchored to its foot, and the
+    body between them was 510px before the halving and must stay 510px after.
+    """
+    so = _so_with_lines(db_session, main_branch, 2)
+    _login(client, admin_user); _select_branch(client, main_branch.id)
+    html = _print(client, so)
+
+    rows = _tbody_rows(html)
+    rule = re.search(r'table\.particulars tbody td \{[^}]*\}', html)
+    height = float(re.search(r'height:\s*([\d.]+)px', rule.group(0)).group(1))
+
+    assert len(rows) * height == GRID_TOTAL_PX
+    assert GRID_ROWS * ROW_HEIGHT_PX == GRID_TOTAL_PX      # the constants agree too
 
 
 # ── signatories at the foot ──────────────────────────────────────────────────

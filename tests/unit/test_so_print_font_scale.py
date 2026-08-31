@@ -14,6 +14,12 @@ type scale is exactly the thing that drifts one selector at a time -- a later
 "just bump the total" leaves the ladder inconsistent, and this is where that
 gets caught.
 
+ONE DELIBERATE EXCEPTION to the 1.2x ladder: `.sig-box .sig-line--named` is 11px,
+not the scaled 12px (owner, 2026-08-31: "reduce the size of the signatory names
+by 1px"). It is recorded here rather than silently edited precisely because this
+file exists to catch a single selector drifting -- an unexplained 11px would look
+like exactly that drift to whoever reads it next.
+
 WHY THIS READS THE TEMPLATE SOURCE: the rules are static CSS in the template's
 own <style> block, identical in every render. It asserts the declared sizes,
 not the rendered millimetres.
@@ -45,7 +51,7 @@ EXPECTED = {
     '.notes-box .notes-label': '10.8px',
     '.sig-box .sig-title': '10.8px',
     '.sig-box .sig-line': '10.8px',
-    '.sig-box .sig-line--named': '12px',
+    '.sig-box .sig-line--named': '11px',   # 12px scaled, less 1px -- owner 2026-08-31
     '.audit-footer': '10.8px',
     '.print-rev-banner .print-rev': '16.8px',
     '.print-rev-banner .print-rev-supersede': '12px',
@@ -85,14 +91,19 @@ def test_screen_chrome_was_not_scaled(selector):
 
 
 def test_the_grid_row_height_still_clears_the_larger_text():
-    """The 25.5px row floor must still exceed the cell's own content height.
+    """The 51px row floor must still exceed the cell's own content height.
 
     12px text plus 3px padding top and bottom is ~21.6px; if the text ever grows
-    past the floor the 20-row grid silently gets taller and the single-page
+    past the floor the 10-row grid silently gets taller and the single-page
     layout stops holding. This is the assertion that catches that.
+
+    The floor was 25.5px across 20 rows until 2026-08-31, when the owner halved
+    the grid and doubled the height (10 x 51 == the old 20 x 25.5 == 510px). The
+    clearance therefore got MORE generous, not less -- but the number is pinned
+    here so a later trim back toward the content height is a deliberate act.
     """
     css = io.open(TEMPLATE, encoding='utf-8').read()
-    assert 'table.particulars tbody td { height: 25.5px; }' in css
+    assert 'table.particulars tbody td { height: 51px; }' in css
     assert _declared_sizes()['.particulars'] == '12px'
     assert re.search(r'\.particulars td \{[^}]*padding:\s*3px', css), \
         'cell padding changed -- recheck that content still fits the 25.5px floor'

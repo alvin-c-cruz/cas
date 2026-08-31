@@ -104,19 +104,25 @@ def test_the_grid_still_has_filler_rows(label, rel, selector):
         f'{label}: the grid no longer emits filler rows'
 
 
-def test_sales_order_grid_row_is_one_and_a_half_lines():
-    """Owner directive 2026-08-21: the SO line item height is 1.5x.
+def test_sales_order_grid_row_is_three_lines():
+    """Owner directive 2026-08-31: half the rows, taller rows.
 
-    17px was the base the SO grid inherited from the PR pattern; 1.5 x 17 is
-    25.5px exactly, so the value is written literally rather than rounded. The
-    RR (19px) and PR (17px) are unchanged -- the directive named the SO only.
+    17px was the base the SO grid inherited from the PR pattern. The 2026-08-21
+    directive set 1.5 x 17 = 25.5px across a 20-row grid; 2026-08-31 halved the
+    grid to 10 rows and doubled the height to 51px (3 x 17), so the body still
+    occupies 510px and the signature block does not move. See
+    test_so_print_page_layout.py, which pins that rows x height invariant.
+
+    The RR (19px) and PR (17px) are unchanged -- both directives named the SO
+    only, and those two assertions below are what proves this change stayed
+    inside the Sales Order.
 
     Pinned because this is a dimension the owner chose, not an incidental one:
-    a later tidy-up that "rounds it to 26" or reverts it to 17 should have to
-    argue with a failing test.
+    a later tidy-up that "rounds it" or reverts it should have to argue with a
+    failing test.
     """
     css = (APP / 'sales_orders/templates/sales_orders/print.html').read_text(encoding='utf-8')
-    assert 'table.particulars tbody td { height: 25.5px; }' in css
+    assert 'table.particulars tbody td { height: 51px; }' in css
 
     pr = (APP / 'purchase_requests/templates/purchase_requests/print.html').read_text(encoding='utf-8')
     rr = (APP / 'receiving_reports/templates/receiving_reports/print.html').read_text(encoding='utf-8')
