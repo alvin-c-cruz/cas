@@ -125,6 +125,12 @@
     "reason": "PARTIAL browser pass, owner-approved to merge. VERIFIED LIVE: with zero memos the report is byte-identical to pre-change (grand total 31,514,203.67, 209 chips) -- the state every live client is in today. NOT verified live: memo ROW RENDERING, because RIC has the sales_memos module DISABLED, so no memo can exist or be created without first enabling it; the enablement control was not found under /settings or its Packages tab. That path is covered by 87 tests incl. the reconciliation invariant, and is currently unreachable by any client.",
     "waived": true
   },
+  "5284be048209acce0f05d66a8c91e0e9d6b60477": {
+    "branch": "fix/so-print-customer-row",
+    "date": "2026-08-31",
+    "reason": null,
+    "waived": false
+  },
   "579e12ed6baeab789b0e0c03b358d31eb22fecdc": {
     "branch": "feat/po-signatories",
     "date": "2026-08-19",
