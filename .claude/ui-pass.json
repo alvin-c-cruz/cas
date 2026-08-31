@@ -287,6 +287,12 @@
     "reason": null,
     "waived": false
   },
+  "dc6a86395de454fbd57bc4ed97834a2718fbcb00": {
+    "branch": "fix/so-print-signatory-10px",
+    "date": "2026-08-31",
+    "reason": null,
+    "waived": false
+  },
   "e624469c9d48743d3b13a614e6e99419147510a0": {
     "branch": "fix/customers-create-button",
     "date": "2026-08-20",
