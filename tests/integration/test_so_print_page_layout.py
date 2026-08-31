@@ -201,6 +201,49 @@ def test_the_grid_still_occupies_the_same_total_height(client, db_session, admin
     assert GRID_ROWS * ROW_HEIGHT_PX == GRID_TOTAL_PX      # the constants agree too
 
 
+
+# ── the signature block's own height ─────────────────────────────────────────
+
+SIG_BOX_PX = 124             # doubled from the 62px it actually rendered at
+SIG_GAP_PX = 86              # .sig-title margin-bottom -- where the signing space lives
+
+
+def test_the_signature_boxes_are_double_height(client, db_session, admin_user, main_branch,
+                                               sales_orders_module_enabled):
+    """Owner directive 2026-08-31: double the height of the signatory footer.
+
+    The height is pinned in TWO places that must agree, and the test asserts the
+    arithmetic between them rather than each number in isolation:
+
+        5 pad + 12 title + 86 gap + 14 name + 5 pad + 2 borders == 124
+
+    That matters because the previous `min-height: 56px` was INERT -- the content
+    already came to 62px, so the floor was never reached and raising it alone
+    would have added dead space BELOW the signature line instead of above it.
+    Growing the gap is what puts the room where a person actually signs.
+    """
+    so = _so_with_lines(db_session, main_branch, 2)
+    _login(client, admin_user); _select_branch(client, main_branch.id)
+    html = _print(client, so)
+
+    box = re.search(r'\.sig-box \{[^}]*\}', html)
+    assert box, '.sig-box rule not found'
+    m = re.search(r'min-height:\s*(\d+)px', box.group(0))
+    assert m and int(m.group(1)) == SIG_BOX_PX
+
+    title = re.search(r'\.sig-box \.sig-title \{[^}]*\}', html)
+    assert title, '.sig-title rule not found'
+    g = re.search(r'margin-bottom:\s*(\d+)px', title.group(0))
+    assert g and int(g.group(1)) == SIG_GAP_PX
+
+    pad = re.search(r'padding:\s*(\d+)px', box.group(0))
+    assert pad, '.sig-box has no padding declaration'
+    content = 2 * int(pad.group(1)) + 12 + SIG_GAP_PX + 14 + 2
+    assert content == SIG_BOX_PX, (
+        f'the floor ({SIG_BOX_PX}px) and the content ({content}px) disagree -- '
+        'min-height is inert again, so the box height is not what this test claims')
+
+
 # ── signatories at the foot ──────────────────────────────────────────────────
 
 def test_signatories_are_anchored_to_the_bottom_of_the_page(client, db_session, admin_user,
