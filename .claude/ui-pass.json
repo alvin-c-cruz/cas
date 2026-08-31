@@ -1,4 +1,10 @@
 {
+  "014327e63873cb680622d6d9a34d4162e7879986": {
+    "branch": "fix/so-print-columns",
+    "date": "2026-08-31",
+    "reason": null,
+    "waived": false
+  },
   "03a307591ffd441c95b29c9e2cf30e5653bd0e4f": {
     "branch": "fix/pr-po-ceiling-aggregate",
     "date": "2026-08-16",
