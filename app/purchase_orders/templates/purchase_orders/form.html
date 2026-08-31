@@ -67,6 +67,9 @@
         <div class="form-group">{{ form.purpose.label(class='form-label') }} {{ form.purpose(class="form-control", placeholder="e.g. FOR PRODUCTION USE") }}</div>
         <div class="form-group">{{ form.vat_treatment.label(class='form-label') }} {{ form.vat_treatment(class="form-control", id="vatTreatment") }}</div>
         <div class="form-group">{{ form.payment_terms.label(class='form-label') }} {{ form.payment_terms(class="form-control") }}</div>
+        {# Printed beside the total on both PO forms, mirroring the legacy pad. A LABEL
+           only -- the amount is booked in pesos regardless. See models.PurchaseOrder.currency. #}
+        <div class="form-group">{{ form.currency.label(class='form-label') }} {{ form.currency(class="form-control") }}</div>
       </div>
 
       {# picker-field: this select becomes a Choices control, and transactions.css

@@ -369,7 +369,19 @@ class TestPurchaseOrderOverlayLineValues:
     with the Purchase Requisition fixtures -- module-level fixtures and helpers are
     resolved by name at call time, not by source order, and PO/PR/RR deliberately
     share ONE set so a divergence between the three overlays shows up as a
-    disagreement between tests written against identical inputs."""
+    disagreement between tests written against identical inputs.
+
+    Since 2026-08-31 the PO overlay also emits a group-HEADING row per described group
+    and one NOTHING FOLLOWS terminator, so a PO column stack is no longer
+    one-cell-per-line (see test_po_overlay_grouped_render.py for that contract). These
+    tests are about what an ITEM row prints, so they select item rows rather than
+    asserting the whole stack -- `amount` is non-blank on item rows and blank on the
+    structural ones, which makes it the reliable marker. PR and RR are unchanged and
+    still assert their stacks directly, which is why only this class grew a helper."""
+
+    @staticmethod
+    def _item_cells(cells, key):
+        return [cells[key][i] for i, amt in enumerate(cells['amount']) if amt]
 
     def test_the_uom_column_prints_the_unit_code_not_its_long_name(
             self, client, db_session, admin_user, branch_manila, approved_po,
@@ -389,7 +401,7 @@ class TestPurchaseOrderOverlayLineValues:
         _login(client, admin_user, branch_manila)
         body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
         cells = _column_cells(body)
-        assert cells['uom'] == [uom_box.code]
+        assert self._item_cells(cells, 'uom') == [uom_box.code]
         assert uom_box.name not in cells['uom']
 
     def test_the_uom_column_falls_back_to_the_line_s_free_text(
@@ -406,7 +418,7 @@ class TestPurchaseOrderOverlayLineValues:
         db_session.commit()
         _login(client, admin_user, branch_manila)
         body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
-        assert _column_cells(body)['uom'] == ['PAIL']
+        assert self._item_cells(_column_cells(body), 'uom') == ['PAIL']
 
     def test_a_line_with_neither_prints_an_empty_uom_cell(
             self, client, db_session, admin_user, branch_manila, approved_po):
@@ -416,7 +428,7 @@ class TestPurchaseOrderOverlayLineValues:
         db_session.commit()
         _login(client, admin_user, branch_manila)
         body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
-        assert _column_cells(body)['uom'] == ['']
+        assert self._item_cells(_column_cells(body), 'uom') == ['']
 
 
 class TestPrintAccessGate:

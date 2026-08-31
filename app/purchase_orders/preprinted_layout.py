@@ -14,6 +14,10 @@ FIELD_KEYS = [
     'po_no', 'order_date', 'expected_date', 'vendor_name', 'vendor_tin',
     'vendor_address', 'payment_terms', 'reference', 'purpose', 'vat_treatment',
     'total_amount',
+    # Printed to the LEFT of the total, as the client's legacy pad does. A separate
+    # positioned field rather than being glued onto total_amount, so it can be moved
+    # or hidden on its own without disturbing the amount's registration.
+    'currency',
     # Per-ORDER signatories. Positioned FIELDS rather than static overlay text
     # (the TEXT_KEYS other documents use) precisely because the value differs per
     # order -- it is typed on the form and carried forward from this purchaser's
@@ -33,16 +37,22 @@ FIELD_LABELS = {
     'purpose': 'Purpose',
     'vat_treatment': 'VAT Treatment',
     'total_amount': 'Total Amount',
+    'currency': 'Currency',
     'prepared_by': 'Prepared by',
     'checked_by': 'Checked by',
     'approved_by': 'Approved by',
 }
 
-COLUMN_KEYS = ['line_number', 'product', 'description', 'quantity', 'uom',
-               'unit_price', 'amount']
+COLUMN_KEYS = ['line_number', 'pr_number', 'product', 'description', 'quantity',
+               'uom', 'unit_price', 'amount']
 
 COLUMN_LABELS = {
     'line_number': '#',
+    # The requisition this line came from. The client's legacy pad carries PR. NO. as
+    # its LEFTMOST column and has no line counter at all, so both ship and the layout
+    # decides: the default below hides '#' and shows this in its place. Resolved from
+    # PurchaseOrderItem.source_pr_item_id in the view -- see _pr_numbers_for().
+    'pr_number': 'PR #',
     'product': 'Product',
     'description': 'Description',
     'quantity': 'Qty',
@@ -83,6 +93,7 @@ DEFAULT_PO_PREPRINTED_LAYOUT = {
         # the right. Bold, matching how the legacy form printed it.
         'purpose':         {'x': 60,  'y': 274, 'w': 500, 'fontSize': 11, 'bold': True,  'hidden': False},
         'total_amount':    {'x': 700, 'y': 430, 'w': 150, 'fontSize': 13, 'bold': True,  'hidden': False},
+        'currency':        {'x': 640, 'y': 430, 'w': 50,  'fontSize': 13, 'bold': True,  'hidden': False},
         # Signature band, below the totals. Geometry is a STARTING POINT only --
         # every client nudges these to their own stationery in the layout
         # designer, which is what it exists for.
@@ -96,8 +107,16 @@ DEFAULT_PO_PREPRINTED_LAYOUT = {
     'lineItems': {
         'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
         'columns': [
-            {'key': 'line_number', 'x': 56,  'visible': True, 'width': 30},
-            {'key': 'product',     'x': 92,  'visible': True, 'width': 200},
+            # '#' off by default: the legacy pad this overlay targets has no line
+            # counter, and PR # takes the leftmost printed box. It keeps its OWN
+            # non-overlapping slot even so -- a hidden column is one click from
+            # visible in the designer, and two columns sharing an x print on top of
+            # each other the moment someone unhides it. That is not hypothetical:
+            # it is exactly the state this client's own saved layout is in, with
+            # line_number (111..141) sitting inside product (94..294).
+            {'key': 'line_number', 'x': 56,  'visible': False, 'width': 30},
+            {'key': 'pr_number',   'x': 90,  'visible': True, 'width': 56},
+            {'key': 'product',     'x': 150, 'visible': True, 'width': 150},
             {'key': 'description', 'x': 300, 'visible': True, 'width': 160},
             {'key': 'quantity',    'x': 468, 'visible': True, 'width': 50},
             {'key': 'uom',         'x': 524, 'visible': True, 'width': 50},

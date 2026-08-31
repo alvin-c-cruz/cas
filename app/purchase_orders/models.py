@@ -104,6 +104,17 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
     approved_by = db.Column(db.String(100))
     vat_treatment = db.Column(db.String(10), default='inclusive', nullable=False)
 
+    # Legacy-pad parity (owner directive 2026-08-31, from the annotation on PO 00984:
+    # "PO can be of any currency. default is PHP"). A LABEL ONLY -- printed beside the
+    # total exactly as the pre-printed pad does. Nothing converts: the amount is still
+    # booked in pesos, the RR values stock in pesos, the AP bill and the GL post in
+    # pesos, and no FX rate exists anywhere in CAS. This is the first currency field in
+    # the app; every other `currency` match in the tree is the word `concurrency`.
+    # server_default as well as default, so the orders already on the five client
+    # instances read 'PHP' after the migration instead of NULL -- a NULL would print an
+    # empty label where the pad prints a currency.
+    currency = db.Column(db.String(3), default='PHP', server_default='PHP', nullable=False)
+
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
 
     # Chain link: the Purchase Request this PO was created from on convert (null for directly-entered
@@ -388,6 +399,60 @@ def grouped_lines_for_overlay(line_items):
     for _key, items, _subtotal in group_lines_by_description(line_items):
         for n, item in enumerate(items):
             rows.append((item, n == 0))
+    return rows
+
+
+# Row kinds emitted by overlay_rows(). Strings, not an enum, because the only
+# consumer is a Jinja template comparing them.
+OVERLAY_HEADING = 'heading'
+OVERLAY_ITEM = 'item'
+OVERLAY_END = 'end'
+
+# Verbatim from the client's legacy pad, PO 00984: spaced hyphens, upper case.
+NOTHING_FOLLOWS = '- NOTHING FOLLOWS -'
+
+
+def overlay_rows(line_items):
+    """[(kind, payload), ...] -- every ROW the PRE-PRINTED overlay draws.
+
+    kind is OVERLAY_HEADING (payload: the remark text), OVERLAY_ITEM (payload: the
+    PurchaseOrderItem) or OVERLAY_END (payload: None -- the NOTHING FOLLOWS
+    terminator).
+
+    HISTORY, because this reverses a documented decision. Until 2026-08-31
+    grouped_lines_for_overlay returned one row per LINE and deliberately drew NO
+    heading rows. The reasoning was sound and still is: the overlay is not a table,
+    each column is an absolutely-positioned stack of fixed-height cells, and the
+    columns line up ONLY because every stack holds the same number of rows. A heading
+    inserted into one stack and not the others drifts that column down the page
+    relative to the physical pre-printed boxes -- a defect you only find on paper.
+
+    The client's own legacy pad prints the remark as a heading ABOVE its items and
+    they asked for parity (owner directive 2026-08-31, annotated scan of PO 00984).
+    The alignment constraint has NOT been abandoned -- it is met differently. This
+    function emits the ROW LIST, and every column stack renders exactly one cell per
+    row in it, blank wherever a column has nothing to say on that row. The stacks are
+    therefore still equal-length BY CONSTRUCTION, which is the property that actually
+    protects registration. What changed is only that the row count is no longer equal
+    to the line count. tests/integration/test_po_overlay_grouped_render.py pins both
+    halves.
+
+    Still NO subtotal rows: the standard form has them, the pre-printed pad has no box
+    for them, and nobody asked.
+
+    Lines with no description form a real group under the empty key and print with no
+    heading -- dropping them would silently lose billable lines off a supplier's copy.
+    The terminator is emitted only for a non-empty order; "- NOTHING FOLLOWS -" under
+    nothing of its own is its own kind of wrong.
+    """
+    rows = []
+    for key, items, _subtotal in group_lines_by_description(line_items):
+        if key:
+            rows.append((OVERLAY_HEADING, key))
+        for item in items:
+            rows.append((OVERLAY_ITEM, item))
+    if rows:
+        rows.append((OVERLAY_END, None))
     return rows
 
 

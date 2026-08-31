@@ -114,6 +114,10 @@
      nothing at all on a pre-printed form, which is correct: the paper already
      carries the ruled line and the label.
 
+     `currency` prints for EVERY order including peso ones -- the legacy pad prints
+     it explicitly, so suppressing it as "the default" would leave the common case
+     unlabelled.
+
      NOTE: no Jinja comment may sit INSIDE the dict literal below -- `{#` inside
      a `{% set %}` expression is a TemplateSyntaxError, not a comment. #}
   {% set field_values = {
@@ -128,6 +132,7 @@
     'purpose': po.purpose or '',
     'vat_treatment': po.vat_treatment_label,
     'total_amount': '{:,.2f}'.format(po.total_amount or 0),
+    'currency': po.currency or '',
     'prepared_by': po.prepared_by or '',
     'checked_by': po.checked_by or '',
     'approved_by': po.approved_by or '',
@@ -155,29 +160,44 @@
     <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('amount', 'unit_price', 'quantity') else '' }}"
          data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
          style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
-      {#- Grouped by Description (owner directive 2026-08-21) via
-          grouped_lines_for_overlay(): the SAME rows, reordered so a group is
-          contiguous. NO heading or subtotal rows -- every column stack must
-          keep one cell per line or the columns drift off the pre-printed
-          boxes. Each stack iterates this identical list, so alignment holds
-          by construction. -#}
-      {%- for item, show_description in overlay_lines %}
+      {#- Rows from overlay_rows(): a heading row per described group, then that
+          group's items, then one NOTHING FOLLOWS terminator. Owner directive
+          2026-08-31 (legacy pad PO 00984) reversed the earlier no-headings rule --
+          see the helper's docstring for why that was safe to reverse.
+
+          The alignment rule is UNCHANGED and still load-bearing: every stack
+          iterates this identical list and emits exactly ONE cell per row, blank
+          where the column has nothing to say. Equal-length stacks are what keep
+          the columns registered against the physical pre-printed boxes. If you
+          add a row kind, every column must still emit a cell for it. -#}
+      {%- for kind, payload in overlay_lines %}
       {# The `uom` column prints the unit CODE ('KG'), never its long name
          ('Kilogram'): the pre-printed box is ~50px wide, so a name clips on real
          stationery. Same expression and same fallback chain as
          purchase_requests/print_preprinted.html and
          receiving_reports/print_preprinted.html, and as PurchaseOrderItem.uom_display
          (purchase_orders/models.py:259) which every on-screen PO surface already uses. #}
-      <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
-        {%- if col.key == 'line_number' -%}{{ item.line_number }}
-        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.name }}{% else %}{{ '' }}{% endif %}
-        {#- Written ONCE at the top of its group; blank on the lines beneath.
-            Only the description de-duplicates -- see the helper's docstring. -#}
-        {%- elif col.key == 'description' -%}{{ (item.description or '') if show_description else '' }}
-        {%- elif col.key == 'quantity' -%}{{ item | qty_fmt }}
-        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '') }}
-        {%- elif col.key == 'unit_price' -%}{{ '{:,.2f}'.format(item.unit_price) if item.unit_price is not none else '' }}
-        {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.amount) }}
+      {#- The terminator is centred WITHIN the description column's own width, which
+          is how the legacy pad sets it (heading left, terminator centred) without
+          needing a second x for the same column. -#}
+      <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;{% if kind == 'end' %}text-align:center;{% endif %}">
+        {%- if kind == 'heading' -%}
+          {%- if col.key == 'description' -%}{{ payload }}{%- endif -%}
+        {%- elif kind == 'end' -%}
+          {%- if col.key == 'description' -%}{{ nothing_follows }}{%- endif -%}
+        {%- else -%}
+          {%- set item = payload -%}
+          {%- if col.key == 'line_number' -%}{{ item.line_number }}
+          {#- The requisition behind this line. Blank for a directly-entered line. -#}
+          {%- elif col.key == 'pr_number' -%}{{ pr_numbers.get(item.id, '') }}
+          {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.name }}{% else %}{{ '' }}{% endif %}
+          {#- Blank on every item row now: the description is its GROUP HEADING above. -#}
+          {%- elif col.key == 'description' -%}{{ '' }}
+          {%- elif col.key == 'quantity' -%}{{ item | qty_fmt }}
+          {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '') }}
+          {%- elif col.key == 'unit_price' -%}{{ '{:,.2f}'.format(item.unit_price) if item.unit_price is not none else '' }}
+          {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.amount) }}
+          {%- endif -%}
         {%- endif -%}
       </div>
       {% endfor -%}

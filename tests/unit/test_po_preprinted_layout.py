@@ -33,6 +33,7 @@ EXPECTED_FIELDS = {
     # legacy form printed it. popurp_0001.
     'purpose':         {'x': 60,  'y': 274, 'w': 500, 'fontSize': 11, 'bold': True,  'hidden': False},
     'total_amount':    {'x': 700, 'y': 430, 'w': 150, 'fontSize': 13, 'bold': True,  'hidden': False},
+    'currency':        {'x': 640, 'y': 430, 'w': 50,  'fontSize': 13, 'bold': True,  'hidden': False},
     # Signature band below the totals. A starting point every client nudges to
     # its own stationery in the layout designer.
     'prepared_by':     {'x': 60,  'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
@@ -43,8 +44,9 @@ EXPECTED_FIELDS = {
 EXPECTED_LINE_ITEMS = {
     'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
     'columns': [
-        {'key': 'line_number', 'x': 56,  'visible': True, 'width': 30},
-        {'key': 'product',     'x': 92,  'visible': True, 'width': 200},
+        {'key': 'line_number', 'x': 56,  'visible': False, 'width': 30},
+        {'key': 'pr_number',   'x': 90,  'visible': True, 'width': 56},
+        {'key': 'product',     'x': 150, 'visible': True, 'width': 150},
         {'key': 'description', 'x': 300, 'visible': True, 'width': 160},
         {'key': 'quantity',    'x': 468, 'visible': True, 'width': 50},
         {'key': 'uom',         'x': 524, 'visible': True, 'width': 50},
@@ -63,6 +65,7 @@ def test_it_declares_every_po_header_field():
         'po_no', 'order_date', 'expected_date', 'vendor_name', 'vendor_tin',
         'vendor_address', 'payment_terms', 'reference', 'purpose', 'vat_treatment',
         'total_amount',
+        'currency',
         # Per-order signatories (posig_0001). Positioned FIELDS, not the static
         # TEXT_KEYS other documents use, because the value differs per order.
         'prepared_by', 'checked_by', 'approved_by',
@@ -84,6 +87,7 @@ def test_the_field_labels_are_pinned_exactly():
         'purpose': 'Purpose',
         'vat_treatment': 'VAT Treatment',
         'total_amount': 'Total Amount',
+        'currency': 'Currency',
         'prepared_by': 'Prepared by',
         'checked_by': 'Checked by',
         'approved_by': 'Approved by',
@@ -92,13 +96,15 @@ def test_the_field_labels_are_pinned_exactly():
 
 def test_it_declares_the_po_line_columns():
     assert pl.COLUMN_KEYS == [
-        'line_number', 'product', 'description', 'quantity', 'uom', 'unit_price', 'amount',
+        'line_number', 'pr_number', 'product', 'description', 'quantity', 'uom',
+        'unit_price', 'amount',
     ]
 
 
 def test_the_column_labels_are_pinned_exactly():
     assert pl.COLUMN_LABELS == {
         'line_number': '#',
+        'pr_number': 'PR #',
         'product': 'Product',
         'description': 'Description',
         'quantity': 'Qty',

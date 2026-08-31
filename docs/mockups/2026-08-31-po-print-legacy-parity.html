@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PO printout - legacy parity mockup</title>
+<style>
+  :root {
+    --ink: #16211c;
+    --muted: #5d6b64;
+    --rule: #c7d0cb;
+    --pad: #9fb3c8;          /* pre-printed furniture: the pad's own ink */
+    --pad-soft: #cfdae5;
+    --data: #111;            /* what CAS overlays onto the pad */
+    --new: #b8321f;          /* what this branch adds */
+    --wash: #f5f7f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #e9ecea; color: var(--ink);
+    font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 1000px; margin: 24px auto 60px; }
+  .sheet { background: #fff; padding: 28px 32px 36px; margin-bottom: 22px; }
+  h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: .01em; }
+  h2 { font-size: 15px; margin: 0 0 3px; letter-spacing: .04em; text-transform: uppercase; color: #1f5f45; }
+  .sub { color: var(--muted); margin: 0 0 18px; font-size: 13px; }
+  p { margin: 0 0 10px; }
+  .legend { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; }
+  .chip {
+    display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 11.5px;
+    font-weight: bold; letter-spacing: .03em; margin-right: 6px;
+  }
+  .chip-new { background: #fdecea; color: var(--new); border: 1px solid #f0c4bd; }
+  .chip-pad { background: #eef3f8; color: #4a6f92; border: 1px solid #cfdae5; }
+
+  /* ---- simulated pre-printed pad -------------------------------------- */
+  .pad {
+    position: relative; width: 880px; height: 470px; margin: 6px 0 10px;
+    border: 1px solid var(--rule); background: #fffef9; overflow: hidden;
+  }
+  .pad-el { position: absolute; font-size: 11px; color: var(--pad); white-space: nowrap; }
+  .pad-rule { position: absolute; background: var(--pad-soft); }
+  .data { position: absolute; font-size: 11px; color: var(--data); white-space: nowrap; }
+  .data.b { font-weight: bold; }
+  .data.r { text-align: right; }
+  .add { color: var(--new); font-weight: bold; }
+  .callout {
+    position: absolute; font-size: 11px; color: var(--new); white-space: nowrap;
+    border-left: 2px solid var(--new); padding-left: 6px;
+  }
+
+  table.notes { border-collapse: collapse; width: 100%; margin: 14px 0 4px; font-size: 13px; }
+  table.notes th {
+    text-align: left; background: var(--wash); border: 1px solid var(--rule);
+    padding: 5px 8px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  table.notes td { border: 1px solid #e6ebe8; padding: 6px 8px; vertical-align: top; }
+  code { background: var(--wash); padding: 1px 4px; border-radius: 3px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="sheet">
+    <h1>Purchase Order printout &mdash; legacy parity</h1>
+    <p class="sub">Mockup for branch <code>feat/po-print-legacy-parity</code>. Design gate before any
+    Jinja is written.</p>
+    <p>Source evidence: the client's legacy pad <strong>PO No. 00984</strong> (Johnson Hardware,
+    16 July 2026) and the annotated print of our current overlay (<strong>0015</strong>).
+    Philgen prints POs with <code>po_print_form = preprinted</code>, so the overlay below is what
+    actually reaches their stationery.</p>
+    <p class="legend">
+      <span class="chip chip-pad">pad</span>the pre-printed stationery's own ink &mdash; CAS never draws this
+      <span class="chip chip-new" style="margin-left:14px">new</span>what this branch adds
+    </p>
+  </div>
+
+  <!-- ============================ TODAY ============================== -->
+  <div class="sheet">
+    <h2>1 &middot; What we print today</h2>
+    <p class="sub">Reproduces the annotated scan. Every line item is one row; the remark sits in its
+    own column to the <em>right</em> of the product.</p>
+
+    <div class="pad">
+      <!-- pad furniture -->
+      <div class="pad-el" style="left:56px;top:20px;">PHILGEN PACIFIC FOOD PRODUCTS CORP.</div>
+      <div class="pad-el" style="left:56px;top:38px;font-size:10px">Sitio Lamcanal, Barangay Malandag, Malungon Sarangani Province</div>
+      <div class="pad-el" style="left:700px;top:20px;">No.</div>
+      <div class="pad-el" style="left:56px;top:250px;">PLEASE DELIVER TO US THE FOLLOWING</div>
+      <div class="pad-rule" style="left:56px;top:272px;width:788px;height:1px"></div>
+      <div class="pad-el" style="left:56px;top:278px;">PR. NO.</div>
+      <div class="pad-el" style="left:180px;top:278px;">D E S C R I P T I O N</div>
+      <div class="pad-el" style="left:468px;top:278px;">Quantity</div>
+      <div class="pad-el" style="left:580px;top:278px;">Unit Price</div>
+      <div class="pad-el" style="left:700px;top:278px;">Amount</div>
+      <div class="pad-rule" style="left:56px;top:296px;width:788px;height:1px"></div>
+      <div class="pad-rule" style="left:56px;top:420px;width:788px;height:1px"></div>
+      <div class="pad-el" style="left:56px;top:432px;">Prepared by:</div>
+      <div class="pad-el" style="left:640px;top:432px;">APPROVED BY:</div>
+
+      <!-- header data CAS overlays -->
+      <div class="data b" style="left:730px;top:20px;">00984</div>
+      <div class="data b" style="left:56px;top:150px;">JOHNSON HARDWARE AND CONSTRUCTION SUPPLY INC.</div>
+      <div class="data" style="left:620px;top:150px;">16 July 2026</div>
+
+      <!-- line band: y=300, rowHeight=20 -->
+      <div class="data" style="left:92px;top:300px;">WIRE THHN 3.5MM</div>
+      <div class="data" style="left:300px;top:300px;">FOR CCTV POWER SUPPLY</div>
+      <div class="data r" style="left:468px;top:300px;width:50px">3</div>
+      <div class="data" style="left:524px;top:300px;">BOXES</div>
+      <div class="data r" style="left:580px;top:300px;width:90px">6,950.00</div>
+      <div class="data r" style="left:676px;top:300px;width:100px">20,850.00</div>
+
+      <div class="data b r" style="left:700px;top:430px;width:150px">20,850.00</div>
+
+      <div class="data" style="left:56px;top:452px;">ANGILYN MALAPASCUA</div>
+      <div class="data" style="left:640px;top:452px;">ALFREDO REDULFIN JR.</div>
+
+      <!-- what is wrong -->
+      <div class="callout" style="left:300px;top:322px;">remark printed beside the item, not above it</div>
+      <div class="callout" style="left:92px;top:344px;">no PR&nbsp;# &middot; no terminator &middot; no currency on the total</div>
+    </div>
+  </div>
+
+  <!-- ============================ PROPOSED ============================ -->
+  <div class="sheet">
+    <h2>2 &middot; Proposed &mdash; pre-printed overlay</h2>
+    <p class="sub">The four changes, in place. Row pitch and every column's x are unchanged from the
+    saved layout; only what each column <em>emits per row</em> changes.</p>
+
+    <div class="pad">
+      <div class="pad-el" style="left:56px;top:20px;">PHILGEN PACIFIC FOOD PRODUCTS CORP.</div>
+      <div class="pad-el" style="left:56px;top:38px;font-size:10px">Sitio Lamcanal, Barangay Malandag, Malungon Sarangani Province</div>
+      <div class="pad-el" style="left:700px;top:20px;">No.</div>
+      <div class="pad-el" style="left:56px;top:250px;">PLEASE DELIVER TO US THE FOLLOWING</div>
+      <div class="pad-rule" style="left:56px;top:272px;width:788px;height:1px"></div>
+      <div class="pad-el" style="left:56px;top:278px;">PR. NO.</div>
+      <div class="pad-el" style="left:180px;top:278px;">D E S C R I P T I O N</div>
+      <div class="pad-el" style="left:468px;top:278px;">Quantity</div>
+      <div class="pad-el" style="left:580px;top:278px;">Unit Price</div>
+      <div class="pad-el" style="left:700px;top:278px;">Amount</div>
+      <div class="pad-rule" style="left:56px;top:296px;width:788px;height:1px"></div>
+      <div class="pad-rule" style="left:56px;top:420px;width:788px;height:1px"></div>
+      <div class="pad-el" style="left:56px;top:432px;">Prepared by:</div>
+      <div class="pad-el" style="left:640px;top:432px;">APPROVED BY:</div>
+
+      <div class="data b" style="left:730px;top:20px;">00984</div>
+      <div class="data b" style="left:56px;top:150px;">JOHNSON HARDWARE AND CONSTRUCTION SUPPLY INC.</div>
+      <div class="data" style="left:620px;top:150px;">16 July 2026</div>
+
+      <!-- row 0 (y=300): GROUP HEADING. description column carries the remark;
+           every other column emits a blank spacer so the stacks stay in step. -->
+      <div class="data add" style="left:92px;top:300px;">FOR CCTV POWER SUPPLY</div>
+
+      <!-- row 1 (y=320): the item -->
+      <div class="data add" style="left:56px;top:320px;">25-0914</div>
+      <div class="data" style="left:112px;top:320px;">WIRE THHN 3.5MM</div>
+      <div class="data r" style="left:468px;top:320px;width:50px">3</div>
+      <div class="data" style="left:524px;top:320px;">BOXES</div>
+      <div class="data r" style="left:580px;top:320px;width:90px">6,950.00</div>
+      <div class="data r" style="left:676px;top:320px;width:100px">20,850.00</div>
+
+      <!-- row 2 (y=340): terminator -->
+      <div class="data add" style="left:180px;top:340px;">- NOTHING FOLLOWS -</div>
+
+      <!-- total, with currency label -->
+      <div class="data b add" style="left:640px;top:430px;">PHP</div>
+      <div class="data b r" style="left:700px;top:430px;width:150px">20,850.00</div>
+
+      <div class="data" style="left:56px;top:452px;">ANGILYN MALAPASCUA</div>
+      <div class="data" style="left:640px;top:452px;">ALFREDO REDULFIN JR.</div>
+
+      <div class="callout" style="left:92px;top:364px;">heading row &rarr; item rows indented beneath &rarr; terminator</div>
+    </div>
+
+    <table class="notes">
+      <thead><tr><th style="width:22%">Change</th><th style="width:40%">How it renders</th><th>Cost</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>PR&nbsp;#</strong> column</td>
+          <td>New leftmost column, one cell per item row, blank on heading and terminator rows.</td>
+          <td>Resolve <code>source_pr_item_id</code> &rarr; <code>PurchaseRequestItem</code> &rarr;
+              <code>PurchaseRequest.pr_number</code> in the view. No migration.</td>
+        </tr>
+        <tr>
+          <td><strong>Remark as heading</strong></td>
+          <td>The <code>description</code> column emits the remark on a heading row and blank on item
+              rows; all other columns emit a blank spacer on heading rows.</td>
+          <td>Reverses the template's documented &ldquo;no heading rows&rdquo; rule. Alignment still
+              holds by construction &mdash; every stack keeps one cell per row.</td>
+        </tr>
+        <tr>
+          <td><strong>- NOTHING FOLLOWS -</strong></td>
+          <td>One extra row after the last item, text in the description column, blank elsewhere.</td>
+          <td>Smallest of the four. No layout maths.</td>
+        </tr>
+        <tr>
+          <td><strong>PHP on the total</strong></td>
+          <td>Currency code printed to the left of <code>total_amount</code>.</td>
+          <td>New <code>PurchaseOrder.currency</code>, <code>String(3)</code>, NOT NULL, default
+              <code>'PHP'</code> + migration. Label only &mdash; the amount is still booked in PHP.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============================ PLAIN FORM ========================== -->
+  <div class="sheet">
+    <h2>3 &middot; Proposed &mdash; plain <code>print.html</code></h2>
+    <p class="sub">Philgen does not use this form, but you asked for the terminator on both. This form
+    already groups by description, so only the terminator and the currency label are new.</p>
+
+    <div style="border:1px solid var(--rule);padding:14px 16px;font-size:12.5px;max-width:700px">
+      <div style="font-weight:bold">PHILGEN PACIFIC FOOD PRODUCTS CORP.</div>
+      <div style="margin-bottom:10px;color:var(--muted)">TIN: 000-000-000-000</div>
+      <div style="font-weight:bold;font-size:15px;margin-bottom:8px">PURCHASE ORDER</div>
+      <table style="border-collapse:collapse;width:100%;font-size:12px">
+        <thead>
+          <tr style="background:var(--wash)">
+            <th style="border:1px solid var(--rule);padding:4px 6px;text-align:left">#</th>
+            <th style="border:1px solid var(--rule);padding:4px 6px;text-align:left" class="add">PR&nbsp;#</th>
+            <th style="border:1px solid var(--rule);padding:4px 6px;text-align:left">Item</th>
+            <th style="border:1px solid var(--rule);padding:4px 6px;text-align:right">Qty</th>
+            <th style="border:1px solid var(--rule);padding:4px 6px;text-align:left">UOM</th>
+            <th style="border:1px solid var(--rule);padding:4px 6px;text-align:right">Unit Price</th>
+            <th style="border:1px solid var(--rule);padding:4px 6px;text-align:right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="7" style="border:1px solid var(--rule);padding:4px 6px;font-weight:bold;background:#fafbfa">FOR CCTV POWER SUPPLY</td></tr>
+          <tr>
+            <td style="border:1px solid var(--rule);padding:4px 6px">1</td>
+            <td style="border:1px solid var(--rule);padding:4px 6px" class="add">25-0914</td>
+            <td style="border:1px solid var(--rule);padding:4px 6px">WIRE THHN 3.5MM</td>
+            <td style="border:1px solid var(--rule);padding:4px 6px;text-align:right">3.0000</td>
+            <td style="border:1px solid var(--rule);padding:4px 6px">BOXES</td>
+            <td style="border:1px solid var(--rule);padding:4px 6px;text-align:right">6,950.00</td>
+            <td style="border:1px solid var(--rule);padding:4px 6px;text-align:right">20,850.00</td>
+          </tr>
+          <tr><td colspan="7" style="border:1px solid var(--rule);padding:4px 6px;text-align:center" class="add">- NOTHING FOLLOWS -</td></tr>
+        </tbody>
+        <tfoot>
+          <tr style="background:var(--wash)">
+            <th colspan="5" style="border:1px solid var(--rule);padding:4px 6px;text-align:right">Total</th>
+            <th style="border:1px solid var(--rule);padding:4px 6px;text-align:right" class="add">PHP</th>
+            <th style="border:1px solid var(--rule);padding:4px 6px;text-align:right">20,850.00</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================ OPEN ITEMS ========================== -->
+  <div class="sheet">
+    <h2>4 &middot; Decisions this mockup is asking you to confirm</h2>
+    <table class="notes">
+      <thead><tr><th style="width:26%">Question</th><th>What I have assumed</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Where the heading sits</td>
+          <td>At the <strong>product column's x</strong> (92), with items indented to 112 &mdash; matching
+              your arrow on the annotated print. This is a <em>designer position</em>, not hardcoded:
+              the <code>description</code> column can be dragged anywhere afterwards without a code change.</td>
+        </tr>
+        <tr>
+          <td>PR&nbsp;# vs the <code>#</code> column</td>
+          <td>Both columns exist; PR&nbsp;# takes x=56 and the line-number column is <strong>hidden</strong>,
+              since your legacy pad has no line counter. Reversible in the designer.</td>
+        </tr>
+        <tr>
+          <td>PR number format</td>
+          <td>Prints CAS's own <code>pr_number</code>. Your legacy numbers read <code>25-0914</code>;
+              CAS issues <code>00001</code>. The printed value will not look like the old pad.</td>
+        </tr>
+        <tr>
+          <td>Terminator wording</td>
+          <td>Exactly <code>- NOTHING FOLLOWS -</code>, hyphens and spacing as on PO&nbsp;00984.</td>
+        </tr>
+        <tr>
+          <td>Currency placement</td>
+          <td>To the left of the total, as on the legacy pad. Prints for every PO including PHP ones
+              &mdash; not suppressed when it is the default.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top:14px;color:var(--muted);font-size:12.5px">
+      Separately, and needing no code: philgen's saved layout has <code>quantity</code> only
+      <strong>20&nbsp;px</strong> wide, and <code>line_number</code> (x&nbsp;111&ndash;141) overlapping
+      <code>product</code> (x&nbsp;94&ndash;294). Both are fixable in the layout designer.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

@@ -22,6 +22,16 @@ class PurchaseOrderForm(RowVersionFormMixin, FlaskForm):
     vendor_id = SelectField('Vendor', coerce=int, validate_choice=False,
                             validators=[DataRequired(message='Vendor is required.')])
 
+    # ISO-4217 codes. A short list of what this client plausibly transacts in, not the
+    # full 180-entry table -- an unusable select is also a data-entry hazard. The value
+    # is a printed LABEL only; see PurchaseOrder.currency for why nothing converts.
+    currency = SelectField('Currency', choices=[
+        ('PHP', 'PHP - Philippine Peso'), ('USD', 'USD - US Dollar'),
+        ('EUR', 'EUR - Euro'), ('JPY', 'JPY - Japanese Yen'),
+        ('CNY', 'CNY - Chinese Yuan'), ('SGD', 'SGD - Singapore Dollar'),
+        ('HKD', 'HKD - Hong Kong Dollar'), ('AUD', 'AUD - Australian Dollar'),
+    ], default='PHP', validators=[DataRequired()])
+
     vat_treatment = SelectField('VAT Treatment', choices=[
         ('inclusive', 'VAT Inclusive'), ('exclusive', 'VAT Exclusive'),
         ('zero_rated', 'Zero-Rated'),

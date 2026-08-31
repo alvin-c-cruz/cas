@@ -14,7 +14,8 @@ from sqlalchemy.orm import joinedload
 from app import db
 from app.purchase_orders.models import (
     PurchaseOrder, PurchaseOrderItem, next_po_number_for, next_po_signatories_for,
-    group_lines_by_description, grouped_lines_for_overlay)
+    group_lines_by_description, grouped_lines_for_overlay, overlay_rows,
+    NOTHING_FOLLOWS)
 from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
 from app.purchase_orders.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
@@ -180,6 +181,33 @@ def _assign_po_line_fields(item, d, idx, branch_id=None, exclude_po_id=None):
 
     item.calculate_amounts()
     return True
+
+
+def _pr_numbers_for(po):
+    """{purchase_order_item_id: pr_number} for the overlay's PR # column.
+
+    Two hops, both across PLAIN Integer columns rather than ORM relationships --
+    PurchaseOrderItem.source_pr_item_id and PurchaseRequestItem.purchase_request_id are
+    deliberately not FKs (declaring the reverse edge as well would give SQLAlchemy a
+    metadata cycle it cannot sort for create_all/drop_all), so there is no
+    `item.source_pr_item.purchase_request.pr_number` to walk.
+
+    Two set-based queries, not one per line: a 40-line order would otherwise fire 80.
+    Lines entered directly, with no requisition behind them, are simply absent from the
+    map and print blank -- which is correct, not a gap.
+    """
+    from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
+    src = {li.id: li.source_pr_item_id for li in po.line_items if li.source_pr_item_id}
+    if not src:
+        return {}
+    pr_item_to_pr = dict(
+        db.session.query(PurchaseRequestItem.id, PurchaseRequestItem.purchase_request_id)
+        .filter(PurchaseRequestItem.id.in_(set(src.values()))).all())
+    numbers = dict(
+        db.session.query(PurchaseRequest.id, PurchaseRequest.pr_number)
+        .filter(PurchaseRequest.id.in_(set(pr_item_to_pr.values()))).all())
+    return {item_id: numbers.get(pr_item_to_pr.get(src_id)) or ''
+            for item_id, src_id in src.items()}
 
 
 def _refresh_source_requisitions(po):
@@ -532,6 +560,7 @@ def create():
                 vendor_tin=vendor.tin,
                 vendor_address=vendor.address,
                 vat_treatment=form.vat_treatment.data,
+                currency=form.currency.data,
                 payment_terms=form.payment_terms.data,
                 reference=form.reference.data or None,
                 purpose=form.purpose.data or None,
@@ -683,6 +712,7 @@ def edit(id):
             po.vendor_tin = vendor.tin
             po.vendor_address = vendor.address
             po.vat_treatment = form.vat_treatment.data
+            po.currency = form.currency.data
             po.payment_terms = form.payment_terms.data
             po.reference = form.reference.data or None
             po.purpose = form.purpose.data or None
@@ -849,6 +879,7 @@ def amend(id):
             po.vendor_tin = vendor.tin
             po.vendor_address = vendor.address
             po.vat_treatment = form.vat_treatment.data
+            po.currency = form.currency.data
             po.payment_terms = form.payment_terms.data
             po.reference = form.reference.data or None
             po.purpose = form.purpose.data or None
@@ -1118,7 +1149,8 @@ def print_po(id):
     if po_print_form == 'preprinted':
         return render_template(
             'purchase_orders/print_preprinted.html', po=po, company=company,
-            overlay_lines=grouped_lines_for_overlay(po.line_items),
+            overlay_lines=overlay_rows(po.line_items),
+            pr_numbers=_pr_numbers_for(po), nothing_follows=NOTHING_FOLLOWS,
             printed_at=ph_now(), layout=get_layout(po.branch_id),
             can_edit_layout=current_user.can_edit_print_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
@@ -1127,7 +1159,8 @@ def print_po(id):
             signatory_ids=TEXT_KEYS,
             date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     return render_template('purchase_orders/print.html', po=po, company=company,
-                           printed_at=ph_now(),
+                           printed_at=ph_now(), pr_numbers=_pr_numbers_for(po),
+                           nothing_follows=NOTHING_FOLLOWS,
                            line_groups=group_lines_by_description(po.line_items))
 
 
