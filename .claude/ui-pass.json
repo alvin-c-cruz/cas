@@ -65,6 +65,12 @@
     "reason": null,
     "waived": false
   },
+  "2ac149bb4a8fe5afaf57cf3ef1bd788104c22afe": {
+    "branch": "fix/so-print-field-order",
+    "date": "2026-08-31",
+    "reason": null,
+    "waived": false
+  },
   "2cad91bcba052623c6ef5f4d7a62a0771b7521b4": {
     "branch": "feat/r07-p1-manufacturing-departments",
     "date": "2026-08-02",
