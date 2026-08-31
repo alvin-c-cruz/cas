@@ -129,3 +129,61 @@ def test_the_totals_row_spans_the_six_columns(printed):
     spans = sum(int(re.search(r'colspan="(\d+)"', c).group(1)) if 'colspan' in c else 1
                 for c in cells)
     assert spans == 6, f'totals row spans {spans} columns, expected 6'
+
+# --- header + cell presentation (owner, 2026-08-31) -------------------------
+
+def test_the_column_headers_are_centered(printed):
+    """"column headers should be centered". Two halves: the rule must say
+    center, AND no header may carry an inline text-align overriding it -- Qty,
+    Unit Price and Amount each used to declare text-align:right inline, which
+    wins over the stylesheet."""
+    so, html = printed
+    rule = re.search(r'\.particulars th \{[^}]*\}', html)
+    assert rule, '.particulars th rule not found'
+    assert re.search(r'text-align:\s*center', rule.group(0))
+
+    heads = re.findall(r'<th[^>]*>', _particulars(html))
+    assert heads, 'no header cells rendered'
+    overrides = [h for h in heads if 'text-align' in h]
+    assert not overrides, f'inline alignment overrides the centered rule: {overrides}'
+
+
+def test_the_column_header_text_is_black_not_white(printed):
+    """"the column header font is gray, change it to Black".
+
+    The rule was white on a near-black band. Browsers DROP background colours
+    when printing unless print-color-adjust forces them, so on paper the band
+    disappeared and white text landed on white. Black text is legible whether or
+    not the background survives -- so this asserts the colour is dark AND that
+    the background is not the old near-black (which would hide black text).
+    """
+    so, html = printed
+    rule = re.search(r'\.particulars th \{[^}]*\}', html)
+    body = rule.group(0)
+    colour = re.search(r'(?<!-)color:\s*(#[0-9a-fA-F]{3,6})', body)
+    assert colour, f'no text colour on the header rule: {body!r}'
+    assert colour.group(1).lower() in ('#111', '#000'), colour.group(1)
+    bg = re.search(r'background:\s*(#[0-9a-fA-F]{3,6})', body)
+    assert bg and bg.group(1).lower() not in ('#222', '#111', '#000'),         'a dark band would hide the now-black header text'
+
+
+def test_the_uom_cells_are_centered(printed):
+    """"the line items' UOM should be centered." The cell must carry the class
+    AND the class must actually centre -- a class with no rule is inert."""
+    so, html = printed
+    table = _particulars(html)
+    assert re.search(r'<td class="uom"', table), 'no UOM cell carries the class'
+    rule = re.search(r'\.particulars td\.uom \{[^}]*\}', html)
+    assert rule, '.particulars td.uom rule not found'
+    assert re.search(r'text-align:\s*center', rule.group(0))
+
+
+def test_the_amount_cells_are_still_right_aligned(printed):
+    """CONTROL: centering headers and the UOM column must not disturb the
+    numeric BODY cells -- figures stay right-aligned and monospaced."""
+    so, html = printed
+    rule = re.search(r'\.particulars td\.amount \{[^}]*\}', html)
+    assert rule, '.particulars td.amount rule not found'
+    assert re.search(r'text-align:\s*right', rule.group(0))
+    assert 'monospace' in rule.group(0)
+    assert re.search(r'<td class="amount"', _particulars(html))
