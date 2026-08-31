@@ -11,6 +11,12 @@
     "reason": null,
     "waived": false
   },
+  "127af532d8f68b44b9d26889aed21e5ce3d888e7": {
+    "branch": "fix/sales-memo-per-type-series",
+    "date": "2026-08-31",
+    "reason": null,
+    "waived": false
+  },
   "130a6da81581972b7d5ab39c2844f59bd5023272": {
     "branch": "fix/pr-po-column-from-line-links",
     "date": "2026-08-30",
