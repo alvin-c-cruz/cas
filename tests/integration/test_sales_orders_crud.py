@@ -49,8 +49,8 @@ def _delivery_cells(row_html, trailing_extra=0):
     """Return (delivery_date_cell, delivery_site_cell) -- the last two <td>
     cells of a line-items row, before any trailing columns added after Delivery
     Site (e.g. detail.html's Status column, Task 9 -- pass trailing_extra=1 to
-    skip it). Delivery Date and Delivery Site are the 8th and 9th columns in
-    both detail.html and print.html; print.html has no columns after them."""
+    skip it). detail.html ONLY: print.html dropped both columns on 2026-08-31,
+    so calling this against a printout would read two unrelated cells."""
     cells = re.findall(r'<td[^>]*>(.*?)</td>', row_html, re.DOTALL)
     if trailing_extra:
         cells = cells[:-trailing_extra]
@@ -478,10 +478,11 @@ def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
     assert b'150' in resp.data  # amount appears in the line
 
 
-def test_detail_and_print_render_delivery_date_and_site_columns(client, db_session, admin_user,
-                                                                  main_branch):
-    """Task 6: detail.html and print.html line-items tables show the Delivery Date /
-    Delivery Site columns -- header, a SET value, and the em-dash fallback when unset.
+def test_detail_shows_delivery_date_and_site_columns_the_printout_does_not(client, db_session,
+                                                                          admin_user, main_branch):
+    """detail.html shows the Delivery Date / Delivery Site columns -- header, a SET
+    value, and the em-dash fallback when unset. print.html no longer shows either
+    (owner, 2026-08-31); the detail half below is the control for that removal.
 
     Both lines share one product (whose own cell hardcodes an unrelated ' — '
     separator) and neither line sets a UOM (whose own fallback is independently
@@ -563,26 +564,21 @@ def test_detail_and_print_render_delivery_date_and_site_columns(client, db_sessi
     assert date_cell == 'Sep 01, 2026'             # mixed state: date set...
     assert site_cell == '—'                        # ...site still falls back independently
 
+    # The PRINTOUT dropped both columns on 2026-08-31 (owner) -- they held a
+    # wrapped date and an em dash while squeezing the product name into 22% of
+    # the table. The detail assertions above are this half's control: the fields
+    # live on internally, they are simply off the customer-facing form. Header
+    # coverage is in test_so_print_column_set.py; here we pin that the VALUES
+    # are gone, which is what the customer would actually have seen.
     print_html = client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
-    assert 'Delivery Date' in print_html
-    assert 'Delivery Site' in print_html
+    assert 'PLANT WAREHOUSE' not in print_html       # the delivery SITE value
+    assert '15 August 2026' not in print_html        # print's own delivery-date format
+    assert '01 September 2026' not in print_html     # the mixed-state line's date
+    # Positive control: the line table really rendered, so the absences above are
+    # dropped columns rather than a blank page. NB the product NAME contains the
+    # words "Delivery Date", which is why nothing here asserts on that string.
+    assert 'Delivery Date Site Widget' in print_html
     assert '&#8212;' not in print_html
-
-    row1 = _line_items_row(print_html, 1)
-    date_cell, site_cell = _delivery_cells(row1)
-    assert date_cell == '15 August 2026'          # set delivery_date, print's own date format
-    assert site_cell == 'PLANT WAREHOUSE'
-    assert '—' not in date_cell and '—' not in site_cell
-
-    row2 = _line_items_row(print_html, 2)
-    date_cell, site_cell = _delivery_cells(row2)
-    assert date_cell == '—'
-    assert site_cell == '—'
-
-    row3 = _line_items_row(print_html, 3)
-    date_cell, site_cell = _delivery_cells(row3)
-    assert date_cell == '01 September 2026'
-    assert site_cell == '—'
 
 
 def test_list_shows_so_number_and_status_badge(client, db_session, admin_user, main_branch):

@@ -178,15 +178,20 @@
   <table class="particulars">
     <thead>
       <tr>
+        {# Six columns, and the width goes to Product. VT, Delivery Date and
+           Delivery Site were dropped 2026-08-31 (owner): on a live PhilGen order
+           they held "V0 (0.00%)", a date that wrapped to two lines, and an em
+           dash, while taking 31% of the table between them -- so a 73-character
+           product name wrapped to FOUR lines inside a 22% column, against a body
+           grid whose every other row is one line tall. Product now has 51%.
+           Delivery date/site remain on the SO detail screen and the Job Order
+           Slip; only the customer-facing printout drops them. #}
         <th style="width:4%">#</th>
-        <th style="width:22%">Product</th>
-        <th style="width:5%;text-align:right">Qty</th>
-        <th style="width:5%">UOM</th>
-        <th style="width:8%;text-align:right">Unit Price</th>
-        <th style="width:10%;text-align:right">Amount</th>
-        <th style="width:10%">VT</th>
-        <th style="width:9%">Delivery Date</th>
-        <th style="width:12%">Delivery Site</th>
+        <th style="width:51%">Product</th>
+        <th style="width:7%;text-align:right">Qty</th>
+        <th style="width:7%">UOM</th>
+        <th style="width:14%;text-align:right">Unit Price</th>
+        <th style="width:17%;text-align:right">Amount</th>
       </tr>
     </thead>
     <tbody>
@@ -200,9 +205,6 @@
         <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
         <td class="amount">{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}</td>
         <td class="amount">{{ '{:,.2f}'.format(item.amount) }}</td>
-        <td>{% if item.vat_category %}{{ item.vat_category }} ({{ '{:.2f}'.format(item.vat_rate) }}%){% else %}N/A{% endif %}</td>
-        <td>{{ item.delivery_date.strftime('%d %B %Y') if item.delivery_date else '—' }}</td>
-        <td>{{ item.delivery_site.name if item.delivery_site else '—' }}</td>
       </tr>
       {% endfor %}
       {# Pad to a 20-row grid so every printed order has the same body, the way
@@ -211,16 +213,13 @@
          never a cap: silently dropping lines off a printed order would be far
          worse than a short page. #}
       {% for _ in range(20 - so.line_items|length) %}
-      <tr class="so-filler"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr class="so-filler"><td></td><td></td><td></td><td></td><td></td><td></td></tr>
       {% endfor %}
     </tbody>
     <tfoot>
       <tr>
         <td colspan="5" style="text-align:right;font-weight:700">Total Sales</td>
         <td class="amount" style="font-weight:700">{{ '{:,.2f}'.format(so.total_amount) }}</td>
-        <td></td>
-        <td></td>
-        <td></td>
       </tr>
     </tfoot>
   </table>
