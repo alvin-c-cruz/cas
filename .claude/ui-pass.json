@@ -233,6 +233,12 @@
     "reason": null,
     "waived": false
   },
+  "9c945e339a277d60da777ed8064400f8a35041b7": {
+    "branch": "feat/so-create-redirect-to-form",
+    "date": "2026-08-31",
+    "reason": null,
+    "waived": false
+  },
   "a13e5e3c2ddaba761dfe1e4a2f700c610971ae2f": {
     "branch": "fix/employees-branch-scope",
     "date": "2026-08-20",
