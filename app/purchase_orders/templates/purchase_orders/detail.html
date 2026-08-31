@@ -78,6 +78,11 @@
     <div><strong>Expected:</strong> {{ po.expected_date.strftime('%b %d, %Y') if po.expected_date else '-' }}</div>
     <div><strong>VAT Treatment:</strong> {{ po.vat_treatment }}</div>
     <div><strong>Payment Terms:</strong> {{ po.payment_terms }}</div>
+    {# The currency is settable on the form and printed beside the total, so it has to
+       be readable on the record itself -- otherwise the only way to find out what a
+       saved order is denominated in is to print it. Found by the branch's own browser
+       gate, which is what that gate is for. #}
+    <div><strong>Currency:</strong> {{ po.currency }}</div>
     {% if po.reference %}<div><strong>Reference:</strong> {{ po.reference }}</div>{% endif %}
     {% if po.purpose %}<div><strong>Purpose:</strong> {{ po.purpose }}</div>{% endif %}
   </div>
