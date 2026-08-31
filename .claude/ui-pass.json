@@ -203,6 +203,12 @@
     "reason": null,
     "waived": false
   },
+  "85dd7bbb250887c44bc61ec7223433c2e9b74f95": {
+    "branch": "fix/so-print-drop-status",
+    "date": "2026-08-31",
+    "reason": null,
+    "waived": false
+  },
   "8e7024e89cfccd5f213004f3508207c0a7bdecb6": {
     "branch": "feat/pr-po-allocation",
     "date": "2026-08-15",
