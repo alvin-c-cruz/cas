@@ -352,5 +352,11 @@
     "date": "2026-08-30",
     "reason": "FULL browser pass on the owner's REAL local philgen.db (backed up first to instance/philgen.db.pre-custlock-20260830-1444, migration applied, server on 5051 from the branch worktree) -- the owner asked for the local database specifically rather than a throwaway, and it was left exactly as found: HILAS unlocked, provenance cleared. Driven as THREE actors because the rule is per-role AND per-record: (1) alvin/STAFF on an unlocked customer -- Edit link present, saved a change (Contact -> LAWRENCE KIOK, persisted), and NO Lock and NO Delete controls; (2) admin -- Lock clicked, detail header shows the LOCKED BY ADMIN badge, button flips to Unlock, and Edit Customer REMAINS available, which is the rule's whole point (an approver must still be able to correct a frozen record); (3) alvin/STAFF again on the locked record -- Edit link GONE from the list, and a DIRECT POST to /customers/1/edit was refused with the name unchanged and the tamper absent, so the guard is on the door and not just the button. Unlock then restored staff's Edit link. NOTE angilyn could not be used: she has customers=false in book_permissions, so the optional-module gate masks the role guard entirely -- the outer-gate-masks-inner-guard trap. alvin carries customers=true and is the same Staff account the live instance uses. Two probe errors of mine, corrected in-session and not app defects: an innerText read said the Locked badge was missing when the HTML plainly carried it (stale DOM), and the extension dropped mid-run so the unlock round-trip was first completed over HTTP, then REDONE in the browser once it reconnected -- the pass recorded here is the browser one.",
     "waived": false
+  },
+  "fb7dc8f0f5a0a5e25dfdece80d09eed8bc32fe4b": {
+    "branch": "feat/po-print-legacy-parity",
+    "date": "2026-08-31",
+    "reason": null,
+    "waived": false
   }
 }
