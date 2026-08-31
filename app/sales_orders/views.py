@@ -522,7 +522,12 @@ def create():
                     'subtotal', 'vat_amount', 'total_amount', 'status'])
             )
             flash(f'Sales Order "{so.so_number}" created successfully!', 'success')
-            return redirect(url_for('sales_orders.list'))
+            # Land on the new order's OWN EDIT FORM, not the list (owner,
+            # 2026-08-31: "saving the SO should redirect to the form ... so user
+            # can further edit the SO"). The detail page cannot serve that -- it is
+            # read-only. edit() deliberately still returns to the detail page: a
+            # save there is finishing a change, not the middle of entering one.
+            return redirect(url_for('sales_orders.edit', id=so.id))
 
         except ValueError as e:
             db.session.rollback()
