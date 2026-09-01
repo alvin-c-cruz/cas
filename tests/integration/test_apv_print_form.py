@@ -255,3 +255,47 @@ class TestApPrintRoutes:
         assert data['ok'] is True
         assert data['layout']['fields']['apv_no']['x'] == 321
         assert 'evil' not in data['layout']
+
+
+class TestApvDateFormatDropdown:
+    """The date-format picker on the pre-printed designer actually OFFERS the
+    month-first full date, not just declares it in a constant.
+
+    Owner request 2026-09-01 was raised against this exact page. A unit test on
+    DATE_FORMATS proves the declaration; only a render proves the dropdown. The
+    option is built as <option value="{key}">{date_labels[key]}</option>, and
+    date_labels comes from date(2026, 6, 17).strftime(fmt) in the view -- so the
+    label is what a user actually reads when choosing.
+    """
+
+    def _open(self, client, main_branch):
+        login(client)
+        with client.session_transaction() as s:
+            s['selected_branch_id'] = main_branch.id
+
+    def test_the_dropdown_offers_the_month_first_full_date(
+            self, client, db_session, admin_user, main_branch):
+        AppSettings.set_setting('ap_print_form', 'preprinted', 'admin')
+        ap = _apv_with_je(db_session, main_branch, balanced=True)
+        self._open(client, main_branch)
+        body = client.get(f'/accounts-payable/{ap.id}/print').data.decode()
+
+        assert 'id="ppDateFormat"' in body, 'the date-format picker did not render at all'
+        assert 'value="full"' in body, 'the picker offers no "full" option'
+        # the LABEL the user reads -- the sample date the view formats for the menu
+        assert 'June 17, 2026' in body, \
+            'the "full" option is present but does not read as a month-first full date'
+
+    def test_the_pre_existing_options_survive(
+            self, client, db_session, admin_user, main_branch):
+        """CONTROL: adding an option must not displace the ones clients already have
+        saved. A layout stored with dateFormat='long' or 'iso' must still be offered,
+        or those instances would silently fall back to the default on next save."""
+        AppSettings.set_setting('ap_print_form', 'preprinted', 'admin')
+        ap = _apv_with_je(db_session, main_branch, balanced=True)
+        self._open(client, main_branch)
+        body = client.get(f'/accounts-payable/{ap.id}/print').data.decode()
+
+        for key in ('long', 'medium', 'us', 'eu', 'iso'):
+            assert f'value="{key}"' in body, f'the pre-existing {key!r} option disappeared'
+        assert '17 June 2026' in body, "`long` no longer reads as it did"

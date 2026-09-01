@@ -104,6 +104,11 @@ PAPER_LABELS = {
 # keys (so_preprinted_designer.js::fmtDate).
 DATE_FORMATS = {
     'long':   '%d %B %Y',
+    # Month-first full date (owner request 2026-09-01). `long` above already gives a
+    # full month name as "01 September 2026"; this is the "September 01, 2026" form
+    # Philippine business documents normally use. Key and pattern copied VERBATIM from
+    # delivery_receipts, which added it first to match legacy's hardcoded long_date().
+    'full':   '%B %d, %Y',
     'medium': '%b %d, %Y',
     'us':     '%m/%d/%Y',
     'eu':     '%d/%m/%Y',
