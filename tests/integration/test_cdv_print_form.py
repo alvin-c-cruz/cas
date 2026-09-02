@@ -117,8 +117,11 @@ class TestCdPrintRoutes:
         assert 'pp-canvas' in body
         assert 'CDV-PP-1' in body                    # cdv number
         assert 'Meralco Payee Inc.' in body          # pay-to
-        # Section B (Direct Expenses) band removed from the CDV pre-printed voucher
-        # (user 2026-07-07) — match the ELEMENT, not the .pp-lineitems CSS selector.
+        # Section B (Direct Expenses) band is gated on lineItems.enabled, which defaults
+        # False (user 2026-07-07 decision reversed 2026-09-02; the gate is what keeps a
+        # layout saved before that date printing exactly as it did). This layout was never
+        # saved with the gate on, so the band still doesn't render — match the ELEMENT, not
+        # the .pp-lineitems CSS selector.
         assert 'Electricity - July' not in body
         assert '<div class="pp-lineitems"' not in body
 

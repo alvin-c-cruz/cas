@@ -139,9 +139,41 @@
   {# Layout-only editable signature texts (prepared / checked / approved) — not record data #}
   {% for t in layout.texts %}<div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"{{ ' data-signatory="1"' if t.id in signatory_ids else '' }} style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>{% endfor %}
 
-  {# Section B (Direct Expenses) line band intentionally NOT rendered on the CDV pre-printed
-     voucher (user 2026-07-07): the JE face below carries the accounting detail. The lineItems
-     layout schema is kept (get/save) but no band is drawn (designer collect() guards li()). #}
+  {# Section B (Direct Expenses) line band. Gated on lineItems.enabled (default False) so a
+     layout saved before this change prints exactly as it did (user 2026-07-07 decision
+     reversed 2026-09-02). Each column is independently positioned on its own x; all share
+     the band top (li.y) and rowHeight.
+
+     ALIGNMENT INVARIANT: every column emits exactly ONE cell per expense line, blank where
+     it has nothing to say. Equal-length stacks are what keep the columns registered against
+     the physical pre-printed boxes. If you add a row kind, every column must still emit a
+     cell for it. #}
+  {% set li = layout.lineItems %}
+  {% if li.enabled %}
+  <div class="pp-lineitems" data-el="lineItems" data-rowheight="{{ li.rowHeight }}">
+    {% for col in li.columns %}
+    <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('amount', 'unit_price', 'qty') else '' }}"
+         data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
+         style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
+      {%- for exp in cdv.expense_lines %}
+      <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
+        {%- if col.key == 'line_number' -%}{{ exp.line_number }}
+        {%- elif col.key == 'product' -%}{% if exp.product %}{{ exp.product.code }} — {{ exp.product.name }}{% endif %}
+        {%- elif col.key == 'description' -%}{{ exp.description or '' }}
+        {%- elif col.key == 'qty' -%}{{ '{:,.4f}'.format(exp.quantity) if exp.quantity is not none else '' }}
+        {#- The unit CODE ('KG'), never the long name: the pre-printed box is ~50px wide. -#}
+        {%- elif col.key == 'uom' -%}{{ exp.unit_of_measure.code if exp.unit_of_measure else (exp.uom_text or '') }}
+        {%- elif col.key == 'unit_price' -%}{{ '{:,.2f}'.format(exp.unit_price) if exp.unit_price is not none else '' }}
+        {%- elif col.key == 'account_code' -%}{{ exp.account.code if exp.account else '' }}
+        {%- elif col.key == 'account_name' -%}{{ exp.account.name if exp.account else '' }}
+        {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(exp.line_total) }}
+        {%- endif -%}
+      </div>
+      {% endfor -%}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   {# --- Journal-entry face (CDV): JE-BOUND, debits-first, refuse an untied face. --- #}
   {% set je = layout.journalEntry %}
