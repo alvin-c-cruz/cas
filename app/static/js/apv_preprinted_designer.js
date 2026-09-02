@@ -365,7 +365,7 @@
         // is BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT, which silently discarded
         // every stored column position on each save.
         enabled: !!(liToggle && liToggle.checked),
-        y: li() ? (parseInt(li().style.top) || SERVER_LI.y) : SERVER_LI.y,
+        y: first ? (parseInt(first.style.top) || SERVER_LI.y) : SERVER_LI.y,
         rowHeight: li() ? (parseInt(li().dataset.rowheight) || SERVER_LI.rowHeight) : SERVER_LI.rowHeight,
         fontSize: lics ? (parseInt(lics.fontSize) || SERVER_LI.fontSize) : SERVER_LI.fontSize,
         bold: lics ? (lics.fontWeight === '700' || lics.fontWeight === 'bold') : SERVER_LI.bold,

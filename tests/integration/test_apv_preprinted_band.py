@@ -60,7 +60,14 @@ def _apv_with_three_lines(db_session, main_branch):
 
 class TestBandGate:
     def test_band_absent_when_disabled(self, client, db_session, admin_user, main_branch):
-        """A legacy layout (no `enabled` key) prints no band."""
+        """A layout with `enabled` explicitly False prints no band.
+
+        `_render` sets `layout['lineItems']['enabled'] = enabled` directly, so this pins
+        the explicit-False path, not the absent-key (legacy blob) path -- that one is
+        covered at the unit layer by
+        `TestLineItemBandGate::test_enabled_defaults_false_on_a_legacy_blob` in
+        `tests/unit/test_apv_preprinted_layout.py`, which sanitizes a blob with no
+        `enabled` key at all and asserts it defaults to False."""
         ap = _posted_apv(db_session, main_branch)
         html = _render(client, db_session, main_branch, ap, enabled=False)
         assert 'data-el="lineItems"' not in html
@@ -123,7 +130,11 @@ class TestAlignmentInvariant:
         """Equal-length stacks are what keep columns registered against the paper boxes."""
         ap = _apv_with_three_lines(db_session, main_branch)
         html = _render(client, db_session, main_branch, ap, enabled=True)
-        for key in ('line_number', 'description', 'amount', 'account_code', 'account_name'):
+        # All 9 columns, not just 5 -- product/qty/uom/unit_price carry conditionals in
+        # their cell bodies (e.g. `{% if item.product %}`) and are exactly the ones most
+        # likely to emit a blank/short stack instead of one cell per line item.
+        for key in ('line_number', 'product', 'description', 'qty', 'uom', 'unit_price',
+                    'amount', 'account_code', 'account_name'):
             # Slice from this column's marker to the start of the next column div.
             block = html.split(f'data-col="{key}"')[1].split('<div class="pp-col')[0]
             assert block.count('class="pp-cell"') == 3, f'{key} emitted != 3 cells'
@@ -167,13 +178,19 @@ class TestServerLineItemsJSON:
 class TestJEFaceUntouched:
     def test_je_face_still_renders_at_its_saved_coordinates(self, client, db_session,
                                                             admin_user, main_branch):
-        """CONTROL: the band must not disturb the JE face clients have positioned.
+        """CONTROL: enabling the band does not change the JE face's rendered coordinates.
 
         Sets the JE face's saved position to PhilGen's real live coordinates
         (x=75, y=272 -- see this file's module docstring) BEFORE enabling the band,
         then asserts the rendered `data-je="combined"` element's inline style still
-        carries that exact `left:`/`top:`. If the band ever shoved the JE face to a
-        different position (e.g. its own default y=300), this fails.
+        carries that exact `left:`/`top:`. Both elements are absolutely positioned
+        from `layout.journalEntry.combined`/`layout.lineItems`, so nothing at render
+        time can "shove" one from the other -- this can only fail if someone rewrites
+        the JE block to stop reading its own saved coordinates. It does NOT check for
+        visual overlap between the band and the JE face at distinct coordinates; that
+        is a real layout risk (e.g. a saved band y that lands on top of the JE face)
+        and no test in this suite covers it -- catching it requires a live/visual
+        check of the printed page.
         """
         from app.accounts_payable.preprinted_layout import save_layout, get_layout
         from tests.integration.test_apv_print_form import _apv_with_je

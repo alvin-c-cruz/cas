@@ -215,7 +215,15 @@ class TestAccountColumnSplit:
 
 
 class TestColumnRoundTrip:
-    """Guards BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT."""
+    """Pins `sanitize_layout`/`_clean_columns`: a column's x/visible/width survive the
+    server-side sanitize pass unchanged.
+
+    NOT a guard against BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT -- that bug is
+    entirely client-side (the designer's `collect()` read `li().style.top`, the CONTAINER,
+    instead of the first column, so the saved y was silently discarded on every save; see
+    `cdv_preprinted_designer.js`'s `collect()`). The server sanitizer was never broken and
+    this test exercises it only, so it cannot go red for that bug. The bug's only coverage
+    is the live browser pass (drag the band, save, reload, confirm the y held)."""
 
     def test_column_position_visibility_and_width_survive_sanitize(self):
         out = sanitize_layout({'lineItems': {'enabled': True, 'columns': [
