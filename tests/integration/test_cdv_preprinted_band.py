@@ -126,6 +126,41 @@ class TestAlignmentInvariant:
             assert block.count('class="pp-cell"') == 3, f'{key} emitted != 3 cells'
 
 
+class TestLineItemsToggle:
+    """The designer's enable checkbox and the server-values script block it reads on save."""
+
+    def test_toggle_checked_when_enabled(self, client, db_session, admin_user, main_branch):
+        cdv = _cdv_with_je(db_session, main_branch)
+        html = _render(client, db_session, main_branch, cdv, enabled=True)
+        assert 'id="ppLineItemsToggle"' in html
+        tag = html.split('id="ppLineItemsToggle"')[1].split('>')[0]
+        assert 'checked' in tag
+
+    def test_toggle_not_checked_when_disabled(self, client, db_session, admin_user, main_branch):
+        """CONTROL. Without this the checked-when-enabled assertion above passes vacuously
+        (e.g. if the checkbox were unconditionally `checked`)."""
+        cdv = _cdv_with_je(db_session, main_branch)
+        html = _render(client, db_session, main_branch, cdv, enabled=False)
+        assert 'id="ppLineItemsToggle"' in html
+        tag = html.split('id="ppLineItemsToggle"')[1].split('>')[0]
+        assert 'checked' not in tag
+
+
+class TestServerLineItemsJSON:
+    """`#ppServerLineItems` is what `collect()` falls back to instead of client-side
+    constants -- see BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT."""
+
+    def test_server_line_items_json_has_nine_columns(self, client, db_session, admin_user,
+                                                      main_branch):
+        import json
+        cdv = _cdv_with_je(db_session, main_branch)
+        html = _render(client, db_session, main_branch, cdv, enabled=True)
+        assert 'id="ppServerLineItems"' in html
+        block = html.split('id="ppServerLineItems"')[1].split('>', 1)[1].split('</script>')[0]
+        data = json.loads(block)
+        assert len(data['columns']) == 9
+
+
 class TestJEFaceUntouched:
     def test_je_face_still_renders_at_its_saved_coordinates(self, client, db_session,
                                                             admin_user, main_branch):

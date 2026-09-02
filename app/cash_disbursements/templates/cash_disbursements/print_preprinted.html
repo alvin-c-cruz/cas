@@ -104,6 +104,10 @@
     <option value="combined"  {{ 'selected' if layout.journalEntry.mode == 'combined'  else '' }}>JE: combined grid</option>
     <option value="separated" {{ 'selected' if layout.journalEntry.mode == 'separated' else '' }}>JE: debit / credit bands</option>
   </select>
+  <label id="ppLineItemsWrap" class="screen-only" style="display:none;">
+    <input type="checkbox" id="ppLineItemsToggle" {{ 'checked' if layout.lineItems.enabled else '' }}>
+    Show line items
+  </label>
   {% endif %}
 </div>
 
@@ -207,7 +211,8 @@
 
 {% if can_edit_layout %}
 <script type="application/json" id="ppJELayout">{{ layout.journalEntry | tojson }}</script>
-<script src="{{ url_for('static', filename='js/cdv_preprinted_designer.js') }}?v=1"></script>
+<script type="application/json" id="ppServerLineItems">{{ layout.lineItems | tojson }}</script>
+<script src="{{ url_for('static', filename='js/cdv_preprinted_designer.js') }}?v=2"></script>
 {% endif %}
 </body>
 </html>
