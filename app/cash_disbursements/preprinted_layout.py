@@ -70,7 +70,7 @@ FIELD_LABELS = {
 # Line band = Section B (Direct Expenses). Section A (AP Bills Paid) is NOT a band.
 COLUMN_KEYS = [
     'line_number', 'product', 'description', 'qty', 'uom', 'unit_price',
-    'account_title', 'amount',
+    'account_code', 'account_name', 'amount',
 ]
 
 COLUMN_LABELS = {
@@ -80,7 +80,9 @@ COLUMN_LABELS = {
     'qty': 'Qty',
     'uom': 'UOM',
     'unit_price': 'Unit Price',
-    'account_title': 'Account Title',
+    # Split from the former single 'account_title' (owner, 2026-09-02).
+    'account_code': 'Account Code',
+    'account_name': 'Account Title',
     'amount': 'Amount',
 }
 
@@ -151,6 +153,8 @@ DEFAULT_CDV_PREPRINTED_LAYOUT = {
     # Section B (Direct Expenses) lines: each column INDEPENDENTLY positioned (own x);
     # all share the band top (y) + rowHeight. No header row.
     'lineItems': {
+        # Opt-in -- see the APV twin. Absent from every pre-2026-09-02 blob.
+        'enabled': False,
         'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
         'columns': [
             {'key': 'line_number',   'x': 40,  'visible': True, 'width': 30},
@@ -159,7 +163,8 @@ DEFAULT_CDV_PREPRINTED_LAYOUT = {
             {'key': 'qty',           'x': 420, 'visible': True, 'width': 60},
             {'key': 'uom',           'x': 486, 'visible': True, 'width': 50},
             {'key': 'unit_price',    'x': 542, 'visible': True, 'width': 90},
-            {'key': 'account_title', 'x': 638, 'visible': True, 'width': 160},
+            {'key': 'account_code',  'x': 638, 'visible': True, 'width': 60},
+            {'key': 'account_name',  'x': 704, 'visible': True, 'width': 94},
             {'key': 'amount',        'x': 804, 'visible': True, 'width': 100},
         ],
     },
@@ -265,6 +270,7 @@ def sanitize_layout(raw):
     raw_li = raw.get('lineItems') if isinstance(raw.get('lineItems'), dict) else {}
     dli = d['lineItems']
     line_items = {
+        'enabled': bool(raw_li.get('enabled', dli['enabled'])),
         'y': _clamp(raw_li.get('y'), 0, CANVAS_H, dli['y']),
         'rowHeight': _clamp(raw_li.get('rowHeight'), ROW_MIN, ROW_MAX, dli['rowHeight']),
         'fontSize': _clamp(raw_li.get('fontSize'), FONT_MIN, FONT_MAX, dli['fontSize']),
