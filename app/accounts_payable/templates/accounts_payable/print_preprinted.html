@@ -139,9 +139,41 @@
   {# Layout-only editable signature texts (prepared / checked / approved) — not record data #}
   {% for t in layout.texts %}<div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"{{ ' data-signatory="1"' if t.id in signatory_ids else '' }} style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>{% endfor %}
 
-  {# Particulars (line-items band) intentionally NOT rendered on the APV pre-printed
-     voucher (user 2026-07-07): the JE face below carries the accounting detail. The
-     lineItems layout schema is kept (get/save) but no band is drawn. #}
+  {# Particulars band. Gated on lineItems.enabled (default False) so a layout saved before
+     2026-09-02 -- PhilGen's live voucher included -- prints exactly as it did. Each column
+     is independently positioned on its own x; all share the band top (li.y) and rowHeight.
+
+     ALIGNMENT INVARIANT: every column emits exactly ONE cell per line item, blank where it
+     has nothing to say. Equal-length stacks are what keep the columns registered against
+     the physical pre-printed boxes. If you add a row kind, every column must still emit a
+     cell for it. #}
+  {% set li = layout.lineItems %}
+  {% if li.enabled %}
+  <div class="pp-lineitems" data-el="lineItems" data-rowheight="{{ li.rowHeight }}">
+    {% for col in li.columns %}
+    <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('amount', 'unit_price', 'qty') else '' }}"
+         data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
+         style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
+      {%- for item in ap.line_items %}
+      <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
+        {%- if col.key == 'line_number' -%}{{ item.line_number }}
+        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% endif %}
+        {%- elif col.key == 'description' -%}{{ item.description or '' }}
+        {%- elif col.key == 'qty' -%}{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '' }}
+        {#- The unit CODE ('KG'), never the long name: the pre-printed box is ~50px wide. -#}
+        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '') }}
+        {%- elif col.key == 'unit_price' -%}{{ '{:,.2f}'.format(item.unit_price) if item.unit_price is not none else '' }}
+        {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.line_total) }}
+        {#- Split 2026-09-02: code and name are separate boxes on the form. -#}
+        {%- elif col.key == 'account_code' -%}{{ item.account.code if item.account else '' }}
+        {%- elif col.key == 'account_name' -%}{{ item.account.name if item.account else '' }}
+        {%- endif -%}
+      </div>
+      {% endfor -%}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   {# --- Journal-entry face (APV-only): JE-BOUND, debits-first, refuse an untied face. --- #}
   {% set je = layout.journalEntry %}

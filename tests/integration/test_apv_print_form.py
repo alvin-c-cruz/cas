@@ -168,7 +168,11 @@ class TestApvJournalEntryBand:
         assert '10,000.00' in body and '1,200.00' in body   # debits-first amounts
         # match the ELEMENTS, not the `.pp-*` CSS selectors that live in the inline <style>
         assert '<tr class="pp-je-total">' not in body     # JE Dr/Cr TOTAL row removed (user 2026-07-07)
-        assert '<div class="pp-lineitems"' not in body    # Particulars band removed from the APV voucher
+        # The band is OFF by default (lineItems.enabled, added 2026-09-02): a layout saved
+        # before the band existed prints exactly as it did. This is the backward-compat
+        # guarantee, not a statement that the band cannot render -- see
+        # tests/integration/test_apv_preprinted_band.py for the enabled-on case.
+        assert '<div class="pp-lineitems"' not in body
 
     def test_separated_mode_renders_debit_and_credit_bands(
             self, client, db_session, admin_user, main_branch):
@@ -216,8 +220,12 @@ class TestApPrintRoutes:
         assert 'pp-canvas' in body                 # the positioned-canvas marker
         assert 'APV-PP-1' in body                  # apv number
         assert 'Preprint Supplier Inc.' in body    # vendor
-        assert 'Bond paper' not in body            # Particulars band removed (user 2026-07-07)
-        assert '<div class="pp-lineitems"' not in body   # no line-items band (match element, not CSS)
+        # The band is OFF by default (lineItems.enabled, added 2026-09-02): a layout saved
+        # before the band existed prints exactly as it did. This is the backward-compat
+        # guarantee, not a statement that the band cannot render -- see
+        # tests/integration/test_apv_preprinted_band.py for the enabled-on case.
+        assert 'Bond paper' not in body
+        assert '<div class="pp-lineitems"' not in body
         # Summary block removed too (user 2026-07-07): no gross / net-payable value fields
         assert 'data-el="net_payable"' not in body
         assert 'data-el="gross"' not in body
