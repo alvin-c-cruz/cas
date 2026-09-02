@@ -72,7 +72,7 @@ FIELD_LABELS = {
 # Line-item band = the voucher particulars (purchase lines).
 COLUMN_KEYS = [
     'line_number', 'product', 'description', 'qty', 'uom', 'unit_price',
-    'amount', 'account_title',
+    'amount', 'account_code', 'account_name',
 ]
 
 COLUMN_LABELS = {
@@ -83,7 +83,10 @@ COLUMN_LABELS = {
     'uom': 'UOM',
     'unit_price': 'Unit Price',
     'amount': 'Amount',
-    'account_title': 'Account Title',
+    # Split from the former single 'account_title' (owner, 2026-09-02) so the code can be
+    # hidden independently of the name -- PhilGen's pre-printed form has no code box.
+    'account_code': 'Account Code',
+    'account_name': 'Account Title',
 }
 
 ALLOWED_PAPERS = ('continuous', 'letter')
@@ -154,6 +157,10 @@ DEFAULT_APV_PREPRINTED_LAYOUT = {
     # Particulars lines: each column INDEPENDENTLY positioned (own x); all share
     # the band top (y) + rowHeight. No header row.
     'lineItems': {
+        # Opt-in: absent from every blob saved before 2026-09-02, so an existing layout
+        # renders exactly as it did. Never make this a changed *default* -- saved blobs
+        # carry explicit per-column `visible: true` that would override one.
+        'enabled': False,
         'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
         'columns': [
             {'key': 'line_number',   'x': 40,  'visible': True, 'width': 30},
@@ -163,7 +170,8 @@ DEFAULT_APV_PREPRINTED_LAYOUT = {
             {'key': 'uom',           'x': 476, 'visible': True, 'width': 50},
             {'key': 'unit_price',    'x': 532, 'visible': True, 'width': 90},
             {'key': 'amount',        'x': 628, 'visible': True, 'width': 100},
-            {'key': 'account_title', 'x': 734, 'visible': True, 'width': 160},
+            {'key': 'account_code',  'x': 734, 'visible': True, 'width': 60},
+            {'key': 'account_name',  'x': 800, 'visible': True, 'width': 94},
         ],
     },
 }
@@ -273,6 +281,7 @@ def sanitize_layout(raw):
     raw_li = raw.get('lineItems') if isinstance(raw.get('lineItems'), dict) else {}
     dli = d['lineItems']
     line_items = {
+        'enabled': bool(raw_li.get('enabled', dli['enabled'])),
         'y': _clamp(raw_li.get('y'), 0, CANVAS_H, dli['y']),
         'rowHeight': _clamp(raw_li.get('rowHeight'), ROW_MIN, ROW_MAX, dli['rowHeight']),
         'fontSize': _clamp(raw_li.get('fontSize'), FONT_MIN, FONT_MAX, dli['fontSize']),

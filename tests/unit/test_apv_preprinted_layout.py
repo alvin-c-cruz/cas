@@ -3,8 +3,8 @@ import pytest
 from app.settings import AppSettings
 from app.accounts_payable.preprinted_layout import (
     DEFAULT_APV_PREPRINTED_LAYOUT, LAYOUT_SETTING_KEY, FIELD_KEYS, COLUMN_KEYS,
-    TEXT_KEYS, ALLOWED_FONTS, FONT_GROUPS, sanitize_layout, get_layout, save_layout,
-    _layout_key,
+    COLUMN_LABELS, TEXT_KEYS, ALLOWED_FONTS, FONT_GROUPS, sanitize_layout, get_layout,
+    save_layout, _layout_key,
 )
 from app.audit.models import AuditLog
 
@@ -67,7 +67,7 @@ class TestSanitize:
 
     def test_particulars_columns(self):
         assert COLUMN_KEYS == ['line_number', 'product', 'description', 'qty',
-                               'uom', 'unit_price', 'amount', 'account_title']
+                               'uom', 'unit_price', 'amount', 'account_code', 'account_name']
 
     def test_columns_reorder_and_hide_preserved_unknown_dropped(self):
         out = sanitize_layout({'lineItems': {'columns': [
@@ -208,3 +208,71 @@ class TestBranchScope:
         # branch 99 never saved -> default, not branch 1's layout
         assert get_layout(branch_id=99)['fields']['apv_no'] == \
             DEFAULT_APV_PREPRINTED_LAYOUT['fields']['apv_no']
+
+
+class TestLineItemBandGate:
+    """The band is opt-in. A layout saved before `enabled` existed must stay dark."""
+
+    def test_enabled_defaults_false_on_a_legacy_blob(self):
+        # Shaped like PhilGen's real saved ap_preprinted_layout:1 -- lineItems present,
+        # every column explicitly visible, and NO `enabled` key.
+        legacy = {'lineItems': {'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
+                                'columns': [{'key': 'line_number', 'x': 40,
+                                             'visible': True, 'width': 30}]}}
+        out = sanitize_layout(legacy)
+        assert out['lineItems']['enabled'] is False
+
+    def test_enabled_survives_when_explicitly_true(self):
+        """CONTROL. Without this, a sanitizer hardcoding False would pass the test above."""
+        out = sanitize_layout({'lineItems': {'enabled': True}})
+        assert out['lineItems']['enabled'] is True
+
+    def test_default_layout_ships_disabled(self):
+        assert DEFAULT_APV_PREPRINTED_LAYOUT['lineItems']['enabled'] is False
+
+    def test_garbage_enabled_is_coerced_not_crashed(self):
+        assert sanitize_layout({'lineItems': {'enabled': 'yes'}})['lineItems']['enabled'] is True
+        assert sanitize_layout({'lineItems': {'enabled': 0}})['lineItems']['enabled'] is False
+
+
+class TestAccountColumnSplit:
+    """account_title becomes two independently positioned/hideable columns."""
+
+    def test_account_code_and_name_are_separate_columns(self):
+        keys = [c['key'] for c in sanitize_layout({})['lineItems']['columns']]
+        assert 'account_code' in keys
+        assert 'account_name' in keys
+
+    def test_account_title_is_gone(self):
+        assert 'account_title' not in COLUMN_KEYS
+        keys = [c['key'] for c in sanitize_layout({})['lineItems']['columns']]
+        assert 'account_title' not in keys
+
+    def test_a_saved_account_title_entry_is_dropped_not_crashed(self):
+        """A pre-split blob names account_title; _clean_columns filters unknown keys."""
+        out = sanitize_layout({'lineItems': {'columns': [
+            {'key': 'account_title', 'x': 734, 'visible': True, 'width': 160}]}})
+        keys = [c['key'] for c in out['lineItems']['columns']]
+        assert 'account_title' not in keys
+        assert keys.count('account_code') == 1 and keys.count('account_name') == 1
+
+    def test_both_carry_labels(self):
+        assert COLUMN_LABELS['account_code'] == 'Account Code'
+        assert COLUMN_LABELS['account_name'] == 'Account Title'
+
+    def test_the_split_fits_inside_the_old_account_title_footprint(self):
+        """Positive control on the geometry: no other column had to move."""
+        cols = {c['key']: c for c in sanitize_layout({})['lineItems']['columns']}
+        assert cols['account_code']['x'] == 734
+        assert cols['account_name']['x'] + cols['account_name']['width'] == 894
+        assert cols['amount']['x'] == 628      # unchanged
+
+
+class TestColumnRoundTrip:
+    """Guards BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT."""
+
+    def test_column_position_visibility_and_width_survive_sanitize(self):
+        out = sanitize_layout({'lineItems': {'enabled': True, 'columns': [
+            {'key': 'account_code', 'x': 501, 'visible': False, 'width': 77}]}})
+        col = next(c for c in out['lineItems']['columns'] if c['key'] == 'account_code')
+        assert (col['x'], col['visible'], col['width']) == (501, False, 77)
