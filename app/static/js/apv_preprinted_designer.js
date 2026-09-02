@@ -13,6 +13,12 @@
   const fieldStrip = document.getElementById('ppFieldControls');
   const colStrip = document.getElementById('ppColControls');
   const printBtn = document.querySelector('.btn-print');
+  const liToggle = document.getElementById('ppLineItemsToggle');
+  const liWrap = document.getElementById('ppLineItemsWrap');
+  // The server's own sanitized lineItems, so a save while the band is hidden round-trips
+  // the stored values instead of overwriting them with client-side defaults.
+  const liDataEl = document.getElementById('ppServerLineItems');
+  const SERVER_LI = liDataEl ? JSON.parse(liDataEl.textContent) : null;
   let editing = false;
 
   // --- Save button injected next to Edit ---
@@ -206,6 +212,7 @@
     if (paperSel) paperSel.style.display = editing ? '' : 'none';
     if (dateSel) dateSel.style.display = editing ? '' : 'none';
     if (jeModeSel) jeModeSel.style.display = editing ? '' : 'none';
+    if (liWrap) liWrap.style.display = editing ? '' : 'none';
     if (printBtn) printBtn.style.display = editing ? 'none' : '';  // no printing while designing
     if (fieldStrip) { buildFieldControls(); fieldStrip.classList.toggle('pp-show', editing); }
     if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
@@ -353,11 +360,16 @@
       page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
       fields,
       lineItems: {
-        y: first ? (parseInt(first.style.top) || 0) : 300,
-        rowHeight: (li() && parseInt(li().dataset.rowheight)) || 20,   // band not drawn on APV
-        fontSize: lics ? (parseInt(lics.fontSize) || 10) : 10,
-        bold: lics ? (lics.fontWeight === '700' || lics.fontWeight === 'bold') : false,
-        columns,
+        // The band exists in the DOM only when enabled. When it does not, preserve the
+        // values the server sent rather than inventing defaults -- writing fallbacks here
+        // is BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT, which silently discarded
+        // every stored column position on each save.
+        enabled: !!(liToggle && liToggle.checked),
+        y: li() ? (parseInt(li().style.top) || SERVER_LI.y) : SERVER_LI.y,
+        rowHeight: li() ? (parseInt(li().dataset.rowheight) || SERVER_LI.rowHeight) : SERVER_LI.rowHeight,
+        fontSize: lics ? (parseInt(lics.fontSize) || SERVER_LI.fontSize) : SERVER_LI.fontSize,
+        bold: lics ? (lics.fontWeight === '700' || lics.fontWeight === 'bold') : SERVER_LI.bold,
+        columns: cols().length ? columns : SERVER_LI.columns,
       },
     };
   }
