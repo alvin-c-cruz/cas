@@ -132,9 +132,26 @@ class TestAlignmentInvariant:
 class TestJEFaceUntouched:
     def test_je_face_still_renders_at_its_saved_coordinates(self, client, db_session,
                                                             admin_user, main_branch):
-        """CONTROL: the band must not disturb the JE face clients have positioned."""
+        """CONTROL: the band must not disturb the JE face clients have positioned.
+
+        Sets the JE face's saved position to PhilGen's real live coordinates
+        (x=75, y=272 -- see this file's module docstring) BEFORE enabling the band,
+        then asserts the rendered `data-je="combined"` element's inline style still
+        carries that exact `left:`/`top:`. If the band ever shoved the JE face to a
+        different position (e.g. its own default y=300), this fails.
+        """
+        from app.accounts_payable.preprinted_layout import save_layout, get_layout
         from tests.integration.test_apv_print_form import _apv_with_je
+        AppSettings.set_setting('ap_print_form', 'preprinted', 'admin')
+        layout = get_layout(main_branch.id)
+        layout['journalEntry']['combined']['x'] = 75
+        layout['journalEntry']['combined']['y'] = 272
+        save_layout(layout, 'admin', main_branch.id)
+
         ap = _apv_with_je(db_session, main_branch, balanced=True)
         html = _render(client, db_session, main_branch, ap, enabled=True)
         # The JE face renders from its own saved coords, untouched by the band.
         assert 'data-je="combined"' in html
+        tag = html.split('data-je="combined"')[1].split('>')[0].replace(' ', '')
+        assert 'left:75px' in tag
+        assert 'top:272px' in tag
