@@ -10,7 +10,18 @@
   body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
   /* Canvas size is paper-driven (set inline; JS updates it live on paper change). */
   .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
-  .pp-el { position: absolute; white-space: nowrap; }
+  /* `pre`, not `nowrap` (owner 2026-09-06: "Notes (Particulars) accepted multi line...
+     print should too"). A newline the user typed into the record is DATA -- the edit
+     form stores it, so the voucher must print it -- and needs no layout setting to
+     appear. `nowrap` silently collapsed it to a space. `pre` honours it and still does
+     no automatic wrapping, so a field's printed shape stays exactly the lines that were
+     typed rather than reflowing against a box edge nobody chose. */
+  .pp-el { position: absolute; white-space: pre; }
+  /* A wrap WIDTH is the separate half: one long line running off the page (PhilGen's
+     particulars carry PO/SI/RR references, so they are long by construction). pre-wrap
+     keeps the typed newlines AND wraps at the chosen width; overflow-wrap because a
+     single unbroken token would otherwise still escape the box it was given. */
+  .pp-el.pp-wrap { white-space: pre-wrap; overflow-wrap: break-word; }
   .pp-lineitems { white-space: normal; }
   /* Each line-item column is independently positioned; cells stack vertically. */
   .pp-col { position: absolute; }
@@ -60,12 +71,20 @@
   /* Inactive mode's band(s): gone in view/print; greyed while editing so they stay draggable. */
   .pp-je-inactive { display: none; }
   .pp-canvas.pp-editing .pp-je-inactive { display: block; opacity: .4; }
+  /* An opt-in band (line items, JE columns) that is switched OFF. Same contract as
+     .pp-je-inactive: absent from view and print, greyed while editing so the toggle
+     previews live instead of needing a save + reload to show anything. */
+  .pp-band-off { display: none; }
+  .pp-canvas.pp-editing .pp-band-off { display: block; opacity: .4; }
   .pp-je-untied { color: #c00; font-weight: bold; }
   .pp-canvas.pp-editing .pp-je { outline: 1px dashed #2e7d32; cursor: move; }
   @media print {
     body { background: #fff; }
     .screen-only { display: none !important; }
     .pp-canvas { margin: 0; }
+    /* Beat the .pp-editing rules above: an off/inactive band is never ink. */
+    .pp-canvas.pp-editing .pp-band-off,
+    .pp-canvas.pp-editing .pp-je-inactive { display: none !important; }
   }
 </style>
 <style id="ppPageStyle">@page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; }</style>
@@ -74,13 +93,13 @@
 
 {% macro field(key, value, iso='') %}
   {% set f = layout.fields[key] %}
-  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"{% if iso %} data-date="{{ iso }}"{% endif %}
-       style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}{{ ' pp-wrap' if f.width else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"{% if iso %} data-date="{{ iso }}"{% endif %}
+       style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};{% if f.width %}width:{{ f.width }}px;{% endif %}">{{ value }}</div>
 {% endmacro %}
 
 {% macro field_extra(ex, value, iso='') %}
-  <div class="pp-el" data-el="{{ ex.key }}" data-label="{{ field_labels[ex.key] }}" data-extra="1"{% if iso %} data-date="{{ iso }}"{% endif %}
-       style="left:{{ ex.x }}px;top:{{ ex.y }}px;font-size:{{ ex.fontSize }}px;font-weight:{{ 'bold' if ex.bold else 'normal' }};">{{ value }}</div>
+  <div class="pp-el{{ ' pp-wrap' if ex.width else '' }}" data-el="{{ ex.key }}" data-label="{{ field_labels[ex.key] }}" data-extra="1"{% if iso %} data-date="{{ iso }}"{% endif %}
+       style="left:{{ ex.x }}px;top:{{ ex.y }}px;font-size:{{ ex.fontSize }}px;font-weight:{{ 'bold' if ex.bold else 'normal' }};{% if ex.width %}width:{{ ex.width }}px;{% endif %}">{{ value }}</div>
 {% endmacro %}
 
 <div class="pp-toolbar screen-only">
@@ -127,6 +146,12 @@
 {% if can_edit_layout %}
 <div id="ppFieldControls" class="pp-col-controls screen-only"></div>
 <div id="ppColControls" class="pp-col-controls screen-only"></div>
+{# The JE column face gets its OWN strip. Its columns carry `visible` exactly as the
+   line-item ones do, but they are .pp-jecol / data-jecol, which buildColControls()
+   cannot see -- so until now the flag was storable and round-trippable with no way to
+   set it. Separate strip rather than a shared one for the same reason the classes are
+   separate: one sweep must never pick up the other band's columns. #}
+<div id="ppJEColControls" class="pp-col-controls screen-only"></div>
 {% endif %}
 
 <div class="pp-canvas" id="ppCanvas" style="width:{{ paper_sizes[layout.paper].w }}px;height:{{ paper_sizes[layout.paper].h }}px;">
@@ -165,8 +190,7 @@
      the physical pre-printed boxes. If you add a row kind, every column must still emit a
      cell for it. #}
   {% set li = layout.lineItems %}
-  {% if li.enabled %}
-  <div class="pp-lineitems" data-el="lineItems" data-rowheight="{{ li.rowHeight }}">
+  <div class="pp-lineitems{{ ' pp-band-off' if not li.enabled else '' }}" data-el="lineItems" data-rowheight="{{ li.rowHeight }}">
     {% for col in li.columns %}
     <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('amount', 'unit_price', 'qty') else '' }}"
          data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
@@ -190,7 +214,6 @@
     </div>
     {% endfor %}
   </div>
-  {% endif %}
 
   {# --- Journal-entry face (APV-only): JE-BOUND, debits-first, refuse an untied face. --- #}
   {% set je = layout.journalEntry %}
@@ -207,9 +230,11 @@
        per JE line, blank where it has nothing to say (a debit row's credit cell,
        and vice versa). Equal-length stacks are what keep the columns registered.
 
-       Rendered INSTEAD of the combined/separated bands when enabled, not beside
-       them -- two faces drawing the same figures would double-print on paper. #}
-    {% if je.columnsEnabled %}
+       Shown INSTEAD of the combined/separated bands when enabled, never beside
+       them -- two faces drawing the same figures would double-print on paper.
+       All three are RENDERED, and the inactive ones carry a hiding class, which is
+       what lets the toggle preview live; the legacy bands below already worked this
+       way for the combined/separated choice. #}
     {# DISTINCT classes (.pp-jecols / .pp-jecol), NOT .pp-lineitems / .pp-col.
        The designer selects line-item columns with `querySelectorAll('.pp-col')`
        and the band with `querySelector('.pp-lineitems')`. Reusing those here made
@@ -217,7 +242,7 @@
        discarded them as unknown keys and fell back to defaults, silently
        overwriting the client's stored line-item positions -- which is
        BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT, already shipped once. #}
-    <div class="pp-jecols" data-el="journalEntryColumns" data-rowheight="{{ je.rowHeight }}">
+    <div class="pp-jecols{{ ' pp-band-off' if not je.columnsEnabled else '' }}" data-el="journalEntryColumns" data-rowheight="{{ je.rowHeight }}">
       {% for col in je.columns %}
       <div class="pp-jecol{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('debit', 'credit') else '' }}"
            data-jecol="{{ col.key }}" data-label="{{ je_col_labels[col.key] }}"
@@ -234,28 +259,28 @@
       </div>
       {% endfor %}
     </div>
-    {% else %}
-    {# Combined grid: code | account | debit | credit, debits-first, totals equal. #}
-    <div class="pp-el pp-je{{ ' pp-je-inactive' if je.mode != 'combined' else '' }}" data-je="combined"
+    {# Combined grid: code | account | debit | credit, debits-first, totals equal.
+       Inactive when the column face is on, whatever `mode` says -- the two faces print
+       the same figures, so exactly one may ever be visible. #}
+    <div class="pp-el pp-je{{ ' pp-je-inactive' if je.columnsEnabled or je.mode != 'combined' else '' }}" data-je="combined"
          style="left:{{ je.combined.x }}px;top:{{ je.combined.y }}px;width:{{ je.combined.width }}px;font-size:{{ je.fontSize }}px;">
       <table class="pp-je-table">
         {% for l in je_lines %}<tr style="height:{{ je.rowHeight }}px;"><td>{{ l.account.code }}</td><td>{{ l.account.name }}</td><td class="pp-je-amt">{% if l.debit_amount %}{{ '{:,.2f}'.format(l.debit_amount) }}{% endif %}</td><td class="pp-je-amt">{% if l.credit_amount %}{{ '{:,.2f}'.format(l.credit_amount) }}{% endif %}</td></tr>{% endfor %}
       </table>
     </div>
     {# Separated: a debit band + a credit band, each code | account | amount. #}
-    <div class="pp-el pp-je{{ ' pp-je-inactive' if je.mode != 'separated' else '' }}" data-je="debit"
+    <div class="pp-el pp-je{{ ' pp-je-inactive' if je.columnsEnabled or je.mode != 'separated' else '' }}" data-je="debit"
          style="left:{{ je.debit.x }}px;top:{{ je.debit.y }}px;width:{{ je.debit.width }}px;font-size:{{ je.fontSize }}px;">
       <table class="pp-je-table">
         {% for l in je_debits %}<tr style="height:{{ je.rowHeight }}px;"><td>{{ l.account.code }}</td><td>{{ l.account.name }}</td><td class="pp-je-amt">{{ '{:,.2f}'.format(l.debit_amount) }}</td></tr>{% endfor %}
       </table>
     </div>
-    <div class="pp-el pp-je{{ ' pp-je-inactive' if je.mode != 'separated' else '' }}" data-je="credit"
+    <div class="pp-el pp-je{{ ' pp-je-inactive' if je.columnsEnabled or je.mode != 'separated' else '' }}" data-je="credit"
          style="left:{{ je.credit.x }}px;top:{{ je.credit.y }}px;width:{{ je.credit.width }}px;font-size:{{ je.fontSize }}px;">
       <table class="pp-je-table">
         {% for l in je_credits %}<tr style="height:{{ je.rowHeight }}px;"><td>{{ l.account.code }}</td><td>{{ l.account.name }}</td><td class="pp-je-amt">{{ '{:,.2f}'.format(l.credit_amount) }}</td></tr>{% endfor %}
       </table>
     </div>
-    {% endif %}
   {% endif %}
   {% endif %}
 </div>
@@ -263,7 +288,7 @@
 {% if can_edit_layout %}
 <script type="application/json" id="ppJELayout">{{ layout.journalEntry | tojson }}</script>
 <script type="application/json" id="ppServerLineItems">{{ layout.lineItems | tojson }}</script>
-<script src="{{ url_for('static', filename='js/apv_preprinted_designer.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='js/apv_preprinted_designer.js') }}?v=9"></script>
 {% endif %}
 </body>
 </html>

@@ -284,3 +284,68 @@ class TestColumnRoundTrip:
             {'key': 'account_code', 'x': 501, 'visible': False, 'width': 77}]}})
         col = next(c for c in out['lineItems']['columns'] if c['key'] == 'account_code')
         assert (col['x'], col['visible'], col['width']) == (501, False, 77)
+
+
+class TestFieldWrapWidth:
+    """Owner, 2026-09-06: "multi-line should be supported" -- a long Notes value ran off
+    the right edge of the page as one line.
+
+    A field gains an optional wrap `width`. 0 means UNSET and keeps the historic
+    single-line rendering, which is the backward-compatibility guarantee that matters
+    most here: these are coordinates onto a client's real pre-printed stationery, and
+    every blob saved before today has no `width` key at all.
+    """
+
+    def test_a_legacy_field_gets_width_zero(self):
+        """No `width` key anywhere in a blob saved before today -> single line."""
+        out = sanitize_layout({})
+        for key in FIELD_KEYS:
+            assert out['fields'][key]['width'] == 0, key
+
+    def test_a_set_width_survives(self):
+        out = sanitize_layout({'fields': {'notes': {'width': 340}}})
+        assert out['fields']['notes']['width'] == 340
+
+    def test_zero_stays_zero(self):
+        """0 is a VALUE (unset), not a missing number. Clamping it into WIDTH_MIN..MAX
+        would turn every un-wrapped field into a 10px sliver on its next read."""
+        out = sanitize_layout({'fields': {'notes': {'width': 0}}})
+        assert out['fields']['notes']['width'] == 0
+
+    def test_a_negative_width_reads_as_unset(self):
+        out = sanitize_layout({'fields': {'notes': {'width': -20}}})
+        assert out['fields']['notes']['width'] == 0
+
+    def test_a_sub_minimum_width_snaps_up_not_off(self):
+        """Snapping a 3px drag DOWN to 0 would silently un-wrap a field the client set
+        on purpose; snapping up keeps the intent and is merely ugly."""
+        from app.accounts_payable.preprinted_layout import WIDTH_MIN
+        out = sanitize_layout({'fields': {'notes': {'width': 3}}})
+        assert out['fields']['notes']['width'] == WIDTH_MIN
+
+    def test_a_wild_width_is_clamped(self):
+        from app.accounts_payable.preprinted_layout import WIDTH_MAX
+        out = sanitize_layout({'fields': {'notes': {'width': 99999}}})
+        assert out['fields']['notes']['width'] == WIDTH_MAX
+
+    def test_garbage_reads_as_unset(self):
+        out = sanitize_layout({'fields': {'notes': {'width': 'wide please'}}})
+        assert out['fields']['notes']['width'] == 0
+
+    def test_a_duplicated_copy_carries_its_own_width(self):
+        """A copy of Notes is still Notes -- it needs wrapping just as much, and its
+        width is independent of the original's."""
+        out = sanitize_layout({'fields': {'notes': {'width': 200}},
+                               'extras': [{'key': 'notes', 'x': 100, 'y': 500,
+                                           'width': 360}]})
+        assert out['extras'][0]['width'] == 360
+        assert out['fields']['notes']['width'] == 200
+
+    def test_a_legacy_extra_gets_width_zero(self):
+        out = sanitize_layout({'extras': [{'key': 'notes', 'x': 100, 'y': 500}]})
+        assert out['extras'][0]['width'] == 0
+
+    def test_width_round_trips_through_save(self, db_session, admin_user):
+        """Sanitised on write AND read, so a width has two chances to be dropped."""
+        save_layout({'fields': {'notes': {'width': 288}}}, admin_user.username, 1)
+        assert get_layout(1)['fields']['notes']['width'] == 288

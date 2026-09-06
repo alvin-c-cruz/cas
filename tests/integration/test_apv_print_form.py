@@ -224,8 +224,15 @@ class TestApPrintRoutes:
         # before the band existed prints exactly as it did. This is the backward-compat
         # guarantee, not a statement that the band cannot render -- see
         # tests/integration/test_apv_preprinted_band.py for the enabled-on case.
-        assert 'Bond paper' not in body
-        assert '<div class="pp-lineitems"' not in body
+        #
+        # WHAT CHANGED 2026-09-06: the band is now always rendered and switched off with a
+        # class, so that the designer's toggle previews live instead of needing a save and
+        # a reload. So 'Bond paper' IS in the body now -- inside an element the stylesheet
+        # hides. The guarantee is about INK ON PAPER, and that is what is asserted here.
+        # The rule is in an inline <style> in this same document, so unlike an external
+        # sheet it cannot fail to arrive while the markup does.
+        assert 'pp-band-off' in body.split('data-el="lineItems"')[0].rsplit('<div', 1)[1]
+        assert '.pp-band-off { display: none; }' in body
         # Summary block removed too (user 2026-07-07): no gross / net-payable value fields
         assert 'data-el="net_payable"' not in body
         assert 'data-el="gross"' not in body

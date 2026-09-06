@@ -59,10 +59,22 @@ def _apv_with_three_lines(db_session, main_branch):
 
 
 class TestBandGate:
-    def test_band_absent_when_disabled(self, client, db_session, admin_user, main_branch):
-        """A layout with `enabled` explicitly False prints no band.
+    """A disabled band must never reach paper.
 
-        `_render` sets `layout['lineItems']['enabled'] = enabled` directly, so this pins
+    HOW that is enforced changed on 2026-09-06 and these tests changed with it. The band
+    used to be omitted server-side (`{% if li.enabled %}`), which meant ticking "Show line
+    items" in the designer produced no markup and therefore no visible change until the
+    layout was saved AND the page reloaded -- the columns could not be dragged into
+    position in the same sitting they were turned on. The band is now always rendered and
+    switched off with the `pp-band-off` class, so the toggle is a live class flip.
+
+    The REQUIREMENT is unchanged, so it is still asserted below -- just against the class
+    and the rule that acts on it rather than against the absence of markup.
+    """
+
+    def test_a_disabled_band_is_marked_off(self, client, db_session, admin_user,
+                                           main_branch):
+        """`_render` sets `layout['lineItems']['enabled'] = enabled` directly, so this pins
         the explicit-False path, not the absent-key (legacy blob) path -- that one is
         covered at the unit layer by
         `TestLineItemBandGate::test_enabled_defaults_false_on_a_legacy_blob` in
@@ -70,16 +82,36 @@ class TestBandGate:
         `enabled` key at all and asserts it defaults to False."""
         ap = _posted_apv(db_session, main_branch)
         html = _render(client, db_session, main_branch, ap, enabled=False)
-        assert 'data-el="lineItems"' not in html
-        # NOT `'class="pp-col' not in html` (the brief's original assertion): the
-        # designer chrome unconditionally emits `id="ppColControls" class="pp-col-controls
-        # screen-only"` (a substring collision with `pp-col`), which false-failed this
-        # control test before any implementation existed. `data-col="` is unique to a
-        # per-column band div and appears nowhere else in the rendered page.
-        assert 'data-col="' not in html
+        marker = html.split('data-el="lineItems"')[0].rsplit('<div', 1)[1]
+        assert 'pp-band-off' in marker
+
+    def test_a_disabled_band_is_not_displayed_and_not_printed(self, client, db_session,
+                                                              admin_user, main_branch):
+        """The class only means something if a rule acts on it. Without this, renaming or
+        dropping the CSS would leave an off band printing on a client's stationery with
+        every assertion above still green.
+
+        Asserted on the applied declaration rather than the bare class name: the class
+        appears in the markup too, so a substring check for `pp-band-off` alone could
+        never fail (see the scoped-absence rule in the workspace conventions)."""
+        ap = _posted_apv(db_session, main_branch)
+        html = _render(client, db_session, main_branch, ap, enabled=False)
+        assert '.pp-band-off { display: none; }' in html
+        # ...and it stays hidden if somebody prints while still in edit mode, where the
+        # .pp-editing rule would otherwise reveal it at 40% opacity.
+        assert '.pp-canvas.pp-editing .pp-band-off,' in html
+        assert '.pp-canvas.pp-editing .pp-je-inactive { display: none !important; }' in html
+
+    def test_an_enabled_band_is_not_marked_off(self, client, db_session, admin_user,
+                                               main_branch):
+        """CONTROL. Without this the off-marker assertion above passes vacuously -- a
+        template that emitted `pp-band-off` unconditionally would satisfy it."""
+        ap = _posted_apv(db_session, main_branch)
+        html = _render(client, db_session, main_branch, ap, enabled=True)
+        marker = html.split('data-el="lineItems"')[0].rsplit('<div', 1)[1]
+        assert 'pp-band-off' not in marker
 
     def test_band_present_when_enabled(self, client, db_session, admin_user, main_branch):
-        """CONTROL. Without this the absence assertion above passes vacuously."""
         ap = _posted_apv(db_session, main_branch)
         html = _render(client, db_session, main_branch, ap, enabled=True)
         assert 'data-el="lineItems"' in html
@@ -207,3 +239,118 @@ class TestJEFaceUntouched:
         tag = html.split('data-je="combined"')[1].split('>')[0].replace(' ', '')
         assert 'left:75px' in tag
         assert 'top:272px' in tag
+
+
+def _open_tag(html, needle):
+    """The WHOLE opening <div ...> carrying `needle`.
+
+    Not `html.split(needle)[0].rsplit('<div', 1)[1]` -- that stops AT the needle and so
+    sees only the attributes written before it. `class` precedes `data-el` but `style`
+    follows it, so the shorter form silently cannot observe width/left/top at all.
+    """
+    start = html.rindex('<div', 0, html.index(needle))
+    return html[start:html.index('>', start) + 1]
+
+
+class TestAFieldCanWrapOntoMultipleLines:
+    """Owner, 2026-09-06: "multi-line should be supported."
+
+    A long Notes value -- PhilGen's are a particulars string built from the PO/SI/RR
+    references, so they are long by construction -- ran off the right edge of the page
+    as a single line, because `.pp-el` is `white-space: nowrap`.
+
+    "Multi-line" is two things, and both are asserted here:
+      1. WRAPPING at a width the client chooses, and
+      2. honouring newlines already typed into the record.
+    Only (1) needs a setting; (2) follows from `pre-wrap` and would be silently lost
+    under plain `normal` wrapping, which collapses a newline to a space.
+    """
+
+    def _render_notes(self, client, db_session, main_branch, notes, width=None):
+        from app.accounts_payable.preprinted_layout import get_layout, save_layout
+        ap = _posted_apv(db_session, main_branch)
+        ap.notes = notes
+        db_session.commit()
+        lay = get_layout(main_branch.id)
+        if width is not None:
+            lay['fields']['notes']['width'] = width
+        save_layout(lay, 'admin', main_branch.id)
+        db_session.commit()
+        AppSettings.set_setting('ap_print_form', 'preprinted', 'admin')
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/accounts-payable/{ap.id}/print')
+        assert resp.status_code == 200
+        return resp.get_data(as_text=True)
+
+    def test_a_field_with_no_width_is_unchanged(self, client, db_session, admin_user,
+                                                main_branch):
+        """THE backward-compatibility guarantee. Every layout saved before today has no
+        width, and these are coordinates onto real stationery -- such a voucher must
+        print exactly as it did yesterday."""
+        html = self._render_notes(client, db_session, main_branch, 'Short note')
+        tag = _open_tag(html, 'data-el="notes"')
+        assert 'pp-wrap' not in tag
+        assert 'width:' not in tag
+
+    def test_a_width_makes_the_field_wrap(self, client, db_session, admin_user,
+                                          main_branch):
+        html = self._render_notes(client, db_session, main_branch,
+                                  'A rather long particulars string', width=340)
+        tag = _open_tag(html, 'data-el="notes"')
+        assert 'pp-wrap' in tag
+        assert 'width:340px' in tag
+
+    def test_wrapping_is_backed_by_a_real_rule(self, client, db_session, admin_user,
+                                               main_branch):
+        """Scoped to the applied declaration, not the bare class name -- the name is in
+        the markup, so a substring check for it alone could never fail."""
+        html = self._render_notes(client, db_session, main_branch, 'x', width=340)
+        assert '.pp-el.pp-wrap { white-space: pre-wrap; overflow-wrap: break-word; }' in html
+
+    def test_a_newline_prints_WITHOUT_any_width_being_set(self, client, db_session,
+                                                          admin_user, main_branch):
+        """THE owner report, 2026-09-06: "Notes (Particulars) accepted multi line ...
+        print should too."
+
+        A newline typed into the record is DATA, not layout: the edit form stores it, so
+        the voucher prints it, and no designer setting should be needed to make that
+        happen. `.pp-el` was `white-space: nowrap`, which collapsed it to a space.
+
+        Asserted with NO width, because requiring one would have made a data property
+        depend on a layout property -- the shape of the bug, not a fix for it.
+        """
+        html = self._render_notes(client, db_session, main_branch,
+                                  'First line\nSecond line')
+        assert 'First line\nSecond line' in html          # value reaches the page...
+        assert '.pp-el { position: absolute; white-space: pre; }' in html   # ...as breaks
+
+    def test_the_default_does_not_reflow_text_nobody_asked_to_wrap(self, client,
+                                                                   db_session, admin_user,
+                                                                   main_branch):
+        """`pre`, not `pre-line`. Both honour a typed newline, but pre-line ALSO wraps at
+        whatever edge the box happens to have -- on an absolutely-positioned field that
+        is the canvas edge, a boundary nobody chose. On pre-printed stationery a line
+        that silently reflows lands on top of the next printed box. Wrapping stays
+        opt-in, via a width.
+        """
+        html = self._render_notes(client, db_session, main_branch, 'x' * 300)
+        assert 'white-space: pre-line' not in html
+        assert 'pp-wrap' not in _open_tag(html, 'data-el="notes"')
+
+    def test_a_newline_still_prints_when_a_width_IS_set(self, client, db_session,
+                                                        admin_user, main_branch):
+        """pre-wrap keeps both behaviours; a wrapped field must not lose its breaks."""
+        html = self._render_notes(client, db_session, main_branch,
+                                  'First line\nSecond line', width=340)
+        assert 'First line\nSecond line' in html
+        assert 'pp-wrap' in _open_tag(html, 'data-el="notes"')
+
+    def test_an_unbroken_token_cannot_escape_the_box(self, client, db_session, admin_user,
+                                                     main_branch):
+        """A long reference with no spaces (PhilGen's particulars carry PO/SI/RR numbers
+        run together) would overflow a wrapped box under pre-wrap alone -- which is the
+        very failure being fixed, just narrower. overflow-wrap is what stops it."""
+        html = self._render_notes(client, db_session, main_branch, 'x' * 200, width=200)
+        assert 'overflow-wrap: break-word' in html

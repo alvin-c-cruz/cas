@@ -12,6 +12,7 @@
   const jeModeSel = document.getElementById('ppJEMode');  // APV JE combined/separated
   const fieldStrip = document.getElementById('ppFieldControls');
   const colStrip = document.getElementById('ppColControls');
+  const jeColStrip = document.getElementById('ppJEColControls');
   const printBtn = document.querySelector('.btn-print');
   const liToggle = document.getElementById('ppLineItemsToggle');
   const jeColsToggle = document.getElementById('ppJEColsToggle');
@@ -67,9 +68,40 @@
     '<button type="button" id="ppBoldBtn" title="Bold"><b>B</b></button>' +
     '<button type="button" id="ppDupBtn" title="Duplicate">Dup</button>' +
     '<button type="button" id="ppDelBtn" title="Delete copy">Del</button>' +
-    '<input type="text" id="ppTextInput" title="Edit text" style="display:none;width:170px;">';
+    '<input type="text" id="ppTextInput" title="Edit text" style="display:none;width:170px;">' +
+    '<input type="number" id="ppWidthInput" min="0" max="912" step="10" ' +
+    'title="Wrap width in px (0 = keep on one line)" ' +
+    'placeholder="wrap px" style="display:none;width:78px;">';
   document.body.appendChild(elBar);
   const textInput = elBar.querySelector('#ppTextInput');
+  const widthInput = elBar.querySelector('#ppWidthInput');
+
+  // A field with a wrap width wraps at it and honours newlines already in the value;
+  // 0 clears it back to the historic single-line behaviour. Setting the width via a
+  // typed number rather than only a drag handle is deliberate: an un-wrapped Notes
+  // value runs off the page, so its right edge is not on screen to be grabbed.
+  function isWrappableField(el) {
+    return !!el && el.classList.contains('pp-el')
+      && !el.classList.contains('pp-text')
+      && !el.classList.contains('pp-je')
+      && !el.classList.contains('pp-je-untied');
+  }
+  function setWrapWidth(el, w) {
+    if (w > 0) {
+      el.style.width = w + 'px';
+      el.classList.add('pp-wrap');
+    } else {
+      el.style.width = '';
+      el.classList.remove('pp-wrap');
+    }
+  }
+  widthInput.addEventListener('input', () => {
+    if (selected && isWrappableField(selected)) {
+      setWrapWidth(selected, parseInt(widthInput.value) || 0);
+      positionBar();
+    }
+  });
+  widthInput.addEventListener('pointerdown', (e) => e.stopPropagation());
   // Editing a layout text -> live-update its content.
   textInput.addEventListener('input', () => {
     if (selected && selected.classList.contains('pp-text')) selected.textContent = textInput.value;
@@ -101,6 +133,9 @@
     // Layout texts get an editable text box in the toolbar.
     textInput.style.display = isText ? '' : 'none';
     if (isText) textInput.value = el.textContent;
+    const wrappable = isWrappableField(el);
+    widthInput.style.display = wrappable ? '' : 'none';
+    if (wrappable) widthInput.value = parseInt(el.style.width) || 0;
     positionBar();
   }
   function duplicateSelected() {
@@ -211,6 +246,36 @@
     colStrip.dataset.built = '1';
   }
 
+  // --- JE column show/hide strip (built once) ---
+  // Deliberately NOT folded into buildColControls: that one queries .pp-col/data-col,
+  // and the whole point of the JE band's separate class names is that neither sweep can
+  // reach the other's columns (BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT).
+  function setJEColVisible(key, visible) {
+    canvas.querySelectorAll('.pp-jecol[data-jecol="' + key + '"]').forEach((c) =>
+      c.classList.toggle('pp-col-hidden', !visible));
+  }
+  function buildJEColControls() {
+    if (!jeColStrip || jeColStrip.dataset.built) return;
+    const band = jeCols();
+    // No JE face on this voucher (no entry, or an untied one): leave the strip empty
+    // rather than showing a heading over nothing.
+    if (!band.length) return;
+    jeColStrip.appendChild(stripHeading('JE columns:'));
+    band.forEach((col) => {
+      const key = col.dataset.jecol;
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.jecoltoggle = key;
+      cb.checked = !col.classList.contains('pp-col-hidden');
+      cb.addEventListener('change', () => setJEColVisible(key, cb.checked));
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + (col.dataset.label || key)));
+      jeColStrip.appendChild(label);
+    });
+    jeColStrip.dataset.built = '1';
+  }
+
   function setEditing(on) {
     editing = on;
     canvas.classList.toggle('pp-editing', editing);
@@ -225,6 +290,7 @@
     if (printBtn) printBtn.style.display = editing ? 'none' : '';  // no printing while designing
     if (fieldStrip) { buildFieldControls(); fieldStrip.classList.toggle('pp-show', editing); }
     if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
+    if (jeColStrip) { buildJEColControls(); jeColStrip.classList.toggle('pp-show', editing); }
     editBtn.textContent = editing ? 'Exit Edit' : 'Edit Layout';
     if (!editing) selectEl(null);
   }
@@ -261,6 +327,13 @@
     if (!el) return;
     selectEl(el);
     const r = el.getBoundingClientRect();
+    if (el.classList.contains('pp-wrap') && e.clientX >= r.right - EDGE) {
+      colResize = { col: el, startW: parseInt(el.style.width) || Math.round(r.width),
+                    startX: e.clientX };
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
     drag = { el, dx: e.clientX - r.left, dy: e.clientY - r.top, c };
     canvas.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -270,6 +343,9 @@
     if (colResize) {
       const w = Math.max(20, Math.min(canvas.clientWidth, colResize.startW + (e.clientX - colResize.startX)));
       colResize.col.style.width = Math.round(w) + 'px';      // cells follow the column width
+      if (colResize.col === selected && isWrappableField(colResize.col)) {
+        widthInput.value = Math.round(w);                    // keep the box honest
+      }
       return;
     }
     if (colDrag) {
@@ -285,7 +361,7 @@
     }
     if (!drag) {
       // hover cursor hint: resize near the right edge, move elsewhere
-      const hov = e.target.closest && e.target.closest(anyCol);
+      const hov = e.target.closest && e.target.closest(anyCol + ', .pp-el.pp-wrap');
       if (hov) {
         const r = hov.getBoundingClientRect();
         hov.style.cursor = (e.clientX >= r.right - EDGE) ? 'ew-resize' : 'move';
@@ -313,6 +389,7 @@
         fontSize: parseInt(cs.fontSize) || 11,
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
         hidden: el.classList.contains('pp-field-hidden'),
+        width: el.classList.contains('pp-wrap') ? (parseInt(el.style.width) || 0) : 0,
       };
     });
     const extras = [...canvas.querySelectorAll('.pp-el[data-extra]')].map((el) => {
@@ -323,6 +400,7 @@
         y: parseInt(el.style.top) || 0,
         fontSize: parseInt(cs.fontSize) || 11,
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
+        width: el.classList.contains('pp-wrap') ? (parseInt(el.style.width) || 0) : 0,
       };
     });
     const texts = [...canvas.querySelectorAll('.pp-text')].map((el) => {
@@ -360,10 +438,11 @@
       };
     });
     if (jeModeSel) jeLayout.mode = jeModeSel.value;
-    // JE column face. Same round-trip rule as lineItems below: the band exists
-    // in the DOM only while enabled, so when it does not, keep whatever the
-    // server sent rather than inventing client-side defaults -- writing
-    // fallbacks here is how the line-item columns were silently reset once.
+    // JE column face. Same round-trip rule as lineItems below: fall back to what the
+    // server sent rather than inventing client-side defaults -- writing fallbacks here
+    // is how the line-item columns were silently reset once. Since 2026-09-06 the band
+    // is rendered even while disabled (so the toggle previews live), so the fallback is
+    // reached only when the face is absent altogether: no JE lines, or an untied entry.
     if (jeColsToggle) jeLayout.columnsEnabled = !!jeColsToggle.checked;
     const jeColEls = jeCols();
     if (jeColEls.length) {
@@ -393,10 +472,12 @@
       page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
       fields,
       lineItems: {
-        // The band exists in the DOM only when enabled. When it does not, preserve the
-        // values the server sent rather than inventing defaults -- writing fallbacks here
-        // is BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT, which silently discarded
-        // every stored column position on each save.
+        // Preserve the values the server sent when the band is absent, rather than
+        // inventing defaults -- writing fallbacks here is
+        // BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT, which silently discarded
+        // every stored column position on each save. The band is now rendered even while
+        // disabled (live preview, 2026-09-06), so these fallbacks are the belt to that
+        // braces: `enabled` is read from the checkbox either way.
         enabled: !!(liToggle && liToggle.checked),
         y: first ? (parseInt(first.style.top) || SERVER_LI.y) : SERVER_LI.y,
         rowHeight: li() ? (parseInt(li().dataset.rowheight) || SERVER_LI.rowHeight) : SERVER_LI.rowHeight,
@@ -483,12 +564,33 @@
 
   // JE combined/separated: toggle which band(s) are the inactive mode (greyed in edit).
   function applyJEMode(mode) {
+    // The column face wins over the mode select: it draws the same figures as the two
+    // legacy bands, so when it is on neither of them may show. One face, always.
+    const colsOn = !!(jeColsToggle && jeColsToggle.checked);
     canvas.querySelectorAll('.pp-je').forEach((el) => {
-      const active = (mode === 'combined') ? (el.dataset.je === 'combined') : (el.dataset.je !== 'combined');
+      const active = !colsOn && ((mode === 'combined') ? (el.dataset.je === 'combined')
+                                                       : (el.dataset.je !== 'combined'));
       el.classList.toggle('pp-je-inactive', !active);
     });
   }
   if (jeModeSel) jeModeSel.addEventListener('change', () => applyJEMode(jeModeSel.value));
+
+  // Both opt-in bands preview LIVE. They used to be gated server-side, so the markup
+  // was absent until a save + reload -- ticking the box appeared to do nothing, and the
+  // columns could not be dragged into place in the same sitting they were turned on.
+  // Both are now always rendered and hidden with .pp-band-off, so the toggle is a class
+  // flip. collect() still reads the checkbox, so what is SAVED is unchanged.
+  function applyBand(el, on) { if (el) el.classList.toggle('pp-band-off', !on); }
+
+  if (liToggle) {
+    liToggle.addEventListener('change', () => applyBand(li(), liToggle.checked));
+  }
+  if (jeColsToggle) {
+    jeColsToggle.addEventListener('change', () => {
+      applyBand(canvas.querySelector('.pp-jecols'), jeColsToggle.checked);
+      applyJEMode(jeModeSel ? jeModeSel.value : 'combined');   // hand the legacy bands back
+    });
+  }
 
   // paper size: resize the canvas + rewrite the @page rule live; guides hide for non-continuous.
   if (paperSel) {
