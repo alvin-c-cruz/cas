@@ -153,6 +153,20 @@ DEFAULT_APV_PREPRINTED_LAYOUT = {
         'combined': {'x': 60,  'y': 360, 'width': 460},
         'debit':    {'x': 60,  'y': 360, 'width': 300},
         'credit':   {'x': 470, 'y': 360, 'width': 300},
+        # Per-column positioning, mirroring lineItems above. The three bands
+        # rendered a single auto-width HTML table, so the four cells could not be
+        # aligned to the voucher's printed boxes -- only the band as a whole
+        # could be moved. These columns each carry their own x.
+        #
+        # Opt-in for the same reason lineItems is: absent from every blob saved
+        # before 2026-09-06, so an existing layout renders exactly as it did.
+        'columnsEnabled': False,
+        'columns': [
+            {'key': 'account_code',  'x': 60,  'visible': True, 'width': 70},
+            {'key': 'account_title', 'x': 136, 'visible': True, 'width': 280},
+            {'key': 'debit',         'x': 422, 'visible': True, 'width': 110},
+            {'key': 'credit',        'x': 538, 'visible': True, 'width': 110},
+        ],
     },
     # Particulars lines: each column INDEPENDENTLY positioned (own x); all share
     # the band top (y) + rowHeight. No header row.
@@ -241,6 +255,17 @@ def _clean_extras(raw):
 
 JE_MODES = ('combined', 'separated')
 
+#: The JE face's positioned columns, in print order. Fixed set -- a saved blob
+#: naming anything else is discarded, exactly as FIELD_KEYS does for fields.
+JE_COLUMN_KEYS = ('account_code', 'account_title', 'debit', 'credit')
+
+JE_COLUMN_LABELS = {
+    'account_code':  'Account Code',
+    'account_title': 'Account Title',
+    'debit':         'Debit',
+    'credit':        'Credit',
+}
+
 
 def _clean_je(raw):
     """The APV journal-entry face: mode + three positioned bands. Layout only —
@@ -258,6 +283,23 @@ def _clean_je(raw):
             'width': _clamp(b.get('width'), WIDTH_MIN, WIDTH_MAX, db_['width']),
         }
 
+    # Columns are rebuilt from JE_COLUMN_KEYS rather than from whatever the blob
+    # holds: a saved layout missing one (written before this shipped) still gets
+    # every column, and one naming an unknown key cannot introduce it. Same rule
+    # the line-item band follows.
+    saved_cols = {c.get('key'): c for c in (raw.get('columns') or [])
+                  if isinstance(c, dict)}
+    columns = []
+    for i, key in enumerate(JE_COLUMN_KEYS):
+        dc = d['columns'][i]
+        c = saved_cols.get(key, {})
+        columns.append({
+            'key': key,
+            'x': _clamp(c.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, dc['x']),
+            'width': _clamp(c.get('width'), WIDTH_MIN, WIDTH_MAX, dc['width']),
+            'visible': bool(c.get('visible', dc['visible'])),
+        })
+
     return {
         'mode': mode,
         'fontSize': _clamp(raw.get('fontSize'), FONT_MIN, FONT_MAX, d['fontSize']),
@@ -265,6 +307,8 @@ def _clean_je(raw):
         'combined': band('combined'),
         'debit': band('debit'),
         'credit': band('credit'),
+        'columnsEnabled': bool(raw.get('columnsEnabled', d['columnsEnabled'])),
+        'columns': columns,
     }
 
 

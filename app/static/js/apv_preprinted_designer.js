@@ -14,6 +14,8 @@
   const colStrip = document.getElementById('ppColControls');
   const printBtn = document.querySelector('.btn-print');
   const liToggle = document.getElementById('ppLineItemsToggle');
+  const jeColsToggle = document.getElementById('ppJEColsToggle');
+  const jeColsWrap = document.getElementById('ppJEColsWrap');
   const liWrap = document.getElementById('ppLineItemsWrap');
   // The server's own sanitized lineItems, so a save while the band is hidden round-trips
   // the stored values instead of overwriting them with client-side defaults.
@@ -148,6 +150,12 @@
 
   const li = () => canvas.querySelector('.pp-lineitems');
   const cols = () => [...canvas.querySelectorAll('.pp-col')];
+  // JE columns are .pp-jecol, NOT .pp-col, so cols() cannot sweep them into
+  // lineItems.columns on save -- doing so discarded every stored line-item
+  // position (BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT). Every
+  // selector below that means "a draggable column" must name BOTH.
+  const jeCols = () => [...canvas.querySelectorAll('.pp-jecol')];
+  const anyCol = '.pp-col, .pp-jecol';
   const fieldEls = () => [...canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra]):not(.pp-je):not(.pp-je-untied)')];
 
   function stripHeading(text) {
@@ -213,6 +221,7 @@
     if (dateSel) dateSel.style.display = editing ? '' : 'none';
     if (jeModeSel) jeModeSel.style.display = editing ? '' : 'none';
     if (liWrap) liWrap.style.display = editing ? '' : 'none';
+    if (jeColsWrap) jeColsWrap.style.display = editing ? '' : 'none';
     if (printBtn) printBtn.style.display = editing ? 'none' : '';  // no printing while designing
     if (fieldStrip) { buildFieldControls(); fieldStrip.classList.toggle('pp-show', editing); }
     if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
@@ -234,7 +243,7 @@
     if (!editing) return;
     if (e.target.isContentEditable) return;    // let inline text editing happen
     const c = canvas.getBoundingClientRect();
-    const col = e.target.closest('.pp-col');
+    const col = e.target.closest(anyCol);
     if (col) {
       selectEl(col);                              // show the font toolbar for the band
       const r = col.getBoundingClientRect();
@@ -267,12 +276,16 @@
       const x = Math.max(0, Math.min(canvas.clientWidth, Math.round(e.clientX - colDrag.c.left - colDrag.dx)));
       const y = Math.max(0, Math.min(canvas.clientHeight, Math.round(e.clientY - colDrag.c.top - colDrag.dy)));
       colDrag.col.style.left = x + 'px';                     // this column's x
-      cols().forEach((c) => { c.style.top = y + 'px'; });    // shared band top -> rows aligned
+      // Shared band top -> rows aligned. Scoped to the band the dragged column
+      // belongs to: the line-item and JE faces have independent tops, and moving
+      // one must not drag the other off its printed boxes.
+      const band = colDrag.col.classList.contains('pp-jecol') ? jeCols() : cols();
+      band.forEach((c) => { c.style.top = y + 'px'; });
       return;
     }
     if (!drag) {
       // hover cursor hint: resize near the right edge, move elsewhere
-      const hov = e.target.closest && e.target.closest('.pp-col');
+      const hov = e.target.closest && e.target.closest(anyCol);
       if (hov) {
         const r = hov.getBoundingClientRect();
         hov.style.cursor = (e.clientX >= r.right - EDGE) ? 'ew-resize' : 'move';
@@ -347,6 +360,26 @@
       };
     });
     if (jeModeSel) jeLayout.mode = jeModeSel.value;
+    // JE column face. Same round-trip rule as lineItems below: the band exists
+    // in the DOM only while enabled, so when it does not, keep whatever the
+    // server sent rather than inventing client-side defaults -- writing
+    // fallbacks here is how the line-item columns were silently reset once.
+    if (jeColsToggle) jeLayout.columnsEnabled = !!jeColsToggle.checked;
+    const jeColEls = jeCols();
+    if (jeColEls.length) {
+      jeLayout.columns = jeColEls.map((c) => ({
+        key: c.dataset.jecol,
+        x: parseInt(c.style.left) || 0,
+        visible: !c.classList.contains('pp-col-hidden'),
+        width: parseInt(c.style.width) || 60,
+      }));
+      // The columns carry the band's top; the server stores it on `combined.y`,
+      // which both faces share so switching between them does not jump.
+      const top = parseInt(jeColEls[0].style.top);
+      if (!isNaN(top)) jeLayout.combined = Object.assign({}, jeLayout.combined, { y: top });
+      const fs = parseInt(getComputedStyle(jeColEls[0]).fontSize);
+      if (fs) jeLayout.fontSize = fs;
+    }
     const jeAny = canvas.querySelector('.pp-je');
     if (jeAny) jeLayout.fontSize = parseInt(getComputedStyle(jeAny).fontSize) || jeLayout.fontSize || 9;
     return {

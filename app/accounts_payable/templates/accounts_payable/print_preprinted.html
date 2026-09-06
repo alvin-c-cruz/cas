@@ -26,6 +26,13 @@
   /* A column with no rows is empty -> show its label while editing so it stays grabbable. */
   .pp-canvas.pp-editing .pp-col:empty::before { content: attr(data-label); color: #bbb; font-style: italic; }
   .pp-col-hidden { display: none; }
+  /* JE column band -- same visual contract as .pp-col, deliberately different
+     class names so the designer's line-item selectors cannot match it. */
+  .pp-jecols { white-space: normal; }
+  .pp-jecol { position: absolute; }
+  .pp-canvas.pp-editing .pp-jecol { outline: 1px dashed #1565c0; cursor: move; }
+  .pp-canvas.pp-editing .pp-jecol:hover { outline: 2px solid #1565c0; background: rgba(21, 101, 192, .05); }
+  .pp-canvas.pp-editing .pp-jecol:empty::before { content: attr(data-label); color: #bbb; font-style: italic; }
   /* Hidden fields: gone in view/print; shown greyed while editing so they can be restored. */
   .pp-field-hidden { display: none; }
   .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
@@ -108,6 +115,12 @@
     <input type="checkbox" id="ppLineItemsToggle" {{ 'checked' if layout.lineItems.enabled else '' }}>
     Show line items
   </label>
+  {# Opt-in JE column face. Separate from the JE mode select above: mode chooses
+     between the two legacy bands, this replaces both with positioned columns. #}
+  <label id="ppJEColsWrap" class="screen-only" style="display:none;">
+    <input type="checkbox" id="ppJEColsToggle" {{ 'checked' if layout.journalEntry.columnsEnabled else '' }}>
+    JE as columns
+  </label>
   {% endif %}
 </div>
 
@@ -185,6 +198,43 @@
   {% if not je_tied %}
     <div class="pp-el pp-je-untied" data-je="untied" style="left:{{ je.combined.x }}px;top:{{ je.combined.y }}px;font-size:{{ je.fontSize }}px;">JOURNAL ENTRY UNBALANCED - not printed (Dr {{ '{:,.2f}'.format(je_total_debit) }} / Cr {{ '{:,.2f}'.format(je_total_credit) }})</div>
   {% else %}
+    {# COLUMN-POSITIONED JE (opt-in, 2026-09-06). The combined grid below renders
+       one auto-width HTML table, so its four cells can be moved only as a block --
+       they cannot be registered against the voucher's own printed boxes. These
+       columns each carry their own x, exactly as the line-item band does.
+
+       ALIGNMENT INVARIANT, same as lineItems: every column emits exactly ONE cell
+       per JE line, blank where it has nothing to say (a debit row's credit cell,
+       and vice versa). Equal-length stacks are what keep the columns registered.
+
+       Rendered INSTEAD of the combined/separated bands when enabled, not beside
+       them -- two faces drawing the same figures would double-print on paper. #}
+    {% if je.columnsEnabled %}
+    {# DISTINCT classes (.pp-jecols / .pp-jecol), NOT .pp-lineitems / .pp-col.
+       The designer selects line-item columns with `querySelectorAll('.pp-col')`
+       and the band with `querySelector('.pp-lineitems')`. Reusing those here made
+       collect() sweep these four into lineItems.columns; the sanitiser then
+       discarded them as unknown keys and fell back to defaults, silently
+       overwriting the client's stored line-item positions -- which is
+       BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT, already shipped once. #}
+    <div class="pp-jecols" data-el="journalEntryColumns" data-rowheight="{{ je.rowHeight }}">
+      {% for col in je.columns %}
+      <div class="pp-jecol{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('debit', 'credit') else '' }}"
+           data-jecol="{{ col.key }}" data-label="{{ je_col_labels[col.key] }}"
+           style="left:{{ col.x }}px;top:{{ je.combined.y }}px;width:{{ col.width }}px;font-size:{{ je.fontSize }}px;">
+        {%- for l in je_lines %}
+        <div class="pp-cell" style="height:{{ je.rowHeight }}px;line-height:{{ je.rowHeight }}px;">
+          {%- if col.key == 'account_code' -%}{{ l.account.code }}
+          {%- elif col.key == 'account_title' -%}{{ l.account.name }}
+          {%- elif col.key == 'debit' -%}{% if l.debit_amount %}{{ '{:,.2f}'.format(l.debit_amount) }}{% endif %}
+          {%- elif col.key == 'credit' -%}{% if l.credit_amount %}{{ '{:,.2f}'.format(l.credit_amount) }}{% endif %}
+          {%- endif -%}
+        </div>
+        {% endfor -%}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
     {# Combined grid: code | account | debit | credit, debits-first, totals equal. #}
     <div class="pp-el pp-je{{ ' pp-je-inactive' if je.mode != 'combined' else '' }}" data-je="combined"
          style="left:{{ je.combined.x }}px;top:{{ je.combined.y }}px;width:{{ je.combined.width }}px;font-size:{{ je.fontSize }}px;">
@@ -205,6 +255,7 @@
         {% for l in je_credits %}<tr style="height:{{ je.rowHeight }}px;"><td>{{ l.account.code }}</td><td>{{ l.account.name }}</td><td class="pp-je-amt">{{ '{:,.2f}'.format(l.credit_amount) }}</td></tr>{% endfor %}
       </table>
     </div>
+    {% endif %}
   {% endif %}
   {% endif %}
 </div>
