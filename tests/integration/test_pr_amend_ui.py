@@ -202,7 +202,12 @@ class TestAmendButton:
         assert _amend_href(pr) not in html
         assert pr.pr_number in html
 
-    def test_no_amend_button_on_a_converted_pr(self, client, db_session, approved_pr):
+    def test_the_amend_button_is_offered_on_a_converted_pr(self, client, db_session,
+                                                            approved_pr):
+        """REVERSED 2026-09-06. The button used to be withheld here, matching a
+        route that refused. Both are gone: amendment is the only way to change a
+        converted requisition, so hiding the control would hide the only route
+        to it."""
         from app.purchase_orders.models import PurchaseOrder
         po = PurchaseOrder(po_number='PO-00999', order_date=date(2026, 8, 11),
                            status='draft', vendor_name='ACME',
@@ -213,20 +218,18 @@ class TestAmendButton:
         approved_pr.purchase_order_id = po.id
         db.session.commit()
         html = _detail(client, approved_pr)
-        assert _amend_href(approved_pr) not in html
+        assert _amend_href(approved_pr) in html
         assert approved_pr.pr_number in html
 
 
-    def test_no_amend_button_on_an_approved_pr_whose_lines_are_all_ordered(
+    def test_the_button_is_offered_on_an_approved_pr_whose_lines_are_all_ordered(
             self, client, db_session, approved_pr):
-        # The half of is_converted() the STATUS guard cannot cover. Without this
-        # case, deleting the button's converted guard changed nothing (mutation
-        # u3) because the other converted test also flipped the status.
+        # The half of is_converted() the STATUS guard could not cover: status
+        # 'approved', every line consumed. Both halves of that guard were
+        # removed on 2026-09-06, so the button now shows here too.
         #
-        # Evidence updated for line-level allocation: consumption is now proven
-        # by PO lines carrying source_pr_item_id, not by the header back-link
-        # (which the shortcut also sets on a PARTIAL pull -- see the control
-        # below, where the button must REMAIN).
+        # Kept rather than deleted because it still exercises a distinct path --
+        # a state AMEND_STATUSES alone cannot describe.
         from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
         po = PurchaseOrder(po_number='PO-00888', order_date=date(2026, 8, 11),
                            status='draft', vendor_name='ACME',
@@ -241,7 +244,7 @@ class TestAmendButton:
         approved_pr.purchase_order_id = po.id      # status stays 'approved'
         db.session.commit()
         html = _detail(client, approved_pr)
-        assert _amend_href(approved_pr) not in html
+        assert _amend_href(approved_pr) in html
         assert approved_pr.pr_number in html
 
     def test_the_amend_button_survives_a_partial_pull(

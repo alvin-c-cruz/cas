@@ -42,7 +42,7 @@ class TestAmendContract:
     def test_document_type_matches_the_audit_module_name(self):
         assert PurchaseRequest.DOCUMENT_TYPE == 'purchase_requests'
 
-    def test_amend_statuses_is_the_three_work_in_progress_states(self):
+    def test_amend_statuses_is_the_four_changeable_states(self):
         # 'partially_converted' joined 'approved' with line-level allocation:
         # the validator's consumed_qty/has_any_child_reference hooks are real
         # now, so it refuses to shrink or delete an already-ordered line while
@@ -51,16 +51,22 @@ class TestAmendContract:
         # hop further down: work remains, and received can never exceed ordered,
         # so the existing consumed-quantity guard already covers delivery.
         assert PurchaseRequest.AMEND_STATUSES == (
-            'approved', 'partially_converted', 'partially_received')
+            'approved', 'partially_converted', 'partially_received', 'converted')
 
     @pytest.mark.parametrize('status', ['draft', 'submitted', 'rejected',
-                                        'converted', 'cancelled', 'received'])
+                                        'cancelled', 'received'])
     def test_every_other_status_is_excluded(self, status):
         # 'submitted' is past draft but PRE-approval, and the spec's trigger is
-        # approval. 'converted' means every line is consumed -- the only edit
-        # the validator would still allow is ADDING demand to a fully ordered
-        # requisition, which belongs on a new requisition.
+        # approval. 'received' is delivered in full, so nothing remains to
+        # amend. 'converted' LEFT this list on 2026-09-06 -- see
+        # test_converted_is_amendable below.
         assert status not in PurchaseRequest.AMEND_STATUSES
+
+    def test_converted_is_amendable(self):
+        """Adding demand to a fully ordered requisition was said to belong on a
+        new requisition. Reversed by owner request: amendment is the only route
+        that can change a converted one, and the only one that records it."""
+        assert 'converted' in PurchaseRequest.AMEND_STATUSES
 
 
 class TestConversionGuard:

@@ -176,32 +176,30 @@ class TestStatusGuards:
         before = len(_revs(approved_pr))
 
         resp = _amend(client, approved_pr)
-        # Assert the FLASH SENTENCE, not just the PO number: the detail page
-        # renders its own link to the converted order, so `b'PO-00123' in
-        # resp.data` matched that link and stayed green even with the message
-        # replaced by a bare "cannot be amended" (mutation r4).
-        assert b'was already converted to Purchase Order PO-00123' in resp.data, (
-            'a bare "cannot be amended" leaves the user with nowhere to go; the '
-            'actionable fact is WHICH purchase order this requisition became')
-        assert len(_revs(approved_pr)) == before
+        # REVERSED 2026-09-06. A converted requisition is now amendable -- it is
+        # the ONLY way to change one, since return_to_draft() refuses it -- and
+        # the refusal message this used to assert is gone with the guard.
+        # consumed_qty still refuses shrinking a line below what was ordered, so
+        # what a fully ordered requisition permits is adding demand or growing a
+        # line. Asserted by the REVISION, not the flash: the point of routing
+        # this through amend rather than draft is that the change is recorded.
+        assert resp.status_code == 200
+        assert b'was already converted to Purchase Order' not in resp.data
+        assert len(_revs(approved_pr)) == before + 1
 
-    def test_an_approved_pr_whose_lines_are_all_ordered_is_also_refused(
+    def test_an_approved_pr_whose_lines_are_all_ordered_is_also_amendable(
             self, client, db_session, approved_pr):
-        """The half of is_converted() that AMEND_STATUSES cannot cover.
+        """The other side of the same reversal.
 
-        A PR whose status still reads 'approved' but whose every line is
-        already on a purchase order passes the status guard, so only
-        is_converted()'s line half refuses it. Without this case, deleting the
-        whole converted guard left every test green (mutation r3) because the
-        status guard caught the ordinary converted PR.
+        A requisition whose status still reads 'approved' but whose every line
+        is already on a purchase order used to be refused by is_converted()'s
+        LINE half, even though the status guard would have let it through. Both
+        halves are gone: the state is now amendable, and the consumed-quantity
+        guard is what keeps that safe.
 
-        The EVIDENCE changed with line-level allocation. This used to set only
-        purchase_order_id, because conversion COPIED the lines and the header
-        back-link was the sole trace. Now PO lines carry source_pr_item_id, and
-        the back-link alone is deliberately NOT proof of consumption -- the
-        whole-requisition shortcut sets it on a PARTIAL pull too, where the
-        requisition must stay amendable. So the state that must still be
-        refused is "every line ordered, status not yet caught up".
+        Kept rather than deleted because it is the case AMEND_STATUSES alone
+        cannot express -- status 'approved', every line consumed -- so it still
+        guards a distinct path through the route.
         """
         from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
         po = PurchaseOrder(po_number='PO-00777', order_date=date(2026, 8, 11),
@@ -219,8 +217,9 @@ class TestStatusGuards:
         before = len(_revs(approved_pr))
 
         resp = _amend(client, approved_pr)
-        assert b'was already converted to Purchase Order PO-00777' in resp.data
-        assert len(_revs(approved_pr)) == before
+        assert resp.status_code == 200
+        assert b'was already converted to Purchase Order' not in resp.data
+        assert len(_revs(approved_pr)) == before + 1
 
     def test_a_back_link_alone_does_not_freeze_a_partly_ordered_pr(
             self, client, db_session, approved_pr):

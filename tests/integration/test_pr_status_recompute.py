@@ -191,7 +191,10 @@ def test_partially_converted_is_amendable():
     assert 'partially_converted' in PurchaseRequest.AMEND_STATUSES
 
 
-def test_fully_converted_is_not_amendable():
-    """Deliberate carry-over of current behaviour -- raise a new requisition
-    rather than adding demand to a fully ordered one."""
-    assert 'converted' not in PurchaseRequest.AMEND_STATUSES
+def test_fully_converted_is_amendable():
+    """REVERSED 2026-09-06. The carry-over position was "raise a new requisition
+    rather than adding demand to a fully ordered one"; amendment is now the only
+    way to change a converted requisition at all, since return_to_draft() refuses
+    it. What keeps it safe is unchanged -- consumed_qty still refuses shrinking a
+    line below what was ordered, so the permitted change is adding or growing."""
+    assert 'converted' in PurchaseRequest.AMEND_STATUSES

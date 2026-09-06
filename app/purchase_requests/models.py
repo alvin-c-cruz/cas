@@ -63,16 +63,23 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
     #: 'partially_converted' is amendable because the shared validator now has
     #: real consumed_qty/has_any_child_reference hooks -- it refuses to shrink
     #: or delete an already-ordered line while permitting untouched ones.
-    #: 'converted' stays out: every line is consumed, so the only edit the
-    #: validator would allow is ADDING demand to a fully ordered requisition,
-    #: which belongs on a new requisition. Carry-over of current behaviour.
+    #: 'converted' joined on 2026-09-06 (owner request), reversing the note that
+    #: adding demand to a fully ordered requisition "belongs on a new
+    #: requisition". It is the ONLY way to change one: return-to-draft refuses a
+    #: converted requisition, so without this there was no path at all, and the
+    #: alternative -- routing it through draft -- would edit an approved document
+    #: with no DocumentRevision written and its approval silently retained.
+    #: Amendment writes a revision and keeps the consumed-quantity guard, so the
+    #: change lands on the record. Gated like every other amendable status --
+    #: the module's ordinary approver rule -- not narrowed further.
     #: `partially_received` joins its ordering twin: it is the same
     #: work-in-progress state seen one hop further down the chain, and
     #: validate_amendment already refuses reducing a line below the quantity
     #: consumed against it (received can never exceed ordered, so the existing
     #: guard covers delivery too). `received` is excluded -- every line has
     #: arrived in full, so there is nothing left to amend.
-    AMEND_STATUSES = ('approved', 'partially_converted', 'partially_received')
+    AMEND_STATUSES = ('approved', 'partially_converted', 'partially_received',
+                      'converted')
 
     #: Statuses from which a requisition can NEVER be awaiting approval, whatever
     #: `approved_by_id` says. A draft has not been offered for signature yet;

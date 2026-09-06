@@ -578,15 +578,14 @@ def amend(id):
     if pr.status == 'draft':
         flash('A draft Purchase Requisition is edited, not amended.', 'error')
         return redirect(url_for('purchase_requests.edit', id=id))
-    if pr.is_converted():
-        # Name the PO. A bare "cannot be amended" leaves the user nowhere to go;
-        # the actionable fact is WHICH order this requisition became, since that
-        # is the document they must change instead.
-        po_number = pr.purchase_order.po_number if pr.purchase_order else None
-        flash('Purchase Requisition "%s" was already converted to Purchase Order %s. '
-              'Amend that order instead.'
-              % (pr.pr_number, po_number or '(unknown)'), 'error')
-        return redirect(url_for('purchase_requests.view', id=id))
+    # NO is_converted() refusal. A converted requisition IS amendable
+    # (2026-09-06): amendment is the only way to change one at all -- return to
+    # draft refuses it -- and it is the right way, because a DocumentRevision is
+    # written and the consumed-quantity guard still refuses shrinking a line
+    # below what has been ordered. The only change it permits is adding demand
+    # or growing a line, which is exactly what the case needs.
+    #
+    # Gated like every other amendable status, on _approve_gate above.
     if pr.status not in PurchaseRequest.AMEND_STATUSES:
         flash('A Purchase Requisition with status "%s" cannot be amended.' % pr.status, 'error')
         return redirect(url_for('purchase_requests.view', id=id))

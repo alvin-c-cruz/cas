@@ -26,10 +26,11 @@
        admits staff, and gating this button on it would show a staff user a
        control the route then refuses -- the delete_approved_email shape. The
        status list is read off PurchaseRequest.AMEND_STATUSES rather than
-       retyped, so button and route cannot drift apart; is_converted() is checked
-       too because a converted requisition keeps producing nothing downstream and
-       the route refuses it by naming the order it became. #}
-    {% if can_approve and pr.status in pr.AMEND_STATUSES and not pr.is_converted() %}
+       retyped, so button and route cannot drift apart. The is_converted() test
+       that used to sit here is GONE: `converted` is in AMEND_STATUSES since
+       2026-09-06 and amend() no longer refuses it, so keeping the test would
+       hide the only control that can change a converted requisition. #}
+    {% if can_approve and pr.status in pr.AMEND_STATUSES %}
     <a href="{{ url_for('purchase_requests.amend', id=pr.id) }}" class="btn btn-primary btn-sm">Amend</a>
     {% endif %}
     {# Request Amendment: shown to a NON-approver who may write (staff), on the
@@ -39,7 +40,7 @@
        control and its route must not drift: request_amendment() re-checks every
        one of these conditions server-side. #}
     {% if can_write and not can_approve and pr.status in pr.AMEND_STATUSES
-          and not pr.is_converted() and not pending_amendment %}
+          and not pending_amendment %}
     <a href="{{ url_for('purchase_requests.request_amendment', id=pr.id) }}"
        class="btn btn-primary btn-sm">Request Amendment</a>
     {% endif %}
