@@ -92,8 +92,21 @@
   </div>
 </div></div>
 
-<div class="card"><div class="card-body">
-  <h3>Requested Items</h3>
+{# Both this card and Ordering & Delivery below use the shared .card-header
+   component rather than a bare <h3> in the body. It draws the divider rule that
+   separates them, and its subtitle states what each table IS -- the two sit
+   adjacent and carry similar-looking numbers, so "what was asked" vs "what has
+   happened since" has to be readable at a glance. No new CSS: .card-header /
+   .card-title / .card-sub already exist in style.css, so nothing here forces
+   the ?v= bump on every page that loads the stylesheet. #}
+<div class="card">
+  <div class="card-header">
+    <div>
+      <div class="card-title">Requested Items</div>
+      <div class="card-sub">What this requisition asked for</div>
+    </div>
+  </div>
+  <div class="card-body">
   <div class="table-responsive">
     <table class="table">
       <thead><tr><th>#</th><th>Item</th><th class="text-end">Qty</th><th>UoM</th><th>Remarks</th></tr></thead>
@@ -128,8 +141,23 @@
    Only committed orders and receipts count, so a draft PO or an unapproved
    receipt never reports a line as ordered or delivered. #}
 {% if allocation_rows %}
-<div class="card"><div class="card-body">
-  <h3 style="margin-top:0">Ordering &amp; Delivery</h3>
+{% set outstanding = allocation_rows | selectattr('is_open') | list %}
+<div class="card">
+  {# The count rides in the header rather than under the table: .card-header is
+     already display:flex/space-between, so it lands top-right where a reader
+     looks for a status, and it is visible without reading the rows. #}
+  <div class="card-header">
+    <div>
+      <div class="card-title">Ordering &amp; Delivery</div>
+      <div class="card-sub">What has happened to it since &mdash; from purchase orders and receiving reports</div>
+    </div>
+    {% if outstanding %}
+    <span class="badge badge-warning">{{ outstanding | length }} still to order</span>
+    {% else %}
+    <span class="badge badge-approved">Fully ordered</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
   <div class="table-responsive">
   <table class="table">
     <thead>
@@ -172,7 +200,8 @@
     </tbody>
   </table>
   </div>
-  {% set outstanding = allocation_rows | selectattr('is_open') | list %}
+  {# Spelled out under the table as well as chipped above it: the chip is a
+     glance, this names the lines' worth of work in words. #}
   {% if outstanding %}
   <p class="text-muted" style="margin-bottom:0">
     <strong>{{ outstanding | length }}</strong>
@@ -181,7 +210,8 @@
   {% else %}
   <p class="text-muted" style="margin-bottom:0">Every line is fully ordered.</p>
   {% endif %}
-</div></div>
+  </div>
+</div>
 {% endif %}
 
 {% if can_write or can_approve %}

@@ -231,3 +231,54 @@ class TestThePanelRenders:
         _login(client, accountant_user, main_branch)
         body = client.get(f'/purchase-requests/{pr.id}').data.decode()
         assert 'Every line is fully ordered.' in body
+
+
+class TestTheTwoSectionsAreDistinguishable:
+    """The two tables sit adjacent and carry similar-looking numbers, so each
+    needs to say what it IS (owner request 2026-09-06).
+
+    Both use the shared .card-header component rather than a bare <h3>, which
+    draws the divider rule and carries a subtitle. Asserted because the visual
+    difference is the whole point of the change and nothing else would fail if
+    a refactor dropped the headers back to plain headings.
+    """
+
+    def test_both_sections_carry_a_titled_header(self, client, accountant_user,
+                                                 main_branch, db_session):
+        pr = _pr(db_session, main_branch, ['10'], number='ALLOC-PR-HDR')
+        _order(db_session, main_branch, pr.line_items[0], '5',
+               number='ALLOC-PO-HDR')
+        _login(client, accountant_user, main_branch)
+        body = client.get(f'/purchase-requests/{pr.id}').data.decode()
+        assert 'card-title">Requested Items' in body
+        assert 'card-title">Ordering &amp; Delivery' in body
+
+    def test_each_header_says_what_its_table_is(self, client, accountant_user,
+                                                main_branch, db_session):
+        """The subtitles are what separate "what was asked" from "what has
+        happened since" -- without them the two headings alone read as two
+        equally-authoritative lists of quantities."""
+        pr = _pr(db_session, main_branch, ['10'], number='ALLOC-PR-SUB')
+        _login(client, accountant_user, main_branch)
+        body = client.get(f'/purchase-requests/{pr.id}').data.decode()
+        assert 'What this requisition asked for' in body
+        assert 'from purchase orders and receiving reports' in body
+
+    def test_the_header_chips_the_outstanding_count(self, client, accountant_user,
+                                                    main_branch, db_session):
+        pr = _pr(db_session, main_branch, ['10', '5'], number='ALLOC-PR-CHIP')
+        _order(db_session, main_branch, pr.line_items[0], '10',
+               number='ALLOC-PO-CHIP')
+        _login(client, accountant_user, main_branch)
+        body = client.get(f'/purchase-requests/{pr.id}').data.decode()
+        assert '1 still to order' in body
+
+    def test_a_finished_requisition_chips_fully_ordered(self, client, accountant_user,
+                                                        main_branch, db_session):
+        pr = _pr(db_session, main_branch, ['10'], number='ALLOC-PR-CHIPOK')
+        _order(db_session, main_branch, pr.line_items[0], '10',
+               number='ALLOC-PO-CHIPOK')
+        _login(client, accountant_user, main_branch)
+        body = client.get(f'/purchase-requests/{pr.id}').data.decode()
+        assert 'Fully ordered' in body
+        assert 'still to order' not in body

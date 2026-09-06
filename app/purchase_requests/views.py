@@ -516,8 +516,34 @@ def edit(id):
             _assign_date_needed(pr, form)
             pr.reason = form.reason.data or None
             assign_signatories(pr, form, SIGNATORY_FIELDS)
-            pr.line_items.clear()
-            _parse_and_attach_pr_lines(pr, request.form.get('line_items', '[]'))
+            # IN PLACE, not clear-and-rebuild. A rebuild assigns fresh line ids
+            # and DELETES the old rows, which orphans every
+            # PurchaseOrderItem.source_pr_item_id pointing at them: the order
+            # keeps its line, the requisition reports nothing ordered, and the
+            # same quantity can be ordered a second time.
+            #
+            # models.py used to say a rebuild "strands nothing here", and that
+            # was true while edit() was draft-only AND a draft could never be on
+            # an order (PULLABLE_PR excludes draft). Return to Draft (2026-09-06)
+            # broke that invariant: a submitted requisition may be pulled and
+            # then sent back, so a draft CAN carry order references. Verified by
+            # simulation -- 2 order lines orphaned, ordered qty read 0.
+            #
+            # validate_amendment is the amend path's guard, reused verbatim
+            # rather than re-spelled: it refuses shrinking or deleting a line
+            # below what is already ordered against it (consumed_qty). Without
+            # it, preserving ids would only move the defect -- the order would
+            # point at a line claiming less than it ordered.
+            submitted_lines = json.loads(request.form.get('line_items', '[]') or '[]')
+            line_errors = validate_amendment(pr, submitted_lines, 'pr_item_id')
+            if line_errors:
+                db.session.rollback()
+                for message in line_errors:
+                    flash(message, 'error')
+                return render_template('purchase_requests/form.html', form=form,
+                                       pr=pr, line_items=restore,
+                                       **_common_form_ctx())
+            _apply_amended_pr_lines(pr, submitted_lines)
             db.session.commit()
             log_update(module='purchase_requests', record_id=pr.id, record_identifier=pr.pr_number,
                        old_values=old, new_values=model_to_dict(pr, ['pr_number', 'request_date', 'date_needed', 'date_needed_asap', 'status']))
