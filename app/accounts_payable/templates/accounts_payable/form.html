@@ -1382,5 +1382,59 @@ initItems();
 })();
 </script>
 
+<script>
+// ── Tab inserts a TAB in Particulars ────────────────────────────────────────
+// Owner 2026-09-06: "the goal is to type in number adding up" -- a small tally typed
+// into the Particulars whose figures line up in a column. The pre-printed face renders
+// notes with `white-space: pre` in a monospace layout font, so both spaces and tabs hold
+// a column; a tab is simply far fewer keystrokes.
+//
+// KEYBOARD TRAP: capturing Tab inside a textarea means it no longer moves focus, which
+// strands anyone navigating by keyboard. Two ways out are kept open, so the field is
+// never a dead end:
+//   * Shift+Tab still moves focus backward (never captured).
+//   * Escape arms a one-shot pass -- the NEXT Tab moves focus forward as usual.
+(function () {
+    // Selected by name, matching how the purchase-billing script fills this same box,
+    // rather than by an id WTForms happens to generate. (Naming that file here would put
+    // its filename in the response body, which a test asserts is absent when the
+    // purchase modules are switched off.)
+    var box = document.querySelector('textarea[name="notes"]');
+    if (!box) return;
+    var letNextTabEscape = false;
+
+    box.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            letNextTabEscape = true;         // the NEXT Tab moves focus instead
+            return;
+        }
+        if (e.key !== 'Tab') {
+            // Any other key disarms, so Escape cannot linger and silently swallow a tab
+            // the user meant to type minutes later.
+            letNextTabEscape = false;
+            return;
+        }
+        // Shift/Ctrl/Alt/Meta+Tab are never captured -- Shift+Tab in particular is the
+        // always-available way back out of the field.
+        if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+        if (letNextTabEscape) {
+            letNextTabEscape = false;
+            return;                          // fall through to the browser: move focus
+        }
+        e.preventDefault();
+        var start = box.selectionStart, end = box.selectionEnd;
+        // setRangeText keeps the browser's native undo stack; assigning box.value
+        // wholesale discards it, so a mistyped tab could not be taken back with Ctrl+Z.
+        if (box.setRangeText) {
+            box.setRangeText('	', start, end, 'end');
+        } else {
+            box.value = box.value.slice(0, start) + '	' + box.value.slice(end);
+            box.selectionStart = box.selectionEnd = start + 1;
+        }
+        box.dispatchEvent(new Event('input', { bubbles: true }));   // keep listeners honest
+    });
+})();
+</script>
+
 
 {% endblock %}

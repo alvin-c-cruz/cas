@@ -15,7 +15,7 @@ import json
 
 from app.settings import AppSettings
 from app.audit.utils import log_audit
-from app.common.preprinted_texts import clean_texts
+from app.common.preprinted_texts import clean_texts, clean_wrap_width
 
 LAYOUT_SETTING_KEY = 'ap_preprinted_layout'
 
@@ -127,9 +127,9 @@ DEFAULT_APV_PREPRINTED_LAYOUT = {
     'dateFormat': 'long',
     'extras': [],
     'texts': [
-        {'id': 'prepared_by', 'text': 'Prepared by:', 'x': 60,  'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
-        {'id': 'checked_by',  'text': 'Checked by:',  'x': 340, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
-        {'id': 'approved_by', 'text': 'Approved by:', 'x': 620, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
+        {'id': 'prepared_by', 'text': 'Prepared by:', 'x': 60,  'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
+        {'id': 'checked_by',  'text': 'Checked by:',  'x': 340, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
+        {'id': 'approved_by', 'text': 'Approved by:', 'x': 620, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
     ],
     'page': {'fontFamily': '"Courier New", Courier, monospace'},
     'fields': {
@@ -201,25 +201,6 @@ def _clamp(value, lo, hi, fallback):
     return max(lo, min(hi, n))
 
 
-def _clean_wrap_width(raw, default=0):
-    """A field's wrap width. 0 is a real value meaning UNSET -- the field stays on one
-    line, exactly as every field did before wrapping existed (owner, 2026-09-06: a long
-    Notes value ran off the page instead of wrapping).
-
-    0 is why this cannot just use _clamp: WIDTH_MIN is 10, so clamping would silently
-    turn "no width" into a 10px box and shred every stored layout on its next read.
-    Anything between 0 and WIDTH_MIN is snapped UP to WIDTH_MIN rather than down to 0,
-    so a slip of the mouse cannot silently un-wrap a field a client set deliberately.
-    """
-    try:
-        n = int(float(raw))
-    except (TypeError, ValueError):
-        return default
-    if n <= 0:
-        return 0
-    return max(WIDTH_MIN, min(WIDTH_MAX, n))
-
-
 def _clean_box(raw, default):
     raw = raw if isinstance(raw, dict) else {}
     return {
@@ -229,7 +210,7 @@ def _clean_box(raw, default):
         'bold': bool(raw.get('bold', default['bold'])),
         'hidden': bool(raw.get('hidden', default.get('hidden', False))),
         # Wrap width. Absent from every blob saved before 2026-09-06 -> 0 -> single line.
-        'width': _clean_wrap_width(raw.get('width'), default.get('width', 0)),
+        'width': clean_wrap_width(raw.get('width'), default.get('width', 0)),
     }
 
 
@@ -270,7 +251,7 @@ def _clean_extras(raw):
             'y': _clamp(e.get('y'), 0, CANVAS_H, 0),
             'fontSize': _clamp(e.get('fontSize'), FONT_MIN, FONT_MAX, 11),
             'bold': bool(e.get('bold', False)),
-            'width': _clean_wrap_width(e.get('width')),
+            'width': clean_wrap_width(e.get('width')),
         })
     return out
 

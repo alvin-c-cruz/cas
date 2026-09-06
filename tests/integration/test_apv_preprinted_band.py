@@ -241,6 +241,17 @@ class TestJEFaceUntouched:
         assert 'top:272px' in tag
 
 
+def _css_rule(html, selector):
+    """The declaration block for `selector` in the page's inline stylesheet.
+
+    Asserting a whole rule as one literal is what broke when `tab-size` was added to
+    `.pp-el` -- a test about newlines failed over an unrelated property. Pin the
+    declaration you actually mean instead.
+    """
+    i = html.index(selector + ' {')
+    return html[i:html.index('}', i) + 1]
+
+
 def _open_tag(html, needle):
     """The WHOLE opening <div ...> carrying `needle`.
 
@@ -324,7 +335,7 @@ class TestAFieldCanWrapOntoMultipleLines:
         html = self._render_notes(client, db_session, main_branch,
                                   'First line\nSecond line')
         assert 'First line\nSecond line' in html          # value reaches the page...
-        assert '.pp-el { position: absolute; white-space: pre; }' in html   # ...as breaks
+        assert 'white-space: pre;' in _css_rule(html, '.pp-el')             # ...as breaks
 
     def test_the_default_does_not_reflow_text_nobody_asked_to_wrap(self, client,
                                                                    db_session, admin_user,
@@ -354,3 +365,100 @@ class TestAFieldCanWrapOntoMultipleLines:
         very failure being fixed, just narrower. overflow-wrap is what stops it."""
         html = self._render_notes(client, db_session, main_branch, 'x' * 200, width=200)
         assert 'overflow-wrap: break-word' in html
+
+
+class TestEveryElementCanBeSized:
+    """Owner, 2026-09-06: "all elements should have resizable width."
+
+    Width had reached fields and duplicated copies; layout texts were the element that
+    could be moved but never sized, because the shared text sanitiser had no width key.
+    The JE bands already stored one but the designer offered no way to drag it.
+    """
+
+    def _render(self, client, db_session, main_branch, *, text_width=None):
+        from app.accounts_payable.preprinted_layout import get_layout, save_layout
+        ap = _posted_apv(db_session, main_branch)
+        lay = get_layout(main_branch.id)
+        if text_width is not None:
+            lay['texts'][0]['width'] = text_width
+        save_layout(lay, 'admin', main_branch.id)
+        db_session.commit()
+        AppSettings.set_setting('ap_print_form', 'preprinted', 'admin')
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/accounts-payable/{ap.id}/print')
+        assert resp.status_code == 200
+        return resp.get_data(as_text=True), lay['texts'][0]['id']
+
+    def test_a_layout_text_with_no_width_is_unchanged(self, client, db_session,
+                                                      admin_user, main_branch):
+        """The backward-compatibility guarantee, on the shared module this time: every
+        stored layout in every document predates the key."""
+        html, tid = self._render(client, db_session, main_branch)
+        tag = _open_tag(html, 'data-text="%s"' % tid)
+        assert 'pp-wrap' not in tag
+        assert 'width:' not in tag
+
+    def test_a_layout_text_can_be_given_a_width(self, client, db_session, admin_user,
+                                                main_branch):
+        html, tid = self._render(client, db_session, main_branch, text_width=220)
+        tag = _open_tag(html, 'data-text="%s"' % tid)
+        assert 'pp-wrap' in tag
+        assert 'width:220px' in tag
+
+
+class TestFiguresCanBeLinedUpInTheParticulars:
+    """Owner, 2026-09-06: "the goal is to type in number adding up" -- a small tally
+    typed into Notes whose figures line up in a column.
+
+    Two things carry that, and neither is the wrap width:
+      * `white-space: pre` keeps the runs of spaces or tabs that do the aligning
+        (`nowrap` collapsed them, which is why columns could not be held before), and
+      * the layout font is monospace, so equal character counts are equal widths.
+    """
+
+    def _print(self, client, db_session, main_branch, notes):
+        from app.accounts_payable.preprinted_layout import get_layout, save_layout
+        ap = _posted_apv(db_session, main_branch)
+        ap.notes = notes
+        db_session.commit()
+        save_layout(get_layout(main_branch.id), 'admin', main_branch.id)
+        db_session.commit()
+        AppSettings.set_setting('ap_print_form', 'preprinted', 'admin')
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/accounts-payable/{ap.id}/print')
+        assert resp.status_code == 200
+        return resp.get_data(as_text=True)
+
+    def test_a_tab_reaches_the_page_intact(self, client, db_session, admin_user,
+                                           main_branch):
+        """Nothing between the textarea and the voucher strips it: the field has no
+        filters and `form.notes.data` is assigned to the column as typed."""
+        html = self._print(client, db_session, main_branch, 'ITEM A	1,200.00')
+        assert 'ITEM A	1,200.00' in html
+
+    def test_runs_of_spaces_are_not_collapsed(self, client, db_session, admin_user,
+                                              main_branch):
+        """The other way to hold a column, and the one that needs no Tab key at all.
+        HTML collapses whitespace by default; `pre` is what preserves it."""
+        html = self._print(client, db_session, main_branch, 'ITEM A     1,200.00')
+        assert 'ITEM A     1,200.00' in html
+
+    def test_a_tab_has_a_stated_column_stop(self, client, db_session, admin_user,
+                                            main_branch):
+        """Left to the browser, tab-size is merely conventional. Stating it is what makes
+        the column reproducible across browsers -- and this prints onto a client's
+        pre-printed pad, where a shifted column lands in the wrong box."""
+        html = self._print(client, db_session, main_branch, 'x	y')
+        assert 'tab-size: 8' in _css_rule(html, '.pp-el')
+
+    def test_the_layout_font_is_monospace(self, client, db_session, admin_user,
+                                          main_branch):
+        """The alignment rests on this. Under a proportional face, equal character counts
+        are NOT equal widths and every column silently drifts -- so the default font
+        ships monospace and this pins that it stays so."""
+        from app.accounts_payable.preprinted_layout import DEFAULT_APV_PREPRINTED_LAYOUT
+        assert 'monospace' in DEFAULT_APV_PREPRINTED_LAYOUT['page']['fontFamily']

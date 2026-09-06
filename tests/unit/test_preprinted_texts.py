@@ -7,7 +7,8 @@ A bug here silently destroys a saved layout (get_layout falls back to DEFAULT on
 raise), so these tests pin the migration hard.
 """
 import pytest
-from app.common.preprinted_texts import clean_texts, MAX_TEXTS, TEXT_MAXLEN
+from app.common.preprinted_texts import (clean_texts, MAX_TEXTS, TEXT_MAXLEN,
+                                         WIDTH_MIN, WIDTH_MAX)
 
 pytestmark = [pytest.mark.unit]
 
@@ -135,3 +136,71 @@ class TestListShape:
         assert len(out) == 1
         # id is a safe slug (no angle brackets / slashes)
         assert '<' not in out[0]['id'] and '/' not in out[0]['id'] and out[0]['id']
+
+
+class TestLayoutTextWrapWidth:
+    """Owner, 2026-09-06: "all elements should have resizable width."
+
+    Layout texts (signatory lines and free text) had no width at all, so they were the
+    one element on the page that could be moved but never sized. This module is shared by
+    every pre-printed designer, so the key is added here rather than per document.
+
+    Additive and optional: absent -> 0 -> content-sized and single-line, which is what
+    every layout saved before today means. Nothing renders differently until a width is
+    actually set.
+    """
+
+    def test_a_legacy_text_gets_width_zero(self):
+        out = clean_texts([{'id': 'prepared_by', 'text': 'Prepared by:'}], DEFAULTS)
+        assert out[0]['width'] == 0
+
+    def test_a_default_carries_the_key_too(self):
+        """The no-raw path returns the defaults; they must not be the one shape missing
+        the key, or a template reading `t.width` would raise on a fresh layout."""
+        for t in clean_texts(None, DEFAULTS):
+            assert 'width' in t
+
+    def test_a_set_width_survives(self):
+        out = clean_texts([{'id': 'prepared_by', 'text': 'x', 'width': 240}], DEFAULTS)
+        assert out[0]['width'] == 240
+
+    def test_zero_stays_zero(self):
+        """0 is a VALUE (unset), not a missing number -- clamping it into WIDTH_MIN..MAX
+        would turn every un-sized text into a 10px sliver on its next read."""
+        out = clean_texts([{'id': 'prepared_by', 'text': 'x', 'width': 0}], DEFAULTS)
+        assert out[0]['width'] == 0
+
+    def test_the_legacy_dict_shape_gets_it_as_well(self):
+        """The dict shape is the forward-compat migration path; a layout coming through
+        it must not be the one that silently loses the key."""
+        out = clean_texts({'prepared_by': {'x': 100, 'y': 700, 'width': 180}}, DEFAULTS)
+        assert [t for t in out if t['id'] == 'prepared_by'][0]['width'] == 180
+
+
+class TestWrapWidthNeverThrows:
+    """`clean_texts` must never raise on plausible stored JSON: get_layout() swallows the
+    exception and falls back to defaults, so a raise here QUIETLY destroys a client's
+    saved layout rather than erroring visibly.
+    """
+
+    @pytest.mark.parametrize('value', [
+        None, '', 'wide', {}, [], True,
+        1e999,          # json.loads("1e999") -> inf; int() refuses it (OverflowError)
+        -1e999,
+        float('nan'),
+    ])
+    def test_it_survives_junk(self, value):
+        out = clean_texts([{'id': 'prepared_by', 'text': 'x', 'width': value}], DEFAULTS)
+        assert isinstance(out[0]['width'], int)
+
+    def test_a_negative_width_reads_as_unset(self):
+        out = clean_texts([{'id': 'prepared_by', 'text': 'x', 'width': -40}], DEFAULTS)
+        assert out[0]['width'] == 0
+
+    def test_a_wild_width_is_clamped(self):
+        out = clean_texts([{'id': 'prepared_by', 'text': 'x', 'width': 99999}], DEFAULTS)
+        assert out[0]['width'] == WIDTH_MAX
+
+    def test_a_sub_minimum_width_snaps_up_not_off(self):
+        out = clean_texts([{'id': 'prepared_by', 'text': 'x', 'width': 2}], DEFAULTS)
+        assert out[0]['width'] == WIDTH_MIN

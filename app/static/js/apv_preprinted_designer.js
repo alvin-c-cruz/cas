@@ -80,24 +80,29 @@
   // 0 clears it back to the historic single-line behaviour. Setting the width via a
   // typed number rather than only a drag handle is deliberate: an un-wrapped Notes
   // value runs off the page, so its right edge is not on screen to be grabbed.
-  function isWrappableField(el) {
+  // Every positioned element can be given a width -- fields, duplicated copies, layout
+  // texts and the JE bands alike. The untied-JE warning is excluded because it is a
+  // refusal notice, not a layout element: it exists only when the entry does not tie and
+  // is never printed.
+  function isSizableEl(el) {
     return !!el && el.classList.contains('pp-el')
-      && !el.classList.contains('pp-text')
-      && !el.classList.contains('pp-je')
       && !el.classList.contains('pp-je-untied');
   }
-  function setWrapWidth(el, w) {
+  // A JE band is a table sized by its own width; the rest are text, so a width means
+  // WRAP at that width. Hence the class split rather than one setter.
+  function wrapsAtItsWidth(el) { return !el.classList.contains('pp-je'); }
+  function setElWidth(el, w) {
     if (w > 0) {
       el.style.width = w + 'px';
-      el.classList.add('pp-wrap');
+      if (wrapsAtItsWidth(el)) el.classList.add('pp-wrap');
     } else {
       el.style.width = '';
       el.classList.remove('pp-wrap');
     }
   }
   widthInput.addEventListener('input', () => {
-    if (selected && isWrappableField(selected)) {
-      setWrapWidth(selected, parseInt(widthInput.value) || 0);
+    if (selected && isSizableEl(selected)) {
+      setElWidth(selected, parseInt(widthInput.value) || 0);
       positionBar();
     }
   });
@@ -133,9 +138,9 @@
     // Layout texts get an editable text box in the toolbar.
     textInput.style.display = isText ? '' : 'none';
     if (isText) textInput.value = el.textContent;
-    const wrappable = isWrappableField(el);
-    widthInput.style.display = wrappable ? '' : 'none';
-    if (wrappable) widthInput.value = parseInt(el.style.width) || 0;
+    const sizable = isSizableEl(el);
+    widthInput.style.display = sizable ? '' : 'none';
+    if (sizable) widthInput.value = parseInt(el.style.width) || 0;
     positionBar();
   }
   function duplicateSelected() {
@@ -303,7 +308,8 @@
   let drag = null;       // moving a .pp-el
   let colDrag = null;    // moving a .pp-col
   let colResize = null;  // resizing a .pp-col width
-  const EDGE = 8;        // px hot-zone at a column's right edge = resize handle
+  const EDGE = 8;        // px hot-zone at an element's right edge = resize handle
+  const RESIZE_MIN_W = 24;  // below this the hot zone would eat the move gesture
 
   canvas.addEventListener('pointerdown', (e) => {
     if (!editing) return;
@@ -327,7 +333,10 @@
     if (!el) return;
     selectEl(el);
     const r = el.getBoundingClientRect();
-    if (el.classList.contains('pp-wrap') && e.clientX >= r.right - EDGE) {
+    // Right edge -> resize. Guarded by a minimum rendered width: on a narrow element
+    // an 8px hot zone would swallow most of the move gesture, so anything under
+    // RESIZE_MIN_W stays move-only and is sized from the toolbar box instead.
+    if (isSizableEl(el) && r.width >= RESIZE_MIN_W && e.clientX >= r.right - EDGE) {
       colResize = { col: el, startW: parseInt(el.style.width) || Math.round(r.width),
                     startX: e.clientX };
       canvas.setPointerCapture(e.pointerId);
@@ -341,11 +350,14 @@
 
   canvas.addEventListener('pointermove', (e) => {
     if (colResize) {
-      const w = Math.max(20, Math.min(canvas.clientWidth, colResize.startW + (e.clientX - colResize.startX)));
-      colResize.col.style.width = Math.round(w) + 'px';      // cells follow the column width
-      if (colResize.col === selected && isWrappableField(colResize.col)) {
-        widthInput.value = Math.round(w);                    // keep the box honest
+      const w = Math.round(Math.max(20, Math.min(canvas.clientWidth,
+        colResize.startW + (e.clientX - colResize.startX))));
+      if (isSizableEl(colResize.col)) {
+        setElWidth(colResize.col, w);        // a field/text also starts wrapping
+      } else {
+        colResize.col.style.width = w + 'px';  // a column: its cells follow
       }
+      if (colResize.col === selected) widthInput.value = w;   // keep the box honest
       return;
     }
     if (colDrag) {
@@ -361,10 +373,11 @@
     }
     if (!drag) {
       // hover cursor hint: resize near the right edge, move elsewhere
-      const hov = e.target.closest && e.target.closest(anyCol + ', .pp-el.pp-wrap');
+      const hov = e.target.closest && e.target.closest(anyCol + ', .pp-el');
       if (hov) {
         const r = hov.getBoundingClientRect();
-        hov.style.cursor = (e.clientX >= r.right - EDGE) ? 'ew-resize' : 'move';
+        const resizable = hov.closest(anyCol) || (isSizableEl(hov) && r.width >= RESIZE_MIN_W);
+        hov.style.cursor = (resizable && e.clientX >= r.right - EDGE) ? 'ew-resize' : 'move';
       }
       return;
     }
@@ -413,6 +426,7 @@
         fontSize: parseInt(cs.fontSize) || 10,
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
         hidden: el.classList.contains('pp-field-hidden'),
+        width: el.classList.contains('pp-wrap') ? (parseInt(el.style.width) || 0) : 0,
       };
     });
     const colEls = cols();

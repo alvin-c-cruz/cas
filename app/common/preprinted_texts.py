@@ -22,6 +22,7 @@ SAFE_MARGIN = 48
 FONT_MIN, FONT_MAX = 6, 72
 TEXT_MAXLEN = 200
 MAX_TEXTS = 50
+WIDTH_MIN, WIDTH_MAX = 10, CANVAS_W
 
 _ID_RE = re.compile(r'[^a-zA-Z0-9_-]')
 
@@ -34,6 +35,28 @@ def _clamp(value, lo, hi, fallback):
     except (TypeError, ValueError, OverflowError):
         return fallback
     return max(lo, min(hi, n))
+
+
+def clean_wrap_width(raw, default=0):
+    """A layout element's wrap width. 0 is a real value meaning UNSET: the element is
+    content-sized and stays on one line, which is what every layout saved before
+    2026-09-06 means by having no `width` key at all.
+
+    Not `_clamp`: WIDTH_MIN is 10, so clamping would read "no width" as a 10px sliver and
+    shred every stored layout on its next read. Sub-minimum values snap UP instead, so a
+    stray 3px drag cannot silently un-wrap an element somebody sized on purpose.
+
+    OverflowError is caught for the same reason `_clamp` catches it: json.loads("1e999")
+    is float inf, and int() refuses it. This module must never throw on stored JSON --
+    get_layout() swallows the raise and the client's saved layout is quietly lost.
+    """
+    try:
+        n = int(float(raw))
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if n <= 0:
+        return 0
+    return max(WIDTH_MIN, min(WIDTH_MAX, n))
 
 
 def _clean_id(raw, fallback):
@@ -55,6 +78,8 @@ def _merge_text(src, base):
         'fontSize': _clamp(src.get('fontSize'), FONT_MIN, FONT_MAX, base['fontSize']),
         'bold': bool(src.get('bold', base['bold'])),
         'hidden': bool(src.get('hidden', base['hidden'])),
+        # Optional wrap width; absent from every blob saved before 2026-09-06 -> 0.
+        'width': clean_wrap_width(src.get('width'), base.get('width', 0)),
     }
 
 
@@ -86,9 +111,14 @@ def clean_texts(raw, defaults):
             seen.add(tid)
             base = default_by_id.get(tid) or {
                 'id': tid, 'text': '', 'x': 0, 'y': 0,
-                'fontSize': 10, 'bold': False, 'hidden': False,
+                'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0,
             }
             out.append(_merge_text(e, base))
         return out
 
-    return [dict(d) for d in defaults]
+    # Defaults pass through untouched EXCEPT that the width key is filled in. A consumer's
+    # DEFAULT list predates the key, and this is the branch a fresh layout takes, so
+    # without this it is the one shape a template reading `t.width` never sees it on.
+    # Deliberately not _merge_text(d, d): that would re-clamp x/y/fontSize on values that
+    # are the module's own constants, turning a default nobody edited into a moving target.
+    return [dict(d, width=clean_wrap_width(d.get('width'))) for d in defaults]

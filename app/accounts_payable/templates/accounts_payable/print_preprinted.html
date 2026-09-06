@@ -16,7 +16,11 @@
      appear. `nowrap` silently collapsed it to a space. `pre` honours it and still does
      no automatic wrapping, so a field's printed shape stays exactly the lines that were
      typed rather than reflowing against a box edge nobody chose. */
-  .pp-el { position: absolute; white-space: pre; }
+  /* tab-size is stated, not left to the browser default, because a tab is a COLUMN
+     STOP here (owner 2026-09-06: "the goal is to type in number adding up" -- a tally
+     typed into Particulars whose figures must line up). 8 matches the CSS/terminal
+     default, so a block composed elsewhere and pasted in keeps the same columns. */
+  .pp-el { position: absolute; white-space: pre; tab-size: 8; -moz-tab-size: 8; }
   /* A wrap WIDTH is the separate half: one long line running off the page (PhilGen's
      particulars carry PO/SI/RR references, so they are long by construction). pre-wrap
      keeps the typed newlines AND wraps at the chosen width; overflow-wrap because a
@@ -179,7 +183,7 @@
   {# Duplicated copies (elements outside the line-item group) #}
   {% for ex in layout.extras %}{{ field_extra(ex, field_values[ex.key], field_isos.get(ex.key, '')) }}{% endfor %}
   {# Layout-only editable signature texts (prepared / checked / approved) — not record data #}
-  {% for t in layout.texts %}<div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"{{ ' data-signatory="1"' if t.id in signatory_ids else '' }} style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>{% endfor %}
+  {% for t in layout.texts %}<div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}{{ ' pp-wrap' if t.width else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"{{ ' data-signatory="1"' if t.id in signatory_ids else '' }} style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};{% if t.width %}width:{{ t.width }}px;{% endif %}">{{ t.text }}</div>{% endfor %}
 
   {# Particulars band. Gated on lineItems.enabled (default False) so a layout saved before
      2026-09-02 -- PhilGen's live voucher included -- prints exactly as it did. Each column
@@ -288,7 +292,7 @@
 {% if can_edit_layout %}
 <script type="application/json" id="ppJELayout">{{ layout.journalEntry | tojson }}</script>
 <script type="application/json" id="ppServerLineItems">{{ layout.lineItems | tojson }}</script>
-<script src="{{ url_for('static', filename='js/apv_preprinted_designer.js') }}?v=9"></script>
+<script src="{{ url_for('static', filename='js/apv_preprinted_designer.js') }}?v=10"></script>
 {% endif %}
 </body>
 </html>

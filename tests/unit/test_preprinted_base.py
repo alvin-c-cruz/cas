@@ -56,12 +56,16 @@ EXPECTED_DEFAULT = {
     'lineItems': {'y': 300, 'rowHeight': 20, 'fontSize': 9, 'bold': False, 'columns': []},
     'extras': [],
     'texts': [
+        # `width` joined the shared text contract on 2026-09-06 (owner: "all elements
+        # should have resizable width"). 0 = unset = content-sized and single-line, so
+        # every layout stored before it renders exactly as it did; it appears here
+        # because this literal is the full shape the sanitiser must return.
         {'id': 'preparer', 'text': '', 'x': 60, 'y': 720,
-         'fontSize': 10, 'bold': False, 'hidden': False},
+         'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
         {'id': 'checker', 'text': '', 'x': 340, 'y': 720,
-         'fontSize': 10, 'bold': False, 'hidden': False},
+         'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
         {'id': 'approver', 'text': '', 'x': 620, 'y': 720,
-         'fontSize': 10, 'bold': False, 'hidden': False},
+         'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
     ],
 }
 
@@ -806,11 +810,15 @@ class TestTheDeclaredTextsShapeIsValidated:
     that was an uncaught 500 on the print page.
     """
 
+    # `width` is OPTIONAL in a declaration -- _merge_text reads it with .get(), unlike
+    # every prop in test_a_text_box_missing_any_subscripted_prop_is_rejected below, which
+    # it subscripts. It is written out here because the sanitiser RETURNS it, and this
+    # list is compared against that return value.
     FULL = [
         {'id': 'preparer', 'text': 'Prepared by:', 'x': 60, 'y': 700,
-         'fontSize': 10, 'bold': True, 'hidden': False},
+         'fontSize': 10, 'bold': True, 'hidden': False, 'width': 0},
         {'id': 'approver', 'text': 'Approved by:', 'x': 620, 'y': 700,
-         'fontSize': 10, 'bold': False, 'hidden': False},
+         'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
     ]
 
     def _build(self, texts):
@@ -875,12 +883,16 @@ class TestPersistence:
         """`get_layout`'s unset branch is the ONE sanitize call in this module
         with no fallback around it, and the full-box-list `texts` form is the
         shape that reaches `clean_texts` unmodified. Pin that pairing directly."""
-        full = [{'id': 'preparer', 'text': 'Prepared by:', 'x': 60, 'y': 700,
-                 'fontSize': 10, 'bold': True, 'hidden': False}]
+        declared = [{'id': 'preparer', 'text': 'Prepared by:', 'x': 60, 'y': 700,
+                     'fontSize': 10, 'bold': True, 'hidden': False}]
         _, get_layout, _ = base.build_layout_api(
-            'test_boxlist_layout', FIELD_KEYS, dict(DEFAULT, texts=[dict(full[0])]),
+            'test_boxlist_layout', FIELD_KEYS, dict(DEFAULT, texts=[dict(declared[0])]),
             'test_module', 'test_boxlist_layout')
-        assert get_layout(branch_id=1)['texts'] == full
+        # The declaration deliberately omits `width` (added to the shared text contract
+        # 2026-09-06): a consuming module must not have to restate it, so `_merge_text`
+        # reads it with .get() while subscripting every older prop. What comes BACK
+        # always carries it, normalised to 0 -- unset, content-sized, single line.
+        assert get_layout(branch_id=1)['texts'] == [dict(declared[0], width=0)]
 
     def test_save_then_get_round_trips_per_branch(self, db_session, admin_user, api):
         """Layouts are PER BRANCH -- branch 2 must not see branch 1's layout."""
