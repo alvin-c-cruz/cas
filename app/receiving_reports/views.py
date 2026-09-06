@@ -710,6 +710,38 @@ def submit(id):
     return redirect(url_for('receiving_reports.view', id=id))
 
 
+def _refresh_source_requisitions(rr):
+    """Recompute the status of every requisition this receipt delivers against.
+
+    Mirrors purchase_orders.views._refresh_source_requisitions, one hop further
+    down the chain: RR line -> PO line -> requisition line. Called after any
+    write that changes COMMITTED delivered quantity -- approve (adds) and cancel
+    (releases) -- so a requisition reaches `partially_received` / `received` and
+    falls back out again when a receipt is withdrawn.
+
+    Idempotent, and a no-op for a receipt whose PO lines carry no requisition.
+    Does NOT commit; the caller owns the transaction.
+    """
+    from app.purchase_orders.models import PurchaseOrderItem
+    from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
+    from app.purchase_requests.allocation import recompute_pr_status
+    po_item_ids = {li.purchase_order_item_id for li in rr.line_items
+                   if li.purchase_order_item_id}
+    if not po_item_ids:
+        return
+    pr_item_ids = {r.source_pr_item_id for r in
+                   PurchaseOrderItem.query.filter(
+                       PurchaseOrderItem.id.in_(po_item_ids)).all()
+                   if r.source_pr_item_id}
+    if not pr_item_ids:
+        return
+    pr_ids = {row.purchase_request_id for row in
+              PurchaseRequestItem.query.filter(
+                  PurchaseRequestItem.id.in_(pr_item_ids)).all()}
+    for pr in PurchaseRequest.query.filter(PurchaseRequest.id.in_(pr_ids)).all():
+        recompute_pr_status(pr)
+
+
 @receiving_reports_bp.route('/receiving-reports/<int:id>/approve', methods=['POST'])
 @login_required
 def approve(id):
@@ -749,6 +781,9 @@ def approve(id):
         db.session.rollback()
         flash(str(e), 'error')
         return redirect(url_for('receiving_reports.view', id=id))
+    # AFTER the status write and BEFORE the commit: recompute reads
+    # COMMITTED_STATUSES, so it must see this receipt already 'approved'.
+    _refresh_source_requisitions(rr)
     db.session.commit()
     log_audit(module='receiving_reports', action='approve', record_id=rr.id,
               record_identifier=rr.rr_number, notes='Approved')
@@ -784,6 +819,10 @@ def cancel(id):
         db.session.rollback()
         flash(str(e), 'error')
         return redirect(url_for('receiving_reports.view', id=id))
+    # Cancelling drops this receipt out of COMMITTED_STATUSES, so the delivered
+    # quantity is released -- the requisition must fall BACK out of
+    # received/partially_received. Same ordering rule as approve().
+    _refresh_source_requisitions(rr)
     db.session.commit()   # cancelling drops it out of COMMITTED_STATUSES -> qty released
     log_audit(module='receiving_reports', action='update', record_id=rr.id,
               record_identifier=rr.rr_number, notes=f'Cancelled: {reason}')

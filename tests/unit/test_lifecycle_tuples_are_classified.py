@@ -43,6 +43,7 @@ from app.purchase_orders.utils import OPEN_PO_STATUSES
 from app.purchase_requests.allocation import (
     APPROVED_PR, COMMITTED_PO, PULLABLE_PR, RECOMPUTABLE_PR)
 from app.purchase_requests.models import PurchaseRequest
+from app.purchase_requests.views import RETURNABLE_STATUSES
 from app.receiving_reports.models import COMMITTED_STATUSES as RR_COMMITTED
 from app.receiving_reports.views import RECEIVABLE_PO_STATUSES
 from app.purchase_billing import _RECEIVABLE_PO
@@ -239,6 +240,65 @@ REGISTRY = [
             'converted':
                 'every line is already fully ordered, so there is nothing left '
                 'to pull',
+            'received':
+                'every line has been delivered in full, so there is nothing '
+                'left to order. Its sibling partially_received IS pullable -- '
+                'omitting that one would strand the unordered remainder of a '
+                'requisition the moment its first delivery arrived',
+        }),
+    Tuple_(
+        'purchase_requests.models.PurchaseRequest.NEVER_AWAITING_APPROVAL',
+        PurchaseRequest.NEVER_AWAITING_APPROVAL, 'purchase requisition',
+        'is this requisition definitely NOT awaiting a signature, whatever '
+        'approved_by_id says?',
+        {
+            'submitted':
+                'the ordinary awaiting-signature state -- the whole reason the '
+                'predicate exists',
+            'partially_converted':
+                'CAN be awaiting a signature. Since 2026-09-06 recompute runs on '
+                'a submitted requisition, so one pulled onto an order before its '
+                'approval arrives reads this while still unsigned -- excluding '
+                'it here is what makes such a requisition approvable at all',
+            'converted':
+                'same as partially_converted, fully ordered rather than partly. '
+                'approved_by_id is what decides, not the status',
+            'partially_received':
+                'same again, one hop further down: goods can arrive against a '
+                'requisition whose signature is still outstanding',
+            'received':
+                'same again, delivered in full',
+        }),
+    Tuple_(
+        'purchase_requests.views.RETURNABLE_STATUSES', RETURNABLE_STATUSES,
+        'purchase requisition',
+        'may this requisition be sent BACK to draft, with a memo saying why?',
+        {
+            'draft':
+                'already there -- returning it would be a no-op that still '
+                'demanded a memo',
+            'approved':
+                'it has its signature; the ways on are convert or cancel. '
+                'Returning an approved requisition would silently discard an '
+                'approval no one recorded a decision to withdraw',
+            'partially_converted':
+                'a purchase order already points at SOME of its lines, so it '
+                'is past the point where the whole requisition can be reopened '
+                'for editing -- the same objection as converted, and the reason '
+                'this tuple is a whitelist rather than a blacklist of terminals',
+            'converted':
+                'terminal, and a purchase order already points at it -- '
+                'sending it back would strand that order on an editable source',
+            'cancelled':
+                'terminal by intent: the demand was withdrawn, so there is '
+                'nothing to fix and resubmit',
+            'partially_received':
+                'goods have physically arrived against it. Reopening it for '
+                'editing would let the requested quantity drop below what is '
+                'already on the shelf',
+            'received':
+                'delivered in full -- the same objection as partially_received, '
+                'with nothing left outstanding to justify an edit',
         }),
     Tuple_(
         'purchase_requests.allocation.RECOMPUTABLE_PR', RECOMPUTABLE_PR,
@@ -292,6 +352,13 @@ REGISTRY = [
                 'every line is consumed, so the only edit the validator would '
                 'permit is ADDING demand to a fully ordered requisition -- '
                 'which belongs on a new requisition',
+            'received':
+                'delivered in full -- the same objection as converted, one hop '
+                'further down the chain. Its sibling partially_received IS '
+                'amendable: work remains, and validate_amendment already '
+                'refuses shrinking a line below the quantity consumed against '
+                'it (received can never exceed ordered, so that guard covers '
+                'delivery too)',
         }),
 
     # -- receiving report lifecycle -------------------------------------------

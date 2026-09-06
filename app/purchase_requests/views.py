@@ -35,7 +35,10 @@ from app.utils.concurrency import claim_version, conflict_message, submitted_ver
 purchase_requests_bp = Blueprint('purchase_requests', __name__, template_folder='templates')
 
 VALID_PR_STATUSES = {'draft', 'submitted', 'approved', 'partially_converted',
-                     'rejected', 'converted', 'cancelled'}
+                     'rejected', 'converted', 'cancelled',
+                     # Delivery states, set only by recompute_pr_status from
+                     # committed receiving reports (owner request 2026-09-06).
+                     'partially_received', 'received'}
 
 # The printed requisition pads to this many line rows so every sheet is the same
 # shape -- the signature block lands in the same place and the spare ruled rows
@@ -303,12 +306,24 @@ def list_pr():
     pending_amendment_ids = pending_request_pr_ids([p.id for p in pagination.items])
     # Which purchase orders each requisition is actually on -- derived from the
     # LINE links, not the convert()-only header FK. See po_links_for_pr_ids.
-    from app.purchase_requests.allocation import po_links_for_pr_ids
-    po_links = po_links_for_pr_ids([p.id for p in pagination.items])
+    from app.purchase_requests.allocation import (
+        ap_links_for_pr_ids, cd_links_for_pr_ids, po_links_for_pr_ids,
+        rr_links_for_pr_ids)
+    page_ids = [p.id for p in pagination.items]
+    po_links = po_links_for_pr_ids(page_ids)
+    # The rest of the buy-side chain, each ONE query for the whole page (owner
+    # request 2026-09-06). Four columns rather than four statuses: where a
+    # requisition's goods have got is a question about which documents exist,
+    # not about the requisition's own approval state.
+    rr_links = rr_links_for_pr_ids(page_ids)
+    ap_links = ap_links_for_pr_ids(page_ids)
+    cd_links = cd_links_for_pr_ids(page_ids)
 
     return render_template('purchase_requests/list.html',
                            pr_list=pagination.items,
                            po_links=po_links,
+                           rr_links=rr_links, ap_links=ap_links,
+                           cd_links=cd_links,
                            pagination=pagination,
                            summary=summary,
                            pending_amendment_ids=pending_amendment_ids,
@@ -439,6 +454,11 @@ def view(id):
                            # button and print_pr()'s own guard read one value.
                            pr_print_form=AppSettings.get_setting('pr_print_form',
                                                                  'current'),
+                           # Same single-value rule: print_pr()'s draft guard
+                           # reads this exact key, so the button cannot offer
+                           # what the route would refuse.
+                           pr_print_access=AppSettings.get_setting('pr_print_access',
+                                                                   'submitted_only'),
                            revisions=_revision_panel_rows(pr))
 
 
@@ -464,6 +484,29 @@ def edit(id):
                 flash(conflict_message('purchase_requests', pr.id), 'error')
                 return render_template('purchase_requests/form.html', form=form, pr=pr,
                                        line_items=restore, **_common_form_ctx())
+            # The NUMBER is editable on a draft, mirroring create(). It was
+            # missing here until 2026-09-06: the field rendered, accepted a new
+            # value and flashed "updated", but nothing assigned it, so the change
+            # was silently discarded. Found correcting a live requisition whose
+            # number had been auto-generated outside the client's own series.
+            #
+            # The duplicate check EXCLUDES this requisition's own row -- without
+            # that, re-saving a form without touching the number would refuse
+            # itself. pr_number is globally unique, so a collision left to reach
+            # the flush is an IntegrityError 500 rather than a message the user
+            # can act on.
+            new_number = (form.pr_number.data or '').strip()
+            if new_number and new_number != pr.pr_number:
+                clash = PurchaseRequest.query.filter(
+                    PurchaseRequest.pr_number == new_number,
+                    PurchaseRequest.id != pr.id).first()
+                if clash:
+                    db.session.rollback()
+                    flash(f'Purchase Requisition "{new_number}" already exists.', 'error')
+                    return render_template('purchase_requests/form.html', form=form,
+                                           pr=pr, line_items=restore,
+                                           **_common_form_ctx())
+                pr.pr_number = new_number
             pr.request_date = form.request_date.data
             _assign_date_needed(pr, form)
             pr.reason = form.reason.data or None
@@ -667,8 +710,13 @@ def approve(id):
     pr = _get_pr_or_404(id)
     if not _approve_gate('approve'):
         return redirect(url_for('purchase_requests.view', id=id))
-    if pr.status != 'submitted':
-        flash('Only a submitted Purchase Requisition can be approved.', 'error')
+    # Reads the APPROVAL fact, not the status. Since 2026-09-06 a requisition
+    # pulled onto an order before its signature arrives is moved on by
+    # recompute_pr_status -- it may read `partially_converted` while still
+    # unsigned, and `status == 'submitted'` would refuse the very signature it
+    # is waiting for.
+    if not pr.awaiting_approval:
+        flash('This Purchase Requisition is not awaiting approval.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     pr.status = 'approved'
     pr.approved_by_id = current_user.id
@@ -724,8 +772,10 @@ def reject(id):
     pr = _get_pr_or_404(id)
     if not _approve_gate('reject'):
         return redirect(url_for('purchase_requests.view', id=id))
-    if pr.status != 'submitted':
-        flash('Only a submitted Purchase Requisition can be rejected.', 'error')
+    # Same predicate as approve(): the two are the pair of exits from "awaiting
+    # a signature", so they must agree on what that means.
+    if not pr.awaiting_approval:
+        flash('This Purchase Requisition is not awaiting approval.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     reason = (request.form.get('reject_reason') or '').strip()
     if len(reason) < 10:
@@ -740,6 +790,54 @@ def reject(id):
     log_audit(module='purchase_requests', action='reject', record_id=pr.id,
               record_identifier=pr.pr_number, notes=f'Rejected: {reason}')
     flash(f'Purchase Requisition "{pr.pr_number}" rejected.', 'warning')
+    return redirect(url_for('purchase_requests.view', id=id))
+
+
+#: States a requisition may be sent BACK to draft from. `submitted` is the
+#: approver's third choice beside Approve and Reject -- send it back to be fixed
+#: rather than refuse it. `rejected` is recovery from a decision already made.
+#: Deliberately NOT `approved` (convert it or cancel it), and never `converted`
+#: or `cancelled` -- both are terminal, and a PO may already point at the first.
+RETURNABLE_STATUSES = ('submitted', 'rejected')
+
+
+@purchase_requests_bp.route('/purchase-requests/<int:id>/return-to-draft', methods=['POST'])
+@login_required
+def return_to_draft(id):
+    """Send a requisition back to draft so it can be edited and resubmitted.
+
+    Approver-level, like every other state change in this module: the people who
+    may approve, reject, cancel and convert are the people who may send back.
+
+    A memo is REQUIRED (min 10 chars, matching reject/cancel): this reverses a
+    decision, and "why" is the whole value of the record afterwards -- e.g. the
+    number must follow the client's old manual sequence.
+
+    The rejected_* fields are deliberately left INTACT. Returning a requisition
+    does not un-happen the rejection; the detail page shows both, so the arc
+    reads "rejected by X for A, then returned by Y for B".
+    """
+    pr = _get_pr_or_404(id)
+    if not _approve_gate('return to draft'):
+        return redirect(url_for('purchase_requests.view', id=id))
+    if pr.status not in RETURNABLE_STATUSES:
+        flash('Only a submitted or rejected Purchase Requisition can be '
+              'returned to draft.', 'error')
+        return redirect(url_for('purchase_requests.view', id=id))
+    reason = (request.form.get('return_reason') or '').strip()
+    if len(reason) < 10:
+        flash('A reason (min 10 chars) is required to return this to draft.', 'error')
+        return redirect(url_for('purchase_requests.view', id=id))
+    from_status = pr.status
+    pr.status = 'draft'
+    pr.returned_by_id = current_user.id
+    pr.returned_at = ph_now()
+    pr.return_reason = reason
+    db.session.commit()
+    log_audit(module='purchase_requests', action='return_to_draft', record_id=pr.id,
+              record_identifier=pr.pr_number,
+              notes=f'Returned to draft from {from_status}: {reason}')
+    flash(f'Purchase Requisition "{pr.pr_number}" returned to draft.', 'success')
     return redirect(url_for('purchase_requests.view', id=id))
 
 
@@ -846,15 +944,28 @@ def print_pr(id):
     overlay for the client's own pre-printed stationery . hidden = printing
     disabled). Mirrors purchase_orders.print_po.
 
-    There is deliberately NO `pr_print_access` sibling to purchase_orders'. A
-    requisition is an INTERNAL document -- it never reaches a supplier, so the
-    commercial risk that justifies refusing to print a draft purchase order does
-    not exist here. `pr_print_form: hidden` is this document's off switch.
+    `pr_print_form: hidden` is this document's off switch.
+
+    A DRAFT requisition does not print (owner request 2026-09-03: "submit for
+    approval first before able to print"). This reverses the earlier stance that
+    a requisition, being internal, carried none of the commercial risk that
+    justifies refusing to print a draft purchase order -- the point here is not
+    supplier exposure but that an unsubmitted draft is not yet a document anyone
+    should be circulating on paper.
+
+    Gated on `pr_print_access`, mirroring purchase_orders' key exactly, and
+    DEFAULT-DENY: the exemption needs an exact 'draft_and_submitted' match, so an
+    unrecognised or stale stored value refuses rather than opens.
     """
     pr = _get_pr_or_404(id)
     pr_print_form = AppSettings.get_setting('pr_print_form', 'current')
     if pr_print_form == 'hidden':
         flash('Purchase Requisition printing is not enabled.', 'error')
+        return redirect(url_for('purchase_requests.view', id=id))
+    pr_print_access = AppSettings.get_setting('pr_print_access', 'submitted_only')
+    if pr.status == 'draft' and pr_print_access != 'draft_and_submitted':
+        flash('A draft Purchase Requisition cannot be printed. '
+              'Submit it for approval first.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     company = {'name': AppSettings.get_setting('company_name', ''),
                'address': AppSettings.get_setting('company_address', ''),

@@ -42,15 +42,19 @@ class TestAmendContract:
     def test_document_type_matches_the_audit_module_name(self):
         assert PurchaseRequest.DOCUMENT_TYPE == 'purchase_requests'
 
-    def test_amend_statuses_is_approved_and_partially_converted(self):
+    def test_amend_statuses_is_the_three_work_in_progress_states(self):
         # 'partially_converted' joined 'approved' with line-level allocation:
         # the validator's consumed_qty/has_any_child_reference hooks are real
         # now, so it refuses to shrink or delete an already-ordered line while
         # still permitting the untouched remainder to be amended.
-        assert PurchaseRequest.AMEND_STATUSES == ('approved', 'partially_converted')
+        # 'partially_received' joined them on 2026-09-06 for the same reason one
+        # hop further down: work remains, and received can never exceed ordered,
+        # so the existing consumed-quantity guard already covers delivery.
+        assert PurchaseRequest.AMEND_STATUSES == (
+            'approved', 'partially_converted', 'partially_received')
 
     @pytest.mark.parametrize('status', ['draft', 'submitted', 'rejected',
-                                        'converted', 'cancelled'])
+                                        'converted', 'cancelled', 'received'])
     def test_every_other_status_is_excluded(self, status):
         # 'submitted' is past draft but PRE-approval, and the spec's trigger is
         # approval. 'converted' means every line is consumed -- the only edit

@@ -1,18 +1,22 @@
-"""The picker tells the buyer which requisitions are still awaiting approval.
+"""The requisition picker's status data, and the absence of a status chip.
 
 Since 2026-08-26 the picker offers `submitted` requisitions alongside approved
-ones, so a buyer building an order can no longer assume every line in the modal
-is authorised. Without a marker the two are indistinguishable, and the buyer only
-finds out at approval -- after the order is built, priced and submitted.
+ones. From 2026-08-26 to 2026-09-06 each submitted row carried a "Pending
+approval" chip; the owner removed it on 2026-09-06, because pulling a submitted
+requisition is the normal path and chipping it warned about the intended action.
+
+`pr_status` deliberately REMAINS in the payload and the endpoint: the picker's
+data contract did not change, only its presentation, and a future consumer
+should find the field where it has always been.
 
 Three layers, asserted separately because each can fail without the others:
   * the PAYLOAD carries pr_status                       (unit-ish, this file)
   * the ENDPOINT hands it to the browser                (integration)
-  * the ROW TEMPLATE turns it into a chip               (executed JS)
+  * the ROW TEMPLATE draws NO chip from it              (executed JS)
 
-The third is executed rather than grepped. The chip's whole content is decided
-inside the picker's `rows.map(...)` literal, so a page that merely CONTAINS the
-string `pr_status` proves nothing about what is drawn.
+The third is executed rather than grepped. What a row draws is decided inside
+the picker's `rows.map(...)` literal, so a page that merely CONTAINS -- or
+lacks -- the string `pr_status` proves nothing about what is rendered.
 """
 from datetime import date
 from decimal import Decimal
@@ -93,8 +97,19 @@ class TestTheEndpoint:
         assert resp.get_json()['lines'][0]['pr_status'] == 'submitted'
 
 
-class TestTheChipMarkup:
-    """EXECUTED. The picker's own row template, run over supplied rows."""
+class TestNoStatusChipIsDrawn:
+    """EXECUTED. The picker's own row template, run over supplied rows.
+
+    The per-row "Pending approval" chip was REMOVED on 2026-09-06 at the owner's
+    request: pulling a `submitted` requisition is the normal path, so chipping
+    every such row warned about the very thing the buyer was asked to do. These
+    tests are the guard that it stays gone, for every status the picker offers.
+
+    The consequence the chip announced no longer exists: the approve()-time
+    block on an unapproved source, and its detail-page banner, were removed later
+    the same day at the owner's request. See
+    tests/integration/test_po_unapproved_source_not_blocking.py.
+    """
 
     @pytest.fixture
     def form_html(self, client, admin_user, main_branch, db_session):
@@ -103,48 +118,32 @@ class TestTheChipMarkup:
         assert resp.status_code == 200
         return resp.get_data(as_text=True)
 
-    def test_a_submitted_row_is_chipped(self, tmp_path, form_html):
-        out = picker_markup(tmp_path, form_html, [_row(pr_status='submitted')])
-        assert 'pr-status-chip' in out['body'], out['body']
-        assert 'Pending approval' in out['body']
-
-    def test_the_chip_carries_an_explanatory_title(self, tmp_path, form_html):
-        """A two-word chip has to say what it means on hover -- the buyer's next
-        question is 'so can I still order it?' and the answer is yes, but the
-        order cannot be APPROVED until the requisition is."""
-        out = picker_markup(tmp_path, form_html, [_row(pr_status='submitted')])
-        assert 'title="' in out['body']
-        assert 'cannot be approved' in out['body']
-
-    def test_an_approved_row_is_NOT_chipped(self, tmp_path, form_html):
-        """THE control. A chip on every row carries no information at all."""
-        out = picker_markup(tmp_path, form_html, [_row(pr_status='approved')])
+    @pytest.mark.parametrize('status', ['submitted', 'approved', 'partially_converted'])
+    def test_no_row_is_chipped(self, tmp_path, form_html, status):
+        out = picker_markup(tmp_path, form_html, [_row(pr_status=status)])
         assert 'pr-status-chip' not in out['body'], out['body']
         assert 'Pending approval' not in out['body']
 
-    def test_a_partially_converted_row_is_NOT_chipped(self, tmp_path, form_html):
-        """A post-approval state -- it HAS been approved, so nothing is pending."""
-        out = picker_markup(tmp_path, form_html,
-                            [_row(pr_status='partially_converted')])
-        assert 'pr-status-chip' not in out['body'], out['body']
-
-    def test_only_the_submitted_row_is_chipped_in_a_mixed_list(self, tmp_path,
-                                                               form_html):
-        """The realistic modal: both kinds side by side. Exactly one chip."""
+    def test_a_mixed_list_draws_no_chip_at_all(self, tmp_path, form_html):
+        """The realistic modal: both kinds side by side, neither chipped."""
         out = picker_markup(tmp_path, form_html, [
             _row(pr_number='CHIP-OK', pr_status='approved'),
             _row(pr_number='CHIP-PENDING', pr_status='submitted', pr_item_id=2)])
-        assert out['body'].count('pr-status-chip') == 1
-        # The chip must sit in the PENDING row, not merely somewhere on the page.
-        pending_at = out['body'].index('CHIP-PENDING')
-        ok_at = out['body'].index('CHIP-OK')
-        chip_at = out['body'].index('pr-status-chip')
-        assert chip_at > pending_at > ok_at, out['body']
+        assert out['body'].count('pr-status-chip') == 0
+        # CONTROL: both rows really were rendered, so the absence above is not
+        # an empty-body false pass.
+        assert 'CHIP-OK' in out['body'] and 'CHIP-PENDING' in out['body']
 
     def test_the_row_still_carries_its_data_payload(self, tmp_path, form_html):
-        """CONTROL on the row template as a whole -- the chip is added INTO an
-        existing literal, so it is positioned to break the data-row attribute
-        the Add half reads every picked line out of."""
+        """CONTROL on the row template as a whole -- the chip was removed FROM an
+        existing literal, so the edit is positioned to break the data-row
+        attribute the Add half reads every picked line out of."""
         out = picker_markup(tmp_path, form_html, [_row(pr_status='submitted')])
         assert 'data-row=' in out['body']
         assert 'class="pr-pick"' in out['body']
+
+    def test_the_pr_number_still_renders(self, tmp_path, form_html):
+        """The chip lived inside the PR-number cell; removing it must not take
+        the number with it."""
+        out = picker_markup(tmp_path, form_html, [_row(pr_number='PR-KEEP-ME')])
+        assert 'PR-KEEP-ME' in out['body']

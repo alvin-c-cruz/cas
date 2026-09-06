@@ -12,7 +12,11 @@
     {# `pr_print_form: hidden` turns printing off entirely, so the page must not
        offer a button print_pr() refuses -- mirrors purchase_orders/detail.html
        and sales_invoices/detail.html:109. #}
-    {% if pr_print_form != 'hidden' %}
+    {# A draft is not printable either (print_pr refuses it), so the button is
+       withheld on drafts unless pr_print_access explicitly opens them. Same
+       default-deny spelling as the route: only the exact opt-in value passes. #}
+    {% if pr_print_form != 'hidden'
+          and (pr.status != 'draft' or pr_print_access == 'draft_and_submitted') %}
     <a href="{{ url_for('purchase_requests.print_pr', id=pr.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
     {% endif %}
     {% if can_write and pr.status == 'draft' %}
@@ -80,6 +84,9 @@
   </div>
   {% if pr.reason %}<p><strong>Note:</strong> {{ pr.reason }}</p>{% endif %}
   {% if pr.reject_reason %}<p><strong>Rejected:</strong> {{ pr.reject_reason }}</p>{% endif %}
+  {# Shown BESIDE the rejection, not instead of it: returning a requisition to
+     draft does not un-happen the decision it reverses, so both read in order. #}
+  {% if pr.return_reason %}<p><strong>Returned to draft:</strong> {{ pr.return_reason }}</p>{% endif %}
   <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--text-3);">
     Created by {{ created_by_user.username if created_by_user else '—' }} on {{ pr.created_at.strftime('%b %d, %Y %H:%M') if pr.created_at else '—' }}
   </div>
@@ -124,6 +131,15 @@
     <button type="submit" class="btn btn-primary">Approve</button>
   </form>
   <button type="button" class="btn btn-secondary" onclick="document.getElementById('rejectModal').style.display='flex'">Reject</button>
+  {# The approver's THIRD choice: send it back to be fixed rather than refuse
+     it outright. Sits beside Reject because that is the moment the decision is
+     made. #}
+  <button type="button" class="btn btn-secondary" onclick="document.getElementById('returnModal').style.display='flex'">Return to Draft</button>
+  {% endif %}
+  {# Recovery from a rejection already made -- the only way out of what is
+     otherwise a terminal state. #}
+  {% if pr.status == 'rejected' and can_approve %}
+  <button type="button" class="btn btn-secondary" onclick="document.getElementById('returnModal').style.display='flex'">Return to Draft</button>
   {% endif %}
   {% if pr.status in ['approved', 'partially_converted'] and can_approve %}
   <form method="POST" action="{{ url_for('purchase_requests.convert', id=pr.id) }}" style="display:inline">
@@ -136,8 +152,11 @@
   {% endif %}
 </div></div>
 
-{% for m in [('rejectModal','purchase_requests.reject','reject_reason','Reject Purchase Requisition'),
-             ('cancelModal','purchase_requests.cancel','cancel_reason','Cancel Purchase Requisition')] %}
+{# 5th element is the confirm button's class: returning to draft is not a
+   destructive act, so it must not wear btn-danger like reject and cancel. #}
+{% for m in [('rejectModal','purchase_requests.reject','reject_reason','Reject Purchase Requisition','btn-danger'),
+             ('cancelModal','purchase_requests.cancel','cancel_reason','Cancel Purchase Requisition','btn-danger'),
+             ('returnModal','purchase_requests.return_to_draft','return_reason','Return Purchase Requisition to Draft','btn-primary')] %}
 <div id="{{ m[0] }}" class="modal-overlay" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
   <div class="card" style="max-width:480px;width:90%"><div class="card-body">
     <h3>{{ m[3] }}</h3>
@@ -148,7 +167,7 @@
         <textarea name="{{ m[2] }}" class="form-control" rows="3" required minlength="10"></textarea>
       </div>
       <div class="form-actions">
-        <button type="submit" class="btn btn-danger">Confirm</button>
+        <button type="submit" class="btn {{ m[4] }}">Confirm</button>
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('{{ m[0] }}').style.display='none'">Close</button>
       </div>
     </form>

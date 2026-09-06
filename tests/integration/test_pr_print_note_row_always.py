@@ -51,7 +51,7 @@ def _login(client, user, branch):
 
 def _pr(db_session, main_branch, number, reason):
     pr = PurchaseRequest(pr_number=number, request_date=datetime.date(2026, 6, 15),
-                         branch_id=main_branch.id, status='draft', reason=reason)
+                         branch_id=main_branch.id, status='submitted', reason=reason)
     db.session.add(pr); db.session.flush()
     db.session.add(PurchaseRequestItem(purchase_request_id=pr.id, line_number=1,
                                        description='Cement', quantity=Decimal('10'),

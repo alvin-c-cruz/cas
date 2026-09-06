@@ -176,38 +176,47 @@ class TestWhichStatusesMayBePulled:
         assert open_lines_for_branch(main_branch.id) == []
 
 
-class TestRecomputableExcludesSubmitted:
-    """The load-bearing half of the 2026-08-26 widening.
+class TestRecomputableNowIncludesSubmitted:
+    """REVERSED 2026-09-06. From 2026-08-26 to 2026-09-06 RECOMPUTABLE_PR
+    deliberately excluded `submitted` while PULLABLE_PR admitted it, so a
+    requisition pulled before approval kept its status and stayed approvable.
 
-    PULLABLE_PR gained `submitted`; RECOMPUTABLE_PR deliberately did NOT. These
-    two tuples now disagree on purpose, which is exactly the kind of asymmetry a
-    later reader tidies up -- so it is pinned, with the consequence spelled out.
+    The reason that asymmetry existed -- approve() and reject() required
+    status == 'submitted' EXACTLY, so moving a pulled requisition on deleted its
+    approval step -- no longer holds. Both routes now read the approval FACT
+    (PurchaseRequest.awaiting_approval / approved_by_id), so a requisition can be
+    partially ordered AND still awaiting signature, which is what a requisition
+    pulled before approval actually is.
+
+    These tests pin the new arrangement, including the hazard the old exclusion
+    was protecting against: recompute must never silently APPROVE.
     """
 
-    def test_recompute_leaves_a_pulled_submitted_requisition_submitted(
+    def test_submitted_is_in_the_tuple(self):
+        assert 'submitted' in RECOMPUTABLE_PR
+
+    def test_the_two_tuples_no_longer_disagree_about_submitted(self):
+        """PULLABLE_PR minus RECOMPUTABLE_PR must no longer contain it."""
+        assert 'submitted' not in (set(PULLABLE_PR) - set(RECOMPUTABLE_PR))
+
+    def test_recompute_moves_a_pulled_submitted_requisition(
             self, db_session, main_branch, admin_user, pr):
-        """Behavioural. Fully order a submitted requisition, recompute, and it
-        must still be `submitted` -- still approvable, still rejectable."""
+        from app.purchase_requests.allocation import recompute_pr_status
         pr.status = 'submitted'
+        pr.approved_by_id = None
         db_session.commit()
-        _order(db_session, main_branch, admin_user, pr.line_items[0], 20)
+        _order(db_session, main_branch, admin_user, pr.line_items[0], 10,
+               number='RULE-PO-UNSIGNED')
+        assert recompute_pr_status(pr) == 'partially_converted'
+
+    def test_recompute_never_silently_approves_an_unsigned_requisition(
+            self, db_session, pr):
+        """THE hazard the old exclusion guarded. recompute's idle state is
+        `approved`; for a requisition nobody has signed it must be `submitted`,
+        or an approval nobody gave appears out of a status recalculation."""
+        from app.purchase_requests.allocation import recompute_pr_status
+        pr.status = 'submitted'
+        pr.approved_by_id = None
+        db_session.commit()
         assert recompute_pr_status(pr) == 'submitted'
-        assert pr.status == 'submitted'
-
-    def test_submitted_is_absent_from_the_tuple(self):
-        """Structural, and the one that names the damage.
-
-        If `submitted` is ever added here, a pulled requisition recomputes to
-        partially_converted/converted -- and since approve() and reject() both
-        require status == 'submitted' exactly, it can then be neither approved
-        nor rejected. The approval step disappears with no error anywhere.
-        """
-        assert 'submitted' not in RECOMPUTABLE_PR
-
-    def test_the_two_tuples_disagree_on_exactly_one_status(self):
-        """PULLABLE_PR minus RECOMPUTABLE_PR is {'submitted'} and nothing else.
-
-        Guards the asymmetry from BOTH directions: widening RECOMPUTABLE_PR
-        empties this set, and widening PULLABLE_PR any further grows it.
-        """
-        assert set(PULLABLE_PR) - set(RECOMPUTABLE_PR) == {'submitted'}
+        assert pr.approved_by_id is None

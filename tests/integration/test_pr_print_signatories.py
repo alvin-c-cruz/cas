@@ -36,7 +36,7 @@ def _enable(db_session):
 @pytest.fixture
 def pr(db_session, admin_user, main_branch):
     p = PurchaseRequest(pr_number='SIG-1', request_date=date(2026, 7, 30),
-                        branch_id=main_branch.id, status='draft',
+                        branch_id=main_branch.id, status='submitted',
                         created_by_id=admin_user.id)
     db_session.add(p)
     db_session.commit()

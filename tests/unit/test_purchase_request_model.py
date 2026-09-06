@@ -84,3 +84,52 @@ def test_lines_persist(db_session):
     assert pr.line_items[0].quantity == Decimal('10')
     d = pr.to_dict()
     assert d['pr_number'] == 'PR-2026-07-0002' and d['status'] == 'draft'
+
+
+# ---------------------------------------------------------------------------
+# User-defined number prefix (e.g. '25-0914'). The prefix is chosen by the
+# client and CHANGES over time -- they may move to '26-' next year -- so the
+# generator carries forward whatever prefix the PREVIOUS record used rather
+# than knowing any prefix itself.
+# ---------------------------------------------------------------------------
+
+def test_generate_pr_number_continues_a_user_defined_prefix(db_session):
+    """'25-0972' -> '25-0973': prefix preserved, numeric tail incremented."""
+    from app.purchase_requests.models import generate_pr_number
+    for n in ('25-0914', '25-0915', '25-0916', '25-0972'):
+        db_session.add(PurchaseRequest(pr_number=n, request_date=date(2026, 8, 24),
+                                       status='draft'))
+    db_session.commit()
+    assert generate_pr_number() == '25-0973'
+
+
+def test_generate_pr_number_preserves_the_tail_width(db_session):
+    """A 4-digit tail stays 4 digits; it is not re-padded to the 5-digit default."""
+    from app.purchase_requests.models import generate_pr_number
+    db_session.add(PurchaseRequest(pr_number='25-0009', request_date=date(2026, 8, 24),
+                                   status='draft'))
+    db_session.commit()
+    assert generate_pr_number() == '25-0010'
+
+
+def test_generate_pr_number_follows_the_newest_prefix_when_it_changes(db_session):
+    """After the client switches to '26-', the series continues under the NEW
+    prefix -- the older '25-' rows must not drag it back."""
+    from app.purchase_requests.models import generate_pr_number
+    db_session.add(PurchaseRequest(pr_number='25-0972', request_date=date(2026, 8, 24),
+                                   status='draft'))
+    db_session.commit()
+    db_session.add(PurchaseRequest(pr_number='26-0001', request_date=date(2027, 1, 4),
+                                   status='draft'))
+    db_session.commit()
+    assert generate_pr_number() == '26-0002'
+
+
+def test_generate_pr_number_skips_a_taken_number_within_the_prefix(db_session):
+    """Uniqueness is global, so a gap-filling candidate already in use is skipped."""
+    from app.purchase_requests.models import generate_pr_number
+    for n in ('25-0009', '25-0010'):
+        db_session.add(PurchaseRequest(pr_number=n, request_date=date(2026, 8, 24),
+                                       status='draft'))
+    db_session.commit()
+    assert generate_pr_number() == '25-0011'

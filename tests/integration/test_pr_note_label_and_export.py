@@ -121,7 +121,9 @@ class TestEverySurfaceSaysNote:
         html = client.get('/purchase-requests').data.decode()
         assert '<th>Note</th>' in html
 
-    def test_the_printout(self, client, admin_user, main_branch, pr):
+    def test_the_printout(self, client, db_session, admin_user, main_branch, pr):
+        # Submitted, not draft: printing a draft is refused by pr_print_access.
+        pr.status = 'submitted'; db_session.commit()
         _login(client, admin_user, main_branch)
         html = client.get(f'/purchase-requests/{pr.id}/print').data.decode()
         assert '<th>Note</th>' in html

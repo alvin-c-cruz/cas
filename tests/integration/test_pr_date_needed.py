@@ -179,7 +179,9 @@ class TestItIsVisible:
         assert 'Date Needed' in html
         assert 'Aug 30, 2026' in html
 
-    def test_the_printout_shows_it(self, client, admin_user, main_branch, pr):
+    def test_the_printout_shows_it(self, client, db_session, admin_user, main_branch, pr):
+        # Submitted, not draft: printing a draft is refused by pr_print_access.
+        pr.status = 'submitted'; db_session.commit()
         _login(client, admin_user, main_branch)
         html = client.get(f'/purchase-requests/{pr.id}/print').data.decode()
         assert 'Date Needed' in html
@@ -190,7 +192,7 @@ class TestItIsVisible:
         """Control: every existing requisition has none. Detail and print must
         still render rather than 500 on a None.strftime."""
         p = PurchaseRequest(pr_number='DN-NONE', request_date=date(2026, 8, 14),
-                            branch_id=main_branch.id, status='draft',
+                            branch_id=main_branch.id, status='submitted',
                             created_by_id=admin_user.id)
         db_session.add(p)
         db_session.commit()

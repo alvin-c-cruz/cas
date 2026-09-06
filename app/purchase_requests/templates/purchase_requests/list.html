@@ -20,9 +20,9 @@
         <div class="pb-card-detail">awaiting conversion</div>
     </div>
     <div class="pb-card">
-        <div class="pb-card-label">Converted</div>
+        <div class="pb-card-label">Ordered</div>
         <div class="pb-card-value">{{ summary.converted_count }}</div>
-        <div class="pb-card-detail">to a Purchase Order</div>
+        <div class="pb-card-detail">on a Purchase Order</div>
     </div>
 </div>
 
@@ -34,9 +34,11 @@
         <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
         <option value="submitted" {% if status_filter == 'submitted' %}selected{% endif %}>Submitted</option>
         <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
-        <option value="partially_converted" {% if status_filter == 'partially_converted' %}selected{% endif %}>Partially Converted</option>
+        <option value="partially_converted" {% if status_filter == 'partially_converted' %}selected{% endif %}>Partially Ordered</option>
         <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
-        <option value="converted" {% if status_filter == 'converted' %}selected{% endif %}>Converted</option>
+        <option value="converted" {% if status_filter == 'converted' %}selected{% endif %}>Ordered</option>
+        <option value="partially_received" {% if status_filter == 'partially_received' %}selected{% endif %}>Partially Received</option>
+        <option value="received" {% if status_filter == 'received' %}selected{% endif %}>Received</option>
         <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
     </select>
     <label class="pb-date-group">
@@ -63,11 +65,19 @@
     </div>
     <div class="card-body">
         {% if pr_list %}
-        {% set badge_map = {'draft':'draft','submitted':'submitted','approved':'approved','rejected':'rejected','cancelled':'cancelled','converted':'converted','partially_converted':'submitted'} %}
+        {# 'received' reuses badge-approved and 'partially_received' badge-partial:
+           both variants exist in style.css, and an undefined one renders unstyled. #}
+        {# The stored status stays `converted` / `partially_converted` -- renaming the
+           column value would touch allocation, the amendment gate and five status tuples.
+           Only the LABEL changes: "Ordered" is what the buy-side actually calls it, and
+           "Converted" described the internal transition rather than the state
+           (owner request 2026-09-06). Delivery states keep their own names. #}
+        {% set status_label = {'partially_converted':'Partially Ordered','converted':'Ordered'} %}
+        {% set badge_map = {'draft':'draft','submitted':'submitted','approved':'approved','rejected':'rejected','cancelled':'cancelled','converted':'converted','partially_converted':'submitted','partially_received':'partial','received':'approved'} %}
         <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>PR #</th><th>Date</th><th>Note</th><th>Status</th><th>PO #</th><th>Actions</th></tr>
+                <tr><th>PR #</th><th>Date</th><th>Note</th><th>Status</th><th>PO #</th><th>RR #</th><th>AP #</th><th>CD #</th><th>Actions</th></tr>
             </thead>
             <tbody>
                 {% for pr in pr_list %}
@@ -76,7 +86,7 @@
                     <td>{{ pr.request_date.strftime('%b %d, %Y') if pr.request_date else '' }}</td>
                     <td>{{ (pr.reason or '')[:60] }}</td>
                     <td>
-                        <span class="badge badge-{{ badge_map.get(pr.status, 'draft') }}">{{ pr.status|replace('_', ' ')|title }}</span>
+                        <span class="badge badge-{{ badge_map.get(pr.status, 'draft') }}">{{ status_label.get(pr.status) or pr.status|replace('_', ' ')|title }}</span>
                         {# A pending amendment request BLOCKS conversion to a PO, so the
                            list has to say so -- otherwise a buyer picks this row to
                            convert and only meets the refusal on the detail page.
@@ -92,9 +102,30 @@
                        never sets that FK and read as unordered. Several orders is
                        ordinary -- a requisition can be split across them. #}
                     <td>
-                      {%- set links = po_links.get(pr.id, []) -%}
-                      {%- for po_id, po_number in links -%}
+                      {%- for po_id, po_number in po_links.get(pr.id, []) -%}
                         <a href="{{ url_for('purchase_orders.view', id=po_id) }}">{{ po_number }}</a>
+                        {{- ', ' if not loop.last -}}
+                      {%- else -%}—{%- endfor -%}
+                    </td>
+                    {# The rest of the buy-side chain: PR -> PO -> RR -> AP -> CD.
+                       Each resolved ONCE for the page in list_pr(); never query per
+                       row here. An em dash, not a blank, so an un-received row reads
+                       as answered rather than as a rendering gap. #}
+                    <td>
+                      {%- for rr_id, rr_number in rr_links.get(pr.id, []) -%}
+                        <a href="{{ url_for('receiving_reports.view', id=rr_id) }}">{{ rr_number }}</a>
+                        {{- ', ' if not loop.last -}}
+                      {%- else -%}—{%- endfor -%}
+                    </td>
+                    <td>
+                      {%- for ap_id, ap_number in ap_links.get(pr.id, []) -%}
+                        <a href="{{ url_for('accounts_payable.view', id=ap_id) }}">{{ ap_number }}</a>
+                        {{- ', ' if not loop.last -}}
+                      {%- else -%}—{%- endfor -%}
+                    </td>
+                    <td>
+                      {%- for cd_id, cd_number in cd_links.get(pr.id, []) -%}
+                        <a href="{{ url_for('cash_disbursements.view', id=cd_id) }}">{{ cd_number }}</a>
                         {{- ', ' if not loop.last -}}
                       {%- else -%}—{%- endfor -%}
                     </td>

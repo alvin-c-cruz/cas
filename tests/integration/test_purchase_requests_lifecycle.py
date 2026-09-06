@@ -103,7 +103,9 @@ def test_sidebar_shows_and_hides_pr_link(client, accountant_user, main_branch, d
 
 def test_print_renders(client, accountant_user, main_branch, db_session):
     _login(client, accountant_user, main_branch)
-    pr = _make_pr(db_session, main_branch)
+    # SUBMITTED, not draft: a draft is refused by the pr_print_access gate
+    # (owner request -- submit for approval before printing).
+    pr = _make_pr(db_session, main_branch, status='submitted')
     resp = client.get(f'/purchase-requests/{pr.id}/print')
     assert resp.status_code == 200
     # The heading is uppercased by CSS (text-transform), so the MARKUP reads in
@@ -113,3 +115,48 @@ def test_print_renders(client, accountant_user, main_branch, db_session):
     # surfaces name the record.
     assert b'<div class="doc-title">Purchase Requisition Form</div>' in resp.data
     assert bytes(pr.pr_number, 'utf-8') in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Print gate: submit for approval before printing (owner request 2026-09-03).
+# Default-deny, mirroring purchase_orders' po_print_access.
+# ---------------------------------------------------------------------------
+
+def test_draft_cannot_be_printed(client, accountant_user, main_branch, db_session):
+    _login(client, accountant_user, main_branch)
+    pr = _make_pr(db_session, main_branch, status='draft')
+    resp = client.get(f'/purchase-requests/{pr.id}/print')
+    assert resp.status_code == 302
+    assert f'/purchase-requests/{pr.id}' in resp.headers['Location']
+
+
+def test_draft_print_button_is_withheld(client, accountant_user, main_branch, db_session):
+    """The page must not offer a button the route refuses."""
+    _login(client, accountant_user, main_branch)
+    pr = _make_pr(db_session, main_branch, status='draft')
+    body = client.get(f'/purchase-requests/{pr.id}').data
+    assert bytes(f'/purchase-requests/{pr.id}/print', 'utf-8') not in body
+
+
+def test_submitted_print_button_is_offered(client, accountant_user, main_branch, db_session):
+    _login(client, accountant_user, main_branch)
+    pr = _make_pr(db_session, main_branch, status='submitted', number='PR-2026-07-0301')
+    body = client.get(f'/purchase-requests/{pr.id}').data
+    assert bytes(f'/purchase-requests/{pr.id}/print', 'utf-8') in body
+
+
+def test_draft_prints_when_explicitly_opened(client, accountant_user, main_branch, db_session):
+    from app.settings import AppSettings
+    AppSettings.set_setting('pr_print_access', 'draft_and_submitted')
+    _login(client, accountant_user, main_branch)
+    pr = _make_pr(db_session, main_branch, status='draft')
+    assert client.get(f'/purchase-requests/{pr.id}/print').status_code == 200
+
+
+def test_print_access_is_default_deny(client, accountant_user, main_branch, db_session):
+    """A stale/unrecognised stored value must refuse, not open."""
+    from app.settings import AppSettings
+    AppSettings.set_setting('pr_print_access', 'posted_only')   # not ours
+    _login(client, accountant_user, main_branch)
+    pr = _make_pr(db_session, main_branch, status='draft')
+    assert client.get(f'/purchase-requests/{pr.id}/print').status_code == 302

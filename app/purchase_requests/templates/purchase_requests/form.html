@@ -284,7 +284,10 @@
     + `<td style="text-align:center;">`
     + `<button type="button" class="li-btn-action pr-del" title="Remove line">\u{1F5D1}</button></td>`;
     document.getElementById('lineItemsBody').appendChild(tr);
-    enhance(tr);
+    // Returns the row's Product control so the caller can focus it. Focus is
+    // NOT taken here: addRow() also runs for every prefilled row on load, where
+    // stealing focus would yank the page down to the last line item.
+    return enhance(tr);
   }
 
   // initSearchSelect's own `addAction` is used rather than AP's hand-rolled
@@ -303,6 +306,7 @@
     // served in the response body, so it defeats the module-gating absence tests
     // in test_pr_form_quick_add.py -- which is exactly how this comment first
     // failed them.
+    let productControl = null;
     const prodSel = tr.querySelector('.pr-product');
     if (prodSel && !prodSel.closest('.choices')) {
       const prodC = initSearchSelect(prodSel, {
@@ -325,6 +329,7 @@
         },
         {% endif %}
       });
+      productControl = prodC;
     }
 
     const uomSel = tr.querySelector('.pr-uom');
@@ -346,12 +351,22 @@
         {% endif %}
       });
     }
+    return productControl;
   }
 
   document.addEventListener('click', e => {
     if (e.target.classList.contains('pr-del')) e.target.closest('tr').remove();
   });
-  document.getElementById('addLineBtn').addEventListener('click', () => addRow());
+  document.getElementById('addLineBtn').addEventListener('click', () => {
+    // Land the caret in the new line's Product field so the next keystroke
+    // types into it. showDropdown() both focuses the Choices search input and
+    // opens the list, which is what a typeahead needs to be usable -- a bare
+    // .focus() on the hidden native <select> would do nothing visible.
+    const productControl = addRow();
+    if (productControl && typeof productControl.showDropdown === 'function') {
+      productControl.showDropdown();
+    }
+  });
   document.getElementById('prForm').addEventListener('submit', () => {
     const rows = [];
     // The add-action sentinels are real <option> values sitting in the selects.

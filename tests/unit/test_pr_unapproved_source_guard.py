@@ -191,5 +191,10 @@ class TestApprovedPrTuple:
         two that get dropped by anyone writing `status == 'approved'` from
         memory -- which is how the second PO against a partially ordered
         requisition would start refusing to approve.
+
+        The two delivery states joined them on 2026-09-06: they are reachable
+        only from post-approval states, so reading either as unapproved would
+        block an order raised against a requisition already part-delivered.
         """
-        assert set(APPROVED_PR) == {'approved', 'partially_converted', 'converted'}
+        assert set(APPROVED_PR) == {'approved', 'partially_converted', 'converted',
+                                    'partially_received', 'received'}

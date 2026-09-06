@@ -177,7 +177,9 @@ def test_list_shows_summary_tiles(client, accountant_user, main_branch, db_sessi
     _create(client, pr_number='PR-TILE-001')
     body = client.get('/purchase-requests').data.decode('utf-8')
     assert 'Pending Approval' in body
-    assert 'Converted' in body
+    # The tile reads "Ordered", not "Converted" (owner request 2026-09-06):
+    # the stored status is unchanged, only the wording the buy-side uses.
+    assert 'Ordered' in body
 
 
 def test_list_status_filter_narrows_results(client, accountant_user, main_branch, db_session):

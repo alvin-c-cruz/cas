@@ -42,7 +42,7 @@ def printed(client, db_session, admin_user, main_branch):
     db_session.commit()
 
     pr = PurchaseRequest(pr_number='REMARK-1', request_date=date(2026, 7, 30),
-                         branch_id=main_branch.id, status='draft',
+                         branch_id=main_branch.id, status='submitted',
                          created_by_id=admin_user.id)
     db_session.add(pr)
     db_session.flush()

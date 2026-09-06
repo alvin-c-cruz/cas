@@ -52,7 +52,7 @@ def product(db_session):
 def pr(db_session, admin_user, main_branch, product):
     """Mirrors 25-0909: a real product PLUS remarks on the same line."""
     p = PurchaseRequest(pr_number='REM-1', request_date=date(2026, 8, 14),
-                        branch_id=main_branch.id, status='draft',
+                        branch_id=main_branch.id, status='submitted',
                         created_by_id=admin_user.id)
     p.line_items.append(PurchaseRequestItem(
         line_number=1, product_id=product.id, description='FOR PRODUCTION USE',
@@ -66,7 +66,7 @@ def pr(db_session, admin_user, main_branch, product):
 def textonly_pr(db_session, admin_user, main_branch):
     """A line with NO product -- its text is the item itself."""
     p = PurchaseRequest(pr_number='REM-2', request_date=date(2026, 8, 14),
-                        branch_id=main_branch.id, status='draft',
+                        branch_id=main_branch.id, status='submitted',
                         created_by_id=admin_user.id)
     p.line_items.append(PurchaseRequestItem(
         line_number=1, description='Assorted fasteners', quantity=5))

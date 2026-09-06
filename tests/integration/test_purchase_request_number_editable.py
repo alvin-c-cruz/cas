@@ -63,3 +63,77 @@ def test_create_pr_get_prefills_generated_number(client, accountant_user, main_b
     resp = client.get('/purchase-requests/create')
     assert resp.status_code == 200
     assert b'name="pr_number"' in resp.data
+
+
+# ---------------------------------------------------------------------------
+# The EDIT path. Found 2026-09-06 while correcting a live requisition whose
+# number had been auto-generated wrongly (00001 instead of the client's 25-NNNN
+# series): the field renders, accepts a new number and flashes "updated", but
+# edit() never assigned pr.pr_number, so the change was silently discarded.
+# Every test above this line exercises CREATE only, which is how it survived.
+# ---------------------------------------------------------------------------
+
+def _draft(db_session, branch, number='PR-EDIT-0001'):
+    from datetime import date
+    from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
+    pr = PurchaseRequest(pr_number=number, branch_id=branch.id,
+                         request_date=date(2026, 9, 6), status='draft',
+                         reason='Site needs cement')
+    pr.line_items.append(PurchaseRequestItem(line_number=1, description='Cement',
+                                             quantity=5))
+    db_session.add(pr); db_session.commit()
+    return pr
+
+
+def _edit(client, pr, number):
+    # row_version is REQUIRED: submitted_version() reads the raw POST body and
+    # claim_version(None) is False, so an edit posted without the token bails at
+    # the optimistic-locking gate before any field is assigned. Omitting it made
+    # the two "number is unchanged" tests below pass VACUOUSLY -- they were
+    # observing a refused edit, not a preserved number.
+    return client.post(f'/purchase-requests/{pr.id}/edit', data={
+        'request_date': '2026-09-06',
+        'reason': 'Site needs cement',
+        'line_items': json.dumps([{"description": "Cement", "quantity": 5}]),
+        'pr_number': number,
+        'row_version': pr.row_version,
+    }, follow_redirects=True)
+
+
+def test_edit_pr_honors_a_changed_pr_number(client, accountant_user, db_session,
+                                            main_branch):
+    _login(client, accountant_user, main_branch)
+    pr = _draft(db_session, main_branch, number='00001')
+    resp = _edit(client, pr, '25-0973')
+    assert resp.status_code == 200
+    db_session.refresh(pr)
+    assert pr.pr_number == '25-0973', (
+        'the submitted pr_number was discarded -- edit() never assigned it')
+
+
+def test_edit_pr_rejects_a_duplicate_number(client, accountant_user, db_session,
+                                            main_branch):
+    """The create path refuses a collision; the edit path must too, or the
+    unique index turns a typo into an IntegrityError 500."""
+    from app.purchase_requests.models import PurchaseRequest
+    _login(client, accountant_user, main_branch)
+    _draft(db_session, main_branch, number='25-0914')
+    pr = _draft(db_session, main_branch, number='00001')
+    resp = _edit(client, pr, '25-0914')
+    assert resp.status_code == 200
+    assert b'already exists' in resp.data               # refused BY NAME...
+    db_session.refresh(pr)
+    assert pr.pr_number == '00001'                      # ...and left unchanged
+    assert PurchaseRequest.query.filter_by(pr_number='25-0914').count() == 1
+
+
+def test_edit_pr_keeps_its_number_when_unchanged(client, accountant_user,
+                                                 db_session, main_branch):
+    """CONTROL: resubmitting the SAME number must not trip the duplicate check
+    against the requisition's own row."""
+    _login(client, accountant_user, main_branch)
+    pr = _draft(db_session, main_branch, number='25-0980')
+    resp = _edit(client, pr, '25-0980')
+    assert resp.status_code == 200
+    db_session.refresh(pr)
+    assert pr.pr_number == '25-0980'

@@ -62,6 +62,57 @@ def pr_line_ordered_qty(pr_item, exclude_po_id=None):
     return Decimal(str(q.scalar() or 0))
 
 
+def pr_line_received_qty(pr_item):
+    """Total quantity committed RECEIVING REPORTS have delivered against *pr_item*.
+
+    Two hops, because a requisition is never received directly: the requisition
+    line is ordered onto PO lines (`source_pr_item_id`), and those PO lines are
+    received by RR lines (`purchase_order_item_id`). One query walks both.
+
+    Only RR statuses in receiving_reports.models.COMMITTED_STATUSES
+    ('approved', 'billed') count, exactly as po_line_open_qty does -- a draft or
+    cancelled receipt has delivered nothing, and counting it would report a
+    requisition as delivered on the strength of an unapproved document.
+
+    Mirrors pr_line_ordered_qty's shape and return type (always a Decimal, never
+    None) so the two can be compared without normalising either.
+    """
+    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+    # Imported under its CANONICAL name, not aliased: the lifecycle-tuple guard
+    # scrapes the purchase area for named status collections and matches them to
+    # its REGISTRY by name, so an alias reads as an eleventh, unregistered tuple.
+    # (COMMITTED_PO above is this module's own; the two never collide in scope.)
+    from app.receiving_reports.models import (
+        COMMITTED_STATUSES, ReceivingReport, ReceivingReportItem)
+    q = (db.session.query(db.func.coalesce(db.func.sum(ReceivingReportItem.received_quantity), 0))
+         .join(ReceivingReport, ReceivingReportItem.receiving_report_id == ReceivingReport.id)
+         .join(PurchaseOrderItem,
+               ReceivingReportItem.purchase_order_item_id == PurchaseOrderItem.id)
+         .join(PurchaseOrder, PurchaseOrderItem.purchase_order_id == PurchaseOrder.id)
+         .filter(PurchaseOrderItem.source_pr_item_id == pr_item.id)
+         .filter(PurchaseOrder.status.in_(COMMITTED_PO))
+         .filter(ReceivingReport.status.in_(COMMITTED_STATUSES)))
+    return Decimal(str(q.scalar() or 0))
+
+
+def pr_line_is_fully_received(pr_item):
+    """Has this requisition line been delivered in full?
+
+    Measured against what the REQUISITION asked for, not what was ordered: the
+    requisition's own question is "did I get what I asked for?", and an order
+    raised for less than the requested quantity has not answered it. A line
+    carrying no quantity (LINE_QUANTITY_REQUIRED is False) can never be proven
+    fully received, so it reads False rather than vacuously True.
+    """
+    requested = pr_item.quantity
+    if requested is None:
+        return False
+    requested = Decimal(str(requested))
+    if requested <= 0:
+        return False
+    return pr_line_received_qty(pr_item) >= requested
+
+
 def pr_line_open_qty(pr_item, exclude_po_id=None):
     """Requested minus ordered, or None when the line carries no quantity.
 
@@ -118,7 +169,14 @@ def _has_committed_reference(pr_item, exclude_po_id=None):
 #: statuses this widening is most likely to leak into.
 #:
 #: RECOMPUTABLE_PR was deliberately NOT widened to match. See its own note.
-PULLABLE_PR = ('submitted', 'approved', 'partially_converted')
+#: `partially_received` is here for a LOAD-BEARING reason: since delivery
+#: outranks ordering (2026-09-06), a requisition that is only PARTLY ordered
+#: becomes `partially_received` the moment anything arrives. Omitting it would
+#: make the rest of that requisition unorderable -- the buyer could no longer
+#: raise the order for the lines still outstanding. `received` is excluded
+#: because every line is delivered in full, so there is nothing left to pull.
+PULLABLE_PR = ('submitted', 'approved', 'partially_converted',
+               'partially_received')
 
 #: Requisition statuses that count as APPROVED when releasing a purchase order.
 #:
@@ -131,7 +189,14 @@ PULLABLE_PR = ('submitted', 'approved', 'partially_converted')
 #: Decided on STATUS rather than on `approved_at is not None` because cancel()
 #: accepts an already-approved requisition: a cancelled one can carry a real
 #: approved_at while its demand has been withdrawn.
-APPROVED_PR = ('approved', 'partially_converted', 'converted')
+#: `partially_received` and `received` are post-approval states by
+#: construction: recompute_pr_status can only reach them from approved /
+#: partially_converted / converted (RECOMPUTABLE_PR excludes submitted), so a
+#: requisition cannot be delivered without having been approved first. Reading
+#: them as unapproved would block a purchase order raised against a requisition
+#: whose earlier lines have already arrived.
+APPROVED_PR = ('approved', 'partially_converted', 'converted',
+               'partially_received', 'received')
 
 
 def unapproved_source_prs(po):
@@ -437,7 +502,19 @@ def _qty_str(v):
 #:
 #: `tests/unit/test_pr_allocation_rules.py::TestRecomputableExcludesSubmitted`
 #: fails if anyone widens this to match PULLABLE_PR.
-RECOMPUTABLE_PR = ('approved', 'partially_converted', 'converted')
+#: `partially_received` and `received` are here for the same reason `converted`
+#: is: recompute is self-repairing, so a requisition must be able to move BACK
+#: when a receiving report is cancelled or an order is withdrawn. Omitting them
+#: would freeze a delivered requisition at its high-water mark -- the exact
+#: counter-based failure the recompute-from-source design exists to avoid.
+#: `submitted` joined this on 2026-09-06. It was previously excluded because
+#: approve() and reject() required status == 'submitted' EXACTLY, so recomputing
+#: a pulled requisition deleted its approval step. That coupling is gone --
+#: both now read PurchaseRequest.awaiting_approval (approved_by_id), so a
+#: requisition can be partially ordered AND still awaiting signature, which is
+#: exactly what a requisition pulled before approval is.
+RECOMPUTABLE_PR = ('submitted', 'approved', 'partially_converted', 'converted',
+                   'partially_received', 'received')
 
 
 def recompute_pr_status(pr):
@@ -451,18 +528,172 @@ def recompute_pr_status(pr):
     """
     if pr.status not in RECOMPUTABLE_PR:
         return pr.status
+    # `approved` is the resting state of a requisition with nothing ordered
+    # against it -- but ONLY once it has actually been approved. Writing it for
+    # an unsigned requisition would approve it silently, which is precisely the
+    # hazard that kept `submitted` out of RECOMPUTABLE_PR until the approval fact
+    # was decoupled from the status.
+    idle = 'submitted' if pr.awaiting_approval else 'approved'
     lines = list(pr.line_items)
     if not lines:
-        pr.status = 'approved'
+        pr.status = idle
         return pr.status
     open_count = sum(1 for li in lines if pr_line_is_open(li))
     untouched = sum(1 for li in lines
                     if pr_line_ordered_qty(li) == Decimal('0')
                     and not _has_committed_reference(li))
     if untouched == len(lines):
-        pr.status = 'approved'
+        pr.status = idle
+        return pr.status
+
+    # DELIVERY OUTRANKS ORDERING once anything has actually arrived (owner
+    # request 2026-09-06: "this status must change when the PR is partially or
+    # fully delivered via the RR document").
+    #
+    # Ordering is a promise; receiving is the fact. A requisition that is only
+    # PARTLY ordered but already partly delivered reads `partially_received`
+    # rather than `partially_converted` -- reporting the promise while goods are
+    # on the shelf is the less useful of the two answers, and the requisition's
+    # own question is "did I get what I asked for?".
+    #
+    # `received` therefore requires EVERY line delivered in full against the
+    # REQUESTED quantity, which is strictly stronger than `converted` (every
+    # line fully ordered): a requisition cannot be fully received without having
+    # been fully ordered first.
+    received_lines = sum(1 for li in lines if pr_line_is_fully_received(li))
+    any_received = any(pr_line_received_qty(li) > Decimal('0') for li in lines)
+    if received_lines == len(lines):
+        pr.status = 'received'
+    elif any_received:
+        pr.status = 'partially_received'
     elif open_count == 0:
         pr.status = 'converted'
     else:
         pr.status = 'partially_converted'
     return pr.status
+
+
+def rr_links_for_pr_ids(pr_ids):
+    """``{pr_id: [(rr_id, rr_number), ...]}`` -- the receiving reports that have
+    delivered against each requisition's lines.
+
+    Two hops, the same walk pr_line_received_qty makes: requisition line -> PO
+    line (`source_pr_item_id`) -> RR line (`purchase_order_item_id`). ONE query
+    for a whole page, mirroring po_links_for_pr_ids; a per-requisition property
+    would be N+1 on the list.
+
+    Filtered by COMMITTED_STATUSES, not merely "not cancelled": a draft or
+    submitted receipt has delivered nothing, and naming it here would tell the
+    reader goods had arrived on the strength of an unapproved document.
+    """
+    from app.purchase_requests.models import PurchaseRequestItem
+    from app.purchase_orders.models import PurchaseOrderItem
+    from app.receiving_reports.models import (
+        COMMITTED_STATUSES, ReceivingReport, ReceivingReportItem)
+    ids = [i for i in (pr_ids or []) if i is not None]
+    if not ids:
+        return {}
+    rows = (db.session.query(PurchaseRequestItem.purchase_request_id,
+                             ReceivingReport.id, ReceivingReport.rr_number)
+            .join(PurchaseOrderItem,
+                  PurchaseOrderItem.source_pr_item_id == PurchaseRequestItem.id)
+            .join(ReceivingReportItem,
+                  ReceivingReportItem.purchase_order_item_id == PurchaseOrderItem.id)
+            .join(ReceivingReport,
+                  ReceivingReport.id == ReceivingReportItem.receiving_report_id)
+            .filter(PurchaseRequestItem.purchase_request_id.in_(ids))
+            .filter(ReceivingReport.status.in_(COMMITTED_STATUSES))
+            .order_by(ReceivingReport.rr_number.asc())
+            .distinct()
+            .all())
+    return _dedup_links(rows)
+
+
+def ap_links_for_pr_ids(pr_ids):
+    """``{pr_id: [(ap_id, ap_number), ...]}`` -- the bills raised for the goods
+    this requisition asked for.
+
+    Third hop: the billing link is `ReceivingReport.accounts_payable_id`, so a
+    requisition is billed only through a receipt. A bill keyed straight to a
+    purchase order with no receipt is therefore invisible here, which is correct
+    for this column -- it answers "what happened to MY goods", and goods that
+    were never received were never delivered against this requisition.
+    """
+    from app.purchase_requests.models import PurchaseRequestItem
+    from app.purchase_orders.models import PurchaseOrderItem
+    from app.receiving_reports.models import (
+        COMMITTED_STATUSES, ReceivingReport, ReceivingReportItem)
+    from app.accounts_payable.models import AccountsPayable
+    ids = [i for i in (pr_ids or []) if i is not None]
+    if not ids:
+        return {}
+    rows = (db.session.query(PurchaseRequestItem.purchase_request_id,
+                             AccountsPayable.id, AccountsPayable.ap_number)
+            .join(PurchaseOrderItem,
+                  PurchaseOrderItem.source_pr_item_id == PurchaseRequestItem.id)
+            .join(ReceivingReportItem,
+                  ReceivingReportItem.purchase_order_item_id == PurchaseOrderItem.id)
+            .join(ReceivingReport,
+                  ReceivingReport.id == ReceivingReportItem.receiving_report_id)
+            .join(AccountsPayable,
+                  AccountsPayable.id == ReceivingReport.accounts_payable_id)
+            .filter(PurchaseRequestItem.purchase_request_id.in_(ids))
+            .filter(ReceivingReport.status.in_(COMMITTED_STATUSES))
+            .order_by(AccountsPayable.ap_number.asc())
+            .distinct()
+            .all())
+    return _dedup_links(rows)
+
+
+def cd_links_for_pr_ids(pr_ids):
+    """``{pr_id: [(cd_id, cd_number), ...]}`` -- the disbursements that paid the
+    bills for this requisition's goods.
+
+    Fourth and last hop: a cash disbursement LINE carries `ap_id`, so payment is
+    reached through the bill, which is reached through the receipt. The whole
+    chain in one query rather than four round trips per row.
+    """
+    from app.purchase_requests.models import PurchaseRequestItem
+    from app.purchase_orders.models import PurchaseOrderItem
+    from app.receiving_reports.models import (
+        COMMITTED_STATUSES, ReceivingReport, ReceivingReportItem)
+    from app.accounts_payable.models import AccountsPayable
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
+    ids = [i for i in (pr_ids or []) if i is not None]
+    if not ids:
+        return {}
+    rows = (db.session.query(PurchaseRequestItem.purchase_request_id,
+                             CashDisbursementVoucher.id,
+                             CashDisbursementVoucher.cdv_number)
+            .join(PurchaseOrderItem,
+                  PurchaseOrderItem.source_pr_item_id == PurchaseRequestItem.id)
+            .join(ReceivingReportItem,
+                  ReceivingReportItem.purchase_order_item_id == PurchaseOrderItem.id)
+            .join(ReceivingReport,
+                  ReceivingReport.id == ReceivingReportItem.receiving_report_id)
+            .join(AccountsPayable,
+                  AccountsPayable.id == ReceivingReport.accounts_payable_id)
+            .join(CDVApLine, CDVApLine.ap_id == AccountsPayable.id)
+            .join(CashDisbursementVoucher,
+                  CashDisbursementVoucher.id == CDVApLine.cdv_id)
+            .filter(PurchaseRequestItem.purchase_request_id.in_(ids))
+            .filter(ReceivingReport.status.in_(COMMITTED_STATUSES))
+            .order_by(CashDisbursementVoucher.cdv_number.asc())
+            .distinct()
+            .all())
+    return _dedup_links(rows)
+
+
+def _dedup_links(rows):
+    """``[(pr_id, doc_id, doc_number), ...]`` -> ``{pr_id: [(doc_id, number)]}``.
+
+    distinct() is on the whole row, so one document feeding TWO lines of the
+    same requisition arrives twice -- dedup on the document itself. Shared by
+    the three link helpers above so the three cannot drift apart.
+    """
+    out = {}
+    for pr_id, doc_id, doc_number in rows:
+        seen = out.setdefault(pr_id, [])
+        if (doc_id, doc_number) not in seen:
+            seen.append((doc_id, doc_number))
+    return out

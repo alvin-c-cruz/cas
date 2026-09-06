@@ -56,7 +56,7 @@ def _rows(meta):
 def pr(db_session, admin_user, main_branch):
     p = PurchaseRequest(pr_number='META-1', request_date=date(2026, 8, 14),
                         date_needed=date(2026, 9, 15), reason='Attention: Anissa Tang',
-                        branch_id=main_branch.id, status='draft',
+                        branch_id=main_branch.id, status='submitted',
                         created_by_id=admin_user.id)
     db_session.add(p)
     db_session.commit()
@@ -194,7 +194,7 @@ class TestTheRestOfTheBlockIsIntact:
                                                       admin_user, main_branch):
         p = PurchaseRequest(pr_number='META-2', request_date=date(2026, 8, 14),
                             date_needed_asap=True, branch_id=main_branch.id,
-                            status='draft', created_by_id=admin_user.id)
+                            status='submitted', created_by_id=admin_user.id)
         db_session.add(p)
         db_session.commit()
         _login(client, admin_user, main_branch)
@@ -206,7 +206,7 @@ class TestTheRestOfTheBlockIsIntact:
                                                              admin_user, main_branch):
         """The row is a box to fill in by hand -- it must not disappear."""
         p = PurchaseRequest(pr_number='META-3', request_date=date(2026, 8, 14),
-                            branch_id=main_branch.id, status='draft',
+                            branch_id=main_branch.id, status='submitted',
                             created_by_id=admin_user.id)
         db_session.add(p)
         db_session.commit()

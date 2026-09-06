@@ -1,14 +1,22 @@
-"""A purchase order may not be APPROVED while a requisition behind it is unapproved.
+"""Approving a purchase order works, whatever its source requisitions look like.
 
-The other half of the 2026-08-26 owner decision. PULLABLE_PR now admits
-`submitted` so a staff purchaser can prepare the order early (Task 2); this is
-where the approval control actually lives. Pulling is data entry, submit is how
-a staff purchaser hands the order on, approval is the control -- so `submit()`
-is deliberately NOT blocked and there is a test pinning that too.
+HISTORY. From 2026-08-26 this file guarded the other half of that day's owner
+decision: PULLABLE_PR admitted `submitted` so a staff purchaser could prepare an
+order early, and approval was where the authorisation control lived instead.
+On 2026-09-06 the owner removed that control -- see approve()'s own comment and
+tests/integration/test_po_unapproved_source_not_blocking.py, which now pins the
+reversal (a submitted, rejected or cancelled source no longer blocks approval).
 
-Every refusal test asserts the resulting STATUS, not merely the flash. A guard
-that renders a message and approves anyway is exactly the shape that a
-message-only assertion calls passing.
+TestApprovalIsBlocked went with it. What remains is still worth having and was
+never about the removed gate:
+  * TestApprovalStillWorks  -- the ordinary paths, and that Rev 0 is written
+  * TestSubmitIsNotBlocked  -- submit() was deliberately never gated, so a staff
+                               purchaser who may build but not approve an order
+                               always has a way to hand it on
+
+Every test asserts the resulting STATUS, not merely the flash. A guard that
+renders a message and approves anyway is exactly the shape that a message-only
+assertion calls passing.
 """
 from datetime import date
 from decimal import Decimal
@@ -87,76 +95,6 @@ def _status(po):
 def _revs(po):
     return DocumentRevision.query.filter_by(
         document_type='purchase_orders', document_id=po.id).all()
-
-
-class TestApprovalIsBlocked:
-
-    def test_a_submitted_source_blocks_approval(self, client, admin_user,
-                                                branch_manila, vendor_acme):
-        """THE case the change creates: staff pulled it before the approver signed."""
-        pr = _requisition(branch_manila, 'submitted')
-        po = _order(branch_manila, vendor_acme, pr.line_items[0])
-        _login(client, admin_user, branch_manila)
-
-        resp = client.post(f'/purchase-orders/{po.id}/approve', follow_redirects=True)
-        assert resp.status_code == 200
-        assert _status(po) == 'draft', 'the order must NOT be approved'
-
-    def test_a_rejected_source_blocks_approval(self, client, admin_user,
-                                               branch_manila, vendor_acme):
-        """Pulled while submitted, then rejected. Nothing unwinds the PO lines,
-        so this is the only place left to catch it."""
-        pr = _requisition(branch_manila, 'rejected')
-        po = _order(branch_manila, vendor_acme, pr.line_items[0])
-        _login(client, admin_user, branch_manila)
-
-        client.post(f'/purchase-orders/{po.id}/approve', follow_redirects=True)
-        assert _status(po) == 'draft'
-
-    def test_a_cancelled_source_blocks_approval(self, client, admin_user,
-                                                branch_manila, vendor_acme):
-        pr = _requisition(branch_manila, 'cancelled')
-        po = _order(branch_manila, vendor_acme, pr.line_items[0])
-        _login(client, admin_user, branch_manila)
-
-        client.post(f'/purchase-orders/{po.id}/approve', follow_redirects=True)
-        assert _status(po) == 'draft'
-
-    def test_the_refusal_names_the_requisition(self, client, admin_user,
-                                               branch_manila, vendor_acme):
-        """The buyer has to know WHICH requisition to chase. A refusal that only
-        says "a source is unapproved" leaves them opening every line."""
-        pr = _requisition(branch_manila, 'submitted', number='SRCA-PR-NAMED')
-        po = _order(branch_manila, vendor_acme, pr.line_items[0])
-        _login(client, admin_user, branch_manila)
-
-        resp = client.post(f'/purchase-orders/{po.id}/approve', follow_redirects=True)
-        assert b'SRCA-PR-NAMED' in resp.data
-
-    def test_a_blocked_approval_writes_no_revision(self, client, admin_user,
-                                                   branch_manila, vendor_acme):
-        """Rev 0 is the baseline every later amendment is measured against.
-        A refused approval that still claimed the slot would give the order a
-        baseline it never earned."""
-        pr = _requisition(branch_manila, 'submitted')
-        po = _order(branch_manila, vendor_acme, pr.line_items[0])
-        _login(client, admin_user, branch_manila)
-
-        client.post(f'/purchase-orders/{po.id}/approve', follow_redirects=True)
-        assert _revs(po) == []
-
-    def test_a_submitted_source_blocks_a_SUBMITTED_order_too(
-            self, client, admin_user, branch_manila, vendor_acme):
-        """approve() accepts draft OR submitted. The guard has to cover both
-        entry states, not just the one the happy path uses."""
-        pr = _requisition(branch_manila, 'submitted')
-        po = _order(branch_manila, vendor_acme, pr.line_items[0])
-        po.status = 'submitted'
-        db.session.commit()
-        _login(client, admin_user, branch_manila)
-
-        client.post(f'/purchase-orders/{po.id}/approve', follow_redirects=True)
-        assert _status(po) == 'submitted'
 
 
 class TestApprovalStillWorks:

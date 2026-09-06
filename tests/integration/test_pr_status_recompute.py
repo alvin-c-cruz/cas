@@ -19,9 +19,14 @@ pytestmark = [pytest.mark.integration, pytest.mark.purchase_requests]
 
 @pytest.fixture
 def pr(db_session, main_branch, admin_user):
+    # approved_by_id is set because approve() always sets it. Without it this
+    # requisition reads as still AWAITING approval (models.awaiting_approval),
+    # and recompute's idle state is then 'submitted' rather than 'approved' --
+    # correctly, since 2026-09-06 decoupled the approval fact from the status.
     p = PurchaseRequest(pr_number='ST-1', request_date=date(2026, 8, 15),
                         branch_id=main_branch.id, status='approved',
-                        created_by_id=admin_user.id)
+                        created_by_id=admin_user.id,
+                        approved_by_id=admin_user.id)
     p.line_items.append(PurchaseRequestItem(line_number=1, description='A', quantity=10))
     p.line_items.append(PurchaseRequestItem(line_number=2, description='B', quantity=5))
     db_session.add(p)
@@ -111,13 +116,58 @@ class TestReopening:
 
 class TestTerminalStatusesAreLeftAlone:
     """Control: recompute must not resurrect a cancelled or rejected
-    requisition, nor touch a draft."""
+    requisition, nor touch a draft.
 
-    @pytest.mark.parametrize('status', ['draft', 'submitted', 'cancelled', 'rejected'])
+    `submitted` LEFT this list on 2026-09-06. It was here because approve() and
+    reject() required status == 'submitted' exactly, so moving a pulled
+    requisition on deleted its approval step; both now read the approval fact
+    (approved_by_id) instead, and a submitted requisition on an order is
+    recomputed like any other. See TestSubmittedIsRecomputedNow."""
+
+    @pytest.mark.parametrize('status', ['draft', 'cancelled', 'rejected'])
     def test_it_does_not_touch(self, db_session, pr, status):
         pr.status = status
         db_session.commit()
         assert recompute_pr_status(pr) == status
+
+
+class TestSubmittedIsRecomputedNow:
+    """A requisition pulled onto an order BEFORE its signature arrives shows how
+    far its goods have got, while remaining unapproved."""
+
+    @pytest.fixture
+    def unsigned(self, db_session, main_branch, admin_user):
+        p = PurchaseRequest(pr_number='ST-UNSIGNED', request_date=date(2026, 8, 15),
+                            branch_id=main_branch.id, status='submitted',
+                            created_by_id=admin_user.id)   # no approved_by_id
+        p.line_items.append(PurchaseRequestItem(line_number=1, description='A',
+                                                quantity=10))
+        p.line_items.append(PurchaseRequestItem(line_number=2, description='B',
+                                                quantity=5))
+        db_session.add(p); db_session.commit()
+        return p
+
+    def test_a_partly_ordered_unsigned_requisition_moves(self, db_session,
+                                                         main_branch, admin_user,
+                                                         unsigned):
+        _order(db_session, main_branch, admin_user, [(unsigned.line_items[0], 10)],
+               number='ST-PO-UNSIGNED')
+        assert recompute_pr_status(unsigned) == 'partially_converted'
+
+    def test_it_is_still_awaiting_approval(self, db_session, main_branch,
+                                           admin_user, unsigned):
+        """THE POINT of the decoupling -- the signature is not lost."""
+        _order(db_session, main_branch, admin_user, [(unsigned.line_items[0], 10)],
+               number='ST-PO-UNSIGNED2')
+        recompute_pr_status(unsigned); db_session.commit()
+        assert unsigned.status == 'partially_converted'
+        assert unsigned.awaiting_approval is True
+
+    def test_an_unsigned_requisition_with_nothing_ordered_stays_submitted(
+            self, db_session, unsigned):
+        """The idle state must NOT be 'approved' for an unsigned requisition --
+        that would approve it silently."""
+        assert recompute_pr_status(unsigned) == 'submitted'
 
 
 class TestIsConverted:

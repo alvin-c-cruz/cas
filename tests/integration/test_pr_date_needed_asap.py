@@ -196,12 +196,15 @@ class TestItIsVisible:
         html = client.get(f'/purchase-requests/{asap_pr.id}').data.decode()
         assert 'ASAP' in html
 
-    def test_the_printout_reads_asap(self, client, admin_user, main_branch, asap_pr):
+    def test_the_printout_reads_asap(self, client, db_session, admin_user, main_branch,
+                                     asap_pr):
+        # Submitted, not draft: printing a draft is refused by pr_print_access.
+        asap_pr.status = 'submitted'; db_session.commit()
         _login(client, admin_user, main_branch)
         html = client.get(f'/purchase-requests/{asap_pr.id}/print').data.decode()
         assert 'ASAP' in html
 
-    def test_a_dated_printout_still_shows_the_date(self, client, admin_user,
+    def test_a_dated_printout_still_shows_the_date(self, client, db_session, admin_user,
                                                    main_branch, dated_pr):
         """Control: ASAP must not leak onto every requisition.
 
@@ -211,6 +214,7 @@ class TestItIsVisible:
         fixture had numbered the requisition ASAP-2 and the number is echoed in
         the <title>. The template was correct; the assertion was not.
         """
+        dated_pr.status = 'submitted'; db_session.commit()
         _login(client, admin_user, main_branch)
         html = client.get(f'/purchase-requests/{dated_pr.id}/print').data.decode()
         cell = _date_needed_cell(html)

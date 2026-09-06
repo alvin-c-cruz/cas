@@ -5,6 +5,7 @@ posts no journal entry.
 A requisition records WHAT is needed (product / UoM / qty / description) and WHY (reason) --
 NO vendor and NO price. On approval it converts into a *draft* Purchase Order where the buyer
 adds the vendor and prices (mirror of quotations.accept -> draft SO)."""
+import re
 from decimal import Decimal
 
 from app import db
@@ -37,6 +38,7 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
         'approved_by_id', 'approved_at',
         'rejected_by_id', 'rejected_at', 'reject_reason',
         'cancelled_by_id', 'cancelled_at', 'cancel_reason',
+        'returned_by_id', 'returned_at', 'return_reason',
     )
 
     SNAPSHOT_LINE_FIELDS = (
@@ -64,7 +66,43 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
     #: 'converted' stays out: every line is consumed, so the only edit the
     #: validator would allow is ADDING demand to a fully ordered requisition,
     #: which belongs on a new requisition. Carry-over of current behaviour.
-    AMEND_STATUSES = ('approved', 'partially_converted')
+    #: `partially_received` joins its ordering twin: it is the same
+    #: work-in-progress state seen one hop further down the chain, and
+    #: validate_amendment already refuses reducing a line below the quantity
+    #: consumed against it (received can never exceed ordered, so the existing
+    #: guard covers delivery too). `received` is excluded -- every line has
+    #: arrived in full, so there is nothing left to amend.
+    AMEND_STATUSES = ('approved', 'partially_converted', 'partially_received')
+
+    #: Statuses from which a requisition can NEVER be awaiting approval, whatever
+    #: `approved_by_id` says. A draft has not been offered for signature yet;
+    #: rejected and cancelled are decisions already taken; `approved` IS the
+    #: decision, and saying so here rather than relying on approved_by_id alone
+    #: keeps a row whose provenance column was never filled -- a seed, a legacy
+    #: import, a fixture -- from reading as unsigned and being approvable twice.
+    #:
+    #: Everything else CAN be -- including the fulfilment states. Since 2026-09-06
+    #: recompute_pr_status runs on a submitted requisition, so one pulled onto an
+    #: order before its signature arrives reads `partially_converted` while still
+    #: unsigned. Status answers "how far have the goods got"; APPROVAL is its own
+    #: recorded fact (`approved_by_id`), and conflating the two is what made a
+    #: pulled requisition unapprovable.
+    NEVER_AWAITING_APPROVAL = ('draft', 'approved', 'rejected', 'cancelled')
+
+    @property
+    def awaiting_approval(self):
+        """Does this requisition still need somebody's signature?
+
+        Read from `approved_by_id`, NOT from `status == 'submitted'`. The two
+        stopped being the same question when a submitted requisition became
+        orderable: its status then tracks the goods while the signature is still
+        outstanding.
+        """
+        # Named through the CLASS, not `self`: the lifecycle-tuple guard matches
+        # status collections to its REGISTRY by name, and `self.X` reads there as
+        # a second, unregistered collection.
+        return (self.approved_by_id is None
+                and self.status not in PurchaseRequest.NEVER_AWAITING_APPROVAL)
 
     id = db.Column(db.Integer, primary_key=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True, index=True)
@@ -110,6 +148,14 @@ class PurchaseRequest(Amendable, RowVersioned, db.Model):
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     cancelled_at = db.Column(db.DateTime)
     cancel_reason = db.Column(db.String(500))
+    # Sent BACK to draft, from `submitted` (the approver's third choice beside
+    # Approve and Reject) or from `rejected` (recovery). Records only the LATEST
+    # return; the audit log carries every one. The rejected_* fields above are
+    # deliberately NOT cleared when this is set -- a returned requisition still
+    # shows the decision it reversed.
+    returned_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    returned_at = db.Column(db.DateTime)
+    return_reason = db.Column(db.String(500))
     # --- Printed signatories -------------------------------------------------
     # FREE TEXT, and deliberately NOT derived from created_by/submitted_by/
     # approved_by_id: the people who sign a requisition are frequently NOT CAS users.
@@ -262,14 +308,62 @@ SIGNATORY_FIELDS = ('prepared_by', 'noted_by', 'approved_by')
 SIGNATORY_ROLES = ('Prepared by', 'Noted by', 'Approved by')
 
 
-def generate_pr_number(branch_id=None):
-    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
+#: A client-chosen number prefix: up to four alphanumerics and one hyphen, then
+#: the numeric tail -- '25-0914', '26-0001'. Anchored and deliberately narrow so
+#: the OLD 'PR-2026-07-0030' format does NOT match (it carries three hyphens);
+#: those stay invisible to the generator, exactly as before.
+_PREFIXED_NUMBER = re.compile(r'^([A-Za-z0-9]{1,4}-)(\d+)$')
 
-    Mirrors generate_invoice_number's contract exactly (global, not per-branch;
-    branch_id accepted for call-site symmetry). Each PR gets the next number after
-    the highest existing purely-numeric pr_number -- this deliberately includes
-    legacy-migrated literal numbers, not just CAS-generated ones. Legacy prefixed
-    numbers (e.g. the old 'PR-2026-07-0030' format) are ignored.
+
+def generate_pr_number(branch_id=None):
+    """Next PR number, continuing whatever series the PREVIOUS record used.
+
+    Two shapes are supported, chosen by what the newest requisition actually
+    carries rather than by configuration:
+
+    * Purely numeric ('00984') -- delegates to the shared 5-digit generator, so
+      every pre-existing client keeps byte-identical behaviour.
+    * A user-defined prefix ('25-0914') -- the prefix is the CLIENT's, not ours,
+      and it changes (they may move to '26-' next year). So the prefix is read
+      off the newest row and carried forward, and the tail is incremented at its
+      own width: '25-0972' -> '25-0973', '25-0009' -> '25-0010'.
+
+    The prefix comes from the newest row BY ID (insertion order), never from a
+    lexicographic sort on the number -- string ordering on a PREFIX-NNNN column
+    breaks the moment the tail crosses a digit-width boundary ('0999' sorting
+    after '1000'). Within that prefix the numeric MAX of every parsed tail is
+    taken, not just the newest row's own tail, so an out-of-order or
+    concurrently-retried insert cannot yield a stale suggestion. The candidate
+    then skips anything already taken, because pr_number is globally unique.
+
+    Legacy prefixed numbers ('PR-2026-07-0030') match neither shape and are
+    ignored, unchanged from the original contract.
     """
     from app.utils.doc_numbering import next_document_number
-    return next_document_number(PurchaseRequest, PurchaseRequest.pr_number, branch_id)
+
+    query = db.session.query(PurchaseRequest.pr_number, PurchaseRequest.branch_id,
+                             PurchaseRequest.id)
+    rows = [(n, b, i) for n, b, i in query.all() if n]
+
+    # Branch scope narrows which series "the previous record" belongs to; under
+    # company scope (the default) every branch shares one series.
+    from app.utils.doc_numbering import _resolve_scope, BRANCH
+    scoped = rows
+    if _resolve_scope() == BRANCH and branch_id is not None:
+        scoped = [r for r in rows if r[1] == branch_id] or rows
+
+    newest = max(scoped, key=lambda r: r[2], default=None)
+    match = _PREFIXED_NUMBER.match(newest[0]) if newest else None
+    if not match:
+        return next_document_number(PurchaseRequest, PurchaseRequest.pr_number, branch_id)
+
+    prefix, tail = match.group(1), match.group(2)
+    width = len(tail)
+    same_prefix = [int(m.group(2)) for n, _, _ in scoped
+                   if (m := _PREFIXED_NUMBER.match(n)) and m.group(1) == prefix]
+    taken = {n for n, _, _ in rows}
+
+    candidate = max(same_prefix) + 1
+    while f'{prefix}{candidate:0{width}d}' in taken:
+        candidate += 1
+    return f'{prefix}{candidate:0{width}d}'

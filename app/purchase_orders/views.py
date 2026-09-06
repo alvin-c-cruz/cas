@@ -626,10 +626,6 @@ def create():
 @purchase_orders_bp.route('/purchase-orders/<int:id>')
 @login_required
 def view(id):
-    # Function-local, matching _assert_payload_allocations above: this module and
-    # purchase_requests.allocation reference each other, so the import stays
-    # inside the call rather than at module load.
-    from app.purchase_requests.allocation import unapproved_source_prs
     po = _get_po_or_404(id)
     created_by_user = (db.session.get(User, po.created_by_id) if po.created_by_id else None)
     approved_by_user = (db.session.get(User, po.approved_by_id) if po.approved_by_id else None)
@@ -644,17 +640,6 @@ def view(id):
                            po_print_form=AppSettings.get_setting('po_print_form', 'current'),
                            po_print_access=AppSettings.get_setting('po_print_access',
                                                                    'approved_only'),
-                           # Why approval is refused, resolved HERE so the page
-                           # and approve()'s own guard read the same predicate
-                           # rather than two spellings of it. Only asked while
-                           # approval is still possible: the banner explains a
-                           # block on approving, so on an already-approved or
-                           # cancelled order it would warn about nothing the
-                           # reader can act on. A source CAN be cancelled after
-                           # the fact, so that case is real, not theoretical.
-                           unapproved_sources=(
-                               unapproved_source_prs(po)
-                               if po.status in ('draft', 'submitted') else []),
                            revisions=_revision_panel_rows(po))
 
 
@@ -1037,19 +1022,21 @@ def approve(id):
     # cancelled matter especially: a requisition pulled while submitted can still
     # take either exit afterwards, and nothing unwinds the purchase-order lines
     # when it does, so this is the only place left to catch it.
-    from app.purchase_requests.allocation import unapproved_source_prs
-    unapproved = unapproved_source_prs(po)
-    if unapproved:
-        flash('This Purchase Order draws on %s that %s not been approved: %s. '
-              'Approve %s first, or remove the affected lines.'
-              % ('a Purchase Requisition' if len(unapproved) == 1
-                 else '%d Purchase Requisitions' % len(unapproved),
-                 'has' if len(unapproved) == 1 else 'have',
-                 ', '.join('"%s" (%s)' % (p.pr_number, p.status.replace('_', ' '))
-                           for p in unapproved),
-                 'it' if len(unapproved) == 1 else 'them'), 'error')
-        return redirect(url_for('purchase_orders.view', id=id))
-
+    # REMOVED 2026-09-06 at the owner's request: an order is no longer refused
+    # because a requisition behind it is still submitted, rejected or cancelled.
+    #
+    # What this gives up, stated plainly: the order's demand may never have been
+    # authorised. Pulling a `submitted` requisition became the ordinary path on
+    # 2026-08-26, and this guard was the remaining control that the signature
+    # eventually arrived -- including for the case a requisition pulled while
+    # submitted is later REJECTED or CANCELLED, which nothing unwinds on the
+    # purchase-order lines. Approving is now the buyer's judgement, not the
+    # system's, and the requisition's own status is where that is visible.
+    #
+    # unapproved_source_prs() is deliberately KEPT in allocation.py with its unit
+    # tests: it is the one correct spelling of "the demand behind this line was
+    # never authorised", and a future report or warning should reuse it rather
+    # than write a fourth version of the predicate.
     old_values = model_to_dict(po, ['status'])
     po.status = 'approved'
     po.approved_by_id = current_user.id
