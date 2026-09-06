@@ -27,7 +27,7 @@
          ordinary inputs next to it. #}
       {# The select stays ENABLED on edit: vendor_id is DataRequired, so disabling it
          fails validation on every edit submit, and the usual hidden-field workaround
-         posts a duplicate name= (see CLAUDE.md's hidden_tag gotcha). It is the SCRIPT
+         posts a duplicate name= (the hidden_tag gotcha). It is the SCRIPT
          that stops treating it as live -- edit() scopes `eligible` by rr.vendor_id and
          ignores any POSTed vendor_id, so an enabled-but-ignored control needs to SAY
          so rather than silently invite a switch that can only ever be refused. #}

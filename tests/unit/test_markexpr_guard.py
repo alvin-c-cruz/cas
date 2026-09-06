@@ -2,13 +2,13 @@
 
 `--strict-markers` validates markers APPLIED to tests, never a `-m` EXPRESSION.
 Four module markers (purchase_orders, purchase_requests, receiving_reports,
-control_accounts) sat in .claude/regression-map.json for weeks while none was
-registered, so every /guard union silently ran a smaller suite than it claimed.
+control_accounts) were referenced by the regression tooling for weeks while none
+was registered, so every marker-union run silently exercised a smaller suite
+than it claimed.
 
 These tests drive the pytest CLI in a subprocess on purpose. A mock-only test
 would prove the hook's branching and observe nothing about what pytest actually
-does with a `-m` string -- which is the entire seam being guarded (memory
-`feedback-mock-only-tests-cannot-see-seams`).
+does with a `-m` string -- which is the entire seam being guarded.
 
 Both directions are asserted: the guard must FIRE on an unregistered name, and
 must NOT fire on the legitimate expressions this repo actually runs -- a guard

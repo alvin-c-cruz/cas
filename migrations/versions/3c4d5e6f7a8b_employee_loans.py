@@ -14,8 +14,8 @@ with a plain filter_by(...).first(), and this index makes that lookup
 well-defined rather than silently picking an arbitrary row among several.
 
 sss_loan_id/pagibig_loan_id are added as PLAIN Integer columns (no inline
-sa.ForeignKey) per CLAUDE.md's "Batch add_column cannot carry an inline
-sa.ForeignKey" gotcha -- SQLite batch mode raises "Constraint must have a
+sa.ForeignKey): a batch add_column cannot carry an inline
+sa.ForeignKey -- SQLite batch mode raises "Constraint must have a
 name" for an unnamed FK inside a table rebuild. The ORM side still declares
 db.ForeignKey for normal relationship joins; only the migration column is bare.
 

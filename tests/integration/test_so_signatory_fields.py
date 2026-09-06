@@ -236,8 +236,8 @@ def test_print_blank_signatory_is_an_empty_line_not_a_placeholder(client, db_ses
     assert [name for _, name in pairs] == ['Name &amp; Date'] * 4
     # Scoped to the APPLIED attribute, not the bare class name: the CSS rule
     # `.sig-box .sig-line--named` lives in the page's own <style> block, so a
-    # substring assertion on the class name alone can never fail. (CLAUDE.md:
-    # inline style/JS text leaks into the response and defeats absence tests.)
+    # substring assertion on the class name alone can never fail: inline
+    # style/JS text leaks into the response and defeats absence tests.
     assert 'class="sig-line sig-line--named"' not in html
     assert 'System Administrator' not in html
     assert admin_user.full_name not in html.split('sig-row')[-1]

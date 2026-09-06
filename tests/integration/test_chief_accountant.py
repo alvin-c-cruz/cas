@@ -261,7 +261,7 @@ def test_ca_sidebar_shows_accounting_hides_sysadmin(client, db_session, chief_ac
     # heading each now, no duplicate "Accounting").
     assert b'Tax &amp; Oversight' in body
     # Sysadmin hidden (Jinja {# #} comments in the template near these so the
-    # names don't leak into the HTML — see CLAUDE.md gotcha):
+    # names don't leak into the HTML):
     assert b'User Management' not in body
     assert b'Branch Management' not in body
     assert b'Company Settings' not in body

@@ -1,8 +1,8 @@
 """BUG-COA-LIST-ADD-VS-CREATE-WORDING: the COA list page's launch button and
 matching true-empty message said "Add Account", inconsistent with sibling
-master-data list pages (Customers/Vendors say "Create X") and with
-projects/cas/CLAUDE.md's own documented convention -- "Reference/master
-records (vendors, customers, accounts, branches, users) keep 'Create'"."""
+master-data list pages (Customers/Vendors say "Create X") and with the
+project's own documented convention -- "Reference/master records (vendors,
+customers, accounts, branches, users) keep 'Create'"."""
 import pytest
 
 pytestmark = [pytest.mark.integration]

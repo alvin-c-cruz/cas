@@ -193,9 +193,8 @@ class PayrollRunLine(db.Model):
     # needs to credit the EXACT loan record that was debited at post, not
     # "whichever loan is currently active for this employee" (which could
     # have changed between post and cancel). Plain nullable Integer, no
-    # inline FK (SQLite batch add_column can't carry one -- see CLAUDE.md's
-    # "Batch add_column cannot carry an inline sa.ForeignKey" gotcha); the
-    # ORM relationship below still gives FK-shaped joins.
+    # inline FK (a SQLite batch add_column cannot carry an inline
+    # sa.ForeignKey); the ORM relationship below still gives FK-shaped joins.
     sss_loan_id = db.Column(db.Integer, db.ForeignKey('employee_loans.id'), nullable=True)
     pagibig_loan_id = db.Column(db.Integer, db.ForeignKey('employee_loans.id'), nullable=True)
 

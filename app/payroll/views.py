@@ -70,8 +70,8 @@ def generate_payroll_run_number():
     """Next PR-YYYY-MM-NNNN, a company-wide sequence that resets each month.
 
     Orders candidate rows by PayrollRun.id.desc() (insertion order) rather than
-    a lexicographic sort on the run_number string -- CLAUDE.md's
-    document-numbering-system convention flags string .desc() on a
+    a lexicographic sort on the run_number string -- the project's
+    document-numbering convention flags string .desc() on a
     PREFIX-YYYY-MM-NNNN column as a landmine (it silently breaks once the
     numeric suffix crosses a digit-width boundary, e.g. "0999" sorting after
     "1000"). Takes the numeric MAX of every parsed suffix among this month's

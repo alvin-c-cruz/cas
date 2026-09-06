@@ -58,7 +58,7 @@ def test_create_draft_then_approve_flow(client, admin_user, login_user, db_sessi
     assert adj.journal_entry_id is not None
 
     # audit row for the approve action, via the real HTTP route (not just the
-    # service layer) -- CLAUDE.md: "Verify the audit log in CRUD tests".
+    # service layer) -- convention: verify the audit log in CRUD tests.
     approve_log = (AuditLog.query.filter_by(module='stock_adjustments', action='approve',
                                             record_id=adj.id).first())
     assert approve_log is not None
@@ -212,8 +212,8 @@ def test_view_blocked_for_branch_outside_users_accessible_set(
 def test_edit_writes_real_before_after_diff_not_empty_old_values(
         client, admin_user, login_user, db_session, product_tracked, branch_main, make_account):
     """Review finding: edit's log_update passed old_values={} -- no real diff,
-    against CLAUDE.md's "Use get_changes(old_obj, new_data, fields) to diff
-    before logging updates" convention. Change notes on an existing draft and
+    against the "use get_changes(old_obj, new_data, fields) to diff before
+    logging updates" convention. Change notes on an existing draft and
     assert the audit row's old_values/new_values genuinely reflect the real
     before/after, not an empty dict."""
     _enable_module()

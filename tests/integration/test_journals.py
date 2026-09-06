@@ -149,7 +149,7 @@ def test_journal_entries_redirects_to_voucher(client, setup):
 
 
 def test_voucher_launch_button_uses_enter_verb(client, setup):
-    """List/launch button must use the 'Enter' verb, not 'New' (CLAUDE.md verb rule)."""
+    """List/launch button must use the 'Enter' verb, not 'New' (verb convention)."""
     users, branch = setup
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch.id

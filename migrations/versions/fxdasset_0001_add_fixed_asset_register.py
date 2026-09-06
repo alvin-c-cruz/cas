@@ -7,8 +7,8 @@ Create Date: 2026-07-18
 Re-chained 2026-07-18 from the original down_revision (8242857b00da) onto
 ec44eda6db34 -- main advanced past 8242857b00da while this branch was in
 flight (R-04 bank_accounts + AP variance-snapshot heads were merged), so
-8242857b00da is no longer a real head. See CLAUDE.md's migration
-head-collision note.
+8242857b00da is no longer a real head -- the usual migration
+head-collision case.
 """
 from alembic import op
 import sqlalchemy as sa

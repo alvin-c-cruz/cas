@@ -7,8 +7,8 @@ migration: replacing sorev_0002.upgrade() with `return` still left it passing.
 This drives the REAL upgrade()/downgrade() functions against the test session's
 own connection via Alembic's Operations/MigrationContext -- the same primitive
 `flask db upgrade` uses under the hood -- against confirmed Sales Orders with
-real lines built through the ORM. See CLAUDE.md's "Migrations are HAND-WRITTEN
-with batch ops" gotcha and memory `migration-verify-on-real-db-copy`: a
+real lines built through the ORM. Migrations here are HAND-WRITTEN with batch
+ops, and a migration is best verified on a real DB copy: a
 conftest create_all() DB is not a migrated DB, but the migration's own upgrade()
 function IS the code under test here, so invoking it directly (rather than a
 subprocess `flask db upgrade`) is both faithful and fast.

@@ -10,7 +10,7 @@ batch mode exists for ALTERing an existing table, which this migration never doe
 
 The two FKs to users.id are NAMED explicitly. An unnamed FK is fine inside
 create_table, but naming both keeps a later batch rebuild of this table able to
-reproduce them -- the unnamed-constraint trap recorded in projects/cas/CLAUDE.md.
+reproduce them -- avoiding the unnamed-constraint trap.
 
 Revision ID: pramd_0001
 Revises: popurp_0001

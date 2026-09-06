@@ -226,7 +226,7 @@ def _memo_derived_due_date(memo_date, invoice_date, invoice_due_date):
 
     Fallback: `SalesInvoice.due_date` is declared NOT NULL today, but a
     past migration or a legacy bulk import may leave a real row with it
-    unset (see CLAUDE.md's batch-migration drift gotcha) -- when either
+    unset (the batch-migration drift gotcha) -- when either
     referenced date is missing, the terms interval is zero and the
     derived due date is simply the memo_date. `calculate_age_bucket`
     already tolerates a null due date, so this needs no special-casing

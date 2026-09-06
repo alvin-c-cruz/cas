@@ -268,7 +268,7 @@ Run through each page at three viewport widths: **1280px (desktop)**, **768px (t
 |---|------|--------------|-------------|----------|--------|
 | B01 | 2026-06-16 | `/cash-disbursements/create` (POST) | **T75 — No server-side validation for negative expense amounts.** Submitting `amount: -1000` via JSON expense_lines creates a CDV with `total_amount = -1000.00`. No rejection, no error. | Medium | Open |
 | B02 | 2026-06-16 | `/cash-disbursements/<id>` (detail) | **T90 — Expense-lines table and JE preview table clip on mobile (375px).** Both tables have `overflow: visible` on their wrapper; content beyond the card edge is hidden instead of scrolling. CDV list page wraps tables correctly (overflow-x: auto) but detail page does not. | Low | Open |
-| B03 | 2026-06-16 | Void modal / Cancel modal (detail page) | **T93 — Hardcoded hex colours in modal inline styles.** H3, P, and both buttons in void/cancel modals use raw hex (`#1e293b`, `#475569`, `#e2e8f0`, `#3b82f6`) in `style=""` attributes instead of CSS design-token variables. Violates CLAUDE.md styling convention. | Low | Open |
+| B03 | 2026-06-16 | Void modal / Cancel modal (detail page) | **T93 — Hardcoded hex colours in modal inline styles.** H3, P, and both buttons in void/cancel modals use raw hex (`#1e293b`, `#475569`, `#e2e8f0`, `#3b82f6`) in `style=""` attributes instead of CSS design-token variables. Violates the project styling convention. | Low | Open |
 | B04 | 2026-06-16 | `/dashboard` (after viewer permission redirect) | **Minor — Flash "You do not have permission" appears 3× on dashboard** after viewer attempts to access `/cash-disbursements/create`. Likely a duplicate `flash()` call or session flush issue. | Low | Open |
 
 ---
@@ -295,5 +295,5 @@ Branch-isolation tests (T70: GET other-branch CDV → 404; T71: POST edit; T72: 
 | Skipped | 3 (T70, T71, T72 — single-branch environment) |
 | Bugs found | 4 (3 test failures + 1 minor flash duplicate) |
 | Run date | 2026-06-16 |
-| Tester | Claude Code (Playwright automated walk-through) |
+| Tester | Playwright automated walk-through |
 | Overall result | CONDITIONAL PASS — core workflows fully functional; 3 low/medium bugs logged |

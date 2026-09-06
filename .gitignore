@@ -60,16 +60,7 @@ logs/
 .coverage
 htmlcov/
 
-# Claude Code files are VERSIONED so a fresh clone gets them: skills, agents,
-# hooks, guard.py, regression-map.json and settings under .claude/, plus the
-# .analyze-page/ history. Only transient Claude runtime artifacts are ignored:
-# (.gitignore has no inline comments — keep patterns on their own lines)
-# .superpowers/ = per-session brainstorm scratch + logs
-.superpowers/
-# .claude/scheduled_tasks.lock = transient scheduler lock
-.claude/scheduled_tasks.lock
-
-# Playwright MCP artifacts (transient snapshots, console/network logs, screenshots)
+# Playwright artifacts (transient snapshots, console/network logs, screenshots)
 .playwright-mcp/
 
 # Session screenshots and test artifacts in project root

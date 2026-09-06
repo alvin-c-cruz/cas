@@ -9,8 +9,8 @@ tip (4d5e6f7a8b9c) to resolve a two-heads collision after merging feat/r06-payro
 into main -- both branches forked the same prior head (318ee8bbb515). The two
 migrations touch unrelated tables (opening_balance_change_requests vs. payroll's
 statutory/runs/loans tables), so ordering is safe either direction; this one was
-picked as the single-file re-chain since it is the shorter chain. See workspace
-CLAUDE.md's "Migration head-collision after merging a moved default branch" note.
+picked as the single-file re-chain since it is the shorter chain. This is the
+"migration head-collision after merging a moved default branch" case.
 """
 from alembic import op
 import sqlalchemy as sa

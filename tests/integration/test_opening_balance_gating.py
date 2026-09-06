@@ -83,7 +83,7 @@ class TestOpeningBalanceGating:
         assert req.branch_id == branch.id
         assert req.requested_by == accountant_user.username
 
-        # Verify the audit log per CLAUDE.md convention: sole-accountant auto-approve
+        # Verify the audit log per convention: sole-accountant auto-approve
         # logs action='update' on the entry; a would-be-pending request logs
         # action='request'. With only one accountant/CA fixtured, this auto-approves.
         audit = AuditLog.query.filter_by(module='opening_balances').filter(

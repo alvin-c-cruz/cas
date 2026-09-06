@@ -61,8 +61,8 @@
 
 {# can_write OR can_approve, not can_approve alone: the whole card used to be
    approver-only, so widening the route without widening this would have left
-   Submit backend-complete with no reachable button -- the exact shape CLAUDE.md
-   records for delete_approved_email. #}
+   Submit backend-complete with no reachable button -- the exact shape recorded
+   for delete_approved_email. #}
 {% if can_write or can_approve %}
 <div class="card"><div class="card-body">
   {# Submit is gated on can_write -- that is the point. The staff receiver who

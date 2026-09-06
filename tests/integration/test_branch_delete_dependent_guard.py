@@ -15,7 +15,7 @@ can silently understate a total (found 2026-08-01 on the combined AR aging
 report, fixed there by making "all branches" mean "no branch filter").
 
 The dependent set is derived from the mapper registry rather than hardcoded:
-CLAUDE.md's branch-scoping rule requires every NEW transactional model to carry
+the branch-scoping rule requires every NEW transactional model to carry
 `branch_id` from day one, so a literal list would rot silently the moment
 someone follows that rule.
 """

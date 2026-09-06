@@ -1711,7 +1711,11 @@
             container.appendChild(alertEl);
         };
 
-        // Custom confirm modal for Claude browser extension compatibility
+        // Custom in-page confirmation modal. Native browser dialogs are banned
+        // project-wide: they block browser automation, and tests assert the
+        // rendered page contains no native-dialog call. Do NOT name one here --
+        // a JS comment is served in the response body, so writing it would trip
+        // those very assertions (it did once; that is why this note exists).
         window.showConfirm = function(message, callback) {
             const modal = document.getElementById('confirmModal');
             const messageEl = document.getElementById('confirmMessage');

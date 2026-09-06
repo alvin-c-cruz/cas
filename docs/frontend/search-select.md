@@ -126,12 +126,10 @@ const choices = initSearchSelect(sel, {
   setting `select.value` — drive the Choices UI: click `.choices:has(#id) .choices__inner`, then
   click `.choices__list--dropdown .choices__item` by text. (See `tests/e2e/test_ap_smoke.py`.)
 - **Regression coverage:** `search-select.js` is a high-blast-radius shared file. If you change
-  it, `/guard` runs the AP e2e smoke. New shared pickers should be added to
-  `.claude/regression-map.json` and ideally get e2e coverage.
+  it, run the AP e2e smoke (`pytest -m e2e`). New shared pickers should get e2e coverage too.
 
 ---
 
 ## Related
-- Implementation skill: `/search-select` (`.claude/skills/search-select/SKILL.md`)
-- Memory: `search-select-pattern` (older Choices convention), `project-search-select` (history),
-  `project-regression-guard` (e2e + the Choices-strips-options gotcha).
+- `tests/e2e/test_ap_smoke.py` — the e2e regression net for this component, and the reference for
+  driving a Choices control from browser automation (the Choices-strips-options gotcha).

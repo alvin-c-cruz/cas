@@ -1,14 +1,13 @@
 """
 Playwright e2e smoke tests for the Accounts Payable create form — the JS/browser layer
 that pytest's HTML-only tests can't see. These are the regression net for the high-blast-
-radius shared files (search-select.js, vendor-quick-add.js, transaction-utils.js, the JE
-preview renderer) listed in .claude/regression-map.json.
+radius shared files: search-select.js, vendor-quick-add.js, transaction-utils.js and the
+JE preview renderer.
 
 Run: python -m playwright install chromium   (once)
      pytest -m e2e
 
-Marked `accounts_payable` too, so `pytest -m accounts_payable` (what /guard runs for AP)
-exercises them as well.
+Marked `accounts_payable` too, so `pytest -m accounts_payable` exercises them as well.
 
 Note: the vendor/account pickers are Choices.js widgets — Choices strips the real options
 out of the native <select>, so selection MUST go through the Choices UI (open the control,
