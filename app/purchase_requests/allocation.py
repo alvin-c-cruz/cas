@@ -697,3 +697,94 @@ def _dedup_links(rows):
         if (doc_id, doc_number) not in seen:
             seen.append((doc_id, doc_number))
     return out
+
+
+def po_links_for_pr_items(pr_item_ids):
+    """``{pr_item_id: [(po_id, po_number), ...]}`` -- per LINE, not per document.
+
+    The list page's po_links_for_pr_ids answers "which orders is this
+    requisition on"; the detail page's allocation panel needs "which order is
+    THIS LINE on", because a requisition split across two orders is exactly the
+    case the panel exists to show. One query for the whole panel.
+    """
+    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+    ids = [i for i in (pr_item_ids or []) if i is not None]
+    if not ids:
+        return {}
+    rows = (db.session.query(PurchaseOrderItem.source_pr_item_id,
+                             PurchaseOrder.id, PurchaseOrder.po_number)
+            .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
+            .filter(PurchaseOrderItem.source_pr_item_id.in_(ids))
+            .filter(PurchaseOrder.status.in_(COMMITTED_PO))
+            .order_by(PurchaseOrder.po_number.asc())
+            .distinct()
+            .all())
+    return _dedup_links(rows)
+
+
+def rr_links_for_pr_items(pr_item_ids):
+    """``{pr_item_id: [(rr_id, rr_number), ...]}`` -- per LINE.
+
+    Same two hops as pr_line_received_qty, and filtered the same way: only
+    COMMITTED_STATUSES receipts are named, so a draft receipt never reports goods
+    as delivered against a requisition line.
+    """
+    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+    from app.receiving_reports.models import (
+        COMMITTED_STATUSES, ReceivingReport, ReceivingReportItem)
+    ids = [i for i in (pr_item_ids or []) if i is not None]
+    if not ids:
+        return {}
+    rows = (db.session.query(PurchaseOrderItem.source_pr_item_id,
+                             ReceivingReport.id, ReceivingReport.rr_number)
+            .join(ReceivingReportItem,
+                  ReceivingReportItem.purchase_order_item_id == PurchaseOrderItem.id)
+            .join(ReceivingReport,
+                  ReceivingReport.id == ReceivingReportItem.receiving_report_id)
+            .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
+            .filter(PurchaseOrderItem.source_pr_item_id.in_(ids))
+            .filter(PurchaseOrder.status.in_(COMMITTED_PO))
+            .filter(ReceivingReport.status.in_(COMMITTED_STATUSES))
+            .order_by(ReceivingReport.rr_number.asc())
+            .distinct()
+            .all())
+    return _dedup_links(rows)
+
+
+def allocation_panel_rows(pr):
+    """One row per requisition line: what was asked, ordered, received, and what
+    is STILL OUTSTANDING -- with the documents that account for each.
+
+    Answers the question the requisition itself cannot: "is there anything here
+    still waiting to be ordered, and where did the rest go?" (owner request
+    2026-09-06).
+
+    Three queries for the whole panel regardless of line count -- the two link
+    maps plus whatever the quantity helpers do -- rather than a property read per
+    row, which is how the list page's N+1 was avoided too.
+
+    `open_qty` is None for a line carrying no quantity: there is no ceiling to
+    measure against, and printing 0 there would read as "nothing outstanding"
+    when the truth is "unknown". The template says so rather than showing a
+    number.
+    """
+    lines = sorted(pr.line_items, key=lambda li: (li.line_number or 0))
+    ids = [li.id for li in lines]
+    po_map = po_links_for_pr_items(ids)
+    rr_map = rr_links_for_pr_items(ids)
+    rows = []
+    for li in lines:
+        ordered = pr_line_ordered_qty(li)
+        received = pr_line_received_qty(li)
+        rows.append({
+            'line': li,
+            'requested': li.quantity,
+            'ordered': ordered,
+            'received': received,
+            'open_qty': pr_line_open_qty(li),
+            'is_open': pr_line_is_open(li),
+            'fully_received': pr_line_is_fully_received(li),
+            'po_links': po_map.get(li.id, []),
+            'rr_links': rr_map.get(li.id, []),
+        })
+    return rows

@@ -117,6 +117,73 @@
   </div>
 </div></div>
 
+{# ORDERING & DELIVERY -- a separate panel, deliberately not extra columns on the
+   table above. That table is the requisition AS ENTERED, the document somebody
+   signed; this is what has happened to it since. Keeping them apart means the
+   document view does not change shape as the goods move, and the printout
+   (which renders from its own template) is untouched.
+
+   Every value here is DERIVED, never stored -- allocation_panel_rows() in
+   allocation.py, built once in view() rather than by per-row property reads.
+   Only committed orders and receipts count, so a draft PO or an unapproved
+   receipt never reports a line as ordered or delivered. #}
+{% if allocation_rows %}
+<div class="card"><div class="card-body">
+  <h3 style="margin-top:0">Ordering &amp; Delivery</h3>
+  <div class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr><th>#</th><th>Item</th><th class="text-end">Requested</th><th class="text-end">Ordered</th>
+          <th class="text-end">Received</th><th class="text-end">Still to order</th>
+          <th>PO #</th><th>RR #</th></tr>
+    </thead>
+    <tbody>
+      {% for r in allocation_rows %}
+      <tr>
+        <td>{{ r.line.line_number }}</td>
+        <td>{{ r.line.product.name if r.line.product else (r.line.description or '') }}</td>
+        <td class="text-end">{{ r.line | qty_fmt('-') }}</td>
+        <td class="text-end">{{ '{:,.4f}'.format(r.ordered).rstrip('0').rstrip('.') if r.ordered else '-' }}</td>
+        <td class="text-end">{{ '{:,.4f}'.format(r.received).rstrip('0').rstrip('.') if r.received else '-' }}</td>
+        {# open_qty is None for a line with no quantity: there is no ceiling to
+           measure against, and printing 0 would read as "nothing outstanding"
+           when the truth is "unknown". #}
+        <td class="text-end">
+          {%- if r.open_qty is none -%}
+            <span class="text-muted" title="This line carries no quantity, so there is no outstanding amount to compute.">n/a</span>
+          {%- elif r.open_qty > 0 -%}
+            <strong>{{ '{:,.4f}'.format(r.open_qty).rstrip('0').rstrip('.') }}</strong>
+          {%- else -%}—{%- endif -%}
+        </td>
+        <td>
+          {%- for po_id, po_number in r.po_links -%}
+            <a href="{{ url_for('purchase_orders.view', id=po_id) }}">{{ po_number }}</a>
+            {{- ', ' if not loop.last -}}
+          {%- else -%}—{%- endfor -%}
+        </td>
+        <td>
+          {%- for rr_id, rr_number in r.rr_links -%}
+            <a href="{{ url_for('receiving_reports.view', id=rr_id) }}">{{ rr_number }}</a>
+            {{- ', ' if not loop.last -}}
+          {%- else -%}—{%- endfor -%}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% set outstanding = allocation_rows | selectattr('is_open') | list %}
+  {% if outstanding %}
+  <p class="text-muted" style="margin-bottom:0">
+    <strong>{{ outstanding | length }}</strong>
+    line{{ '' if outstanding | length == 1 else 's' }} still need{{ 's' if outstanding | length == 1 else '' }} ordering.
+  </p>
+  {% else %}
+  <p class="text-muted" style="margin-bottom:0">Every line is fully ordered.</p>
+  {% endif %}
+</div></div>
+{% endif %}
+
 {% if can_write or can_approve %}
 <div class="card"><div class="card-body">
   {% if pr.status == 'draft' and can_write %}
