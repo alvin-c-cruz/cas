@@ -183,3 +183,141 @@ class TestTheButtonIsOffered:
         body = client.get(f'/purchase-requests/{pr.id}').data.decode()
         assert 'Returned to draft:' in body
         assert MEMO in body
+
+    def test_the_memo_is_styled_as_a_return_not_a_rejection(self, client, accountant_user,
+                                                            main_branch, db_session):
+        """The three memos a requisition can carry -- Note, Rejected, Returned to draft --
+        used to render as identical <p> lines, so the trail could only be read by parsing
+        each label. Colour now carries the kind (owner, 2026-09-06).
+
+        Asserted on the APPLIED class attribute, not the bare class name: `.record-memo`
+        also appears in the inline stylesheet served in this same response, so a substring
+        probe for the name alone could never fail.
+        """
+        _login(client, accountant_user, main_branch)
+        pr = _make_pr(db_session, main_branch, status='rejected')
+        client.post(f'/purchase-requests/{pr.id}/return-to-draft',
+                    data={'return_reason': MEMO})
+        body = client.get(f'/purchase-requests/{pr.id}').data.decode()
+        assert 'class="record-memo record-memo--returned"' in body
+        # ...and it is NOT wearing the rejection's colour, which is the whole point of
+        # giving them different ones.
+        marker = body.split('Returned to draft:')[0].rsplit('<p', 1)[1]
+        assert 'record-memo--rejected' not in marker
+
+    def test_a_returned_requisition_still_shows_the_rejection_it_reverses(
+            self, client, accountant_user, main_branch, db_session):
+        """Both memos read in order, in different colours. A return does not un-happen the
+        decision it reverses, and red must keep meaning `rejected` alone or the two
+        compete on a record carrying both."""
+        _login(client, accountant_user, main_branch)
+        pr = _make_pr(db_session, main_branch, status='rejected')
+        pr.reject_reason = 'Wrong cost centre.'
+        db_session.commit()
+        client.post(f'/purchase-requests/{pr.id}/return-to-draft',
+                    data={'return_reason': MEMO})
+        body = client.get(f'/purchase-requests/{pr.id}').data.decode()
+        assert 'class="record-memo record-memo--rejected"' in body
+        assert 'class="record-memo record-memo--returned"' in body
+
+
+class TestResubmittingClearsThePreviousCycle:
+    """Owner, 2026-09-06: "once re-submitted, the notices should disappear."
+
+    A rejection and a return-to-draft memo describe ONE review cycle. Submitting starts
+    the next one, so carrying them forward made a freshly submitted requisition still read
+    "Rejected: ..." on its own page -- describing a decision that had since been reversed
+    and acted on.
+
+    Cleared rather than hidden. Hiding cannot stay correct: a requisition rejected,
+    returned, re-submitted and rejected AGAIN would pair its new rejection with the
+    previous cycle's return memo, and no display rule keyed on status can tell those
+    apart. The audit log keeps the history either way -- reject() and return_to_draft()
+    each write the full memo into it.
+    """
+
+    def _returned_pr(self, client, db_session, main_branch, user):
+        """A requisition that was rejected, then returned to draft -- carrying BOTH."""
+        _login(client, user, main_branch)
+        pr = _make_pr(db_session, main_branch, status='rejected')
+        pr.reject_reason = 'Wrong cost centre.'
+        pr.rejected_by_id = user.id
+        db_session.commit()
+        client.post('/purchase-requests/%s/return-to-draft' % pr.id,
+                    data={'return_reason': MEMO})
+        db_session.refresh(pr)
+        assert pr.status == 'draft'
+        assert pr.return_reason and pr.reject_reason      # both really are set
+        return pr
+
+    def test_both_memos_are_cleared_on_submit(self, client, accountant_user,
+                                              main_branch, db_session):
+        pr = self._returned_pr(client, db_session, main_branch, accountant_user)
+        client.post('/purchase-requests/%s/submit' % pr.id)
+        db_session.refresh(pr)
+        assert pr.status == 'submitted'
+        assert pr.reject_reason is None
+        assert pr.return_reason is None
+
+    def test_the_provenance_goes_with_them(self, client, accountant_user,
+                                           main_branch, db_session):
+        """A returned_at with no return_reason is a worse record than neither -- it says
+        something happened and refuses to say what."""
+        pr = self._returned_pr(client, db_session, main_branch, accountant_user)
+        client.post('/purchase-requests/%s/submit' % pr.id)
+        db_session.refresh(pr)
+        for field in ('rejected_by_id', 'rejected_at', 'returned_by_id', 'returned_at'):
+            assert getattr(pr, field) is None, field
+
+    def test_neither_notice_renders_after_resubmission(self, client, accountant_user,
+                                                       main_branch, db_session):
+        """THE reported symptom, at the page level."""
+        pr = self._returned_pr(client, db_session, main_branch, accountant_user)
+        client.post('/purchase-requests/%s/submit' % pr.id)
+        body = client.get('/purchase-requests/%s' % pr.id).data.decode()
+        assert 'Returned to draft:' not in body
+        assert 'Rejected:' not in body
+        assert MEMO not in body
+
+    def test_the_requesters_own_note_survives(self, client, accountant_user,
+                                              main_branch, db_session):
+        """CONTROL, and a real distinction: `reason` is the requester's own note about
+        WHAT is being asked for. It belongs to the document, not to a review cycle, so
+        clearing the review memos must not take it too."""
+        pr = self._returned_pr(client, db_session, main_branch, accountant_user)
+        pr.reason = 'For the conveyor line refit.'
+        db_session.commit()
+        client.post('/purchase-requests/%s/submit' % pr.id)
+        db_session.refresh(pr)
+        assert pr.reason == 'For the conveyor line refit.'
+        body = client.get('/purchase-requests/%s' % pr.id).data.decode()
+        assert 'For the conveyor line refit.' in body
+
+    def test_the_history_survives_in_the_audit_log(self, client, accountant_user,
+                                                   main_branch, db_session):
+        """What makes clearing safe rather than destructive. If this ever stops holding,
+        the clear above becomes the only copy being deleted."""
+        from app.audit.models import AuditLog
+        pr = self._returned_pr(client, db_session, main_branch, accountant_user)
+        client.post('/purchase-requests/%s/submit' % pr.id)
+        notes = ' '.join(
+            (e.notes or '') for e in
+            AuditLog.query.filter_by(module='purchase_requests', record_id=pr.id).all())
+        assert MEMO in notes
+        assert 'Returned to draft from rejected' in notes
+
+    def test_a_second_rejection_does_not_drag_the_old_return_memo_along(
+            self, client, admin_user, accountant_user, main_branch, db_session):
+        """The case a status-keyed display rule could not get right, which is why this is
+        a clear and not a filter."""
+        pr = self._returned_pr(client, db_session, main_branch, accountant_user)
+        client.post('/purchase-requests/%s/submit' % pr.id)
+        _login(client, admin_user, main_branch)
+        client.post('/purchase-requests/%s/reject' % pr.id,
+                    data={'reject_reason': 'Budget exhausted for the quarter.'})
+        db_session.refresh(pr)
+        assert pr.reject_reason == 'Budget exhausted for the quarter.'
+        assert pr.return_reason is None
+        body = client.get('/purchase-requests/%s' % pr.id).data.decode()
+        assert 'Budget exhausted for the quarter.' in body
+        assert MEMO not in body

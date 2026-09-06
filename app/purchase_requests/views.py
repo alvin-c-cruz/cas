@@ -723,6 +723,25 @@ def submit(id):
     pr.status = 'submitted'
     pr.submitted_by_id = current_user.id
     pr.submitted_at = ph_now()
+    # Submitting starts a NEW review cycle, so the memos of the previous one stop
+    # applying (owner, 2026-09-06: "once re-submitted, the notices should disappear").
+    # Leaving them set made a freshly submitted requisition still read "Rejected: ..." on
+    # its own page, which describes a decision that has since been reversed and acted on.
+    #
+    # Cleared rather than merely hidden, because hiding cannot stay correct: a
+    # requisition rejected, returned, re-submitted and rejected AGAIN would pair its new
+    # rejection with the PREVIOUS cycle's return memo. The whole group goes, provenance
+    # included -- a returned_at with no return_reason is a worse record than neither.
+    #
+    # No history is lost: reject() and return_to_draft() each write the full memo into
+    # the audit log ("Rejected: <reason>", "Returned to draft from <status>: <reason>"),
+    # which is the permanent record. These columns only ever held the CURRENT cycle.
+    pr.reject_reason = None
+    pr.rejected_by_id = None
+    pr.rejected_at = None
+    pr.return_reason = None
+    pr.returned_by_id = None
+    pr.returned_at = None
     db.session.commit()
     # action='submit', not 'update': the audit log's Actions filter is built from
     # the DISTINCT actions present, so a lifecycle event logged as a generic

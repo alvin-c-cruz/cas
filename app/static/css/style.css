@@ -1562,6 +1562,47 @@ tr.pc-row-excluded { background: var(--bg); }
   border-left: 4px solid var(--amber);
 }
 
+/* ─── Record memos ───────────────────────────────────────────── */
+/* A decision written onto a document: a note, a rejection, a return to draft.
+   Deliberately NOT .alert -- that is a page-level flash sized to interrupt (16/20
+   padding, 24px bottom margin). These sit inside a card, can stack two or three deep on
+   one record, and are a permanent part of the trail rather than a passing message.
+
+   Colour carries the KIND, so a reader can see whether a requisition was rejected or
+   handed back without reading each label. Amber, not red, for a return: work handed back
+   is not a failure, and it keeps red meaning "rejected" alone so the two do not compete
+   when a record carries both. */
+.record-memo {
+  display: flex;
+  gap: 8px;
+  /* baseline, not center: the label is nowrap, so on a memo that wraps to two lines it
+     must sit with the FIRST line rather than float to the vertical middle. */
+  align-items: baseline;
+  margin: 10px 0 0;
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  border-left: 3px solid var(--text-3);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.record-memo strong { white-space: nowrap; color: var(--text); font-weight: 600; }
+
+.record-memo--rejected {
+  border-left-color: var(--red);
+  background: var(--alert-error-bg);
+  color: var(--alert-error-text);
+}
+.record-memo--rejected strong { color: var(--alert-error-text); }
+
+.record-memo--returned {
+  border-left-color: var(--amber);
+  background: var(--alert-warning-bg);
+  color: var(--alert-warning-text);
+}
+.record-memo--returned strong { color: var(--alert-warning-text); }
+
 /* ─── Login Page ─────────────────────────────────────────────── */
 .login-page {
   background: linear-gradient(135deg, var(--login-grad-start) 0%, var(--login-grad-end) 100%);
