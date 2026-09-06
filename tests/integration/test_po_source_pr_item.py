@@ -53,9 +53,18 @@ def vendor(db_session):
 
 @pytest.fixture
 def pr_item(db_session, main_branch, admin_user):
+    # approved_by_id is set because approve() always sets it -- it is the only
+    # writer of status 'approved' (views.py) and no seed creates one without it.
+    # Without the provenance this requisition reads as still AWAITING approval
+    # once an order moves it off 'approved' (models.awaiting_approval), so
+    # cancelling that order would recompute the idle state to 'submitted' rather
+    # than 'approved'. That is correct behaviour for a genuinely unsigned
+    # requisition -- one pulled while submitted -- and wrong only for this
+    # fixture, which meant to describe an approved one.
     p = PurchaseRequest(pr_number='SRC-1', request_date=date(2026, 8, 15),
                         branch_id=main_branch.id, status='approved',
-                        created_by_id=admin_user.id)
+                        created_by_id=admin_user.id,
+                        approved_by_id=admin_user.id)
     p.line_items.append(PurchaseRequestItem(line_number=1, description='Carbide', quantity=20))
     db_session.add(p)
     db_session.commit()
