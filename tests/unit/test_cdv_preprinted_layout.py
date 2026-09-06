@@ -230,3 +230,46 @@ class TestColumnRoundTrip:
             {'key': 'account_code', 'x': 501, 'visible': False, 'width': 77}]}})
         col = next(c for c in out['lineItems']['columns'] if c['key'] == 'account_code')
         assert (col['x'], col['visible'], col['width']) == (501, False, 77)
+
+
+class TestFieldWrapWidth:
+    """The APV twin's 2026-09-06 wrap width, ported. 0 means UNSET -- content-sized and
+    single-line -- which is what every blob saved before today means by having no key."""
+
+    def test_a_legacy_field_gets_width_zero(self):
+        out = sanitize_layout({})
+        for key in FIELD_KEYS:
+            assert out['fields'][key]['width'] == 0, key
+
+    def test_a_set_width_survives(self):
+        assert sanitize_layout({'fields': {'notes': {'width': 340}}})['fields']['notes']['width'] == 340
+
+    def test_zero_stays_zero(self):
+        """0 is a VALUE, not a missing number. Clamping it into WIDTH_MIN..MAX would turn
+        every un-wrapped field into a 10px sliver on its next read."""
+        assert sanitize_layout({'fields': {'notes': {'width': 0}}})['fields']['notes']['width'] == 0
+
+    def test_a_negative_width_reads_as_unset(self):
+        assert sanitize_layout({'fields': {'notes': {'width': -20}}})['fields']['notes']['width'] == 0
+
+    def test_a_sub_minimum_width_snaps_up_not_off(self):
+        """Snapping a 3px drag DOWN to 0 would silently un-wrap a field set on purpose."""
+        from app.cash_disbursements.preprinted_layout import WIDTH_MIN
+        assert sanitize_layout({'fields': {'notes': {'width': 3}}})['fields']['notes']['width'] == WIDTH_MIN
+
+    def test_a_wild_width_is_clamped(self):
+        from app.cash_disbursements.preprinted_layout import WIDTH_MAX
+        assert sanitize_layout({'fields': {'notes': {'width': 99999}}})['fields']['notes']['width'] == WIDTH_MAX
+
+    def test_garbage_reads_as_unset(self):
+        assert sanitize_layout({'fields': {'notes': {'width': 'wide'}}})['fields']['notes']['width'] == 0
+
+    def test_a_duplicated_copy_carries_its_own_width(self):
+        out = sanitize_layout({'fields': {'notes': {'width': 200}},
+                               'extras': [{'key': 'notes', 'x': 100, 'y': 500, 'width': 360}]})
+        assert out['extras'][0]['width'] == 360
+        assert out['fields']['notes']['width'] == 200
+
+    def test_a_legacy_extra_gets_width_zero(self):
+        out = sanitize_layout({'extras': [{'key': 'notes', 'x': 100, 'y': 500}]})
+        assert out['extras'][0]['width'] == 0

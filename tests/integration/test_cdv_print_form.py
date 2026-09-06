@@ -122,8 +122,16 @@ class TestCdPrintRoutes:
         # layout saved before that date printing exactly as it did). This layout was never
         # saved with the gate on, so the band still doesn't render — match the ELEMENT, not
         # the .pp-lineitems CSS selector.
-        assert 'Electricity - July' not in body
-        assert '<div class="pp-lineitems"' not in body
+        #
+        # WHAT CHANGED 2026-09-06: the band is now always rendered and switched off with a
+        # class, so that the designer's toggle previews live instead of needing a save and
+        # a reload. So the expense description IS in the body now -- inside an element the
+        # stylesheet hides. The guarantee is about INK ON PAPER, and that is what is
+        # asserted here. The rule lives in an inline <style> in this same document, so
+        # unlike an external sheet it cannot fail to arrive while the markup does.
+        marker = body.split('data-el="lineItems"')[0].rsplit('<div', 1)[1]
+        assert 'pp-band-off' in marker
+        assert '.pp-band-off { display: none; }' in body
 
     def test_hidden_refuses_print_route(
             self, client, db_session, admin_user, main_branch):

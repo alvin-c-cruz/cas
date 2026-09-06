@@ -1,11 +1,35 @@
-/* APV pre-printed layout designer (clone of SI/CRV) -- the thin drag/serialize/save layer.
-   Positioning is drag-only. Columns: drag a header left/right to reorder; a checkbox
-   strip toggles show/hide. Serializes the DOM to the layout JSON and POSTs it. */
+/* Pre-printed layout designer for the JE-BEARING vouchers -- APV and CDV.
+   The thin drag/serialize/save layer: positioning is drag-only, a checkbox strip toggles
+   column show/hide, and the DOM is serialized to layout JSON and POSTed.
+
+   WHY A SECOND SHARED DESIGNER, next to preprinted_designer.js:
+   that one serves the documents built on app/common/preprinted_base.py (PO, PR, RR),
+   which have no journal entry. APV and CDV hand-roll their own layout modules and are
+   the only two that print a JE face -- combined grid, separated debit/credit bands, and
+   the positioned column face. The split follows that line exactly, so which file a
+   document loads is decided by whether it has a JE face, not by history.
+
+   Before 2026-09-06 APV and CDV each kept a private copy of this, byte-identical apart
+   from a banner comment and the fetch() URL, so every fix had to be authored twice.
+   BUG-APV-CDV-DESIGNER-SAVE-OVERWRITES-COLUMN-LAYOUT is the worked example: fixed in APV
+   at 045ddc20 (2026-09-02 09:14) and again, by hand, in CDV at f69a59ba (10:33). Both
+   the same morning -- the cost was the duplicated work and the second chance to get it
+   wrong, not a window of broken production. The per-document part is now data, not code:
+   the overlay declares where to POST via data-save-url on #ppCanvas.
+
+   The other five copies (so/sv/crv/dr/jv/payslip) are deliberately untouched. These two
+   were VERIFIED identical before merging; the rest have not been measured, and assuming
+   they match is how a shared file silently breaks a document nobody tested. */
 (function () {
   const canvas = document.getElementById('ppCanvas');
   const editBtn = document.getElementById('editLayoutBtn');
   if (!canvas || !editBtn) return;
   const csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  // Where this overlay POSTs its layout -- the one thing that genuinely differs per
+  // document, so the template declares it. Bail rather than guess: a wrong URL would
+  // save one voucher's layout over another's.
+  const saveUrl = canvas.dataset.saveUrl;
+  if (!saveUrl) return;
   const fontSel = document.getElementById('ppFontFamily');
   const paperSel = document.getElementById('ppPaper');
   const dateSel = document.getElementById('ppDateFormat');
@@ -505,7 +529,7 @@
   saveBtn.addEventListener('click', async () => {
     saveBtn.textContent = 'Saving…';
     try {
-      const resp = await fetch('/accounts-payable/print-layout', {
+      const resp = await fetch(saveUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
         body: JSON.stringify(collect()),

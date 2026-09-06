@@ -17,7 +17,7 @@ import json
 
 from app.settings import AppSettings
 from app.audit.utils import log_audit
-from app.common.preprinted_texts import clean_texts
+from app.common.preprinted_texts import clean_texts, clean_wrap_width
 
 LAYOUT_SETTING_KEY = 'cd_preprinted_layout'
 
@@ -50,7 +50,7 @@ ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 FIELD_KEYS = [
     'cdv_no', 'cdv_date', 'payment_method',
     'check_no', 'check_date', 'check_bank', 'cash_account',
-    'vendor_name', 'vendor_tin',
+    'vendor_name', 'check_payee', 'vendor_tin',
     'notes',
 ]
 
@@ -63,6 +63,7 @@ FIELD_LABELS = {
     'check_bank': 'Bank',
     'cash_account': 'Cash/Bank Acct',
     'vendor_name': 'Pay To',
+    'check_payee': 'Check Payee',
     'vendor_tin': 'TIN',
     'notes': 'Notes',
 }
@@ -117,14 +118,25 @@ TEXT_KEYS = ['prepared_by', 'checked_by', 'approved_by']
 
 JE_MODES = ('combined', 'separated')
 
+#: The JE face's positioned columns, in print order. Fixed set -- a saved blob
+#: naming anything else is discarded, exactly as FIELD_KEYS does for fields.
+JE_COLUMN_KEYS = ('account_code', 'account_title', 'debit', 'credit')
+
+JE_COLUMN_LABELS = {
+    'account_code':  'Account Code',
+    'account_title': 'Account Title',
+    'debit':         'Debit',
+    'credit':        'Credit',
+}
+
 DEFAULT_CDV_PREPRINTED_LAYOUT = {
     'paper': 'continuous',
     'dateFormat': 'long',
     'extras': [],
     'texts': [
-        {'id': 'prepared_by', 'text': 'Prepared by:', 'x': 60,  'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
-        {'id': 'checked_by',  'text': 'Checked by:',  'x': 340, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
-        {'id': 'approved_by', 'text': 'Approved by:', 'x': 620, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
+        {'id': 'prepared_by', 'text': 'Prepared by:', 'x': 60,  'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
+        {'id': 'checked_by',  'text': 'Checked by:',  'x': 340, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
+        {'id': 'approved_by', 'text': 'Approved by:', 'x': 620, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False, 'width': 0},
     ],
     'page': {'fontFamily': '"Courier New", Courier, monospace'},
     'fields': {
@@ -135,6 +147,21 @@ DEFAULT_CDV_PREPRINTED_LAYOUT = {
         'check_date':     {'x': 520, 'y': 146, 'fontSize': 11, 'bold': False},
         'check_bank':     {'x': 520, 'y': 170, 'fontSize': 11, 'bold': False},
         'vendor_name':    {'x': 60,  'y': 50,  'fontSize': 12, 'bold': True},
+        # The vendor's check_payee_name -- who the CHEQUE is made out to, which is not
+        # always the vendor's registered name. Captured on the vendor since long before
+        # today ("for printing on checks") but printed nowhere; owner asked for it on the
+        # voucher 2026-09-06, alongside the Pay To name rather than instead of it.
+        #
+        # Read live from the vendor rather than snapshotted onto the CDV -- owner's
+        # ruling, not an oversight. See the note in print_preprinted.html.
+        #
+        # Ships HIDDEN. A new field appearing unbidden at a default position would print
+        # text where a client's pre-printed pad has none -- possibly over an existing box
+        # -- on every CDV instance at once. Tick "Check Payee" in the designer's Fields
+        # strip to place it. Same opt-in discipline as lineItems.enabled and
+        # journalEntry.columnsEnabled.
+        'check_payee':    {'x': 60,  'y': 62,  'fontSize': 11, 'bold': False,
+                           'hidden': True},
         'vendor_tin':     {'x': 60,  'y': 74,  'fontSize': 11, 'bold': False},
         'cash_account':   {'x': 60,  'y': 98,  'fontSize': 11, 'bold': False},
         'notes':          {'x': 60,  'y': 600, 'fontSize': 10, 'bold': False},
@@ -149,6 +176,16 @@ DEFAULT_CDV_PREPRINTED_LAYOUT = {
         'combined': {'x': 60,  'y': 360, 'width': 460},
         'debit':    {'x': 60,  'y': 360, 'width': 300},
         'credit':   {'x': 470, 'y': 360, 'width': 300},
+        # OPT-IN, as lineItems.enabled is: absent from every blob saved before today, so
+        # a CDV already positioned on the combined/separated face renders byte-identically
+        # until somebody turns this on.
+        'columnsEnabled': False,
+        'columns': [
+            {'key': 'account_code',  'x': 60,  'visible': True, 'width': 70},
+            {'key': 'account_title', 'x': 136, 'visible': True, 'width': 280},
+            {'key': 'debit',         'x': 422, 'visible': True, 'width': 110},
+            {'key': 'credit',        'x': 538, 'visible': True, 'width': 110},
+        ],
     },
     # Section B (Direct Expenses) lines: each column INDEPENDENTLY positioned (own x);
     # all share the band top (y) + rowHeight. No header row.
@@ -189,6 +226,8 @@ def _clean_box(raw, default):
         'fontSize': _clamp(raw.get('fontSize'), FONT_MIN, FONT_MAX, default['fontSize']),
         'bold': bool(raw.get('bold', default['bold'])),
         'hidden': bool(raw.get('hidden', default.get('hidden', False))),
+        # Wrap width. Absent from every blob saved before 2026-09-06 -> 0 -> single line.
+        'width': clean_wrap_width(raw.get('width'), default.get('width', 0)),
     }
 
 
@@ -228,6 +267,7 @@ def _clean_extras(raw):
             'y': _clamp(e.get('y'), 0, CANVAS_H, 0),
             'fontSize': _clamp(e.get('fontSize'), FONT_MIN, FONT_MAX, 11),
             'bold': bool(e.get('bold', False)),
+            'width': clean_wrap_width(e.get('width')),
         })
     return out
 
@@ -247,6 +287,23 @@ def _clean_je(raw):
             'width': _clamp(b.get('width'), WIDTH_MIN, WIDTH_MAX, db_['width']),
         }
 
+    # Columns are rebuilt from JE_COLUMN_KEYS rather than from whatever the blob
+    # holds: a saved layout missing one (written before this shipped) still gets
+    # every column, and one naming an unknown key cannot introduce it. Same rule
+    # the line-item band follows.
+    saved_cols = {c.get('key'): c for c in (raw.get('columns') or [])
+                  if isinstance(c, dict)}
+    columns = []
+    for i, key in enumerate(JE_COLUMN_KEYS):
+        dc = d['columns'][i]
+        c = saved_cols.get(key, {})
+        columns.append({
+            'key': key,
+            'x': _clamp(c.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, dc['x']),
+            'width': _clamp(c.get('width'), WIDTH_MIN, WIDTH_MAX, dc['width']),
+            'visible': bool(c.get('visible', dc['visible'])),
+        })
+
     return {
         'mode': mode,
         'fontSize': _clamp(raw.get('fontSize'), FONT_MIN, FONT_MAX, d['fontSize']),
@@ -254,6 +311,8 @@ def _clean_je(raw):
         'combined': band('combined'),
         'debit': band('debit'),
         'credit': band('credit'),
+        'columnsEnabled': bool(raw.get('columnsEnabled', d['columnsEnabled'])),
+        'columns': columns,
     }
 
 

@@ -1370,7 +1370,7 @@ def print_cdv(id):
     if cd_print_form == 'preprinted':
         from app.cash_disbursements.preprinted_layout import (
             get_layout, COLUMN_LABELS, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES,
-            PAPER_LABELS, DATE_FORMATS, TEXT_KEYS)
+            PAPER_LABELS, DATE_FORMATS, TEXT_KEYS, JE_COLUMN_LABELS)
         # JE face is JE-BOUND: sort the stored legs debits-first (non-VAT debits ->
         # VAT debits -> credits, by code — CDV stores credit-first), split by sign,
         # tally, and tie out. An untied face is refused at the template.
@@ -1398,7 +1398,8 @@ def print_cdv(id):
             je_total_debit=je_total_debit, je_total_credit=je_total_credit, je_tied=je_tied,
             company=company, printed_at=ph_now(),
             layout=get_layout(cdv.branch_id), can_edit_layout=current_user.can_edit_print_layout,
-            col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+            col_labels=COLUMN_LABELS, je_col_labels=JE_COLUMN_LABELS,
+            font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
             signatory_ids=TEXT_KEYS,

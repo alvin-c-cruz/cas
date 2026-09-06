@@ -57,11 +57,35 @@ def _cdv_with_three_lines(db_session, main_branch):
     return cdv
 
 
-class TestBandGate:
-    def test_band_absent_when_disabled(self, client, db_session, admin_user, main_branch):
-        """A layout with `enabled` explicitly False prints no band.
+def _open_tag(html, needle):
+    """The WHOLE opening <div ...> carrying `needle`.
 
-        `_render` sets `layout['lineItems']['enabled'] = enabled` directly, so this pins
+    Not `html.split(needle)[0].rsplit('<div', 1)[1]` -- that stops AT the needle and so
+    sees only the attributes written before it. `class` precedes `data-el` but `style`
+    follows it, so the shorter form cannot observe both.
+    """
+    start = html.rindex('<div', 0, html.index(needle))
+    return html[start:html.index('>', start) + 1]
+
+
+class TestBandGate:
+    """A disabled band must never reach paper.
+
+    HOW that is enforced changed on 2026-09-06 and these tests changed with it, exactly
+    as the APV sibling's did. The band used to be omitted server-side
+    (`{% if li.enabled %}`), which meant ticking "Show line items" in the designer
+    produced no markup and therefore no visible change until the layout was saved AND the
+    page reloaded -- the columns could not be dragged into position in the same sitting
+    they were turned on. The band is now always rendered and switched off with the
+    `pp-band-off` class, so the toggle is a live class flip.
+
+    The REQUIREMENT is unchanged, so it is still asserted -- just against the class and
+    the rule that acts on it rather than against the absence of markup.
+    """
+
+    def test_a_disabled_band_is_marked_off(self, client, db_session, admin_user,
+                                           main_branch):
+        """`_render` sets `layout['lineItems']['enabled'] = enabled` directly, so this pins
         the explicit-False path, not the absent-key (legacy blob) path -- that one is
         covered at the unit layer by
         `TestLineItemBandGate::test_enabled_defaults_false_on_a_legacy_blob` in
@@ -69,11 +93,32 @@ class TestBandGate:
         `enabled` key at all and asserts it defaults to False."""
         cdv = _cdv_with_je(db_session, main_branch)
         html = _render(client, db_session, main_branch, cdv, enabled=False)
-        assert 'data-el="lineItems"' not in html
-        # `data-col="` is unique to a per-column band div; the designer chrome's
-        # `class="pp-col-controls"` would substring-match a `'class="pp-col'` probe, so
-        # use the `data-col=` marker instead (per the APV sibling's fix).
-        assert 'data-col="' not in html
+        assert 'pp-band-off' in _open_tag(html, 'data-el="lineItems"')
+
+    def test_a_disabled_band_is_not_displayed_and_not_printed(self, client, db_session,
+                                                              admin_user, main_branch):
+        """The class only means something if a rule acts on it. Without this, renaming or
+        dropping the CSS would leave an off band printing on a client's stationery with
+        every assertion above still green.
+
+        Asserted on the applied declaration rather than the bare class name: the class is
+        in the markup too, so a substring check for `pp-band-off` alone could never fail.
+        """
+        cdv = _cdv_with_je(db_session, main_branch)
+        html = _render(client, db_session, main_branch, cdv, enabled=False)
+        assert '.pp-band-off { display: none; }' in html
+        # ...and it stays hidden if somebody prints while still in edit mode, where the
+        # .pp-editing rule would otherwise reveal it at 40% opacity.
+        assert '.pp-canvas.pp-editing .pp-band-off,' in html
+        assert '.pp-canvas.pp-editing .pp-je-inactive { display: none !important; }' in html
+
+    def test_an_enabled_band_is_not_marked_off(self, client, db_session, admin_user,
+                                               main_branch):
+        """CONTROL. Without this the off-marker assertion passes vacuously -- a template
+        emitting `pp-band-off` unconditionally would satisfy it."""
+        cdv = _cdv_with_je(db_session, main_branch)
+        html = _render(client, db_session, main_branch, cdv, enabled=True)
+        assert 'pp-band-off' not in _open_tag(html, 'data-el="lineItems"')
 
     def test_band_present_when_enabled(self, client, db_session, admin_user, main_branch):
         """CONTROL. Without this the absence assertion above passes vacuously."""

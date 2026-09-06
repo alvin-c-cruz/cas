@@ -158,7 +158,7 @@
 <div id="ppJEColControls" class="pp-col-controls screen-only"></div>
 {% endif %}
 
-<div class="pp-canvas" id="ppCanvas" style="width:{{ paper_sizes[layout.paper].w }}px;height:{{ paper_sizes[layout.paper].h }}px;">
+<div class="pp-canvas" id="ppCanvas" data-save-url="/accounts-payable/print-layout" style="width:{{ paper_sizes[layout.paper].w }}px;height:{{ paper_sizes[layout.paper].h }}px;">
   <div class="pp-margin-guide screen-only" style="left:48px;"></div>
   <div class="pp-margin-guide screen-only" style="right:48px;"></div>
   {# Values only — the pre-printed stock supplies every label/header. #}
@@ -292,7 +292,7 @@
 {% if can_edit_layout %}
 <script type="application/json" id="ppJELayout">{{ layout.journalEntry | tojson }}</script>
 <script type="application/json" id="ppServerLineItems">{{ layout.lineItems | tojson }}</script>
-<script src="{{ url_for('static', filename='js/apv_preprinted_designer.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='js/preprinted_je_designer.js') }}?v=1"></script>
 {% endif %}
 </body>
 </html>
