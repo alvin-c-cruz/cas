@@ -136,17 +136,18 @@ class TestThePullControl:
         assert 'id="poPickerAdd"' in create_page
 
     def test_no_free_form_add_line_control_is_offered(self, create_page):
-        """ABSENCE at the level of INTENT, paired below with the positive that a pull
-        control IS offered.
+        """ABSENCE at the level of INTENT, paired below with the positives.
 
-        Every RR line references a purchase_order_item_id (NOT NULL) -- a receiver
-        cannot invent one -- so an "+ Add line" button would build a row that can
-        never be saved.
+        The original reason -- purchase_order_item_id is NOT NULL, so a hand-added row
+        could never save -- stopped being true in rrdirect_0001, which lets a receipt
+        record goods that arrived with no purchase order. The INVARIANT it protected did
+        not: a receiver may only add a line naming something the system already holds --
+        an ordered PO line, or a product on the master. Never a row typed from nothing,
+        because a line invented at the keyboard has no unit and nothing to value it by.
 
-        `'addLineBtn' not in create_page` pins ONE id and nothing else: the same
-        control re-added under any other id passes it. So this reads every button the
-        FORM renders and refuses any that offers to add something -- except the
-        picker's own "Add Selected", which only ever adds lines the picker supplied.
+        `'addLineBtn' not in create_page` pins ONE id and nothing else: the same control
+        re-added under any other id passes it. So this reads every button the FORM
+        renders and refuses any offering to add something outside the reviewed list.
         """
         # M-4: index('</form>') alone finds the FIRST </form> in the whole document,
         # not this form's own close -- base.html happens to render no form ahead of
@@ -159,14 +160,26 @@ class TestThePullControl:
         labels = [' '.join(m.split()) for m in
                   re.findall(r'<button\b[^>]*>(.*?)</button>', form_html, re.DOTALL)]
         assert labels, 'the form rendered no buttons at all'
+        # Every control that adds a line must be backed by a PICKER of existing records.
+        # Named explicitly rather than pattern-matched on the word "add": a new control
+        # then has to be added to this list deliberately, which is the moment to ask
+        # whether it lets a receiver invent a line.
+        allowed = {'+ Pull from Purchase Orders', '+ Add Item Without PO',
+                   'Add Selected', 'Add to receipt', 'Cancel', 'Close'}
         offenders = [lbl for lbl in labels
-                     if re.search(r'\badd\b', lbl, re.I) and lbl != 'Add Selected']
+                     if re.search(r'add|new', lbl, re.I) and lbl not in allowed]
         assert not offenders, (
-            f'the form offers a free-form add-line control: {offenders} -- every RR '
-            'line needs a purchase_order_item_id, so a hand-added row can never save')
+            f'the form offers an unreviewed add-line control: {offenders} -- a receiver '
+            'may only add a line the system already knows about, never type one')
         assert 'addLineBtn' not in create_page
-        assert '+ Pull from Purchase Orders' in labels     # the positive pair
+        # Both add controls, and the pickers behind them. A button with no picker behind
+        # it would BE the free-form row this test exists to refuse.
+        assert '+ Pull from Purchase Orders' in labels
         assert 'id="pullPoBtn"' in create_page
+        assert 'id="poPickerModal"' in create_page
+        assert '+ Add Item Without PO' in labels
+        assert 'id="addDirectBtn"' in create_page
+        assert 'id="directPickerModal"' in create_page
 
 
 class TestTheGrid:

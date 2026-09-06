@@ -25,6 +25,7 @@ from app.common.preprinted_base import (
     DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 from app.vendors.models import Vendor
+from app.products.models import Product
 from app.settings import AppSettings
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.utils import ph_now
@@ -123,9 +124,57 @@ def _po_lines_payload(eligible, exclude_rr_id=None):
 
 
 def _existing_lines(rr):
+    """{purchase_order_item_id: qty} for the PO-BACKED lines only.
+
+    Direct lines (rrdirect_0001) are excluded rather than keyed by None: they would all
+    collapse onto that one key and every direct line but the last would disappear when
+    the receipt was reopened. They come back through _existing_direct_lines instead.
+    """
     if not rr:
         return {}
-    return {li.purchase_order_item_id: float(li.received_quantity) for li in rr.line_items}
+    return {li.purchase_order_item_id: float(li.received_quantity)
+            for li in rr.line_items if li.purchase_order_item_id is not None}
+
+
+def _existing_direct_lines(rr):
+    """The DIRECT lines of a saved receipt, as an ordered list.
+
+    A list, not a dict: two direct lines may name the same product (two deliveries of it
+    in one receipt), so product_id is not a key. Order follows line_number so reopening a
+    receipt shows it as it was entered.
+    """
+    if not rr:
+        return []
+    return [{'product_id': li.product_id,
+             'received_quantity': float(li.received_quantity)}
+            for li in sorted(rr.line_items, key=lambda x: x.line_number or 0)
+            if li.purchase_order_item_id is None and li.product_id is not None]
+
+
+def _submitted_existing_direct_lines():
+    """The direct lines of a POSTed payload, for re-rendering a bounced form.
+
+    Same display-helper contract as _submitted_existing_lines: the real refusal has
+    already been flashed, so an unreadable payload degrades to "nothing to pre-fill"
+    rather than raising a second time.
+    """
+    try:
+        items = _payload_entries(request.form.get('lines', '[]'))
+    except ValueError:
+        return []
+    out = []
+    for d in items:
+        if d.get('purchase_order_item_id'):
+            continue
+        pid = d.get('product_id')
+        if not pid:
+            continue
+        try:
+            out.append({'product_id': int(pid),
+                        'received_quantity': float(d.get('received_quantity') or 0)})
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 _UNREADABLE_PAYLOAD = ('The received lines could not be read. Please re-enter the '
@@ -207,18 +256,45 @@ def _render_create(form, eligible):
     quantity was mistyped. Mirrors _render_edit.
     """
     existing = _submitted_existing_lines() if request.method == 'POST' else {}
+    existing_direct = (_submitted_existing_direct_lines()
+                       if request.method == 'POST' else [])
     return render_template('receiving_reports/form.html', form=form, rr=None,
                            eligible=eligible, po_lines=_po_lines_payload(eligible),
-                           existing=existing)
+                           direct_products=_direct_products_payload(),
+                           existing=existing, existing_direct=existing_direct)
 
 
 def _render_edit(rr, form, eligible):
     existing = (_submitted_existing_lines() if request.method == 'POST'
                 else _existing_lines(rr))
+    existing_direct = (_submitted_existing_direct_lines() if request.method == 'POST'
+                       else _existing_direct_lines(rr))
     return render_template('receiving_reports/form.html', form=form, rr=rr,
                            eligible=eligible,
                            po_lines=_po_lines_payload(eligible, exclude_rr_id=rr.id),
-                           existing=existing)
+                           direct_products=_direct_products_payload(),
+                           existing=existing, existing_direct=existing_direct)
+
+
+def _direct_products_payload():
+    """Active products offered for a DIRECT receipt (rrdirect_0001) -- goods that
+    arrived without a purchase order.
+
+    Deliberately EVERY active product, not only tracked ones: most direct receipts are
+    non-inventory (freight, a repair part, a sample), and those need no valuation at all
+    because post_rr_receipt only posts stock for tracked lines. A tracked product with no
+    standard cost and no stock on hand IS offered here and refused at approval instead --
+    the receiver should not have to know the costing state of the product master, and the
+    refusal names exactly what to fix.
+
+    Ordered by code so the picker reads like the product list itself.
+    """
+    rows = (Product.query.filter_by(is_active=True)
+            .order_by(Product.code).all())
+    return [{'product_id': p.id, 'product_code': p.code, 'product_name': p.name,
+             'uom': (p.default_unit_of_measure.code if p.default_unit_of_measure else ''),
+             'tracked': bool(p.track_inventory)}
+            for p in rows]
 
 
 def _poi_label(poi):
@@ -324,32 +400,68 @@ def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None,
 
 
 def _parse_rr_lines(rr, lines_json):
-    """Attach RR lines from the hidden JSON: [{purchase_order_item_id, received_quantity}].
+    """Attach RR lines from the hidden JSON. Two kinds of entry are accepted:
 
-    The whole payload is validated BEFORE the first ReceivingReportItem is built,
-    so a refusal leaves nothing half-written -- and so the ceiling is measured
-    against the payload's per-PO-line total rather than one line at a time. See
+      {purchase_order_item_id, received_quantity}   -- received against an order
+      {product_id, received_quantity}               -- a DIRECT receipt (rrdirect_0001)
+
+    A direct line records goods that arrived with no purchase order. It carries no
+    price -- a receiving report never does -- so its cost comes from the product master
+    at approval (see stock_posting._direct_unit_cost), and its unit and description come
+    from the product too.
+
+    The whole payload is validated BEFORE the first ReceivingReportItem is built, so a
+    refusal leaves nothing half-written -- and so the ceiling is measured against the
+    payload's per-PO-line total rather than one line at a time. See
     assert_payload_within_open_qty.
+
+    Order is preserved across BOTH kinds: line numbers follow submission order, so a
+    receipt reads on screen and on paper the way it was entered rather than with the
+    direct lines herded to the end.
     """
     items = _payload_entries(lines_json)
-    kept = []
+    kept = []            # ordered (poi_id_or_None, product_id_or_None, qty)
+    po_pairs = []        # the PO-backed subset, for the open-quantity ceiling
     for position, d in enumerate(items, start=1):
         try:
             qty = Decimal(str(d.get('received_quantity')))
         except (InvalidOperation, TypeError):
             qty = Decimal('0')
-        poi_id = d.get('purchase_order_item_id')
-        if not poi_id or qty <= 0:
+        if qty <= 0:
             continue
-        try:
-            poi_id = int(poi_id)
-        except (TypeError, ValueError):
-            # The payload is raw client JSON: int('abc') would otherwise escape as
-            # a verbatim "invalid literal for int()" flash.
-            raise ValueError(
-                f'Line {position}: that purchase order line is not a valid reference.'
-            ) from None
-        kept.append((poi_id, qty))
+        poi_id = d.get('purchase_order_item_id')
+        product_id = d.get('product_id')
+        if poi_id:
+            try:
+                poi_id = int(poi_id)
+            except (TypeError, ValueError):
+                # The payload is raw client JSON: int('abc') would otherwise escape as
+                # a verbatim "invalid literal for int()" flash.
+                raise ValueError(
+                    f'Line {position}: that purchase order line is not a valid reference.'
+                ) from None
+            kept.append((poi_id, None, qty))
+            po_pairs.append((poi_id, qty))
+            continue
+        if product_id:
+            # Validated HERE rather than trusted from the picker, for the same reason
+            # assert_payload_within_open_qty checks vendor/branch/status at save: A
+            # PICKER FILTER IS NOT ENFORCEMENT -- a raw POST bypasses the picker
+            # entirely, and an unknown or inactive product_id would otherwise reach the
+            # database and only surface at approval, as a receipt that cannot be valued.
+            try:
+                product_id = int(product_id)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f'Line {position}: that product is not a valid reference.') from None
+            product = db.session.get(Product, product_id)
+            if product is None or not product.is_active:
+                raise ValueError(
+                    f'Line {position}: that product does not exist or is no longer '
+                    f'active. Choose another, or receive it against a purchase order.')
+            kept.append((None, product_id, qty))
+            continue
+        # Neither reference: an empty row left behind by the form. Skipped, as before.
     if not kept:
         raise ValueError('Add at least one received line.')
     # rr.id is None on the create path (nothing to exclude yet). On edit, excluding
@@ -357,14 +469,25 @@ def _parse_rr_lines(rr, lines_json):
     # sums only COMMITTED_STATUSES (approved/billed) and edit() has already refused
     # a non-draft, so the receipt under check is never in that sum. Kept so the
     # guard stays correct if either of those changes.
-    assert_payload_within_open_qty(kept, exclude_rr_id=rr.id, vendor_id=rr.vendor_id,
+    # Only the PO-backed subset has a ceiling: nothing was ordered on a direct line, so
+    # there is no open quantity to exceed, and no PO whose vendor/branch/status could
+    # disagree with the header.
+    assert_payload_within_open_qty(po_pairs, exclude_rr_id=rr.id, vendor_id=rr.vendor_id,
                                    branch_id=rr.branch_id)
-    for line_number, (poi_id, qty) in enumerate(kept, start=1):
-        poi = db.session.get(PurchaseOrderItem, poi_id)
-        rr.line_items.append(ReceivingReportItem(
-            line_number=line_number, purchase_order_item_id=poi_id,
-            product_id=(poi.product_id if poi else None),
-            received_quantity=qty))
+    for line_number, (poi_id, product_id, qty) in enumerate(kept, start=1):
+        if poi_id:
+            poi = db.session.get(PurchaseOrderItem, poi_id)
+            rr.line_items.append(ReceivingReportItem(
+                line_number=line_number, purchase_order_item_id=poi_id,
+                product_id=(poi.product_id if poi else None),
+                received_quantity=qty))
+        else:
+            # A direct line: the product IS the reference. product_id is what the unit,
+            # description and cost are all derived from, so it is not a snapshot here as
+            # it is on a PO-backed line -- it is the line's only identity.
+            rr.line_items.append(ReceivingReportItem(
+                line_number=line_number, purchase_order_item_id=None,
+                product_id=product_id, received_quantity=qty))
 
 
 def _rr_or_404(id):
@@ -764,8 +887,12 @@ def approve(id):
     # po_line_open_qty sums only COMMITTED_STATUSES (approved/billed) and this route
     # has already refused a non-draft above, so this receipt cannot be in that sum.
     try:
+        # PO-backed lines only. A direct line (rrdirect_0001) has no order line, so there
+        # is no open quantity for it to exceed and no PO whose vendor/branch/status could
+        # disagree with the header -- and its None would reach int() here as a TypeError.
         assert_payload_within_open_qty(
-            [(li.purchase_order_item_id, li.received_quantity) for li in rr.line_items],
+            [(li.purchase_order_item_id, li.received_quantity) for li in rr.line_items
+             if li.purchase_order_item_id is not None],
             exclude_rr_id=rr.id, vendor_id=rr.vendor_id, branch_id=rr.branch_id)
     except ValueError as e:
         flash(str(e), 'error')
