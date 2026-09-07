@@ -19,6 +19,10 @@ COMMITTED_STATUSES = ('approved', 'billed')
 class ReceivingReport(RowVersioned, db.Model):
     __tablename__ = 'receiving_reports'
 
+    #: The one status a receipt can be sent back to draft from. Unlike the purchase
+    #: requisition, a receiving report has no `rejected` state, so there is exactly one.
+    RETURNABLE_STATUSES = ('submitted',)
+
     id = db.Column(db.Integer, primary_key=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True, index=True)
     branch = db.relationship('Branch', foreign_keys=[branch_id])
@@ -53,6 +57,15 @@ class ReceivingReport(RowVersioned, db.Model):
     # the goods could record the receipt and then move it nowhere.
     submitted_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     submitted_at = db.Column(db.DateTime)
+    # Sent back to draft because the purchase order that covered these goods turned up
+    # after submission (rrreason_0001). CLEARED on re-submit -- a memo describes one
+    # correction cycle, and submitting starts the next.
+    #
+    # returned_by_id keeps db.ForeignKey HERE and not in the migration: a SQLite batch
+    # add_column cannot carry an inline FK.
+    returned_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    returned_at = db.Column(db.DateTime)
+    return_reason = db.Column(db.Text)
     approved_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     approved_at = db.Column(db.DateTime)
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -150,6 +163,10 @@ class ReceivingReportItem(db.Model):
                                    nullable=True)
     unit_of_measure_ref = db.relationship('UnitOfMeasure',
                                           foreign_keys=[unit_of_measure_id])
+    # Why this line was kept as a direct receipt even though the vendor had an open
+    # order line for the same product (rrreason_0001). NULL when no warning fired --
+    # a line with nothing to explain should carry no explanation.
+    no_po_reason = db.Column(db.Text)
     product = db.relationship('Product', foreign_keys=[product_id])
     received_quantity = db.Column(db.Numeric(15, 4), nullable=False)
 
