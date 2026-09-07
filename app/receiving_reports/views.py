@@ -875,6 +875,20 @@ def submit(id):
     rr.status = 'submitted'
     rr.submitted_by_id = current_user.id
     rr.submitted_at = ph_now()
+    # Submitting starts a NEW cycle, so the previous one's memo stops applying. Leaving
+    # it set made a freshly submitted receipt still read "Returned to draft: ..." --
+    # describing a correction that has since been made.
+    #
+    # Cleared rather than merely hidden: no display rule keyed on status can tell a
+    # current memo from a stale one, because the status is the same either way. The
+    # provenance goes with it -- a returned_at with no return_reason says something
+    # happened and refuses to say what.
+    #
+    # No history is lost: return_to_draft writes the full memo into the audit log,
+    # which is the permanent record. These columns only ever held the current cycle.
+    rr.return_reason = None
+    rr.returned_by_id = None
+    rr.returned_at = None
     db.session.commit()
     # action='submit', not 'update': the audit log's Actions filter is built from
     # the DISTINCT actions present, so a lifecycle event logged as a generic

@@ -199,3 +199,44 @@ class TestWhatItRecords:
                  .order_by(AuditLog.id.desc()).first())
         assert entry is not None
         assert MEMO in (entry.notes or '')
+
+
+class TestResubmittingClearsThePreviousCycle:
+    """The correction applied to purchase requisitions in fa78173a, applied here.
+
+    A memo describes ONE correction cycle. Carrying it forward leaves a freshly
+    submitted receipt still displaying "Returned to draft: ..." -- describing a
+    correction that has since been made and acted on.
+    """
+
+    def _returned(self, client, db_session, main_branch, vendor, product, user):
+        rr = _rr(db_session, main_branch, vendor, product, user)
+        _login(client, user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        db_session.refresh(rr)
+        assert rr.return_reason == MEMO
+        return rr
+
+    def test_the_memo_and_its_provenance_are_cleared(self, client, db_session,
+                                                     main_branch, vendor, product,
+                                                     admin_user):
+        rr = self._returned(client, db_session, main_branch, vendor, product, admin_user)
+        client.post('/receiving-reports/%s/submit' % rr.id, follow_redirects=True)
+        db_session.refresh(rr)
+        assert rr.status == 'submitted'
+        assert rr.return_reason is None
+        assert rr.returned_by_id is None
+        assert rr.returned_at is None
+
+    def test_the_history_survives_in_the_audit_log(self, client, db_session, main_branch,
+                                                   vendor, product, admin_user):
+        """What makes clearing safe rather than destructive. If this stops holding, the
+        clear becomes the deletion of the only copy."""
+        from app.audit.models import AuditLog
+        rr = self._returned(client, db_session, main_branch, vendor, product, admin_user)
+        client.post('/receiving-reports/%s/submit' % rr.id, follow_redirects=True)
+        notes = ' '.join(
+            (e.notes or '') for e in
+            AuditLog.query.filter_by(module='receiving_reports', record_id=rr.id).all())
+        assert MEMO in notes
