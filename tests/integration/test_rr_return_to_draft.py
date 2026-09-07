@@ -240,3 +240,44 @@ class TestResubmittingClearsThePreviousCycle:
             (e.notes or '') for e in
             AuditLog.query.filter_by(module='receiving_reports', record_id=rr.id).all())
         assert MEMO in notes
+
+
+class TestTheDetailPage:
+
+    def _page(self, client, rr):
+        return client.get('/receiving-reports/%s' % rr.id).data.decode()
+
+    def test_the_control_is_offered_on_a_submitted_receipt(self, client, db_session,
+                                                           main_branch, vendor, product,
+                                                           admin_user):
+        rr = _rr(db_session, main_branch, vendor, product, admin_user)
+        _login(client, admin_user, main_branch)
+        body = self._page(client, rr)
+        assert 'Return to Draft' in body
+        assert 'id="returnModal"' in body
+
+    def test_it_is_withheld_on_a_draft_receipt(self, client, db_session, main_branch,
+                                               vendor, product, admin_user):
+        """CONTROL. A control that can only fail is its own defect -- the route refuses
+        a draft, so the page must not offer it."""
+        rr = _rr(db_session, main_branch, vendor, product, admin_user, status='draft',
+                 number='RR-RTD-DRAFT')
+        _login(client, admin_user, main_branch)
+        assert 'Return to Draft' not in self._page(client, rr)
+
+    def test_it_is_withheld_from_someone_who_may_not(self, client, db_session,
+                                                     main_branch, vendor, product,
+                                                     admin_user, staff_user):
+        rr = _rr(db_session, main_branch, vendor, product, admin_user)
+        _login(client, staff_user, main_branch)
+        assert 'Return to Draft' not in self._page(client, rr)
+
+    def test_the_memo_is_displayed_after_a_return(self, client, db_session, main_branch,
+                                                  vendor, product, admin_user):
+        rr = _rr(db_session, main_branch, vendor, product, admin_user)
+        _login(client, admin_user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        body = self._page(client, rr)
+        assert 'Returned to draft:' in body
+        assert MEMO in body
