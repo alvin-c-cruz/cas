@@ -45,6 +45,7 @@ from app.purchase_requests.allocation import (
 from app.purchase_requests.models import PurchaseRequest
 from app.purchase_requests.views import RETURNABLE_STATUSES
 from app.receiving_reports.models import COMMITTED_STATUSES as RR_COMMITTED
+from app.receiving_reports.models import ReceivingReport
 from app.receiving_reports.views import RECEIVABLE_PO_STATUSES
 from app.purchase_billing import _RECEIVABLE_PO
 
@@ -378,6 +379,29 @@ REGISTRY = [
             'cancelled':
                 'a cancelled receipt releases the order line\'s quantity, with '
                 'no restore step to forget',
+        }),
+    Tuple_(
+        'receiving_reports.models.ReceivingReport.RETURN_TO_DRAFT_STATUSES',
+        ReceivingReport.RETURN_TO_DRAFT_STATUSES, 'receiving report',
+        'can this receipt be sent back to draft so its lines can be corrected?',
+        {
+            'draft':
+                'already draft; there is nothing to send back',
+            'approved':
+                'approving posts the stock movement and accrues GRNI. '
+                'Correcting an approved receipt means cancelling it, which '
+                'reverses both; out of scope by owner decision (2026-09-07), '
+                'which scoped repair to before approval precisely because '
+                'nothing is posted yet',
+            'billed':
+                'an accounts-payable voucher exists against it. cancel() '
+                'refuses a billed receipt outright, so returning one to draft '
+                'would let its lines change underneath a bill that has '
+                'already been raised',
+            'cancelled':
+                'a cancelled receipt has released its order-line quantity and '
+                'reversed any stock. Re-opening it would resurrect a document '
+                'the ledger has already let go',
         }),
 ]
 

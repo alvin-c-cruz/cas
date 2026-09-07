@@ -33,7 +33,7 @@
 | File | Responsibility | Change |
 |---|---|---|
 | `migrations/versions/rrreason_0001_return_to_draft_and_no_po_reason.py` | the four new columns | create |
-| `app/receiving_reports/models.py` | ORM columns + `RETURNABLE_STATUSES` | modify |
+| `app/receiving_reports/models.py` | ORM columns + `RETURN_TO_DRAFT_STATUSES` | modify |
 | `app/receiving_reports/views.py` | return-to-draft route, submit clearing, payload `product_id`, `no_po_reason` parsing | modify |
 | `app/receiving_reports/templates/receiving_reports/detail.html` | Return to Draft button, modal, memo display | modify |
 | `app/receiving_reports/templates/receiving_reports/form.html` | pick-time warning, reason field, serialiser | modify |
@@ -54,7 +54,7 @@ Prevention and repair get **separate test files**. They share only the migration
 
 **Interfaces:**
 - Consumes: nothing. Migration head is currently `rruom_0001`.
-- Produces: `ReceivingReport.return_reason` (str|None), `.returned_by_id` (int|None), `.returned_at` (datetime|None); `ReceivingReportItem.no_po_reason` (str|None); `ReceivingReport.RETURNABLE_STATUSES = ('submitted',)`.
+- Produces: `ReceivingReport.return_reason` (str|None), `.returned_by_id` (int|None), `.returned_at` (datetime|None); `ReceivingReportItem.no_po_reason` (str|None); `ReceivingReport.RETURN_TO_DRAFT_STATUSES = ('submitted',)`.
 
 - [ ] **Step 1: Confirm the current migration head**
 
@@ -141,13 +141,13 @@ class TestTheSchema:
     def test_only_submitted_is_returnable(self):
         """A receiving report has no `rejected` status, unlike the requisition, so
         there is exactly one source state."""
-        assert ReceivingReport.RETURNABLE_STATUSES == ('submitted',)
+        assert ReceivingReport.RETURN_TO_DRAFT_STATUSES == ('submitted',)
 ```
 
 - [ ] **Step 3: Run it to make sure it fails**
 
 Run: `python -m pytest tests/integration/test_rr_return_to_draft.py -q --no-cov`
-Expected: FAIL — `KeyError: 'return_reason'` / `AttributeError: RETURNABLE_STATUSES`
+Expected: FAIL — `KeyError: 'return_reason'` / `AttributeError: RETURN_TO_DRAFT_STATUSES`
 
 - [ ] **Step 4: Write the migration**
 
@@ -235,7 +235,7 @@ Directly above the `id` column of `class ReceivingReport`, add the tuple:
 ```python
     #: The one status a receipt can be sent back to draft from. Unlike the purchase
     #: requisition, a receiving report has no `rejected` state, so there is exactly one.
-    RETURNABLE_STATUSES = ('submitted',)
+    RETURN_TO_DRAFT_STATUSES = ('submitted',)
 ```
 
 In `class ReceivingReportItem`, after `unit_of_measure_ref`:
@@ -309,7 +309,7 @@ git commit -m "feat(rr): columns for the return-to-draft memo and the no-PO over
 - Test: `tests/integration/test_rr_return_to_draft.py`
 
 **Interfaces:**
-- Consumes: `ReceivingReport.RETURNABLE_STATUSES`, `.return_reason`, `.returned_by_id`, `.returned_at` from Task 1.
+- Consumes: `ReceivingReport.RETURN_TO_DRAFT_STATUSES`, `.return_reason`, `.returned_by_id`, `.returned_at` from Task 1.
 - Produces: route endpoint `receiving_reports.return_to_draft` (POST, `/receiving-reports/<int:id>/return-to-draft`), and `_may_return_to_draft(rr) -> bool`.
 
 - [ ] **Step 1: Write the failing test**
@@ -485,7 +485,7 @@ def return_to_draft(id):
         flash('Only an approver or the person who submitted it can return this '
               'Receiving Report to draft.', 'error')
         return redirect(url_for('receiving_reports.view', id=id))
-    if rr.status not in ReceivingReport.RETURNABLE_STATUSES:
+    if rr.status not in ReceivingReport.RETURN_TO_DRAFT_STATUSES:
         flash('Only a submitted Receiving Report can be returned to draft.', 'error')
         return redirect(url_for('receiving_reports.view', id=id))
     reason = (request.form.get('return_reason') or '').strip()
@@ -1512,6 +1512,6 @@ No gaps.
 
 **Type consistency**
 
-`rrAddDirectLine(r, qty, uom, reason)` — Task 6 defines the fourth parameter and Task 7's round-trip call passes it in the same position. `kept` is a 5-tuple in Task 7 and unpacked as a 5-tuple in the same task. `_may_return_to_draft(rr) -> bool` is defined in Task 2 step 3 and called in step 4. `RETURNABLE_STATUSES` is defined in Task 1 and read in Task 2.
+`rrAddDirectLine(r, qty, uom, reason)` — Task 6 defines the fourth parameter and Task 7's round-trip call passes it in the same position. `kept` is a 5-tuple in Task 7 and unpacked as a 5-tuple in the same task. `_may_return_to_draft(rr) -> bool` is defined in Task 2 step 3 and called in step 4. `RETURN_TO_DRAFT_STATUSES` is defined in Task 1 and read in Task 2.
 
 **Placeholders:** none.

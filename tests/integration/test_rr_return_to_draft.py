@@ -71,7 +71,7 @@ class TestTheSchema:
     def test_only_submitted_is_returnable(self):
         """A receiving report has no `rejected` status, unlike the requisition, so
         there is exactly one source state."""
-        assert ReceivingReport.RETURNABLE_STATUSES == ('submitted',)
+        assert ReceivingReport.RETURN_TO_DRAFT_STATUSES == ('submitted',)
 
 
 class TestWhoMayReturnIt:

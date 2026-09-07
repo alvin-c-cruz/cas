@@ -21,7 +21,7 @@ class ReceivingReport(RowVersioned, db.Model):
 
     #: The one status a receipt can be sent back to draft from. Unlike the purchase
     #: requisition, a receiving report has no `rejected` state, so there is exactly one.
-    RETURNABLE_STATUSES = ('submitted',)
+    RETURN_TO_DRAFT_STATUSES = ('submitted',)
 
     id = db.Column(db.Integer, primary_key=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True, index=True)

@@ -957,7 +957,7 @@ def return_to_draft(id):
         flash('Only an approver or the person who submitted it can return this '
               'Receiving Report to draft.', 'error')
         return redirect(url_for('receiving_reports.view', id=id))
-    if rr.status not in ReceivingReport.RETURNABLE_STATUSES:
+    if rr.status not in ReceivingReport.RETURN_TO_DRAFT_STATUSES:
         flash('Only a submitted Receiving Report can be returned to draft.', 'error')
         return redirect(url_for('receiving_reports.view', id=id))
     reason = (request.form.get('return_reason') or '').strip()
