@@ -144,14 +144,17 @@
          style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
       {%- for item in rr.line_items %}
       {# An RR line stores only line_number, a product_id snapshot and
-         received_quantity. description, the ordered quantity and the UoM are
-         DERIVED through purchase_order_item (nullable=False, so always present),
-         and the declared column keys deliberately do NOT match the model's
-         attribute names -- `ordered_qty` is po_line.quantity and `uom` is
-         po_line.unit_of_measure.code / po_line.uom_text. `po_number` is the RR
-         line's own `po_number` property (derived through purchase_order_item ->
-         order, NEVER `purchase_order_item.purchase_order` -- that relationship
-         does not exist, its backref is named `order`) -- one receipt may settle
+         received_quantity. description and the ordered quantity are DERIVED
+         through purchase_order_item, which is nullable -- a direct receipt (no
+         PO) has no purchase_order_item at all, so both fall back to '' below.
+         The UoM instead reads `item.unit_of_measure`, the model property that
+         already resolves order line -> receiver's chosen unit -> product
+         default, so a direct line prints its unit too. The declared column
+         keys deliberately do NOT match the model's attribute names --
+         `ordered_qty` is po_line.quantity. `po_number` is the RR line's own
+         `po_number` property (derived through purchase_order_item -> order,
+         NEVER `purchase_order_item.purchase_order` -- that relationship does
+         not exist, its backref is named `order`) -- one receipt may settle
          several of a vendor's orders, so each LINE carries its own PO number. #}
       {%- set po_line = item.purchase_order_item %}
       {%- set product = item.product or (po_line.product if po_line else None) %}
@@ -162,7 +165,7 @@
         {%- elif col.key == 'po_number' -%}{{ item.po_number }}
         {%- elif col.key == 'ordered_qty' -%}{{ po_line | qty_fmt }}
         {%- elif col.key == 'received_quantity' -%}{{ item | qty_fmt }}
-        {%- elif col.key == 'uom' -%}{% if po_line and po_line.unit_of_measure %}{{ po_line.unit_of_measure.code }}{% else %}{{ (po_line.uom_text if po_line else '') or '' }}{% endif %}
+        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '') }}
         {%- endif -%}
       </div>
       {% endfor -%}

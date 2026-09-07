@@ -1044,6 +1044,16 @@ def approve(id):
     rr.status = 'approved'
     rr.approved_by_id = current_user.id
     rr.approved_at = ph_now()
+    # Mirrors submit()'s clear, for the same reason: a return-to-draft memo describes
+    # ONE correction cycle. approve() also accepts 'submitted' (and 'draft', which can
+    # follow a return-to-draft), so approving without going back through submit() first
+    # -- return to draft, fix the line, Approve directly -- would otherwise leave a
+    # stale "Returned to draft: ..." memo reading as a current notice on an approved
+    # receipt. The audit log keeps the memo either way, so clearing it here loses
+    # nothing but the display.
+    rr.return_reason = None
+    rr.returned_by_id = None
+    rr.returned_at = None
     from app.receiving_reports.stock_posting import post_rr_receipt
     from app.posting.control_accounts import ControlAccountError
     try:

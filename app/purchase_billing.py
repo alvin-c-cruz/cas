@@ -166,8 +166,12 @@ def billable_rrs_for(branch_id, vendor_id):
                 'product_name': product.name if product else None,
                 'quantity': float(li.received_quantity) if li.received_quantity is not None else 0.0,
                 'unit_price': float(poi.unit_price) if (poi and poi.unit_price is not None) else None,
-                'uom_id': (poi.unit_of_measure_id if poi else None),
-                'uom_display': (poi.unit_of_measure.code if (poi and poi.unit_of_measure)
+                # `li.unit_of_measure` resolves order line -> receiver's chosen unit ->
+                # product default, so a direct line (no `poi`) still carries a unit here;
+                # the `poi.*` reads are the pre-direct-receipt fallback, kept for parity.
+                'uom_id': (li.unit_of_measure.id if li.unit_of_measure
+                           else (poi.unit_of_measure_id if poi else None)),
+                'uom_display': (li.unit_of_measure.code if li.unit_of_measure
                                 else (poi.uom_text if poi else None)),
                 'vat_category': (poi.vat_category if poi else None),
                 'vat_rate': float(poi.vat_rate) if (poi and poi.vat_rate is not None) else 0.0,

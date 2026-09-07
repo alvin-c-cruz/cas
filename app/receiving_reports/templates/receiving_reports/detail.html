@@ -50,7 +50,15 @@
         {% set d = li.to_dict() %}
         <tr>
           <td>{{ li.line_number }}</td>
-          <td>{{ d.product_name or d.description or '' }}</td>
+          <td>{{ d.product_name or d.description or '' }}
+            {# Same marker/style as list.html's header-level "no PO" badge, but per line
+               and with the reason -- the list marker says a receipt needs review; this
+               is where a reviewer learns which line and why, without opening the audit log. #}
+            {% if li.is_direct %}
+            <span title="{{ li.no_po_reason or 'Received without a purchase order' }}"
+                  style="margin-left:6px;color:var(--amber);font-weight:600;">no PO{% if li.no_po_reason %}: {{ li.no_po_reason }}{% endif %}</span>
+            {% endif %}
+          </td>
           <td class="text-end">{{ '{:,.4f}'.format(d.ordered_quantity) if d.ordered_quantity is not none else '-' }}</td>
           <td class="text-end">{{ '{:,.4f}'.format(li.received_quantity) }}</td>
           {# The RR has no unit of its own: `unit_of_measure`/`uom_text` are
@@ -89,7 +97,10 @@
      a control that can only fail, which is the defect the Cancel button's comment
      above describes. #}
   {% set may_return = can_approve or (rr.submitted_by_id and rr.submitted_by_id == current_user.id) %}
-  {% set show_return = rr.status == 'submitted' and may_return %}
+  {# The authoritative tuple, not a literal 'submitted' -- it is registered in the
+     lifecycle-tuple guard, so adding a status there forces a documented reason
+     instead of silently leaving this template's gate stale. #}
+  {% set show_return = rr.status in rr.RETURN_TO_DRAFT_STATUSES and may_return %}
   {% if show_return %}
   <button type="button" class="btn btn-secondary"
           onclick="document.getElementById('returnModal').style.display='flex'">Return to Draft</button>
