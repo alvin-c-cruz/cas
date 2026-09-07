@@ -129,6 +129,10 @@ def _po_lines_payload(eligible, exclude_rr_id=None):
             ordered = Decimal(str(li.quantity or 0))
             rows.append({
                 'purchase_order_item_id': li.id,
+                # The browser matches a chosen product to open order lines on THIS.
+                # product_code is display text and can repeat across products; the id
+                # is the identity, so the warning is exact rather than approximate.
+                'product_id': li.product_id,
                 'product_code': li.product.code if li.product else '',
                 'product_name': (li.product.name if li.product else (li.description or '')),
                 'uom': (li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '')),
