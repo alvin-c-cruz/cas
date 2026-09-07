@@ -161,7 +161,7 @@
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
         {%- elif col.key == 'product' -%}{% if product %}{{ product.code ~ ' — ' ~ product.name }}{% else %}{{ '' }}{% endif %}
-        {%- elif col.key == 'description' -%}{{ (po_line.description if po_line else '') or '' }}
+        {%- elif col.key == 'description' -%}{{ item.description or '' }}
         {%- elif col.key == 'po_number' -%}{{ item.po_number }}
         {%- elif col.key == 'ordered_qty' -%}{{ po_line | qty_fmt }}
         {%- elif col.key == 'received_quantity' -%}{{ item | qty_fmt }}
