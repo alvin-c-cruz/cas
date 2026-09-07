@@ -55,13 +55,21 @@ happen in practice, it is a separate design.
 
 ### Detection costs one field
 
-`_po_lines_payload` rows gain `product_id`. Nothing else is needed: the create/edit form
-already carries every open order line for the selected vendor, with its open quantity,
-and a `PO_NUMBERS` map alongside. No new endpoint, no new query, nothing to keep in
-sync.
+`_po_lines_payload` rows gain `product_id`. Nothing else is needed, because that helper
+feeds both places open order lines are published: the server-rendered payload on the
+edit page, and the `/receiving-reports/open-lines?vendor_id=` endpoint the create page
+calls once a vendor is chosen. One field, both paths, no new query and nothing to keep
+in sync.
 
-Client-side this becomes an index of `product_id → [{po_number, open}]`, consulted the
-moment a product is chosen in **Add Item Without PO**.
+The warning reads the **endpoint**, not the page-load payload. On a fresh create page
+`eligible` is deliberately empty — there is no vendor until the receiver picks one — so
+a page-load payload would be blank exactly when the warning is most needed. Opening
+**Add Item Without PO** therefore fetches the current vendor's open lines, and builds an
+index of `product_id → [{po_number, open, purchase_order_item_id}]` from the response.
+
+Fetching at that moment rather than at page load has a second benefit: the index is
+always current, which narrows (though does not close) the gap where an order is approved
+between picking and saving.
 
 ### What the receiver sees
 
