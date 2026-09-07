@@ -1309,23 +1309,63 @@ In `form.html`, in the `EXISTING_DIRECT.forEach` loop, pass it through:
 
 - [ ] **Step 5: Put the reason in the audit note**
 
-Find where `create()` and `edit()` call `log_audit` for the receipt, and append the direct-line reasons to `notes`. Add this helper just above `_parse_rr_lines`:
+Add this helper just above `_parse_rr_lines`:
 
 ```python
 def _no_po_note(rr):
     """A one-line summary of any no-PO overrides on this receipt, for the audit note.
 
-    The column holds the current value and is rewritten whenever the receipt is saved;
-    the audit log is what survives. Empty string when nothing was overridden, so the
-    ordinary note is unchanged for the ordinary case.
+    The columns hold the CURRENT value and are rewritten wholesale whenever the receipt
+    is saved -- edit() calls rr.line_items.clear() before re-parsing. The audit log is
+    therefore the only place an overridden reason survives a later edit, which is what
+    makes it the record worth reviewing.
+
+    Returns None when nothing was overridden, so the ordinary receipt's audit entry is
+    completely unchanged.
     """
     parts = ['%s: %s' % (li.product.code if li.product else li.line_number,
                          li.no_po_reason)
              for li in rr.line_items if li.no_po_reason]
-    return (' | No-PO reasons — ' + '; '.join(parts)) if parts else ''
+    return ('No-PO reasons — ' + '; '.join(parts)) if parts else None
 ```
 
-Then append `+ _no_po_note(rr)` to the `notes=` argument of the `log_audit` calls in `create()` and `edit()`.
+`create()` logs through `log_create(...)` and `edit()` through `log_update(...)` — **not
+`log_audit`**. Both are thin shortcuts over `log_audit` and both already accept a
+`notes=` keyword (`app/audit/utils.py:71,83`), so pass the helper's result to each.
+
+In `create()`, change:
+
+```python
+            log_create(module='receiving_reports', record_id=rr.id,
+                       record_identifier=f'{rr.rr_number} - {rr.vendor_name}',
+                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']))
+```
+
+to:
+
+```python
+            log_create(module='receiving_reports', record_id=rr.id,
+                       record_identifier=f'{rr.rr_number} - {rr.vendor_name}',
+                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']),
+                       notes=_no_po_note(rr))
+```
+
+In `edit()`, change:
+
+```python
+            log_update(module='receiving_reports', record_id=rr.id,
+                       record_identifier=f'{rr.rr_number} - {rr.vendor_name}', old_values=old,
+                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']))
+```
+
+to:
+
+```python
+            log_update(module='receiving_reports', record_id=rr.id,
+                       record_identifier=f'{rr.rr_number} - {rr.vendor_name}', old_values=old,
+                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']),
+                       notes=_no_po_note(rr))
+```
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
