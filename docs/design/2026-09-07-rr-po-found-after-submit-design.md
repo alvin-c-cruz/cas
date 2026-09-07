@@ -149,12 +149,11 @@ shows whether the prevention above is working.
 
 ## Schema
 
-One migration, two tables, five columns. All nullable, all additive, nothing to
+One migration, two tables, four columns. All nullable, all additive, nothing to
 backfill: every existing row reads NULL and behaves exactly as it does today.
 
 ```
 receiving_report_items
-  unit_of_measure_id   INTEGER    the unit a direct receipt arrived in
   no_po_reason         TEXT       why this was not received against the matched order
 
 receiving_reports
@@ -163,17 +162,18 @@ receiving_reports
   returned_at          DATETIME   when
 ```
 
-`unit_of_measure_id` and `returned_by_id` are declared as **plain Integers in the
-migration, with `db.ForeignKey` on the ORM side only**. A SQLite batch `add_column`
-cannot carry an inline foreign key — the table rebuild raises "Constraint must have a
-name". This is the same arrangement `prreturn_0001` used, and the reason
-`receiving_report_items` shows three foreign keys in the live database rather than five.
+`returned_by_id` is declared as a **plain Integer in the migration, with
+`db.ForeignKey` on the ORM side only**. A SQLite batch `add_column` cannot carry an
+inline foreign key — the table rebuild raises "Constraint must have a name". This is the
+same arrangement `prreturn_0001` used, and the reason `receiving_report_items` shows
+three foreign keys in the live database rather than five.
 
-**Folded into `rruom_0001`** rather than added as a third migration: that migration is
-written and applied to the development database but has never been committed or
-deployed, so it can still be rewritten. Five client instances each need upgrading and
-two are already behind; two migrations instead of three is a real saving. Rewriting it
-requires downgrading the development database first.
+**A third migration in this area, not folded into `rruom_0001`.** Folding was considered
+and rejected on the owner's call (2026-09-07): `rruom_0001` carries the unit column for
+direct receipts, and folding would have held that work back behind this design. It
+shipped instead in `3325c58b`, so `unit_of_measure_id` is no longer part of this
+change. The cost is one further upgrade on each client instance — five of them, two
+already behind — accepted deliberately in exchange for unblocking work that was ready.
 
 **Verified against a copy of the live Philgen database**, never a `create_all()` test
 database — the latter builds its schema from the models and cannot reproduce the real
