@@ -1,7 +1,7 @@
 # A purchase order turns up for a receipt that was recorded without one
 
 **Date:** 2026-09-07
-**Status:** design agreed, not yet implemented
+**Status:** implemented (branch `feat/rr-direct-receipt`, 2026-09-07). Browser pass outstanding — see the note under Known limits.
 **Area:** receiving reports, purchase orders
 **Follows:** `rrdirect_0001` (PO-less receiving reports)
 
