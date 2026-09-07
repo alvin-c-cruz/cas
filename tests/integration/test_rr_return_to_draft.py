@@ -72,3 +72,111 @@ class TestTheSchema:
         """A receiving report has no `rejected` status, unlike the requisition, so
         there is exactly one source state."""
         assert ReceivingReport.RETURNABLE_STATUSES == ('submitted',)
+
+
+class TestWhoMayReturnIt:
+
+    def test_an_approver_may(self, client, db_session, main_branch, vendor, product,
+                             admin_user):
+        rr = _rr(db_session, main_branch, vendor, product, admin_user)
+        _login(client, admin_user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        db_session.refresh(rr)
+        assert rr.status == 'draft'
+
+    def test_the_submitter_may_too(self, client, db_session, main_branch, vendor,
+                                   product, staff_user):
+        """Owner decision 2026-09-07: pulling back your OWN submission needs nobody
+        else's authority."""
+        rr = _rr(db_session, main_branch, vendor, product, staff_user)
+        _login(client, staff_user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        db_session.refresh(rr)
+        assert rr.status == 'draft'
+
+    def test_an_unrelated_staff_user_may_not(self, client, db_session, main_branch,
+                                             vendor, product, admin_user, staff_user):
+        """CONTROL. Without this the two tests above pass on a route with no gate."""
+        rr = _rr(db_session, main_branch, vendor, product, admin_user)
+        _login(client, staff_user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        db_session.refresh(rr)
+        assert rr.status == 'submitted'
+
+    def test_a_null_submitter_falls_back_to_approver_only(self, client, db_session,
+                                                          main_branch, vendor, product,
+                                                          admin_user, staff_user):
+        """Receipts predating submitted_by_id, or seeded directly, have NULL there.
+        `None == user.id` is False, so the rule fails CLOSED rather than opening the
+        route to everyone."""
+        rr = _rr(db_session, main_branch, vendor, product, admin_user)
+        rr.submitted_by_id = None
+        db_session.commit()
+        _login(client, staff_user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        db_session.refresh(rr)
+        assert rr.status == 'submitted'
+
+
+class TestWhatItRefuses:
+
+    @pytest.mark.parametrize('status', ['draft', 'approved', 'billed', 'cancelled'])
+    def test_only_a_submitted_receipt_can_be_returned(self, client, db_session,
+                                                      main_branch, vendor, product,
+                                                      admin_user, status):
+        rr = _rr(db_session, main_branch, vendor, product, admin_user, status=status,
+                 number='RR-RTD-%s' % status)
+        _login(client, admin_user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        db_session.refresh(rr)
+        assert rr.status == status
+
+    def test_a_short_memo_is_refused(self, client, db_session, main_branch, vendor,
+                                     product, admin_user):
+        """Matching reject/cancel: 10 characters. The memo is the whole value of the
+        record afterwards."""
+        rr = _rr(db_session, main_branch, vendor, product, admin_user)
+        _login(client, admin_user, main_branch)
+        body = client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                           data={'return_reason': 'oops'},
+                           follow_redirects=True).data.decode()
+        db_session.refresh(rr)
+        assert rr.status == 'submitted'
+        assert 'min 10' in body
+
+
+class TestWhatItRecords:
+
+    def test_the_memo_who_and_when_are_stored(self, client, db_session, main_branch,
+                                              vendor, product, admin_user):
+        rr = _rr(db_session, main_branch, vendor, product, admin_user)
+        _login(client, admin_user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        db_session.refresh(rr)
+        assert rr.return_reason == MEMO
+        assert rr.returned_by_id == admin_user.id
+        assert rr.returned_at is not None
+
+    def test_it_is_audit_logged_under_its_own_action(self, client, db_session,
+                                                     main_branch, vendor, product,
+                                                     admin_user):
+        """action='return_to_draft', not a generic 'update': the audit log's Actions
+        filter is built from the distinct actions present, so a lifecycle event logged
+        as an update is unfilterable and reads as an ordinary edit."""
+        from app.audit.models import AuditLog
+        rr = _rr(db_session, main_branch, vendor, product, admin_user)
+        _login(client, admin_user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        entry = (AuditLog.query
+                 .filter_by(module='receiving_reports', action='return_to_draft',
+                            record_id=rr.id)
+                 .order_by(AuditLog.id.desc()).first())
+        assert entry is not None
+        assert MEMO in (entry.notes or '')

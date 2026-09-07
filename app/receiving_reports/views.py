@@ -69,6 +69,22 @@ def _approve_role_gate():
     return True
 
 
+def _may_return_to_draft(rr):
+    """Who may send a submitted receipt back to draft.
+
+    An approver, OR the person who submitted it. The approver half matches cancel() on
+    this same document -- reversing a submission is the same weight of act. The
+    submitter half is an owner decision (2026-09-07): pulling back your own submission
+    is not something that needs somebody else's authority.
+
+    Fails CLOSED on a NULL submitted_by_id -- receipts predating that column, or seeded
+    directly, compare False and fall back to approver-only.
+    """
+    if current_user.has_full_access or current_user.role == 'accountant':
+        return True
+    return rr.submitted_by_id is not None and rr.submitted_by_id == current_user.id
+
+
 # -- form context --------------------------------------------------------------
 
 def _active_vendors():
@@ -866,6 +882,55 @@ def submit(id):
     log_audit(module='receiving_reports', action='submit', record_id=rr.id,
               record_identifier=rr.rr_number, notes='Submitted')
     flash(f'Receiving Report "{rr.rr_number}" submitted for approval.', 'success')
+    return redirect(url_for('receiving_reports.view', id=id))
+
+
+@receiving_reports_bp.route('/receiving-reports/<int:id>/return-to-draft',
+                            methods=['POST'])
+@login_required
+def return_to_draft(id):
+    """Send a submitted receipt back to draft so its lines can be corrected.
+
+    The case this exists for: a receipt recorded goods as a DIRECT receipt (no purchase
+    order), and the order that covered them turned up afterwards. A receiving report is
+    editable only while draft and has no unsubmit, so before this the only exits were
+    approve -- committing the mistake -- or cancel, which burns the receipt number and
+    means re-keying every line.
+
+    It deliberately does NOT re-point anything. Which order a delivery belongs to is a
+    judgement only a person can make; the receiver removes the direct line and pulls the
+    real one through the ordinary picker, where the ceiling and vendor/branch/status
+    guards already apply.
+
+    A memo is REQUIRED (min 10 chars, matching reject/cancel and the requisition
+    equivalent): this reverses a submission, and "why" is the whole value of the record
+    afterwards.
+    """
+    rr = _rr_or_404(id)
+    gate = _rr_role_gate()
+    if gate:
+        return gate
+    if not _may_return_to_draft(rr):
+        flash('Only an approver or the person who submitted it can return this '
+              'Receiving Report to draft.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    if rr.status not in ReceivingReport.RETURNABLE_STATUSES:
+        flash('Only a submitted Receiving Report can be returned to draft.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    reason = (request.form.get('return_reason') or '').strip()
+    if len(reason) < 10:
+        flash('A reason (min 10 chars) is required to return this to draft.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    from_status = rr.status
+    rr.status = 'draft'
+    rr.returned_by_id = current_user.id
+    rr.returned_at = ph_now()
+    rr.return_reason = reason
+    db.session.commit()
+    log_audit(module='receiving_reports', action='return_to_draft', record_id=rr.id,
+              record_identifier=rr.rr_number,
+              notes=f'Returned to draft from {from_status}: {reason}')
+    flash(f'Receiving Report "{rr.rr_number}" returned to draft.', 'success')
     return redirect(url_for('receiving_reports.view', id=id))
 
 
