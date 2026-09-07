@@ -89,7 +89,8 @@
      a control that can only fail, which is the defect the Cancel button's comment
      above describes. #}
   {% set may_return = can_approve or (rr.submitted_by_id and rr.submitted_by_id == current_user.id) %}
-  {% if rr.status == 'submitted' and may_return %}
+  {% set show_return = rr.status == 'submitted' and may_return %}
+  {% if show_return %}
   <button type="button" class="btn btn-secondary"
           onclick="document.getElementById('returnModal').style.display='flex'">Return to Draft</button>
   {% endif %}
@@ -122,12 +123,12 @@
   </div>
 </div>
 
-{# Gated the same as the opener button (rr.status == 'submitted' and may_return), unlike
+{# Gated by the same show_return binding as the opener button above, unlike
    cancelModal above which renders unconditionally: cancelModal's own submit button reads
-   "Confirm Cancel", never colliding with the "Cancel RR" opener label, but this modal's
-   submit button repeats the opener's exact "Return to Draft" text -- left unconditional,
-   it would leak that string onto pages where the control is withheld. #}
-{% if rr.status == 'submitted' and may_return %}
+   "Confirm Cancel", never colliding with the "Cancel RR" opener label, and this modal's
+   submit button now reads "Confirm Return to Draft" to match that house style -- but the
+   condition is still hoisted to one place so the opener and modal can never drift apart. #}
+{% if show_return %}
 <div id="returnModal" class="modal-overlay" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
   <div class="card" style="max-width:480px;width:90%">
     <div class="card-body">
@@ -144,7 +145,7 @@
           <textarea name="return_reason" class="form-control" rows="3" required minlength="10"></textarea>
         </div>
         <div class="form-actions">
-          <button type="submit" class="btn btn-primary">Return to Draft</button>
+          <button type="submit" class="btn btn-primary">Confirm Return to Draft</button>
           <button type="button" class="btn btn-secondary" onclick="document.getElementById('returnModal').style.display='none'">Close</button>
         </div>
       </form>

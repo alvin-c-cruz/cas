@@ -263,14 +263,24 @@ class TestTheDetailPage:
         rr = _rr(db_session, main_branch, vendor, product, admin_user, status='draft',
                  number='RR-RTD-DRAFT')
         _login(client, admin_user, main_branch)
-        assert 'Return to Draft' not in self._page(client, rr)
+        body = self._page(client, rr)
+        # The id is checked first because it is the security-relevant fact: #returnModal
+        # carries a live POST form to a privileged endpoint, and its absence is what
+        # actually matters here. The label check below is only a symptom -- it happens
+        # to read "Return to Draft" today, but a relabel of either button would make it
+        # collide or stop colliding by accident. Pin the id so the guard does not depend
+        # on that coincidence.
+        assert 'id="returnModal"' not in body
+        assert 'Return to Draft' not in body
 
     def test_it_is_withheld_from_someone_who_may_not(self, client, db_session,
                                                      main_branch, vendor, product,
                                                      admin_user, staff_user):
         rr = _rr(db_session, main_branch, vendor, product, admin_user)
         _login(client, staff_user, main_branch)
-        assert 'Return to Draft' not in self._page(client, rr)
+        body = self._page(client, rr)
+        assert 'id="returnModal"' not in body
+        assert 'Return to Draft' not in body
 
     def test_the_memo_is_displayed_after_a_return(self, client, db_session, main_branch,
                                                   vendor, product, admin_user):
