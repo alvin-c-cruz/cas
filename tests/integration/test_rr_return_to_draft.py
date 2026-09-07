@@ -85,6 +85,25 @@ class TestWhoMayReturnIt:
         db_session.refresh(rr)
         assert rr.status == 'draft'
 
+    def test_an_accountant_may_too(self, client, db_session, main_branch, vendor,
+                                   product, admin_user, accountant_user):
+        """The gate grants access on `has_full_access OR role == 'accountant'`, and
+        every other approver test here uses admin_user -- which passes on the first
+        half. Without this, deleting the accountant clause would break nothing that
+        any test observes.
+
+        Submitted by admin_user, not accountant_user: if the receipt were submitted
+        by the accountant themselves, the submitter fallback clause would grant
+        access on its own and this test would pass whether or not the accountant
+        role clause exists. Using a different submitter isolates the role clause."""
+        rr = _rr(db_session, main_branch, vendor, product, admin_user,
+                 number='RR-RTD-ACCT')
+        _login(client, accountant_user, main_branch)
+        client.post('/receiving-reports/%s/return-to-draft' % rr.id,
+                    data={'return_reason': MEMO}, follow_redirects=True)
+        db_session.refresh(rr)
+        assert rr.status == 'draft'
+
     def test_the_submitter_may_too(self, client, db_session, main_branch, vendor,
                                    product, staff_user):
         """Owner decision 2026-09-07: pulling back your OWN submission needs nobody
