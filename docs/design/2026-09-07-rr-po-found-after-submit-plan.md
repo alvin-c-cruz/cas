@@ -18,6 +18,7 @@
 - **Verify every migration against a copy of a real database**, never a `create_all()` test database. Copy `instance/philgen.db`, upgrade it, and confirm foreign keys, indexes, row counts and `PRAGMA integrity_check`.
 - **Audit through `app/audit/utils.py`.** Lifecycle events use their own `action=` (not a generic `update`) — the audit log's Actions filter is built from the distinct actions present.
 - **A picker filter is not enforcement.** Anything the client offers must be re-validated where the POST lands.
+- **EXCEPTION, and it is specified behaviour rather than an oversight: the no-PO warning is ADVISORY.** The override reason is validated where the POST lands (type-checked, capped at 200 characters, stored) but is **not required**, and the server does **not** refuse a direct line that lacks one even when an open order matches. Owner decision, 2026-09-07: this fires on a weekly-or-more event, and a save-time refusal would bounce a receipt the receiver believed finished. The residual gap — a raw POST, or an order approved between picking and saving — is accepted and documented. Task 8's list marker is the compensating control. Do not add a server-side refusal; a change of mind here is a spec change, not a fix.
 - **Absence assertions must be scoped.** Inline `<style>`/JS text leaks into the rendered response, so assert on an applied attribute (`class="x y"`), never a bare class name.
 - **Test markers must be registered** in `pytest.ini`. `receiving_reports` already is.
 - **Run tests through the real HTTP route**, not the service layer alone.
