@@ -399,3 +399,138 @@ class TestThePayloadPath:
                                                       'received_quantity': '0'}])
         assert rr is None
         assert 'at least one received line' in resp.data.decode().lower()
+
+
+@pytest.fixture
+def unit_box(db_session):
+    from app.units_of_measure.models import UnitOfMeasure
+    u = UnitOfMeasure(code='BOX', name='Box', is_active=True)
+    db_session.add(u); db_session.commit()
+    return u
+
+
+class TestTheReceiverCanSetTheUnit:
+    """Owner, 2026-09-07: "user should be able to set UOM for +Add Item Without PO."
+
+    A PO-backed line takes its unit from the order line -- that is what the vendor was
+    asked for, and the receipt should not disagree with it. A direct line has no order
+    line, and the product's default is often right but not always: goods arrive by the
+    box for a product carried by the piece, and a product may carry no default at all.
+    The person unpacking the delivery is the one who can see which it was.
+
+    OPTIONAL, and that matters for the migration: a line saved before rruom_0001 has NULL
+    here and must keep resolving its unit exactly as it did.
+    """
+
+    def test_the_chosen_unit_wins_over_the_products_default(self, db_session, main_branch,
+                                                            vendor, admin_user, unit_box):
+        from app.products.models import Product
+        from app.units_of_measure.models import UnitOfMeasure
+        piece = UnitOfMeasure(code='PC', name='Piece', is_active=True)
+        db_session.add(piece); db_session.commit()
+        prod = Product(code='DFLT-1', name='Defaulted Thing', track_inventory=False,
+                       default_unit_of_measure_id=piece.id, is_active=True)
+        db_session.add(prod); db_session.commit()
+        rr = _draft(db_session, main_branch, vendor, admin_user)
+        li = ReceivingReportItem(line_number=1, purchase_order_item_id=None,
+                                 product_id=prod.id, unit_of_measure_id=unit_box.id,
+                                 received_quantity=Decimal('2'))
+        rr.line_items.append(li); db_session.commit()
+        assert li.unit_of_measure.code == 'BOX'
+
+    def test_without_a_choice_it_still_falls_back_to_the_product(self, db_session,
+                                                                 main_branch, vendor,
+                                                                 admin_user):
+        """THE backward-compatibility guarantee: every line saved before rruom_0001 has
+        NULL here."""
+        from app.products.models import Product
+        from app.units_of_measure.models import UnitOfMeasure
+        piece = UnitOfMeasure(code='PC', name='Piece', is_active=True)
+        db_session.add(piece); db_session.commit()
+        prod = Product(code='DFLT-2', name='Defaulted Thing 2', track_inventory=False,
+                       default_unit_of_measure_id=piece.id, is_active=True)
+        db_session.add(prod); db_session.commit()
+        rr = _draft(db_session, main_branch, vendor, admin_user)
+        li = ReceivingReportItem(line_number=1, purchase_order_item_id=None,
+                                 product_id=prod.id, unit_of_measure_id=None,
+                                 received_quantity=Decimal('2'))
+        rr.line_items.append(li); db_session.commit()
+        assert li.unit_of_measure.code == 'PC'
+
+    def test_an_order_line_still_settles_the_unit(self, db_session, main_branch, vendor,
+                                                  admin_user, product_tracked, unit_box):
+        """A PO-backed line ignores this column even if something sets it: the order says
+        what was asked for, and the receipt must not quietly disagree."""
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+        from app.units_of_measure.models import UnitOfMeasure
+        kg = UnitOfMeasure(code='KG', name='Kilogram', is_active=True)
+        db_session.add(kg); db_session.commit()
+        po = PurchaseOrder(branch_id=main_branch.id, po_number='PO-UOM-1',
+                           order_date=date(2026, 9, 1), vendor_id=vendor.id,
+                           vendor_name=vendor.name, status='approved',
+                           vat_treatment='inclusive', created_by_id=admin_user.id)
+        po.line_items.append(PurchaseOrderItem(
+            line_number=1, description='Ordered by the kilo', quantity=Decimal('5'),
+            unit_price=Decimal('100'), amount=Decimal('500'),
+            product_id=product_tracked.id, unit_of_measure_id=kg.id,
+            vat_rate=Decimal('12')))
+        db_session.add(po); db_session.commit()
+        rr = _draft(db_session, main_branch, vendor, admin_user)
+        li = ReceivingReportItem(line_number=1,
+                                 purchase_order_item_id=po.line_items[0].id,
+                                 product_id=product_tracked.id,
+                                 unit_of_measure_id=unit_box.id,      # ignored
+                                 received_quantity=Decimal('5'))
+        rr.line_items.append(li); db_session.commit()
+        assert li.unit_of_measure.code == 'KG'
+
+    def test_it_saves_and_reopens_through_the_form(self, client, db_session, main_branch,
+                                                   vendor, admin_user, untracked_product,
+                                                   unit_box):
+        """Round-trip, because the edit path rebuilds the grid from a SEPARATE channel for
+        direct lines -- the PO-backed one is keyed by purchase_order_item_id, which a
+        direct line does not have. A unit that saved but did not come back would look
+        like it had never been set."""
+        _login(client, admin_user, main_branch)
+        _, rr = _create_via_form(client, vendor, [{'product_id': untracked_product.id,
+                                                   'received_quantity': '4',
+                                                   'unit_of_measure_id': unit_box.id}],
+                                 number='RR-UOM-FORM')
+        assert rr is not None, 'the receipt was refused'
+        assert rr.line_items[0].unit_of_measure_id == unit_box.id
+        body = client.get('/receiving-reports/%s/edit' % rr.id).data.decode()
+        assert '"unit_of_measure_id": %d' % unit_box.id in body.replace("'", '"')
+
+    def test_an_unknown_unit_is_refused(self, client, db_session, main_branch, vendor,
+                                        admin_user, untracked_product):
+        """A PICKER FILTER IS NOT ENFORCEMENT, for the unit as much as the product."""
+        _login(client, admin_user, main_branch)
+        resp, rr = _create_via_form(client, vendor, [{'product_id': untracked_product.id,
+                                                      'received_quantity': '4',
+                                                      'unit_of_measure_id': 999999}],
+                                    number='RR-UOM-BAD')
+        assert rr is None
+        assert 'unit of measure' in resp.data.decode().lower()
+
+    def test_an_inactive_unit_is_refused(self, client, db_session, main_branch, vendor,
+                                         admin_user, untracked_product, unit_box):
+        unit_box.is_active = False
+        db_session.commit()
+        _login(client, admin_user, main_branch)
+        resp, rr = _create_via_form(client, vendor, [{'product_id': untracked_product.id,
+                                                      'received_quantity': '4',
+                                                      'unit_of_measure_id': unit_box.id}],
+                                    number='RR-UOM-OFF')
+        assert rr is None
+        assert 'no longer active' in resp.data.decode().lower()
+
+    def test_omitting_the_unit_is_allowed(self, client, db_session, main_branch, vendor,
+                                          admin_user, untracked_product):
+        """CONTROL for the two refusals: they must not have made the unit mandatory. A
+        payload written before rruom_0001 carries no such key at all."""
+        _login(client, admin_user, main_branch)
+        _, rr = _create_via_form(client, vendor, [{'product_id': untracked_product.id,
+                                                   'received_quantity': '4'}],
+                                 number='RR-UOM-NONE')
+        assert rr is not None
+        assert rr.line_items[0].unit_of_measure_id is None

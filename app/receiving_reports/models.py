@@ -142,6 +142,14 @@ class ReceivingReportItem(db.Model):
     # identity -- what was received, what unit it is in, and what it is valued at all
     # come from it.
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)
+    # The unit a DIRECT receipt arrived in (rruom_0001). NULL on a PO-backed line, which
+    # takes its unit from the order line, and NULL on a direct line the receiver did not
+    # override -- that one falls back to the product's default. The FK lives here and
+    # NOT in the migration: a SQLite batch add_column cannot carry an inline ForeignKey.
+    unit_of_measure_id = db.Column(db.Integer, db.ForeignKey('units_of_measure.id'),
+                                   nullable=True)
+    unit_of_measure_ref = db.relationship('UnitOfMeasure',
+                                          foreign_keys=[unit_of_measure_id])
     product = db.relationship('Product', foreign_keys=[product_id])
     received_quantity = db.Column(db.Numeric(15, 4), nullable=False)
 
@@ -162,9 +170,18 @@ class ReceivingReportItem(db.Model):
 
     @property
     def unit_of_measure(self):
+        """The unit this line is counted in, most specific source first.
+
+        An order line settles it when there is one -- that is what the vendor was asked
+        for. Otherwise the receiver's own choice wins over the product's default, because
+        goods can arrive by the box for a product carried by the piece, and the person
+        unpacking them is the one who knows.
+        """
         poi = self.purchase_order_item
         if poi:
             return poi.unit_of_measure
+        if self.unit_of_measure_ref:
+            return self.unit_of_measure_ref
         return self.product.default_unit_of_measure if self.product else None
 
     @property

@@ -80,7 +80,10 @@
         <thead>
           <tr><th>From PO</th><th>Item</th><th>UoM</th><th class="text-end">Ordered</th>
               <th class="text-end">Already Received</th><th class="text-end">Open</th>
-              <th class="text-end">Receive Now</th></tr>
+              <th class="text-end">Receive Now</th>
+              {# No caption: the column holds one icon button per row, and a header over
+                 it would read as a sortable field. #}
+              <th></th></tr>
         </thead>
         {# Rendered by the line script below, never server-side: the grid is keyed
            by purchase order LINE now, and which lines belong on it is the receipt's
@@ -99,8 +102,9 @@
        (standard cost, else the running average) and refused if the master cannot value
        it. That is why this picker asks only for a product and a quantity.
 
-       Clearing a quantity to blank or 0 drops that line at submit, which is the remove
-       gesture for both kinds. #}
+       Each row carries its own remove button. Clearing a quantity to blank or 0 still
+       drops the line at submit -- the two gestures agree -- but only one of them is
+       visible, and a receiver should not have to know the other. #}
     <button type="button" class="btn btn-secondary" id="pullPoBtn">+ Pull from Purchase Orders</button>
     <button type="button" class="btn btn-secondary" id="addDirectBtn">+ Add Item Without PO</button>
     <span id="poPickerNotice" class="text-muted" style="display:none">
@@ -120,6 +124,10 @@
         </p>
         <label class="form-label" for="directProduct">Product</label>
         <select id="directProduct" class="form-control" style="margin-bottom:12px;"></select>
+        <label class="form-label" for="directUom">Unit</label>
+        <select id="directUom" class="form-control" style="margin-bottom:12px;max-width:220px;">
+          <option value="">Use the product's default</option>
+        </select>
         <label class="form-label" for="directQty">Quantity received</label>
         <input type="number" step="0.0001" min="0" id="directQty" class="form-control"
                style="max-width:160px;margin-bottom:16px;">
@@ -183,6 +191,7 @@
   const EXISTING = {{ existing | tojson }};   // {purchase_order_item_id: received_qty} (edit / bounce pre-fill)
   const EXISTING_DIRECT = {{ existing_direct | tojson }};  // [{product_id, received_quantity}]
   const DIRECT_PRODUCTS = {{ direct_products | tojson }};  // every active product, for the no-PO picker
+  const UNITS = {{ units | tojson }};                      // active units of measure
   const DIRECT_INDEX = {};
   DIRECT_PRODUCTS.forEach(function (p) { DIRECT_INDEX[p.product_id] = p; });
   // _po_lines_payload carries no PO number, and "which order is this line from?"
@@ -216,7 +225,7 @@
   });
 
   const RR_PLACEHOLDER =
-    '<tr id="rrGridEmptyRow"><td colspan="7" class="text-muted">'
+    '<tr id="rrGridEmptyRow"><td colspan="8" class="text-muted">'
     + 'No lines yet. Choose the vendor above, then pull the open lines of its '
     + 'purchase orders.</td></tr>';
 
@@ -235,28 +244,71 @@
   // A DIRECT row: no PO, and no ordered/received/open figures, because nothing was
   // ordered. Em dashes rather than zeros -- zero would read as "ordered none", which is
   // a different and wrong statement.
-  function rrDirectRowHtml(r, qty) {
+  function rrDirectRowHtml(r, qty, uom) {
     const item = r.product_name || r.product_code || '';
     const pid = escHtml(r.product_id);
-    return '<tr class="rr-line rr-line--direct" data-product="' + pid + '">'
+    // The receiver's chosen unit when there is one, else the product's default. Both the
+    // id and the label are carried: the id is what posts, the label is what is read.
+    const uomId = uom && uom.id ? uom.id : '';
+    const uomText = uom && uom.code ? uom.code : (r.uom || '');
+    return '<tr class="rr-line rr-line--direct" data-product="' + pid + '"'
+         + ' data-uom="' + escHtml(uomId) + '">'
          + '<td class="text-muted">No PO</td>'
          + '<td>' + escHtml(item) + '</td>'
-         + '<td>' + escHtml(r.uom || '') + '</td>'
+         + '<td>' + escHtml(uomText) + '</td>'
          + '<td class="text-end text-muted">&mdash;</td>'
          + '<td class="text-end text-muted">&mdash;</td>'
          + '<td class="text-end text-muted">&mdash;</td>'
          + '<td class="text-end"><input type="number" step="0.0001" min="0"'
          + ' class="form-control rr-recv"'
          + ' data-product="' + pid + '"'
+         + ' data-uom="' + escHtml(uomId) + '"'
          + ' value="' + escHtml(qty === null || qty === undefined ? '' : qty) + '"'
-         + ' style="max-width:120px;display:inline-block"></td></tr>';
+         + ' style="max-width:120px;display:inline-block"></td>'
+         + rrRemoveCell() + '</tr>';
   }
 
-  function rrAddDirectLine(r, qty) {
+  function rrAddDirectLine(r, qty, uom) {
     if (!RR_ROW_COUNT) rrGridBody().innerHTML = '';
-    rrGridBody().insertAdjacentHTML('beforeend', rrDirectRowHtml(r, qty));
+    rrGridBody().insertAdjacentHTML('beforeend', rrDirectRowHtml(r, qty, uom));
     RR_ROW_COUNT += 1;
     return true;
+  }
+
+  // Removing a line was only ever possible by clearing its quantity to blank -- the
+  // serialiser drops a row with no quantity, so it worked, but nothing on the page said
+  // so (owner, 2026-09-07: "user should be able to delete a line item after adding it").
+  // Both gestures now do the same thing; this one is visible.
+  function rrRemoveCell() {
+    return '<td class="text-end">'
+         + '<button type="button" class="btn btn-secondary rr-remove"'
+         + ' title="Remove this line" aria-label="Remove this line"'
+         + ' style="padding:2px 10px;line-height:1.2;">&times;</button></td>';
+  }
+
+  // Delegated, so it covers rows added later by either picker without rebinding. Placed
+  // in THIS block rather than the picker block below because it is core grid behaviour:
+  // a row the receiver can add and not remove is the actual defect being fixed.
+  let RR_REMOVE_BOUND = false;
+  function rrBindRemove() {
+    const body = rrGridBody();
+    // A closure flag, not a data-* attribute on the tbody: the DOM shim that executes
+    // this block in tests does not implement `dataset` on that element, and reading it
+    // there throws before any assertion runs.
+    if (!body || RR_REMOVE_BOUND) return;
+    body.addEventListener('click', function (e) {
+      const btn = e.target.closest && e.target.closest('.rr-remove');
+      if (!btn) return;
+      const row = btn.closest('tr');
+      if (!row) return;
+      row.remove();
+      RR_ROW_COUNT = Math.max(0, RR_ROW_COUNT - 1);
+      // Put the placeholder back when the last line goes: an empty grid with no message
+      // reads as broken rather than as empty, and rrAddLine consumes the placeholder
+      // again on the next add.
+      if (!RR_ROW_COUNT) rrClearGrid();
+    });
+    RR_REMOVE_BOUND = true;
   }
 
   function rrRowHtml(r, qty) {
@@ -273,7 +325,8 @@
          + ' max="' + escHtml(r.open) + '" class="form-control rr-recv"'
          + ' data-poi="' + poi + '"'
          + ' value="' + escHtml(qty === null || qty === undefined ? '' : qty) + '"'
-         + ' style="max-width:120px;display:inline-block"></td></tr>';
+         + ' style="max-width:120px;display:inline-block"></td>'
+         + rrRemoveCell() + '</tr>';
   }
 
   function rrExistingRowFor(poiId) {
@@ -314,10 +367,13 @@
   // Direct lines come back as a LIST, not a map: two of them may name the same product
   // (two deliveries of it in one receipt), so product_id is not a key. Rendered after
   // the PO-backed pre-fill; the receiver can see both kinds in one grid.
+  const UNIT_INDEX = {};
+  (UNITS || []).forEach(function (u) { UNIT_INDEX[u.id] = u; });
   EXISTING_DIRECT.forEach(function (d) {
     const r = DIRECT_INDEX[d.product_id];
-    if (r) rrAddDirectLine(r, d.received_quantity);
+    if (r) rrAddDirectLine(r, d.received_quantity, UNIT_INDEX[d.unit_of_measure_id]);
   });
+  rrBindRemove();
 
   // On an EDIT the vendor is FIXED. edit() builds `eligible` from the RECEIPT's own
   // rr.vendor_id and deliberately ignores any POSTed vendor_id, so a switch in the
@@ -363,8 +419,12 @@
         lines.push({ purchase_order_item_id: parseInt(inp.dataset.poi, 10),
                      received_quantity: inp.value });
       } else if (inp.dataset.product) {
-        lines.push({ product_id: parseInt(inp.dataset.product, 10),
-                     received_quantity: inp.value });
+        const entry = { product_id: parseInt(inp.dataset.product, 10),
+                        received_quantity: inp.value };
+        // Omitted rather than sent null when unset, so the server's "no unit chosen"
+        // branch is reached by absence -- the same shape a pre-rruom_0001 payload has.
+        if (inp.dataset.uom) entry.unit_of_measure_id = parseInt(inp.dataset.uom, 10);
+        lines.push(entry);
       }
     });
     document.getElementById('rrLinesJson').value = JSON.stringify(lines);
@@ -475,12 +535,19 @@
     const err = document.getElementById('directPickerError');
     if (!btn || !modal || !sel || !qty) return;
 
+    const uomSel = document.getElementById('directUom');
     (DIRECT_PRODUCTS || []).forEach(function (p) {
       const o = document.createElement('option');
       o.value = p.product_id;
       o.textContent = p.product_code + ' — ' + p.product_name
                     + (p.uom ? ' (' + p.uom + ')' : '');
       sel.appendChild(o);
+    });
+    (UNITS || []).forEach(function (u) {
+      const o = document.createElement('option');
+      o.value = u.id;
+      o.textContent = u.code + ' — ' + u.name;
+      uomSel.appendChild(o);
     });
 
     function close() { modal.style.display = 'none'; err.style.display = 'none'; }
@@ -492,6 +559,9 @@
         return;
       }
       qty.value = '';
+      // Back to "use the product's default" each time: a unit left over from the last
+      // item would silently attach itself to the next one.
+      uomSel.value = '';
       err.style.display = 'none';
       modal.style.display = 'block';
       qty.focus();
@@ -512,7 +582,7 @@
       // Not merged with an existing row for the same product, unlike the PO picker: two
       // deliveries of one product in a single receipt are a real thing, and with no
       // ordered quantity there is no ceiling that a second row could breach.
-      rrAddDirectLine(p, qty.value);
+      rrAddDirectLine(p, qty.value, UNIT_INDEX[parseInt(uomSel.value, 10)]);
       close();
     });
 

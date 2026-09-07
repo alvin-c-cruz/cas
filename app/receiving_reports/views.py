@@ -26,6 +26,7 @@ from app.common.preprinted_base import (
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 from app.vendors.models import Vendor
 from app.products.models import Product
+from app.units_of_measure.models import UnitOfMeasure
 from app.settings import AppSettings
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.utils import ph_now
@@ -146,7 +147,8 @@ def _existing_direct_lines(rr):
     if not rr:
         return []
     return [{'product_id': li.product_id,
-             'received_quantity': float(li.received_quantity)}
+             'received_quantity': float(li.received_quantity),
+             'unit_of_measure_id': li.unit_of_measure_id}
             for li in sorted(rr.line_items, key=lambda x: x.line_number or 0)
             if li.purchase_order_item_id is None and li.product_id is not None]
 
@@ -170,8 +172,10 @@ def _submitted_existing_direct_lines():
         if not pid:
             continue
         try:
+            uom = d.get('unit_of_measure_id')
             out.append({'product_id': int(pid),
-                        'received_quantity': float(d.get('received_quantity') or 0)})
+                        'received_quantity': float(d.get('received_quantity') or 0),
+                        'unit_of_measure_id': int(uom) if uom else None})
         except (TypeError, ValueError):
             continue
     return out
@@ -261,6 +265,7 @@ def _render_create(form, eligible):
     return render_template('receiving_reports/form.html', form=form, rr=None,
                            eligible=eligible, po_lines=_po_lines_payload(eligible),
                            direct_products=_direct_products_payload(),
+                           units=_units_payload(),
                            existing=existing, existing_direct=existing_direct)
 
 
@@ -273,7 +278,20 @@ def _render_edit(rr, form, eligible):
                            eligible=eligible,
                            po_lines=_po_lines_payload(eligible, exclude_rr_id=rr.id),
                            direct_products=_direct_products_payload(),
+                           units=_units_payload(),
                            existing=existing, existing_direct=existing_direct)
+
+
+def _units_payload():
+    """Active units of measure, for the no-PO picker's unit control.
+
+    Offered as a CHOICE rather than fixed to the product's default: goods arrive by the
+    box for a product carried by the piece, and a product may carry no default at all.
+    The receiver is the one who can see what turned up.
+    """
+    from app.units_of_measure.models import UnitOfMeasure
+    rows = UnitOfMeasure.query.filter_by(is_active=True).order_by(UnitOfMeasure.code).all()
+    return [{'id': u.id, 'code': u.code, 'name': u.name} for u in rows]
 
 
 def _direct_products_payload():
@@ -440,7 +458,7 @@ def _parse_rr_lines(rr, lines_json):
                 raise ValueError(
                     f'Line {position}: that purchase order line is not a valid reference.'
                 ) from None
-            kept.append((poi_id, None, qty))
+            kept.append((poi_id, None, qty, None))
             po_pairs.append((poi_id, qty))
             continue
         if product_id:
@@ -459,7 +477,24 @@ def _parse_rr_lines(rr, lines_json):
                 raise ValueError(
                     f'Line {position}: that product does not exist or is no longer '
                     f'active. Choose another, or receive it against a purchase order.')
-            kept.append((None, product_id, qty))
+            # The unit is OPTIONAL: left unset the line falls back to the product's
+            # default, exactly as it did before rruom_0001. Validated all the same,
+            # because a raw POST reaches here without passing the picker.
+            uom_id = d.get('unit_of_measure_id')
+            if uom_id:
+                try:
+                    uom_id = int(uom_id)
+                except (TypeError, ValueError):
+                    raise ValueError(
+                        f'Line {position}: that unit is not a valid reference.') from None
+                uom = db.session.get(UnitOfMeasure, uom_id)
+                if uom is None or not uom.is_active:
+                    raise ValueError(
+                        f'Line {position}: that unit of measure does not exist or is no '
+                        f'longer active.')
+            else:
+                uom_id = None
+            kept.append((None, product_id, qty, uom_id))
             continue
         # Neither reference: an empty row left behind by the form. Skipped, as before.
     if not kept:
@@ -474,7 +509,7 @@ def _parse_rr_lines(rr, lines_json):
     # disagree with the header.
     assert_payload_within_open_qty(po_pairs, exclude_rr_id=rr.id, vendor_id=rr.vendor_id,
                                    branch_id=rr.branch_id)
-    for line_number, (poi_id, product_id, qty) in enumerate(kept, start=1):
+    for line_number, (poi_id, product_id, qty, uom_id) in enumerate(kept, start=1):
         if poi_id:
             poi = db.session.get(PurchaseOrderItem, poi_id)
             rr.line_items.append(ReceivingReportItem(
@@ -487,7 +522,8 @@ def _parse_rr_lines(rr, lines_json):
             # it is on a PO-backed line -- it is the line's only identity.
             rr.line_items.append(ReceivingReportItem(
                 line_number=line_number, purchase_order_item_id=None,
-                product_id=product_id, received_quantity=qty))
+                product_id=product_id, received_quantity=qty,
+                unit_of_measure_id=uom_id))
 
 
 def _rr_or_404(id):
