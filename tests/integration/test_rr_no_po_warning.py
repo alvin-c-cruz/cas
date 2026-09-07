@@ -92,3 +92,35 @@ class TestThePayloadCarriesTheProduct:
         rows = client.get('/receiving-reports/open-lines?vendor_id=%s'
                           % vendor.id).get_json()['lines']
         assert rows == []
+
+
+class TestTheFormCanWarn:
+
+    def _create_page(self, client, vendor):
+        # No vendor_id query param: the create view ignores one on GET, and these
+        # assertions are about STATIC markup that renders regardless.
+        return client.get('/receiving-reports/create').data.decode()
+
+    def test_the_modal_has_somewhere_to_show_the_warning(self, client, db_session,
+                                                         main_branch, vendor, product,
+                                                         admin_user):
+        _open_po(db_session, main_branch, vendor, product, admin_user)
+        _login(client, admin_user, main_branch)
+        assert 'id="directPoWarning"' in self._create_page(client, vendor)
+
+    def test_the_modal_has_somewhere_to_type_the_override(self, client, db_session,
+                                                          main_branch, vendor, product,
+                                                          admin_user):
+        _open_po(db_session, main_branch, vendor, product, admin_user)
+        _login(client, admin_user, main_branch)
+        assert 'id="directNoPoReason"' in self._create_page(client, vendor)
+
+    def test_no_blocking_dialog_is_used(self, client, db_session, main_branch, vendor,
+                                        product, admin_user):
+        """Project rule: no confirm()/alert()/prompt(), ever -- they wedge an automated
+        browser until dismissed by hand. Comments count; the test scans served HTML."""
+        _open_po(db_session, main_branch, vendor, product, admin_user)
+        _login(client, admin_user, main_branch)
+        page = self._create_page(client, vendor)
+        for banned in ('confirm(', 'alert(', 'prompt('):
+            assert banned not in page, '%s is forbidden -- use inline HTML' % banned
