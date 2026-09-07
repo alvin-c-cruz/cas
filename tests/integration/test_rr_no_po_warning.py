@@ -192,3 +192,29 @@ class TestTheReasonIsPersisted:
             'no_po_reason': 'Warranty swap'}], number='RR-WARN-RT')
         body = client.get('/receiving-reports/%s/edit' % rr.id).data.decode()
         assert 'Warranty swap' in body
+
+
+class TestTheListShowsWhichReceiptsHadNoPo:
+    """At weekly frequency these need reviewing without opening each one -- and this is
+    the same view that shows whether the warning is working."""
+
+    def test_a_receipt_with_a_direct_line_is_marked(self, client, db_session, main_branch,
+                                                    vendor, product, admin_user):
+        _login(client, admin_user, main_branch)
+        _create_via_form(client, vendor, [{'product_id': product.id,
+                                           'received_quantity': '2'}],
+                         number='RR-WARN-LIST')
+        body = client.get('/receiving-reports').data.decode()
+        assert 'title="Contains items received without a purchase order"' in body
+
+    def test_a_fully_ordered_receipt_is_not_marked(self, client, db_session, main_branch,
+                                                   vendor, product, admin_user):
+        """CONTROL. A marker on every row tells the reviewer nothing."""
+        po = _open_po(db_session, main_branch, vendor, product, admin_user,
+                      number='PO-WARN-LIST')
+        _login(client, admin_user, main_branch)
+        _create_via_form(client, vendor,
+                         [{'purchase_order_item_id': po.line_items[0].id,
+                           'received_quantity': '2'}], number='RR-WARN-PO')
+        body = client.get('/receiving-reports').data.decode()
+        assert 'title="Contains items received without a purchase order"' not in body
