@@ -124,3 +124,71 @@ class TestTheFormCanWarn:
         page = self._create_page(client, vendor)
         for banned in ('confirm(', 'alert(', 'prompt('):
             assert banned not in page, '%s is forbidden -- use inline HTML' % banned
+
+
+def _create_via_form(client, vendor, payload, number='RR-WARN-FORM'):
+    import json
+    resp = client.post('/receiving-reports/create', data={
+        'vendor_id': vendor.id, 'receipt_date': '2026-09-07', 'remarks': '',
+        'rr_number': number, 'lines': json.dumps(payload),
+    }, follow_redirects=True)
+    return resp, ReceivingReport.query.filter_by(rr_number=number).first()
+
+
+class TestTheReasonIsPersisted:
+
+    def test_it_is_stored_on_the_line(self, client, db_session, main_branch, vendor,
+                                      product, admin_user):
+        _login(client, admin_user, main_branch)
+        _, rr = _create_via_form(client, vendor, [{
+            'product_id': product.id, 'received_quantity': '2',
+            'no_po_reason': 'Free replacement for the damaged unit'}])
+        assert rr is not None, 'the receipt was refused'
+        assert rr.line_items[0].no_po_reason == 'Free replacement for the damaged unit'
+
+    def test_it_reaches_the_audit_log(self, client, db_session, main_branch, vendor,
+                                      product, admin_user):
+        """The column holds the current value; the audit log is the permanent record."""
+        from app.audit.models import AuditLog
+        _login(client, admin_user, main_branch)
+        _, rr = _create_via_form(client, vendor, [{
+            'product_id': product.id, 'received_quantity': '2',
+            'no_po_reason': 'Sample from the rep'}], number='RR-WARN-AUD')
+        notes = ' '.join(
+            (e.notes or '') for e in
+            AuditLog.query.filter_by(module='receiving_reports', record_id=rr.id).all())
+        assert 'Sample from the rep' in notes
+
+    def test_a_line_with_no_reason_stores_none(self, client, db_session, main_branch,
+                                               vendor, product, admin_user):
+        """CONTROL: the field is optional. A direct line for a product with no matching
+        order has nothing to explain, and a reason on it would be noise."""
+        _login(client, admin_user, main_branch)
+        _, rr = _create_via_form(client, vendor, [{
+            'product_id': product.id, 'received_quantity': '2'}],
+            number='RR-WARN-NONE')
+        assert rr is not None
+        assert rr.line_items[0].no_po_reason is None
+
+    def test_an_overlong_reason_is_truncated_not_refused(self, client, db_session,
+                                                         main_branch, vendor, product,
+                                                         admin_user):
+        """A raw POST can send any length. Refusing would lose the receipt over a
+        cosmetic problem; the text is capped instead."""
+        _login(client, admin_user, main_branch)
+        _, rr = _create_via_form(client, vendor, [{
+            'product_id': product.id, 'received_quantity': '2',
+            'no_po_reason': 'x' * 500}], number='RR-WARN-LONG')
+        assert rr is not None
+        assert len(rr.line_items[0].no_po_reason) == 200
+
+    def test_it_round_trips_into_the_edit_form(self, client, db_session, main_branch,
+                                               vendor, product, admin_user):
+        """Direct lines are re-rendered from their own channel; a reason that saved but
+        did not come back would look like it had never been given."""
+        _login(client, admin_user, main_branch)
+        _, rr = _create_via_form(client, vendor, [{
+            'product_id': product.id, 'received_quantity': '2',
+            'no_po_reason': 'Warranty swap'}], number='RR-WARN-RT')
+        body = client.get('/receiving-reports/%s/edit' % rr.id).data.decode()
+        assert 'Warranty swap' in body

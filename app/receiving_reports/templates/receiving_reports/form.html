@@ -388,7 +388,8 @@
   (UNITS || []).forEach(function (u) { UNIT_INDEX[u.id] = u; });
   EXISTING_DIRECT.forEach(function (d) {
     const r = DIRECT_INDEX[d.product_id];
-    if (r) rrAddDirectLine(r, d.received_quantity, UNIT_INDEX[d.unit_of_measure_id]);
+    if (r) rrAddDirectLine(r, d.received_quantity, UNIT_INDEX[d.unit_of_measure_id],
+                           d.no_po_reason);
   });
   rrBindRemove();
 

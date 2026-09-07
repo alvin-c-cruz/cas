@@ -168,7 +168,8 @@ def _existing_direct_lines(rr):
         return []
     return [{'product_id': li.product_id,
              'received_quantity': float(li.received_quantity),
-             'unit_of_measure_id': li.unit_of_measure_id}
+             'unit_of_measure_id': li.unit_of_measure_id,
+             'no_po_reason': li.no_po_reason}
             for li in sorted(rr.line_items, key=lambda x: x.line_number or 0)
             if li.purchase_order_item_id is None and li.product_id is not None]
 
@@ -195,7 +196,8 @@ def _submitted_existing_direct_lines():
             uom = d.get('unit_of_measure_id')
             out.append({'product_id': int(pid),
                         'received_quantity': float(d.get('received_quantity') or 0),
-                        'unit_of_measure_id': int(uom) if uom else None})
+                        'unit_of_measure_id': int(uom) if uom else None,
+                        'no_po_reason': (d.get('no_po_reason') or None)})
         except (TypeError, ValueError):
             continue
     return out
@@ -437,6 +439,23 @@ def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None,
     return None
 
 
+def _no_po_note(rr):
+    """A one-line summary of any no-PO overrides on this receipt, for the audit note.
+
+    The columns hold the CURRENT value and are rewritten wholesale whenever the receipt
+    is saved -- edit() calls rr.line_items.clear() before re-parsing. The audit log is
+    therefore the only place an overridden reason survives a later edit, which is what
+    makes it the record worth reviewing.
+
+    Returns None when nothing was overridden, so the ordinary receipt's audit entry is
+    completely unchanged.
+    """
+    parts = ['%s: %s' % (li.product.code if li.product else li.line_number,
+                         li.no_po_reason)
+             for li in rr.line_items if li.no_po_reason]
+    return ('No-PO reasons — ' + '; '.join(parts)) if parts else None
+
+
 def _parse_rr_lines(rr, lines_json):
     """Attach RR lines from the hidden JSON. Two kinds of entry are accepted:
 
@@ -478,7 +497,7 @@ def _parse_rr_lines(rr, lines_json):
                 raise ValueError(
                     f'Line {position}: that purchase order line is not a valid reference.'
                 ) from None
-            kept.append((poi_id, None, qty, None))
+            kept.append((poi_id, None, qty, None, None))     # PO-backed
             po_pairs.append((poi_id, qty))
             continue
         if product_id:
@@ -514,7 +533,11 @@ def _parse_rr_lines(rr, lines_json):
                         f'longer active.')
             else:
                 uom_id = None
-            kept.append((None, product_id, qty, uom_id))
+            # Capped rather than refused: a raw POST can send any length, and losing a
+            # whole receipt over a long sentence would be a worse outcome than a
+            # shortened note. 200 matches the input's maxlength.
+            reason = (d.get('no_po_reason') or '').strip()[:200] or None
+            kept.append((None, product_id, qty, uom_id, reason))   # direct
             continue
         # Neither reference: an empty row left behind by the form. Skipped, as before.
     if not kept:
@@ -529,7 +552,7 @@ def _parse_rr_lines(rr, lines_json):
     # disagree with the header.
     assert_payload_within_open_qty(po_pairs, exclude_rr_id=rr.id, vendor_id=rr.vendor_id,
                                    branch_id=rr.branch_id)
-    for line_number, (poi_id, product_id, qty, uom_id) in enumerate(kept, start=1):
+    for line_number, (poi_id, product_id, qty, uom_id, reason) in enumerate(kept, start=1):
         if poi_id:
             poi = db.session.get(PurchaseOrderItem, poi_id)
             rr.line_items.append(ReceivingReportItem(
@@ -543,7 +566,7 @@ def _parse_rr_lines(rr, lines_json):
             rr.line_items.append(ReceivingReportItem(
                 line_number=line_number, purchase_order_item_id=None,
                 product_id=product_id, received_quantity=qty,
-                unit_of_measure_id=uom_id))
+                unit_of_measure_id=uom_id, no_po_reason=reason))
 
 
 def _rr_or_404(id):
@@ -764,7 +787,8 @@ def create():
         else:
             log_create(module='receiving_reports', record_id=rr.id,
                        record_identifier=f'{rr.rr_number} - {rr.vendor_name}',
-                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']))
+                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']),
+                       notes=_no_po_note(rr))
             flash(f'Receiving Report "{rr.rr_number}" created.', 'success')
             return redirect(url_for('receiving_reports.view', id=rr.id))
 
@@ -834,7 +858,8 @@ def edit(id):
         else:
             log_update(module='receiving_reports', record_id=rr.id,
                        record_identifier=f'{rr.rr_number} - {rr.vendor_name}', old_values=old,
-                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']))
+                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']),
+                       notes=_no_po_note(rr))
             flash(f'Receiving Report "{rr.rr_number}" updated.', 'success')
             return redirect(url_for('receiving_reports.view', id=rr.id))
 
