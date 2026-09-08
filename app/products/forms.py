@@ -9,8 +9,9 @@ _COSTING_METHOD_CHOICES = [('', '— None —')] + [(m, m.replace('_', ' ').titl
 
 
 class ProductForm(FlaskForm):
-    code = StringField('Code', validators=[DataRequired(message='Code is required.'),
-                                           Length(max=50)])
+    # prodcode_0001: the product's own `code` field was retired from this form (and the
+    # screens that use it) -- the client does not use it. The column is still there
+    # (nullable) so the 555 previously recorded codes survive; see Product.code.
     customer_code = StringField("Customer's Product Code", validators=[Optional(), Length(max=50)])
     name = StringField('Name', validators=[DataRequired(message='Name is required.'),
                                            Length(max=200)])

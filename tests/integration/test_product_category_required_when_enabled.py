@@ -62,7 +62,10 @@ class TestCategoryRequiredWhenModuleEnabled:
             'category_id': '', 'default_unit_price': '', 'is_active': '1',
         }, follow_redirects=True)
         assert resp.status_code == 200
-        assert Product.query.filter_by(code='P-NOCAT').first() is None
+        # prodcode_0001: code is retired and always None now, so a lookup by code
+        # would pass whether or not the product was actually created -- look up by
+        # name (the only identifier the form still writes) to keep this assertion real.
+        assert Product.query.filter_by(name='No Category Widget').first() is None
         assert b'Category' in resp.data
 
     def test_category_optional_when_module_not_enabled(
@@ -76,7 +79,9 @@ class TestCategoryRequiredWhenModuleEnabled:
             'category_id': '', 'default_unit_price': '', 'is_active': '1',
         }, follow_redirects=True)
         assert resp.status_code == 200
-        p = Product.query.filter_by(code='P-NOCAT2').first()
+        # prodcode_0001: code is retired -- the form no longer writes it, so look up
+        # the product this test just created by name instead.
+        p = Product.query.filter_by(name='Freeform Widget').first()
         assert p is not None
         assert p.category_id is None
 
@@ -95,7 +100,8 @@ class TestCategoryRequiredWhenModuleEnabled:
             'category_id': str(cat.id), 'default_unit_price': '', 'is_active': '1',
         }, follow_redirects=True)
         assert resp.status_code == 200
-        p = Product.query.filter_by(code='P-HASCAT').one()
+        # prodcode_0001: code is retired -- look up by name instead.
+        p = Product.query.filter_by(name='Has Category Widget').one()
         assert p.category_id == cat.id
 
     def test_category_field_shows_required_asterisk_when_module_enabled(

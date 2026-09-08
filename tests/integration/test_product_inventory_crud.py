@@ -41,7 +41,8 @@ def test_create_product_with_inventory_tracking_persists(client, db_session, adm
                              'standard_cost': '150.00', 'reorder_level': '20.00'},
                        follow_redirects=True)
     assert resp.status_code == 200
-    p = Product.query.filter_by(code='TRK-1').first()
+    # prodcode_0001: code is retired from the form -- look up by name instead.
+    p = Product.query.filter_by(name='Tracked Widget').first()
     assert p is not None
     assert p.track_inventory is True
     assert p.costing_method == 'moving_average'
@@ -62,7 +63,8 @@ def test_create_product_without_tracking_defaults_false(client, db_session, admi
                              'default_account_id': '', 'category_id': '', 'is_active': '1'},
                        follow_redirects=True)
     assert resp.status_code == 200
-    p = Product.query.filter_by(code='UNTRK-1').first()
+    # prodcode_0001: code is retired from the form -- look up by name instead.
+    p = Product.query.filter_by(name='Untracked Widget').first()
     assert p is not None
     assert p.track_inventory is False
     assert p.costing_method is None
@@ -78,7 +80,10 @@ def test_create_product_tracking_without_cost_fields_rejected(client, db_session
                              'track_inventory': 'y'},
                        follow_redirects=True)
     assert resp.status_code == 200
-    assert Product.query.filter_by(code='BAD-1').first() is None
+    # prodcode_0001: code is retired and always None now, so a lookup by code
+    # would pass whether or not the product was actually rejected -- look up by
+    # name (the only identifier the form still writes) to keep this assertion real.
+    assert Product.query.filter_by(name='Bad Widget').first() is None
 
 
 def test_edit_product_updates_inventory_fields(client, db_session, admin_user, main_branch,

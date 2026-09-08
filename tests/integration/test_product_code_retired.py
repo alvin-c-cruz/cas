@@ -66,3 +66,52 @@ class TestAProductCanExistWithoutACode:
         with pytest.raises(IntegrityError):
             db_session.commit()
         db_session.rollback()
+
+
+class TestTheProductScreens:
+    """The owner's rule is that the code is not visible ANYWHERE in the app, and
+    the product's own screens are where it was most prominent."""
+
+    def _login(self, client, user, branch):
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = branch.id
+
+    def test_the_form_does_not_offer_a_code_field(self, client, admin_user,
+                                                  main_branch, db_session):
+        """Scoped to the INPUT, not the word: `code` appears in this page for the
+        unit-of-measure and account selects, which must keep working."""
+        import re
+        self._login(client, admin_user, main_branch)
+        html = client.get('/products/create').data.decode()
+        assert not re.search(r'<input[^>]*name="code"', html)
+
+    def test_the_customer_code_field_survives(self, client, admin_user,
+                                              main_branch, db_session):
+        """CONTROL. customer_code is the CUSTOMER's own SKU -- a different field
+        that stays, and the one most likely to be deleted by a careless sweep."""
+        import re
+        self._login(client, admin_user, main_branch)
+        html = client.get('/products/create').data.decode()
+        assert re.search(r'<input[^>]*name="customer_code"', html)
+
+    def test_a_product_created_through_the_form_has_no_code(self, client, admin_user,
+                                                            main_branch, db_session):
+        self._login(client, admin_user, main_branch)
+        # NOTE: is_active is a SelectField restricted to choices '1'/'0' (see
+        # ProductForm.is_active); 'y' is not a member and fails WTForms choice
+        # validation regardless of the code field, so '1' is used here instead
+        # (matches every other product-form POST in this suite, e.g.
+        # tests/integration/test_products_crud.py).
+        client.post('/products/create', data={
+            'name': 'FORM CREATED ITEM', 'is_active': '1'}, follow_redirects=True)
+        p = Product.query.filter_by(name='FORM CREATED ITEM').first()
+        assert p is not None, 'the form refused to save without a code'
+        assert p.code is None
+
+    def test_the_list_does_not_show_a_code_column(self, client, admin_user,
+                                                  main_branch, db_session):
+        self._login(client, admin_user, main_branch)
+        html = client.get('/products').data.decode()
+        assert '<th>Code</th>' not in html
