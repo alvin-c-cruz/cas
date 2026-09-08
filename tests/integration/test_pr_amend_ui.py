@@ -122,11 +122,16 @@ class TestAmendModeChangesTheForm:
         assert '/amend"' in html
         assert 'action="/purchase-requests/%d/edit"' % approved_pr.id not in html
 
-    def test_the_pr_number_is_readonly(self, client, approved_pr):
+    def test_the_pr_number_is_editable(self, client, approved_pr):
+        """Owner, 2026-09-08. Asserted on the rendered INPUT rather than the
+        absence of the word anywhere in the page: `readonly` appears in this
+        template for other fields, so a bare substring check could not fail."""
         html = _amend_get(client, approved_pr)
         m = re.search(r'<input[^>]*name="pr_number"[^>]*>', html)
-        assert m and 'readonly' in m.group(0), (
-            'an amendment revises a requisition, it does not renumber it')
+        assert m, 'the pr_number input is not rendered at all'
+        assert 'readonly' not in m.group(0), (
+            'the number is assigned by hand and must be correctable on an '
+            'amendment')
 
     def test_the_pr_number_is_NOT_readonly_on_a_draft_edit(
             self, client, accountant_user, main_branch, db_session):

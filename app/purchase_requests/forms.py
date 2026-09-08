@@ -41,10 +41,13 @@ class PurchaseRequestForm(RowVersionFormMixin, FlaskForm):
 class PurchaseRequestAmendForm(PurchaseRequestForm):
     """The PR form plus the reason a post-approval amendment must record.
 
-    Mirrors PurchaseOrderAmendForm's rule (>=10 chars, matching cancel's). The
-    inherited pr_number field is deliberately kept -- the amend template renders
-    it readonly and the route never reassigns it, so the value round-trips for
-    display without becoming editable.
+    Mirrors PurchaseOrderAmendForm's rule (>=10 chars, matching cancel's).
+
+    The inherited pr_number field is EDITABLE here as of 2026-09-08 (owner): the
+    number is assigned by hand, and a requisition approved under a mistyped one
+    previously had to be cancelled to correct it. The route applies it with the
+    same self-excluding duplicate check edit() uses, and pr_number is in
+    SNAPSHOT_FIELDS so the revision records which number that revision carried.
     """
     amend_reason = TextAreaField('Reason for amendment', validators=[
         DataRequired(message='Please provide a reason for this amendment.'),

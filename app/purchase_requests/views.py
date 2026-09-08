@@ -649,10 +649,33 @@ def amend(id):
                 flash(conflict_message('purchase_requests', pr.id), 'error')
                 return _render()
 
-            # pr_number is deliberately NOT reassigned -- an amendment revises a
-            # requisition, it does not renumber it. request_date, date_needed and
-            # reason are ordinary editable fields and must not be silently
-            # discarded.
+            # The number IS amendable (owner, 2026-09-08). It was previously held
+            # back on the reasoning that "an amendment revises a requisition, it
+            # does not renumber it" -- true of the document's identity, but the
+            # number here is a CLERICAL field the client assigns by hand, and a
+            # requisition approved under a mistyped number had no way to be
+            # corrected without cancelling it.
+            #
+            # The rename is captured either way: pr_number is in SNAPSHOT_FIELDS,
+            # so the DocumentRevision written below records the number this
+            # revision carried, and the audit entry diffs old against new.
+            #
+            # The duplicate check EXCLUDES this requisition's own row -- without
+            # that, re-saving a form without touching the number would refuse
+            # itself. pr_number is globally unique, so a collision left to reach
+            # the flush is an IntegrityError 500 rather than a message the user
+            # can act on. Same shape as edit()'s check.
+            new_number = (form.pr_number.data or '').strip()
+            if new_number and new_number != pr.pr_number:
+                clash = PurchaseRequest.query.filter(
+                    PurchaseRequest.pr_number == new_number,
+                    PurchaseRequest.id != pr.id).first()
+                if clash:
+                    db.session.rollback()
+                    flash('Purchase Requisition "%s" already exists.' % new_number,
+                          'error')
+                    return _render()
+                pr.pr_number = new_number
             pr.request_date = form.request_date.data
             _assign_date_needed(pr, form)
             pr.reason = form.reason.data or None
