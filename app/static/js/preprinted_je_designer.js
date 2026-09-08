@@ -190,9 +190,19 @@
     selectEl(null);
     el.remove();
   }
-  // A line-item column shares the band font, so font changes apply to every column.
+  // A column band shares ONE font, so a font change applies to every column in it --
+  // the layout stores a single fontSize per band, so sizing columns independently
+  // would let all but one of them be silently discarded on save.
+  //
+  // The JE band was missing from this until 2026-09-08: a .pp-jecol fell through to
+  // [selected], so only the clicked column resized on screen while collect() read the
+  // size off the FIRST column. Resizing any column but the first therefore appeared to
+  // work and saved nothing.
   function fontTargets() {
-    return (selected && selected.classList.contains('pp-col')) ? cols() : [selected];
+    if (!selected) return [];
+    if (selected.classList.contains('pp-col')) return cols();
+    if (selected.classList.contains('pp-jecol')) return jeCols();
+    return [selected];
   }
   function changeFont(delta) {
     if (!selected) return;
@@ -494,11 +504,24 @@
       // which both faces share so switching between them does not jump.
       const top = parseInt(jeColEls[0].style.top);
       if (!isNaN(top)) jeLayout.combined = Object.assign({}, jeLayout.combined, { y: top });
+    }
+    // ONE fontSize is stored for the whole JE face, so the face that is VISIBLE owns it.
+    //
+    // Until 2026-09-08 the legacy band's size was read unconditionally and AFTER the
+    // columns', so it always won. That was harmless while the bands were omitted from
+    // the DOM whenever the column face was on -- but the live-preview change now renders
+    // all three faces and hides the inactive ones, so `.pp-je` is always found. A size
+    // set on the JE columns was overwritten on save and reverted on the next print:
+    // reported by the owner, who had been re-setting it before every print.
+    const colsOn = !!(jeColsToggle && jeColsToggle.checked);
+    if (colsOn && jeColEls.length) {
       const fs = parseInt(getComputedStyle(jeColEls[0]).fontSize);
       if (fs) jeLayout.fontSize = fs;
+    } else {
+      const jeAny = canvas.querySelector('.pp-je');
+      if (jeAny) jeLayout.fontSize = parseInt(getComputedStyle(jeAny).fontSize)
+                                   || jeLayout.fontSize || 9;
     }
-    const jeAny = canvas.querySelector('.pp-je');
-    if (jeAny) jeLayout.fontSize = parseInt(getComputedStyle(jeAny).fontSize) || jeLayout.fontSize || 9;
     return {
       paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
       dateFormat: (dateSel && dateSel.value) || 'long',
