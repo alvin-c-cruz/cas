@@ -19,7 +19,12 @@ class Product(db.Model):
     __tablename__ = 'products'
 
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    # Optional since prodcode_0001 (owner, 2026-09-08): the code is retired from
+    # every screen, but the column and its recorded values stay so the decision is
+    # reversible. unique=True is KEPT -- SQLite allows multiple NULLs under a
+    # unique index, so new products collide with nothing while the 555 existing
+    # codes stay unique.
+    code = db.Column(db.String(50), unique=True, nullable=True, index=True)
     # The CUSTOMER's own code for this product (e.g. their SKU/article number) --
     # distinct from `code` above (this product's own internal CAS code). Optional,
     # not unique: legacy data shows it's usually only set for customer-dedicated
