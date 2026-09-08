@@ -45,18 +45,36 @@ def _line_description(item, po_item=None):
     return (getattr(product, 'name', None) or '').strip()
 
 
-def _reference_line(po_numbers, received_month, invoice_number):
-    """One document's citation: '-PO NO.00742, SI NO.403159, RR - OCTOBER 2025'.
+def _reference_line(po_numbers, received_month, invoice_number, rr_number=None):
+    """One document's citation: '-PO#00984, SI#67051, RR#00634 - JULY 2026'.
 
     Segment ORDER is the legacy order, not append-at-the-end: the supplier
     invoice sits between the order and the receipt.
+
+    THE `#` FORM, and the RR NUMBER, are the owner's current convention (2026-09-08,
+    from APV 0001). The previous form -- 'PO NO.00742, SI NO.403159, RR - OCTOBER 2025'
+    -- was measured across 1353 particulars in PhilGen's legacy register and was right
+    for its time; vouchers written from here on follow the new one, and the old text
+    stays untouched in the vouchers that already carry it.
+
+    The receipt NUMBER is new information, not a reformatting: the previous line cited
+    a receipt only by month, so which receipt was being billed could not be read off the
+    voucher at all.
     """
     segments = []
     if po_numbers:
-        segments.append('PO NO.' + ' & '.join(po_numbers))
+        segments.append('PO#' + ' & '.join(po_numbers))
     if invoice_number:
-        segments.append('SI NO.' + invoice_number)
-    if received_month:
+        segments.append('SI#' + invoice_number)
+    # The receipt segment carries its number and its month together, so a voucher
+    # citing several receipts keeps each number beside its own month.
+    if rr_number and received_month:
+        segments.append('RR#%s - %s' % (rr_number, received_month))
+    elif rr_number:
+        segments.append('RR#' + rr_number)
+    elif received_month:
+        # A receipt with no number is not reachable today (rr_number is NOT NULL), but
+        # the month alone is still a true statement, so it is kept rather than dropped.
         segments.append('RR - ' + received_month)
     return '-' + ', '.join(segments) if segments else ''
 
@@ -82,7 +100,7 @@ def build_particulars(po_ids, rr_ids, invoice_number=None):
         for line in po.line_items:
             _append_unique(items, _line_description(line))
         _append_unique(purposes, po.purpose)
-        references.append(([po.po_number] if po.po_number else [], None))
+        references.append(([po.po_number] if po.po_number else [], None, None))
 
     for rr_id in (rr_ids or []):
         rr = db.session.get(ReceivingReport, rr_id)
@@ -98,7 +116,7 @@ def build_particulars(po_ids, rr_ids, invoice_number=None):
                 if order.po_number:
                     _append_unique(po_numbers, order.po_number)
         month = rr.receipt_date.strftime('%B %Y').upper() if rr.receipt_date else None
-        references.append((po_numbers, month))
+        references.append((po_numbers, month, rr.rr_number))
 
     if not references and not items:
         return ''
@@ -113,8 +131,8 @@ def build_particulars(po_ids, rr_ids, invoice_number=None):
     if items:
         lines.append(OPENING + ', '.join(items))
     lines.extend(purposes)
-    for po_numbers, month in references:
-        reference = _reference_line(po_numbers, month, show_invoice)
+    for po_numbers, month, rr_number in references:
+        reference = _reference_line(po_numbers, month, show_invoice, rr_number)
         if reference:
             lines.append(reference)
     return '\n'.join(lines)
