@@ -225,3 +225,34 @@ class TestPurchasingDocumentsDoNotShowIt:
         assert 'id="ppCanvas"' in body, 'the pre-printed overlay did not render'
         assert product.name in body
         assert product.code not in body
+
+    def test_the_requisition_form_picker_lists_the_name_only(
+            self, client, db_session, admin_user, main_branch):
+        """The requisition's OWN data-entry screen, not the print overlay.
+
+        Asserted on the DISPLAY EXPRESSION in the page's script rather than on
+        the code's value, and deliberately so: the picker is built in the
+        browser from `PRODUCTS = {{ products | tojson }}`, and that payload is
+        `Product.to_dict()`, which still carries `code` (Task 5's territory).
+        The value is therefore still IN the body; what must be gone is the code
+        being rendered into the option label.
+
+        Why this mattered: the label was `escHtml(p.code) + ': ' + escHtml(p.name)`,
+        and escHtml does `String(s)`. Since the code became optional, every new
+        product carries None -> null -> the buyer read "null: Widget"."""
+        _set_modules(db_session, products=True, purchase_orders=True,
+                     purchase_requests=True)
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get('/purchase-requests/create').data.decode()
+
+        # Control: the line-item script rendered at all, so the two assertions
+        # below are about the label and not about an empty or refused page.
+        assert 'function productOptions(' in body
+
+        assert 'escHtml(p.code)' not in body
+        assert "p.code + ': '" not in body
+        # Positive pair: the name IS still what the option shows.
+        assert 'escHtml(p.name)' in body
