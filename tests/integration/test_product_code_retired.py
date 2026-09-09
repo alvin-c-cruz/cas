@@ -284,3 +284,99 @@ class TestPurchasingDocumentsDoNotShowIt:
 
         assert 'id="pqa_code"' not in body
         assert 'name="code"' not in body
+
+    def test_the_purchase_order_overlay_prints_the_name_only(
+            self, client, db_session, admin_user, main_branch):
+        """Task 4: the order's OWN pre-printed overlay, not the requisition's.
+
+        Same shape as test_the_requisition_overlay_prints_the_name_only above --
+        build a PO with a coded product, render the pre-printed overlay, and
+        assert the NAME prints while the CODE does not. The positive half is not
+        optional: an assertion that only checks the code's absence would also
+        pass on a blank page.
+
+        Scoped to the line-items band (`pp-lineitems`), not the whole page: the
+        overlay draws several independently-positioned column stacks, and other
+        bands / the designer's own inline <style> and script text can contain
+        incidental substrings unrelated to this fix (see
+        tests/integration/test_so_signatory_fields.py:239 and
+        test_po_overlay_grouped_render.py's `_columns` helper, which slices the
+        same way for the same reason)."""
+        from app.vendors.models import Vendor
+        from app.units_of_measure.models import UnitOfMeasure
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+
+        _set_modules(db_session, products=True, purchase_orders=True)
+        AppSettings.set_setting('po_print_form', 'preprinted')
+        db_session.commit()
+
+        vendor = Vendor(code='V-PO-CODE', name='ACME Trading', is_active=True)
+        uom = UnitOfMeasure(code='PC', name='Piece', is_active=True)
+        db.session.add_all([vendor, uom])
+        db.session.commit()
+
+        # 'ZQXV-40217' matches no quantity, date, id, or CSS/JS token anywhere on
+        # this overlay -- see the requisition overlay test above for why a short
+        # or generic value would pass incidentally even after this fix.
+        product = Product(code='ZQXV-40217', name='Retired-Code Test Widget',
+                          is_active=True, default_unit_of_measure_id=uom.id)
+        db.session.add(product)
+        db.session.commit()
+
+        po = PurchaseOrder(po_number='PO-RCODE-001', order_date=date(2026, 9, 9),
+                           vendor_id=vendor.id, branch_id=main_branch.id,
+                           status='approved')
+        po.line_items.append(PurchaseOrderItem(
+            line_number=1, description='widget', quantity=Decimal('5'),
+            unit_price=Decimal('10.00'), amount=Decimal('50.00'),
+            line_total=Decimal('50.00'), product_id=product.id,
+            unit_of_measure_id=uom.id))
+        db.session.add(po)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/purchase-orders/{po.id}/print')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'id="ppCanvas"' in body, 'the pre-printed overlay did not render'
+
+        band = body[body.index('class="pp-lineitems"'):]
+        assert product.name in band
+        assert product.code not in band
+
+    def test_the_purchase_order_form_picker_lists_the_name_only(
+            self, client, db_session, admin_user, main_branch):
+        """Task 4: the PO's OWN data-entry screen -- the highest-value part of
+        this task, because it is a SECOND bug the requisition fix (Task 3,
+        commit f1e6fb07) did not cover.
+
+        `productOptions()` and the "+ Add Product" onSelect handler built their
+        label from `escHtml(p.code) + ': ' + escHtml(p.name)` / `p.code + ': ' +
+        p.name`. escHtml does `String(s)`, and since the code became optional
+        every product created through the UI now carries None -> null, so the
+        line-item dropdown read literally "null: Widget" on the order's main
+        data-entry screen.
+
+        Asserted on the DISPLAY EXPRESSIONS, not the code's value: PRODUCTS is
+        built from `Product.to_dict()` (via `_common_form_ctx()`), which still
+        CARRIES the code -- that payload is Task 5's territory -- so the value
+        legitimately remains in the body; what must be gone is the code being
+        rendered into either option label."""
+        _set_modules(db_session, products=True, purchase_orders=True)
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get('/purchase-orders/create').data.decode()
+
+        # Control: the line-item script rendered at all, so the assertions
+        # below are about the label and not about an empty or refused page.
+        assert 'function productOptions(' in body
+
+        assert 'escHtml(p.code)' not in body
+        assert "p.code + ': '" not in body
+        # Positive pair: the name IS still what both option labels show.
+        assert 'escHtml(p.name)' in body
