@@ -579,3 +579,66 @@ def test_void_noop_when_no_movement_posted(db_session, main_branch, admin_user):
     reverse_purchase_memo_je(memo, admin_user.id, actor=admin_user)   # must not raise
     db.session.commit()
     assert StockMovement.query.filter_by(source_document_type='purchase_memo').count() == 0
+
+
+def test_a_previously_posted_movement_keeps_its_original_code_based_text(
+        db_session, main_branch, admin_user):
+    """BIR permanence: retiring the code changes what NEW postings say, never
+    what an existing record already says.
+
+    Task 6 changed post_purchase_memo_je to write the product's NAME into the
+    stock-movement reason. Movements written before that carry the old
+    code-based text and must keep it -- they record what was actually booked,
+    and rewriting them would falsify the record. Mirrors the equivalent proof
+    for JournalEntryLine in tests/integration/test_product_code_retired.py.
+
+    The historical row is seeded here rather than found, and re-read BY ID
+    after the new code path has run on a SEPARATE document: a test that only
+    asserted the new format on a new movement would prove nothing about
+    permanence.
+
+    It is seeded on its OWN product so it cannot perturb the valuation of the
+    chain below -- an out-of-band movement on the returned product changes the
+    running average and makes the memo post a variance it otherwise would not.
+    """
+    coa = _full_vdm_coa()
+
+    old_product = Product(code='CV-PERM-OLD', name='Historical Product',
+                          is_active=True, track_inventory=True,
+                          costing_method='moving_average')
+    db.session.add(old_product); db.session.commit()
+    old_text = f'PM-OLD-0001 return: {old_product.code}'
+    old_mv, _ = post_movement(old_product, main_branch.id, 'receipt',
+                              Decimal('1'), Decimal('5.00'),
+                              'purchase_memo', 999, old_text, admin_user,
+                              movement_date=date(2026, 1, 1))
+    db.session.commit()
+    old_id = old_mv.id
+    assert old_product.code in old_mv.reason, (
+        'the historical row was not seeded as intended')
+
+    # Now exercise the CHANGED path on a different document.
+    ap_item, product = _ap_item_from_rr(db_session, main_branch, admin_user,
+                                        tracked=True, suffix='PERM')
+    mitem = _memo_item_for(ap_item)
+    mitem.product_id = product.id
+    mitem.quantity = Decimal('2')
+    mitem.amount = Decimal('11.20'); mitem.line_total = Decimal('11.20')
+    mitem.vat_amount = Decimal('1.20')
+    memo = mitem.memo
+    memo.subtotal = Decimal('11.20'); memo.vat_amount = Decimal('1.20')
+    memo.total_amount = Decimal('11.20')
+    db.session.commit()
+
+    post_purchase_memo_je(memo, admin_user.id, actor=admin_user)
+    db.session.commit()
+
+    # CONTROL: the new path really ran, and really uses the name.
+    fresh = (StockMovement.query
+             .filter_by(source_document_type='purchase_memo',
+                        source_document_id=memo.id).one())
+    assert fresh.reason == f'{memo.memo_number} return: {product.name}'
+
+    # THE ASSERTION: the historical row, re-read by id, is byte-for-byte intact.
+    kept = db.session.get(StockMovement, old_id)
+    assert kept.reason == old_text
