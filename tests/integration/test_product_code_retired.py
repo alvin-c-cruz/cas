@@ -380,3 +380,220 @@ class TestPurchasingDocumentsDoNotShowIt:
         assert "p.code + ': '" not in body
         # Positive pair: the name IS still what both option labels show.
         assert 'escHtml(p.name)' in body
+
+    def test_the_receipt_picker_shows_the_name_only(
+            self, client, db_session, admin_user, main_branch):
+        """Task 5: the receipt's OWN data-entry screen and its "Pull from
+        Purchase Orders" picker.
+
+        Both surfaces are built from ONE server-side row dict,
+        `_po_lines_payload()` (app/receiving_reports/views.py) -- the grid's
+        `PO_LINES`/`RR_LINE_INDEX` and the picker modal's `/open-lines` JSON
+        share it. It is not named in the Task 5 brief's file list; found by
+        grepping app/receiving_reports/ for `.code\\b` rather than the narrower
+        `product_code` search, and confirmed as the payload both display sites
+        actually read from.
+
+        The grid itself renders empty until a vendor is picked client-side
+        (create() seeds `po_lines` from an empty `eligible` list when no vendor
+        is selected -- see _eligible_purchase_orders), so the picker's real
+        data source, /open-lines, is hit directly rather than scraped out of
+        the create page's initial HTML."""
+        from app.vendors.models import Vendor
+        from app.units_of_measure.models import UnitOfMeasure
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+
+        _set_modules(db_session, products=True, purchase_orders=True,
+                     receiving_reports=True)
+
+        vendor = Vendor(code='V-RR-CODE', name='ACME Trading', is_active=True)
+        uom = UnitOfMeasure(code='PC', name='Piece', is_active=True)
+        db.session.add_all([vendor, uom])
+        db.session.commit()
+
+        # 'ZQXV-63820' matches no quantity, date, id, or CSS/JS token anywhere
+        # on this page -- see the requisition overlay test above for why a
+        # short or generic value would pass incidentally even after this fix.
+        product = Product(code='ZQXV-63820', name='Retired-Code Test Widget',
+                          is_active=True, default_unit_of_measure_id=uom.id)
+        db.session.add(product)
+        db.session.commit()
+
+        po = PurchaseOrder(po_number='PO-RRCODE-001', order_date=date(2026, 9, 9),
+                           vendor_id=vendor.id, vendor_name=vendor.name,
+                           branch_id=main_branch.id, status='approved')
+        po.line_items.append(PurchaseOrderItem(
+            line_number=1, description='widget', quantity=Decimal('5'),
+            unit_price=Decimal('10.00'), amount=Decimal('50.00'),
+            line_total=Decimal('50.00'), product_id=product.id,
+            unit_of_measure_id=uom.id))
+        db.session.add(po)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+
+        # The picker's actual data source.
+        resp = client.get(f'/receiving-reports/open-lines?vendor_id={vendor.id}')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['lines'], 'no open lines returned -- the fixture PO is not eligible'
+        row = data['lines'][0]
+        assert row['product_name'] == product.name
+        assert 'product_code' not in row
+
+        # Control: the create page's line-item script rendered at all, so the
+        # absence assertions below are about the display code, not a blank or
+        # refused page.
+        body = client.get('/receiving-reports/create').data.decode()
+        assert 'function rrRowHtml(' in body, 'the line-item script did not render'
+
+        assert 'product_code' not in body
+        # Positive pair: the name IS still what the grid row and the picker
+        # row both show.
+        assert 'r.product_name' in body
+
+    def test_the_stock_journal_entry_describes_the_product_by_name(
+            self, db_session, branch_main, admin_user, product_tracked,
+            vl_vendor, make_account):
+        """Task 5's one non-cosmetic change: stock_posting writes the product
+        into the JOURNAL ENTRY's line description -- a permanent accounting
+        record, not a screen. Approving a receipt of a tracked product must
+        now describe it by name.
+
+        Modeled on tests/integration/test_receiving_report_stock_posting.py,
+        which already assigns the inventory and GRNI control accounts through
+        get_control_account() rather than a hardcoded GL code."""
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+        from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
+        from app.receiving_reports.stock_posting import post_rr_receipt
+        from app.posting.control_accounts import get_control_account
+
+        make_account('1401')
+        AppSettings.set_setting('inventory_account_code', '1401', updated_by='test')
+        make_account('2015')
+        AppSettings.set_setting('grni_account_code', '2015', updated_by='test')
+        db_session.commit()
+
+        po = PurchaseOrder(branch_id=branch_main.id, po_number='PO-RRNAME-0001',
+                           order_date=date(2026, 7, 21), vendor_id=vl_vendor.id,
+                           vendor_name=vl_vendor.name, status='approved',
+                           vat_treatment='inclusive')
+        po.line_items.append(PurchaseOrderItem(
+            line_number=1, description=product_tracked.name,
+            product_id=product_tracked.id, quantity=Decimal('10'),
+            unit_price=Decimal('11.20'), vat_rate=Decimal('12.00'),
+            amount=Decimal('112.00')))
+        po.calculate_totals()
+        db.session.add(po)
+        db.session.commit()
+
+        rr = ReceivingReport(branch_id=branch_main.id, rr_number='RR-RRNAME-0001',
+                             receipt_date=date(2026, 7, 21), vendor_id=po.vendor_id,
+                             vendor_name=po.vendor_name, status='draft')
+        rr.line_items.append(ReceivingReportItem(
+            line_number=1, purchase_order_item_id=po.line_items[0].id,
+            product_id=po.line_items[0].product_id,
+            received_quantity=Decimal('10')))
+        db.session.add(rr)
+        db.session.commit()
+
+        post_rr_receipt(rr, admin_user)
+        db.session.commit()
+
+        assert rr.journal_entry_id is not None
+        inv_account = get_control_account('inventory')
+        grni_account = get_control_account('grni')
+        dr = next(l for l in rr.journal_entry.lines if l.account_id == inv_account.id)
+        cr = next(l for l in rr.journal_entry.lines if l.account_id == grni_account.id)
+
+        assert dr.description == f'{product_tracked.name} received'
+        assert cr.description == f'{product_tracked.name} accrued'
+        # Discriminating half: the OLD text is gone, not merely "a" new text
+        # present alongside it.
+        assert product_tracked.code not in dr.description
+        assert product_tracked.code not in cr.description
+
+    def test_a_previously_posted_je_line_keeps_its_original_code_based_text(
+            self, db_session, branch_main, admin_user, product_tracked,
+            vl_vendor, make_account):
+        """Non-retroactivity proof for the change above. Journal entries are
+        permanent accounting records -- there is no edit route on one, only
+        reversing entries (app/accounts_payable/views.py:1677's rule applies
+        here too) -- so a line written by the OLD, code-based stock_posting.py
+        must keep reading exactly as it was written.
+
+        This directly inserts a JE line carrying the pre-change text (as a real
+        pre-change `post_rr_receipt` would have written it), then exercises the
+        CHANGED code path on a separate receipt, and re-reads the original line
+        to prove nothing rewrote it. Nothing in this change touches existing
+        rows -- no migration, no backfill -- and this test is what stands in
+        for that absence."""
+        from app.journal_entries.models import JournalEntry, JournalEntryLine
+        from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+        from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
+        from app.receiving_reports.stock_posting import post_rr_receipt
+        from app.posting.control_accounts import get_control_account
+        from app.utils import ph_now
+
+        inv_account = make_account('1401')
+        AppSettings.set_setting('inventory_account_code', '1401', updated_by='test')
+        make_account('2015')
+        AppSettings.set_setting('grni_account_code', '2015', updated_by='test')
+        db_session.commit()
+
+        old_text = f'{product_tracked.code} received'   # what a PRE-change post_rr_receipt wrote
+        old_je = JournalEntry(
+            entry_number='JE-OLDTXT-0001', entry_date=date(2026, 7, 1),
+            description=f'Receiving Report RR-OLDTXT-0000 — {vl_vendor.name}',
+            reference='RR-OLDTXT-0000', entry_type='receiving_report',
+            branch_id=branch_main.id, created_by_id=admin_user.id, status='posted',
+            posted_by_id=admin_user.id, posted_at=ph_now(), is_balanced=True,
+            total_debit=Decimal('100.00'), total_credit=Decimal('100.00'))
+        db.session.add(old_je)
+        db.session.flush()
+        old_line = JournalEntryLine(
+            entry_id=old_je.id, line_number=1, account_id=inv_account.id,
+            description=old_text, debit_amount=Decimal('100.00'), credit_amount=Decimal('0.00'))
+        db.session.add(old_line)
+        db.session.commit()
+        old_line_id = old_line.id
+
+        # Exercise the CHANGED code path -- a separate, new receipt.
+        po = PurchaseOrder(branch_id=branch_main.id, po_number='PO-OLDTXT-0001',
+                           order_date=date(2026, 7, 21), vendor_id=vl_vendor.id,
+                           vendor_name=vl_vendor.name, status='approved',
+                           vat_treatment='inclusive')
+        po.line_items.append(PurchaseOrderItem(
+            line_number=1, description=product_tracked.name,
+            product_id=product_tracked.id, quantity=Decimal('10'),
+            unit_price=Decimal('11.20'), vat_rate=Decimal('12.00'),
+            amount=Decimal('112.00')))
+        po.calculate_totals()
+        db.session.add(po)
+        db.session.commit()
+        rr = ReceivingReport(branch_id=branch_main.id, rr_number='RR-OLDTXT-0001',
+                             receipt_date=date(2026, 7, 21), vendor_id=po.vendor_id,
+                             vendor_name=po.vendor_name, status='draft')
+        rr.line_items.append(ReceivingReportItem(
+            line_number=1, purchase_order_item_id=po.line_items[0].id,
+            product_id=po.line_items[0].product_id,
+            received_quantity=Decimal('10')))
+        db.session.add(rr)
+        db.session.commit()
+        post_rr_receipt(rr, admin_user)
+        db.session.commit()
+
+        # The NEW receipt's own lines use the name (control -- proves the code
+        # path really did change, so the assertion below is about permanence,
+        # not a fix that silently never landed).
+        new_descriptions = [l.description for l in rr.journal_entry.lines]
+        assert f'{product_tracked.name} received' in new_descriptions
+
+        # The OLD line, re-read from the database, is untouched.
+        reread = db.session.get(JournalEntryLine, old_line_id)
+        assert reread.description == old_text, (
+            'a pre-existing journal entry line was rewritten -- posted '
+            'documents must never change')

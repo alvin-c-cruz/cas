@@ -147,7 +147,7 @@
   // Kept free of fetch/Choices/modal code on purpose -- see the comment above the
   // picker block below.
 
-  const PO_LINES = {{ po_lines | tojson }};   // {po_id: [{purchase_order_item_id, product_code, product_name, uom, ordered, received, open}]}
+  const PO_LINES = {{ po_lines | tojson }};   // {po_id: [{purchase_order_item_id, product_name, uom, ordered, received, open}]}
   const EXISTING = {{ existing | tojson }};   // {purchase_order_item_id: received_qty} (edit / bounce pre-fill)
   // _po_lines_payload carries no PO number, and "which order is this line from?"
   // is now a per-LINE question -- one receipt can span several orders of one vendor.
@@ -173,7 +173,7 @@
         purchase_order_item_id: r.purchase_order_item_id,
         po_id: parseInt(poId, 10),
         po_number: PO_NUMBERS[poId] || '',
-        product_code: r.product_code, product_name: r.product_name,
+        product_name: r.product_name,
         uom: r.uom, ordered: r.ordered, received: r.received, open: r.open
       };
     });
@@ -197,7 +197,13 @@
   }
 
   function rrRowHtml(r, qty) {
-    const item = r.product_name || r.product_code || '';
+    // The retired code field used to sit behind product_name here as a
+    // fallback, but it never had anything to add: when a line has a product,
+    // Product.name is NOT NULL so product_name is already truthy; when it has
+    // none, the server payload built the retired field the same way it built
+    // this one -- empty when there's no product -- so that side was never the
+    // one carrying a value this side lacked.
+    const item = r.product_name || '';
     const poi = escHtml(r.purchase_order_item_id);
     return '<tr class="rr-line" data-poi="' + poi + '">'
          + '<td>' + escHtml(r.po_number || '') + '</td>'
@@ -347,9 +353,13 @@
           const rows = d.lines || [];
           empty.style.display = rows.length ? 'none' : '';
           body.innerHTML = rows.map(function (row) {
+            // The code prefix is retired from display (owner, 2026-09-08). The
+            // no-name branch is kept: /open-lines can return a line whose PO
+            // item has no product (a free-text/service line), and that branch
+            // is what keeps such a row from showing "undefined".
             const item = row.product_name
-              ? escHtml((row.product_code ? row.product_code + ': ' : '') + row.product_name)
-              : escHtml(row.product_code || '');
+              ? escHtml(row.product_name)
+              : escHtml('');
             return '<tr data-row=\'' + escHtml(JSON.stringify(row)) + '\'>'
                  + '<td><input type="checkbox" class="po-pick"></td>'
                  + '<td>' + escHtml(row.po_number) + '</td>'

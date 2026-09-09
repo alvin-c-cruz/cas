@@ -74,8 +74,13 @@ def post_rr_receipt(rr, actor):
             'receiving_report', rr.id, f'RR {rr.rr_number}', actor, journal_entry_id=je.id,
             movement_date=rr.receipt_date)
         li.stock_movement_id = mv.id
-        _add_line(je, n, inv_account.id, f'{li.product.code} received', net_amount, ZERO); n += 1
-        _add_line(je, n, grni_account.id, f'{li.product.code} accrued', ZERO, net_amount); n += 1
+        # The product's NAME, not its code: the code is retired from every surface
+        # (owner, 2026-09-08) and this text lands in the general ledger, where an
+        # identifier nobody can look up is worse than none. Journal entries already
+        # posted keep the text they were written with -- they record what was
+        # booked, and rewriting them would falsify the books.
+        _add_line(je, n, inv_account.id, f'{li.product.name} received', net_amount, ZERO); n += 1
+        _add_line(je, n, grni_account.id, f'{li.product.name} accrued', ZERO, net_amount); n += 1
 
     db.session.flush()
     je.calculate_totals()
