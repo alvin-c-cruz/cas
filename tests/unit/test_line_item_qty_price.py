@@ -39,7 +39,15 @@ def test_to_dict_includes_new_fields(Cls):
     li.calculate_amounts()
     d = li.to_dict()
     for k in ('quantity', 'unit_price', 'uom_text', 'unit_of_measure_id', 'uom_code',
-              'uom_name', 'uom_display', 'product_id', 'product_code', 'product_name'):
+              'uom_name', 'uom_display', 'product_id', 'product_name'):
         assert k in d
+    # product_code retired from AP/CDV's own to_dict() (Task 6, owner 2026-09-08) --
+    # it fed display sites that now show product_name only. Sales-side line
+    # classes are untouched (deferred Phase 2; see the module docstring in
+    # tests/integration/test_product_code_retired.py).
+    if Cls in (AccountsPayableItem, CDVExpenseLine):
+        assert 'product_code' not in d
+    else:
+        assert 'product_code' in d
     assert d['quantity'] == 2.0 and d['unit_price'] == 50.0
     assert d['uom_display'] == 'ea'                  # free-text fallback when no FK

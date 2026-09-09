@@ -180,7 +180,10 @@ class PurchaseMemoItem(db.Model):
             'uom_text': self.uom_text, 'unit_of_measure_id': self.unit_of_measure_id,
             'uom_display': (self.unit_of_measure.code if self.unit_of_measure else self.uom_text),
             'product_id': self.product_id,
-            'product_code': self.product.code if self.product else None,
+            # product_code retired from this payload (owner, 2026-09-08) -- this
+            # to_dict() has no caller today, but the retirement is app-wide, not
+            # per-consumer; nothing should be able to start reading a code back
+            # out of it later. This module's templates already display product_name.
             'product_name': self.product.name if self.product else None,
             'vat_category': self.vat_category,
             'vat_rate': float(self.vat_rate) if self.vat_rate is not None else 0.0,

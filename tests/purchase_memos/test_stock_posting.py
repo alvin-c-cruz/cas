@@ -271,7 +271,10 @@ def test_negative_on_hand_return_surfaces_warning(db_session, main_branch, admin
     post_purchase_memo_je(memo, admin_user.id, actor=admin_user)
     db.session.commit()
 
-    assert memo._negative_warnings == [product.code]
+    # Task 6 (owner, 2026-09-08): the code is retired from every surface,
+    # including this negative-stock warning -- it now names the product, not
+    # its (possibly absent) code.
+    assert memo._negative_warnings == [product.name]
 
 
 def _memo_with_two_lines(ap_item_a, ap_item_b):

@@ -354,8 +354,9 @@ def _post_impl(id, memo_type):
         log_audit(module='purchase_memos', action='post', record_id=memo.id,
                   record_identifier=memo.memo_number, notes='Posted')
         flash(f'{meta["title"]} "{memo.memo_number}" posted.', 'success')
-        for code in (getattr(memo, '_negative_warnings', None) or []):
-            flash(f'{code} stock is now negative.', 'warning')
+        # Product NAMEs now, not codes (je.py, owner 2026-09-08) -- renamed to match.
+        for name in (getattr(memo, '_negative_warnings', None) or []):
+            flash(f'{name} stock is now negative.', 'warning')
     except ValueError as e:
         db.session.rollback()
         flash(str(e), 'error')

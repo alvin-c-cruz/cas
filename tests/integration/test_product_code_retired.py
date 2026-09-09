@@ -597,3 +597,499 @@ class TestPurchasingDocumentsDoNotShowIt:
         assert reread.description == old_text, (
             'a pre-existing journal entry line was rewritten -- posted '
             'documents must never change')
+
+    # -- Task 6: payables, disbursements and purchase memos ---------------------
+    #
+    # Found by grepping app/accounts_payable, app/cash_disbursements,
+    # app/purchase_memos and app/purchase_billing.py for the WIDE `.code\b`
+    # pattern (not the brief's narrower `product_code`) and classifying every
+    # hit by hand -- Account/UOM/Vendor/WithholdingTax/VATCategory codes stay;
+    # only Product.code is retired. The same "null: Widget" defect Task 3 fixed
+    # on the requisition form (f1e6fb07) and Task 4 on the order form
+    # (927044e6) was present on BOTH the AP voucher form and the CDV form, and
+    # a THIRD, DIFFERENT live bug -- a real "CODE: Name" label, not a null one
+    # -- was found in app/static/js/purchase_memos_form.js, fed by
+    # AccountsPayableItem.to_dict()'s now-retired 'product_code' key. None of
+    # these three were named in the Task 6 brief's file list.
+
+    def test_the_ap_voucher_form_picker_lists_the_name_only(
+            self, client, db_session, admin_user, main_branch):
+        """The AP voucher's OWN data-entry screen.
+
+        `products.map(...)` built its option label from
+        `${escHtml(p.code)}: ${escHtml(p.name)}`, and the "+ Add Product"
+        onSelect handler from `escHtml(p.code) + ': ' + escHtml(p.name)`.
+        escHtml does `String(s)`, so since the code became optional every
+        product created through the UI carries None -> null -> the bookkeeper
+        read "null: Widget" on the voucher's main data-entry screen.
+
+        Asserted on the DISPLAY EXPRESSIONS, not a code's value: PRODUCTS is
+        built from Product.to_dict(), which still CARRIES the code (Task 5's
+        territory) -- what must be gone is the code being rendered into either
+        option label."""
+        _set_modules(db_session, products=True)
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get('/accounts-payable/create').data.decode()
+
+        # Control: the line-item script rendered at all.
+        assert 'function addLineItem(' in body
+
+        assert 'escHtml(p.code)' not in body
+        assert "p.code) + ': '" not in body
+        # Positive pair: the name IS still what both option labels show.
+        assert 'escHtml(p.name)' in body
+
+    def test_the_ap_voucher_overlay_prints_the_name_only(
+            self, client, db_session, admin_user, main_branch, make_account):
+        """The AP voucher's own pre-printed overlay.
+
+        Same shape as the requisition/order overlay tests above -- build a
+        posted AP voucher with a coded product line, render the pre-printed
+        overlay, and assert the NAME prints while the CODE does not. Scoped to
+        the line-items band, not the whole page, for the same reason as the PO
+        overlay test (other bands / the designer's own inline <style> and
+        script text can contain incidental substrings)."""
+        from app.vendors.models import Vendor
+        from app.settings import AppSettings
+        from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+
+        _set_modules(db_session, products=True)
+        AppSettings.set_setting('ap_print_form', 'preprinted')
+        db_session.commit()
+
+        vendor = Vendor(code='V-AP-CODE', name='ACME Trading', is_active=True)
+        db.session.add(vendor)
+        account = make_account('50199')
+        db.session.commit()
+
+        # 'ZQXV-71930' matches no quantity, date, id, or CSS/JS token anywhere on
+        # this overlay -- see the requisition overlay test above for why a short
+        # or generic value would pass incidentally even after this fix.
+        product = Product(code='ZQXV-71930', name='Retired-Code Test Widget',
+                          is_active=True)
+        db.session.add(product)
+        db.session.commit()
+
+        ap = AccountsPayable(branch_id=main_branch.id, ap_number='AP-RCODE-001',
+                              ap_date=date(2026, 9, 9), due_date=date(2026, 10, 9),
+                              payee_type='vendor', payee_id=vendor.id,
+                              vendor_id=vendor.id, vendor_name=vendor.name,
+                              status='posted')
+        ap.line_items.append(AccountsPayableItem(
+            line_number=1, description='widget', amount=Decimal('112.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+            line_total=Decimal('112.00'), vat_amount=Decimal('12.00'),
+            account_id=account.id, product_id=product.id))
+        db.session.add(ap)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/accounts-payable/{ap.id}/print')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'id="ppCanvas"' in body, 'the pre-printed overlay did not render'
+
+        band = body[body.index('class="pp-lineitems'):]
+        assert product.name in band
+        assert product.code not in band
+
+    def test_the_ap_voucher_print_page_shows_the_name_only(
+            self, client, db_session, admin_user, main_branch, make_account):
+        """The AP voucher's plain (non-preprinted) print page -- a separate
+        template from the overlay above, with its own `item.product.code`
+        reference."""
+        from app.vendors.models import Vendor
+        from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+
+        _set_modules(db_session, products=True)
+
+        vendor = Vendor(code='V-AP-CODE-2', name='ACME Trading', is_active=True)
+        db.session.add(vendor)
+        account = make_account('50198')
+        db.session.commit()
+
+        product = Product(code='ZQXV-71931', name='Retired-Code Test Widget',
+                          is_active=True)
+        db.session.add(product)
+        db.session.commit()
+
+        ap = AccountsPayable(branch_id=main_branch.id, ap_number='AP-RCODE-002',
+                              ap_date=date(2026, 9, 9), due_date=date(2026, 10, 9),
+                              payee_type='vendor', payee_id=vendor.id,
+                              vendor_id=vendor.id, vendor_name=vendor.name,
+                              status='posted')
+        ap.line_items.append(AccountsPayableItem(
+            line_number=1, description='widget', amount=Decimal('112.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+            line_total=Decimal('112.00'), vat_amount=Decimal('12.00'),
+            account_id=account.id, product_id=product.id))
+        db.session.add(ap)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get(f'/accounts-payable/{ap.id}/print').data.decode()
+        # Control: the line-items table rendered with the product column.
+        assert '<th style="width:14%">Product</th>' in body
+        assert product.name in body
+        assert product.code not in body
+
+    def test_the_ap_voucher_detail_page_shows_the_name_only(
+            self, client, db_session, admin_user, main_branch, make_account):
+        """The AP voucher's own detail page."""
+        from app.vendors.models import Vendor
+        from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+
+        _set_modules(db_session, products=True)
+
+        vendor = Vendor(code='V-AP-CODE-3', name='ACME Trading', is_active=True)
+        db.session.add(vendor)
+        account = make_account('50197')
+        db.session.commit()
+
+        product = Product(code='ZQXV-71932', name='Retired-Code Test Widget',
+                          is_active=True)
+        db.session.add(product)
+        db.session.commit()
+
+        ap = AccountsPayable(branch_id=main_branch.id, ap_number='AP-RCODE-003',
+                              ap_date=date(2026, 9, 9), due_date=date(2026, 10, 9),
+                              payee_type='vendor', payee_id=vendor.id,
+                              vendor_id=vendor.id, vendor_name=vendor.name,
+                              status='posted')
+        ap.line_items.append(AccountsPayableItem(
+            line_number=1, description='widget', amount=Decimal('112.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+            line_total=Decimal('112.00'), vat_amount=Decimal('12.00'),
+            account_id=account.id, product_id=product.id))
+        db.session.add(ap)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get(f'/accounts-payable/{ap.id}').data.decode()
+        # Control: the detail page's Journal / line-items section rendered.
+        assert product.name in body
+        assert product.code not in body
+
+    def test_the_cdv_form_picker_lists_the_name_only(
+            self, client, db_session, admin_user, main_branch):
+        """The CDV's OWN data-entry screen -- same defect class as the AP
+        voucher form above, in a separate template."""
+        _set_modules(db_session, products=True)
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get('/cash-disbursements/create').data.decode()
+
+        assert 'function addExpenseLine(' in body
+
+        assert 'escHtml(p.code)' not in body
+        assert "p.code) + ': '" not in body
+        assert 'escHtml(p.name)' in body
+
+    def test_the_cdv_overlay_prints_the_name_only(
+            self, client, db_session, admin_user, main_branch, make_account):
+        """The CDV's own pre-printed overlay. Same shape as the AP overlay
+        test above."""
+        from app.vendors.models import Vendor
+        from app.settings import AppSettings
+        from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+
+        _set_modules(db_session, products=True)
+        AppSettings.set_setting('cd_print_form', 'preprinted')
+        db_session.commit()
+
+        vendor = Vendor(code='V-CD-CODE', name='ACME Trading', is_active=True)
+        db.session.add(vendor)
+        account = make_account('60199')
+        cash = make_account('10199')
+        db.session.commit()
+
+        product = Product(code='ZQXV-82041', name='Retired-Code Test Widget',
+                          is_active=True)
+        db.session.add(product)
+        db.session.commit()
+
+        cdv = CashDisbursementVoucher(
+            cash_account_id=cash.id, branch_id=main_branch.id,
+            cdv_number='CDV-RCODE-001', cdv_date=date(2026, 9, 9),
+            vendor_id=vendor.id, vendor_name=vendor.name, status='posted')
+        cdv.expense_lines.append(CDVExpenseLine(
+            line_number=1, description='widget', amount=Decimal('112.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+            line_total=Decimal('112.00'), vat_amount=Decimal('12.00'),
+            account_id=account.id, product_id=product.id))
+        db.session.add(cdv)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/cash-disbursements/{cdv.id}/print')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'id="ppCanvas"' in body, 'the pre-printed overlay did not render'
+
+        band = body[body.index('class="pp-lineitems'):]
+        assert product.name in band
+        assert product.code not in band
+
+    def test_the_cdv_print_page_shows_the_name_only(
+            self, client, db_session, admin_user, main_branch, make_account):
+        """The CDV's plain (non-preprinted) print page -- a separate template
+        from the overlay above, with its own `exp.product.code` reference."""
+        from app.vendors.models import Vendor
+        from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+
+        _set_modules(db_session, products=True)
+
+        vendor = Vendor(code='V-CD-CODE-2', name='ACME Trading', is_active=True)
+        db.session.add(vendor)
+        account = make_account('60198')
+        cash = make_account('10198')
+        db.session.commit()
+
+        product = Product(code='ZQXV-82042', name='Retired-Code Test Widget',
+                          is_active=True)
+        db.session.add(product)
+        db.session.commit()
+
+        cdv = CashDisbursementVoucher(
+            cash_account_id=cash.id, branch_id=main_branch.id,
+            cdv_number='CDV-RCODE-002', cdv_date=date(2026, 9, 9),
+            vendor_id=vendor.id, vendor_name=vendor.name, status='posted')
+        cdv.expense_lines.append(CDVExpenseLine(
+            line_number=1, description='widget', amount=Decimal('112.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+            line_total=Decimal('112.00'), vat_amount=Decimal('12.00'),
+            account_id=account.id, product_id=product.id))
+        db.session.add(cdv)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get(f'/cash-disbursements/{cdv.id}/print').data.decode()
+        assert '<th>Product</th>' in body
+        assert product.name in body
+        assert product.code not in body
+
+    def test_the_cdv_detail_page_shows_the_name_only(
+            self, client, db_session, admin_user, main_branch, make_account):
+        """The CDV's own detail page."""
+        from app.vendors.models import Vendor
+        from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+
+        _set_modules(db_session, products=True)
+
+        vendor = Vendor(code='V-CD-CODE-3', name='ACME Trading', is_active=True)
+        db.session.add(vendor)
+        account = make_account('60197')
+        cash = make_account('10197')
+        db.session.commit()
+
+        product = Product(code='ZQXV-82043', name='Retired-Code Test Widget',
+                          is_active=True)
+        db.session.add(product)
+        db.session.commit()
+
+        cdv = CashDisbursementVoucher(
+            cash_account_id=cash.id, branch_id=main_branch.id,
+            cdv_number='CDV-RCODE-003', cdv_date=date(2026, 9, 9),
+            vendor_id=vendor.id, vendor_name=vendor.name, status='posted')
+        cdv.expense_lines.append(CDVExpenseLine(
+            line_number=1, description='widget', amount=Decimal('112.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+            line_total=Decimal('112.00'), vat_amount=Decimal('12.00'),
+            account_id=account.id, product_id=product.id))
+        db.session.add(cdv)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get(f'/cash-disbursements/{cdv.id}').data.decode()
+        assert product.name in body
+        assert product.code not in body
+
+    def _build_debit_memo(self, db_session, main_branch, vendor_code, account_code,
+                          product_code, ap_number):
+        """Shared builder for the two purchase-memo document tests below: one
+        posted AP bill with a coded product line, and one posted Vendor Debit
+        Memo referencing it with the SAME product on its own line."""
+        from app.vendors.models import Vendor
+        from app.accounts.models import Account
+        from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+        from app.purchase_memos.models import PurchaseMemo, PurchaseMemoItem, \
+            generate_purchase_memo_number
+
+        vendor = Vendor(code=vendor_code, name='ACME Trading', is_active=True)
+        account = Account(code=account_code, name=f'Acct {account_code}',
+                          account_type='Expense', normal_balance='Debit',
+                          is_active=True)
+        db.session.add_all([vendor, account])
+        db.session.commit()
+
+        product = Product(code=product_code, name='Retired-Code Test Widget',
+                          is_active=True)
+        db.session.add(product)
+        db.session.commit()
+
+        bill = AccountsPayable(
+            branch_id=main_branch.id, ap_number=ap_number,
+            ap_date=date(2026, 9, 9), due_date=date(2026, 10, 9),
+            payee_type='vendor', payee_id=vendor.id, vendor_id=vendor.id,
+            vendor_name=vendor.name, status='posted')
+        item = AccountsPayableItem(
+            line_number=1, description='widget', amount=Decimal('112.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+            line_total=Decimal('112.00'), vat_amount=Decimal('12.00'),
+            account_id=account.id, product_id=product.id)
+        bill.line_items.append(item)
+        db.session.add(bill)
+        db.session.commit()
+
+        memo = PurchaseMemo(
+            memo_type='debit', memo_number=generate_purchase_memo_number('debit'),
+            vendor_id=vendor.id, accounts_payable_id=bill.id,
+            original_ap_number=bill.ap_number, vendor_name=vendor.name,
+            branch_id=main_branch.id, memo_date=bill.ap_date, destination='ap',
+            reason='return', status='posted')
+        db.session.add(memo)
+        db.session.flush()
+        memo.line_items.append(PurchaseMemoItem(
+            purchase_memo_id=memo.id, accounts_payable_item_id=item.id,
+            line_number=1, amount=Decimal('112.00'), line_total=Decimal('112.00'),
+            vat_category='V12', vat_rate=Decimal('12.00'), vat_amount=Decimal('12.00'),
+            account_id=account.id, product_id=product.id))
+        db.session.commit()
+        return memo, product
+
+    def test_the_vendor_debit_memo_detail_shows_the_name_only(
+            self, client, db_session, admin_user, main_branch):
+        """The Vendor Debit Memo's own detail page."""
+        _set_modules(db_session, products=True, vendor_debit_memos=True)
+        memo, product = self._build_debit_memo(
+            db_session, main_branch, 'V-PM-CODE-1', '50196', 'ZQXV-93152',
+            'AP-PMCODE-001')
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/vendor-debit-memos/{memo.id}')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # Control: the line-items table rendered at all.
+        assert memo.memo_number in body
+        assert product.name in body
+        assert product.code not in body
+
+    def test_the_vendor_debit_memo_print_page_shows_the_name_only(
+            self, client, db_session, admin_user, main_branch):
+        """The Vendor Debit Memo's own print page -- a separate template from
+        the detail page above."""
+        _set_modules(db_session, products=True, vendor_debit_memos=True)
+        memo, product = self._build_debit_memo(
+            db_session, main_branch, 'V-PM-CODE-2', '50195', 'ZQXV-93153',
+            'AP-PMCODE-002')
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/vendor-debit-memos/{memo.id}/print')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert memo.memo_number in body
+        assert product.name in body
+        assert product.code not in body
+
+    def test_the_debit_memo_line_grid_lists_the_name_only(
+            self, client, db_session, admin_user, main_branch):
+        """The Vendor Debit Memo CREATE screen's AP-bill line grid
+        (app/static/js/purchase_memos_form.js), fed by
+        `/vendor-debit-memos/ap-lines/<ap_id>`.
+
+        This is a DIFFERENT bug shape from the "null: Widget" defects above: the
+        label was `r.product_code ? r.product_code + ': ' + r.product_name :
+        (r.product_name || '(no product)')` -- a real "CODE: Name" join that
+        fires whenever a bill line actually HAS a code (not just when it is
+        null), so it slipped past the `escHtml(p.code)` grep signature entirely.
+        Not named in the Task 6 brief's file list; found by tracing
+        AccountsPayableItem.to_dict()'s 'product_code' key (retired alongside
+        this) to its one real consumer.
+
+        Asserted on BOTH the live JSON payload (the actual data source) and the
+        static JS file (the actual rendering code) -- the JSON assertion alone
+        would pass even if the label expression still preferred a code that
+        merely never arrives."""
+        from app.vendors.models import Vendor
+        from app.accounts.models import Account
+        from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+
+        _set_modules(db_session, products=True, vendor_debit_memos=True)
+
+        vendor = Vendor(code='V-PM-CODE-3', name='ACME Trading', is_active=True)
+        account = Account(code='50194', name='Acct 50194', account_type='Expense',
+                          normal_balance='Debit', is_active=True)
+        db.session.add_all([vendor, account])
+        db.session.commit()
+
+        # 'ZQXV-93154' matches no quantity, date, id, or CSS/JS token anywhere on
+        # this page -- see the requisition overlay test above for why a short or
+        # generic value would pass incidentally even after this fix.
+        product = Product(code='ZQXV-93154', name='Retired-Code Test Widget',
+                          is_active=True)
+        db.session.add(product)
+        db.session.commit()
+
+        bill = AccountsPayable(
+            branch_id=main_branch.id, ap_number='AP-PMCODE-003',
+            ap_date=date(2026, 9, 9), due_date=date(2026, 10, 9),
+            payee_type='vendor', payee_id=vendor.id, vendor_id=vendor.id,
+            vendor_name=vendor.name, status='posted')
+        bill.line_items.append(AccountsPayableItem(
+            line_number=1, description='widget', amount=Decimal('112.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+            line_total=Decimal('112.00'), vat_amount=Decimal('12.00'),
+            account_id=account.id, product_id=product.id))
+        db.session.add(bill)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+
+        # The picker's actual data source.
+        resp = client.get(f'/vendor-debit-memos/ap-lines/{bill.id}')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['lines'], 'no lines returned -- the fixture bill is not eligible'
+        row = data['lines'][0]
+        assert row['product_name'] == product.name
+        assert 'product_code' not in row
+
+        # The actual rendering code: served as a static asset, not scraped out
+        # of an inline <script> block.
+        js_resp = client.get('/static/js/purchase_memos_form.js')
+        assert js_resp.status_code == 200
+        js_body = js_resp.data.decode()
+        assert 'r.product_code' not in js_body
+        assert 'r.product_name' in js_body

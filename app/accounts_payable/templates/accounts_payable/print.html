@@ -122,7 +122,8 @@
         <td>{{ item.line_number }}</td>
         {% if module_enabled('products') %}
         <td style="font-size:9px;">
-          {% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
+          {# The code is retired from display (owner, 2026-09-08). #}
+          {% if item.product %}{{ item.product.name }}{% else %}—{% endif %}
         </td>
         {% endif %}
         <td>{{ item.description or '—' }}</td>
