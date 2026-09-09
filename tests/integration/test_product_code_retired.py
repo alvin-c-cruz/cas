@@ -14,9 +14,24 @@ share a name.
 """
 import pytest
 
+from app import db
 from app.products.models import Product
 
 pytestmark = [pytest.mark.integration]
+
+
+@pytest.fixture
+def products_module_enabled(db_session):
+    """Enable the products module for tests that need it."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache, clear_uom_cache
+    AppSettings.set_setting('module_enabled:products', '1')
+    db.session.commit()
+    clear_module_config_cache()
+    clear_uom_cache()
+    yield
+    clear_module_config_cache()
+    clear_uom_cache()
 
 
 class TestTheColumn:
@@ -111,7 +126,13 @@ class TestTheProductScreens:
         assert p.code is None
 
     def test_the_list_does_not_show_a_code_column(self, client, admin_user,
-                                                  main_branch, db_session):
+                                                  main_branch, db_session,
+                                                  products_module_enabled):
         self._login(client, admin_user, main_branch)
         html = client.get('/products').data.decode()
-        assert '<th>Code</th>' not in html
+        # Headers in this template are rendered in ALL CAPS, so the removed CODE header
+        # was '<th>CODE</th>', not '<th>Code</th>'. An assertion on the wrong case
+        # cannot fail and proves nothing.
+        assert '<th>CODE</th>' not in html
+        # Positive control: verify a header that SHOULD be present still is.
+        assert '<th>NAME</th>' in html
