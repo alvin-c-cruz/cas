@@ -116,7 +116,10 @@ def test_negative_on_hand_consumption_surfaces_warning(db_session, main_branch, 
     wo = _released_wo(main_branch, 'CM-OUT5', 'CM-COMP5')  # no prior receipt -- zero on-hand
     consume_materials(wo, [(wo.materials[0], Decimal('3'))], admin_user)
     db.session.commit()
-    assert wo._negative_warnings == [wo.materials[0].component_product.code]
+    # The code is retired and became optional (owner, 2026-09-08), so a codeless
+    # product surfaced the literal string "None" here. The warning names the
+    # product now, matching the JE and movement text it accompanies.
+    assert wo._negative_warnings == [wo.materials[0].component_product.name]
 
 
 from app.bill_of_materials.service import produce_finished_goods

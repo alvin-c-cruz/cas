@@ -228,19 +228,23 @@ def close_run(run, actor):
         # product, and the stock ledger's figure is what Inventory must be debited.
         inventory_amount = (transferred_units * Decimal(str(mv.unit_cost))).quantize(MONEY)
         n = 1
-        _add_line(je, n, inv_account.id, f'{product.code} transferred in',
+        # The product's NAME, not its code: the code is retired (owner, 2026-09-08)
+        # and became optional, so a codeless product wrote the literal string "None"
+        # into this permanent record. Entries already posted keep the text they were
+        # written with -- rewriting them would falsify the books.
+        _add_line(je, n, inv_account.id, f'{product.name} transferred in',
                   inventory_amount, ZERO); n += 1
-        _add_line(je, n, wip_account.id, f'{product.code} relieved from WIP',
+        _add_line(je, n, wip_account.id, f'{product.name} relieved from WIP',
                   ZERO, transferred_amount); n += 1
         variance = (transferred_amount - inventory_amount).quantize(MONEY)
         if variance != ZERO:
             variance_account = get_control_account('inventory_variance')
             if variance > ZERO:
                 _add_line(je, n, variance_account.id,
-                          f'{product.code} standard cost variance', variance, ZERO)
+                          f'{product.name} standard cost variance', variance, ZERO)
             else:
                 _add_line(je, n, variance_account.id,
-                          f'{product.code} standard cost variance', ZERO, -variance)
+                          f'{product.name} standard cost variance', ZERO, -variance)
         db.session.flush()
         je.calculate_totals()
         if not je.is_balanced:
@@ -372,7 +376,7 @@ def issue_material(material, quantity, actor):
     if quantity > remaining:
         raise ValueError(
             f'Cannot issue {quantity} -- only {remaining} of '
-            f'{material.component_product.code} remains required for this run.')
+            f'{material.component_product.name} remains required for this run.')
 
     consume_materials(run, [(material, quantity)], actor)
     material.quantity_issued = Decimal(str(material.quantity_issued or 0)) + quantity

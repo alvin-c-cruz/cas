@@ -243,7 +243,7 @@ def _assert_not_backdated_receipt(product, branch_id, movement_date, delta_qty):
         raise BackdatedReceiptError(
             '%s: a receipt dated %s cannot be posted because stock was already '
             'issued on %s. Date the receipt %s or later, or reverse the later '
-            'issues first.' % (product.code, movement_date.isoformat(),
+            'issues first.' % (product.name, movement_date.isoformat(),
                                latest.isoformat(), latest.isoformat()))
 
 
@@ -510,13 +510,17 @@ def approve_adjustment(adjustment, actor):
             lot_id=line.lot_id, lot_reference=line.lot_reference,
             movement_date=adjustment.adjustment_date)
         if went_negative:
-            warnings.append(product.code)
+            warnings.append(product.name)
         if qty > ZERO:   # stock in: Dr inventory / Cr offset
-            _add_line(je, n, inv_account.id, f'{product.code} stock in', value, ZERO); n += 1
-            _add_line(je, n, offset_account.id, f'{product.code} offset', ZERO, value); n += 1
+            # The product's NAME, not its code: the code is retired (owner, 2026-09-08)
+            # and became optional, so a codeless product wrote the literal string "None"
+            # into this permanent record. Entries already posted keep the text they were
+            # written with -- rewriting them would falsify the books.
+            _add_line(je, n, inv_account.id, f'{product.name} stock in', value, ZERO); n += 1
+            _add_line(je, n, offset_account.id, f'{product.name} offset', ZERO, value); n += 1
         else:            # stock out: Dr offset / Cr inventory
-            _add_line(je, n, offset_account.id, f'{product.code} offset', value, ZERO); n += 1
-            _add_line(je, n, inv_account.id, f'{product.code} stock out', ZERO, value); n += 1
+            _add_line(je, n, offset_account.id, f'{product.name} offset', value, ZERO); n += 1
+            _add_line(je, n, inv_account.id, f'{product.name} stock out', ZERO, value); n += 1
 
     db.session.flush()
     je.calculate_totals()
