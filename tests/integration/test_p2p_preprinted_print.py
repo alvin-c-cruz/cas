@@ -1397,7 +1397,11 @@ class TestPurchaseRequisitionOverlayValues:
         body = client.get(f'/purchase-requests/{approved_pr.id}/print').data.decode()
         cells = _column_cells(body)
         assert cells['line_number'] == ['1']
-        assert cells['product'] == [f'{product_bolt.code} — {product_bolt.name}']
+        # Product code retired from the requisition overlay (2026-09-09, owner
+        # instruction): the column now prints the name alone. `product_bolt.code`
+        # ('P900') must NOT appear -- see TestPurchasingDocumentsDoNotShowIt in
+        # tests/integration/test_product_code_retired.py for the dedicated guard.
+        assert cells['product'] == [product_bolt.name]
         assert cells['description'] == ['hex bolt 12mm']
         assert cells['quantity'] == ['25']
         assert cells['uom'] == [uom_box.code]

@@ -12,12 +12,28 @@ index is the irreversible half and is not part of this change.
 in beside a reversible one -- and the master legitimately allows two products to
 share a name.
 """
+from datetime import date
+from decimal import Decimal
+
 import pytest
 
 from app import db
 from app.products.models import Product
+from app.settings import AppSettings
 
 pytestmark = [pytest.mark.integration]
+
+
+def _set_modules(db_session, **states):
+    """Shared by TestPurchasingDocumentsDoNotShowIt below -- not autouse, since
+    the rest of this file's tests (TestTheColumn, TestAProductCanExistWithoutACode,
+    TestTheProductScreens) neither need nor expect purchase_orders/purchase_requests
+    to be forced on."""
+    from app.utils.cache_helpers import clear_module_config_cache
+    for key, on in states.items():
+        AppSettings.set_setting(f'module_enabled:{key}', '1' if on else '0')
+    db_session.commit()
+    clear_module_config_cache()
 
 
 @pytest.fixture
@@ -136,3 +152,76 @@ class TestTheProductScreens:
         assert '<th>CODE</th>' not in html
         # Positive control: verify a header that SHOULD be present still is.
         assert '<th>NAME</th>' in html
+
+
+class TestPurchasingDocumentsDoNotShowIt:
+    """32 references across the purchasing area, done first at the owner's
+    instruction. Each document is asserted separately so a failure names which
+    one regressed.
+
+    Only the ONE test below is marked purchase_requests (not the whole module):
+    the classes above this one are about the Product screens themselves and must
+    not be forced to run under a purchase-requests-only test slice, nor need
+    purchase_orders/purchase_requests turned on."""
+
+    pytestmark = [pytest.mark.purchase_requests]
+
+    def test_the_requisition_overlay_prints_the_name_only(self, client, db_session,
+                                                          admin_user, main_branch):
+        """Build a requisition with a coded product, render the pre-printed
+        overlay, and assert the NAME prints while the CODE does not.
+
+        The positive half is not optional: an assertion that only checks the
+        code's absence would also pass on a blank page, or on a template that
+        dropped the whole product column outright."""
+        from app.units_of_measure.models import UnitOfMeasure
+        from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
+
+        # purchase_requests `depends_on: ['purchase_orders']`, and both default
+        # to OFF -- without this, enforce_module_access 404s the print route for
+        # every user, admin included, and the positive assertion below would
+        # 'pass' against a 404 page that happens not to contain the product's
+        # code either, for the wrong reason. Pattern copied from
+        # `p2p_modules_enabled` in tests/integration/test_p2p_preprinted_print.py.
+        _set_modules(db_session, products=True, purchase_orders=True,
+                     purchase_requests=True)
+
+        uom = UnitOfMeasure(code='PC', name='Piece', is_active=True)
+        db.session.add(uom)
+        db.session.commit()
+
+        # 'ZQXV-40217' is chosen so its absence is a real assertion, not an
+        # accident of what else the page renders: it matches no quantity, date,
+        # id, or CSS/JS token anywhere on this overlay (inline <style> and the
+        # designer's own script text leak into the response -- see
+        # tests/integration/test_so_signatory_fields.py:239 -- so a short or
+        # generic value like 'P1' or 'BOX' could pass incidentally).
+        product = Product(code='ZQXV-40217', name='Retired-Code Test Widget',
+                          is_active=True, default_unit_of_measure_id=uom.id)
+        db.session.add(product)
+        db.session.commit()
+
+        pr = PurchaseRequest(pr_number='RCODE-001', request_date=date(2026, 9, 9),
+                             date_needed=date(2026, 9, 20), reason='Stock replenishment',
+                             status='approved', branch_id=main_branch.id)
+        pr.line_items.append(PurchaseRequestItem(
+            line_number=1, description='widget', quantity=Decimal('5'),
+            product_id=product.id, unit_of_measure_id=uom.id))
+        db.session.add(pr)
+        db.session.commit()
+
+        AppSettings.set_setting('pr_print_form', 'preprinted')
+        db_session.commit()
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/purchase-requests/{pr.id}/print')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # Control: the overlay itself rendered, and not e.g. a redirect to the
+        # standard 'current' form or a module-gate refusal -- either of which
+        # would also lack the code, but for a reason unrelated to this fix.
+        assert 'id="ppCanvas"' in body, 'the pre-printed overlay did not render'
+        assert product.name in body
+        assert product.code not in body

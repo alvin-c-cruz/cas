@@ -570,7 +570,7 @@
           empty.style.display = rows.length ? 'none' : '';
           body.innerHTML = rows.map(row => {
             const item = row.product_name
-              ? escHtml(row.product_code + ': ' + row.product_name)
+              ? escHtml(row.product_name)
               : escHtml(row.description || '');
             const needed = row.date_needed_asap ? 'ASAP' : escHtml(row.date_needed || '');
             // No per-row approval chip (owner request 2026-09-06). Pulling a
