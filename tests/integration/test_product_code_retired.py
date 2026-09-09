@@ -256,3 +256,31 @@ class TestPurchasingDocumentsDoNotShowIt:
         assert "p.code + ': '" not in body
         # Positive pair: the name IS still what the option shows.
         assert 'escHtml(p.name)' in body
+
+    def test_the_quick_add_modal_does_not_ask_for_a_code(
+            self, client, db_session, admin_user, main_branch):
+        """The shared "+ Add Product" modal, asserted through the requisition
+        form that includes it.
+
+        It carried a REQUIRED `Code *` input. ProductForm no longer has a `code`
+        field, so WTForms discarded whatever was typed -- the app was demanding a
+        value from the user and then throwing it away, which is the plainest
+        possible violation of "the user should not have to supply a code".
+
+        The modal is shared by eight transaction forms (requisitions, orders,
+        receipts, AP, CDV, quotations, sales orders and invoices), so this one
+        assertion stands in for all of them; the requisition form is simply the
+        one this task owns."""
+        _set_modules(db_session, products=True, purchase_orders=True,
+                     purchase_requests=True)
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(admin_user.id)
+            sess['_fresh'] = True
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get('/purchase-requests/create').data.decode()
+
+        # Control: the modal rendered at all, so the absence below is real.
+        assert 'id="pqa_name"' in body, 'the quick-add modal did not render'
+
+        assert 'id="pqa_code"' not in body
+        assert 'name="code"' not in body
