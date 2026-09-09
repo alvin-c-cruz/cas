@@ -73,9 +73,16 @@
         </div>
       </div>
       <div class="form-group">{{ form.pr_number.label }}
-        {# An amendment revises a requisition, it does not renumber it. The route
-           never reassigns pr_number either -- this is the visible half of that. #}
-        {% if amend_mode or request_mode %}{{ form.pr_number(class="form-control", readonly=true) }}
+        {# Editable when amending (owner, 2026-09-08): the number is assigned by
+           hand, and a requisition approved under a mistyped one could otherwise
+           only be corrected by cancelling it. amend() applies it with the same
+           self-excluding duplicate check edit() uses.
+
+           Still READONLY in request_mode. That screen is a staff member ASKING
+           for an amendment; the applier reads the proposal's line items and does
+           not carry a renumber, so an editable field there would accept a change
+           that silently goes nowhere. #}
+        {% if request_mode %}{{ form.pr_number(class="form-control", readonly=true) }}
         {% else %}{{ form.pr_number(class="form-control") }}{% endif %}</div>
     </div>
     <div class="form-group">{{ form.reason.label }} {{ form.reason(class="form-control", rows=2) }}</div>

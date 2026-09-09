@@ -111,15 +111,41 @@ class TestAmendSucceeds:
         db_session.refresh(approved_pr)
         assert approved_pr.status == 'approved'
 
-    def test_the_pr_number_is_not_renumbered(self, client, db_session, approved_pr):
+    def test_the_pr_number_can_be_amended(self, client, db_session, approved_pr):
+        """Owner, 2026-09-08. The number is assigned by hand, so a requisition
+        approved under a mistyped one could previously only be corrected by
+        cancelling it -- the amendment path refused to renumber on the reasoning
+        that "an amendment revises a requisition, it does not renumber it"."""
+        _amend(client, approved_pr, pr_number='PR-RENUMBERED-1')
+        db_session.refresh(approved_pr)
+        assert approved_pr.pr_number == 'PR-RENUMBERED-1'
+
+    def test_a_duplicate_number_is_refused(self, client, db_session, main_branch,
+                                           approved_pr):
+        """pr_number is globally unique, so a collision left to reach the flush is
+        an IntegrityError 500 rather than a message the user can act on."""
+        other = _pr(db_session, main_branch, status='draft', number='PR-TAKEN-1')
         before = approved_pr.pr_number
-        _amend(client, approved_pr, pr_number='PR-HIJACK-9999')
+        body = _amend(client, approved_pr,
+                      pr_number=other.pr_number).data.decode()
+        db_session.refresh(approved_pr)
+        assert approved_pr.pr_number == before        # refused, not half-applied
+        assert 'already exists' in body
+
+    def test_resaving_without_touching_the_number_is_not_refused(
+            self, client, db_session, approved_pr):
+        """CONTROL for the duplicate check: it must EXCLUDE this requisition's own
+        row, or an ordinary amendment that leaves the number alone would collide
+        with itself and refuse."""
+        before = approved_pr.pr_number
+        _amend(client, approved_pr, reason='Scope revised after the site meeting')
         db_session.refresh(approved_pr)
         assert approved_pr.pr_number == before
+        assert approved_pr.reason == 'Scope revised after the site meeting'
 
     def test_an_ordinary_header_field_IS_applied(self, client, db_session, approved_pr):
-        # Control for the rule above: pr_number is pinned, but request_date and
-        # reason are ordinary editable fields and must not be silently discarded.
+        # request_date and reason are ordinary editable fields and must not be
+        # silently discarded while the line items are being applied.
         _amend(client, approved_pr, reason='Revised scope after site meeting')
         db_session.refresh(approved_pr)
         assert approved_pr.reason == 'Revised scope after site meeting'

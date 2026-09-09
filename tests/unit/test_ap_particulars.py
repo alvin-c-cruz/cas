@@ -15,6 +15,21 @@ cite a PO, 18% an SI, 12% an RR, and the shape is consistently
 
 with the reference line repeated per source document on multi-PO vouchers.
 
+THE REFERENCE LINE CHANGED on 2026-09-08, on the owner's instruction, to the form he
+now writes by hand (APV 0001):
+
+    -PO#00984, SI#67051, RR#00634 - JULY 2026
+
+Two differences, and only the second changes what the voucher SAYS:
+  * 'PO NO.' / 'SI NO.' became 'PO#' / 'SI#' -- presentation only.
+  * the receipt's NUMBER is now cited. The measured form gave only the month, so a
+    voucher billing one of several receipts received that month did not say which.
+    That was a gap in the record rather than a matter of style.
+
+The measured convention above is left in place deliberately: it is why the opening
+sentence, the purpose line and the segment ORDER are shaped as they are, and none of
+that changed.
+
 Two rules the tests below pin hard, both of them "never invent":
   * nothing pulled -> empty string, NOT a bare "PAYMENT FOR THE PURCHASE OF"
   * no purpose / no invoice number -> that part is omitted, not filled with a
@@ -97,7 +112,7 @@ def test_a_single_po_names_its_items_and_its_number(db_session, main_branch):
 
     text = build_particulars([po.id], [])
 
-    assert text == 'PAYMENT FOR THE PURCHASE OF CHLORINE\n-PO NO.01080'
+    assert text == 'PAYMENT FOR THE PURCHASE OF CHLORINE\n-PO#01080'
 
 
 def test_several_items_are_listed_in_line_order(db_session, main_branch):
@@ -122,7 +137,7 @@ def test_the_purpose_becomes_its_own_line_between_items_and_references(db_sessio
     assert build_particulars([po.id], []) == (
         'PAYMENT FOR THE PURCHASE OF CHLORINE\n'
         'FOR PRODUCTION USE\n'
-        '-PO NO.01083'
+        '-PO#01083'
     )
 
 
@@ -132,7 +147,7 @@ def test_a_po_without_a_purpose_gets_no_purpose_line(db_session, main_branch):
 
     text = build_particulars([po.id], [])
 
-    assert text == 'PAYMENT FOR THE PURCHASE OF CHLORINE\n-PO NO.01084'
+    assert text == 'PAYMENT FOR THE PURCHASE OF CHLORINE\n-PO#01084'
     assert '\n\n' not in text, 'the omitted purpose left a blank line behind'
     assert 'None' not in text
 
@@ -147,18 +162,18 @@ def test_an_rr_cites_its_po_and_the_month_it_was_received(db_session, main_branc
     assert build_particulars([], [rr.id]) == (
         'PAYMENT FOR THE PURCHASE OF CHLORINE\n'
         'FOR PRODUCTION USE\n'
-        '-PO NO.00872, RR - JANUARY 2026'
+        '-PO#00872, RR#00638 - JANUARY 2026'
     )
 
 
 def test_the_invoice_number_lands_between_the_po_and_the_rr(db_session, main_branch,
                                                             vl_vendor):
-    """Legacy order is PO NO., SI NO., RR -- not appended at the end."""
+    """Legacy order is PO#, SI#, RR -- not appended at the end."""
     po = _po(main_branch, '00872')
     rr = _rr(main_branch, '00638', po, vl_vendor, receipt_date=date(2026, 1, 15))
 
     assert build_particulars([], [rr.id], invoice_number='32664').endswith(
-        '-PO NO.00872, SI NO.32664, RR - JANUARY 2026')
+        '-PO#00872, SI#32664, RR#00638 - JANUARY 2026')
 
 
 def test_a_blank_invoice_number_is_omitted_not_printed_empty(db_session, main_branch,
@@ -169,7 +184,7 @@ def test_a_blank_invoice_number_is_omitted_not_printed_empty(db_session, main_br
 
     for blank in (None, '', '   '):
         text = build_particulars([], [rr.id], invoice_number=blank)
-        assert 'SI NO.' not in text, f'{blank!r} produced an empty SI NO. segment'
+        assert 'SI#' not in text, f'{blank!r} produced an empty SI# segment'
 
 
 # --- several documents on one voucher --------------------------------------
@@ -181,7 +196,7 @@ def test_each_document_gets_its_own_reference_line(db_session, main_branch):
 
     text = build_particulars([a.id, b.id], [])
 
-    assert text.splitlines()[-2:] == ['-PO NO.00742', '-PO NO.00743']
+    assert text.splitlines()[-2:] == ['-PO#00742', '-PO#00743']
 
 
 def test_items_across_documents_are_merged_without_repeats(db_session, main_branch):
@@ -215,15 +230,15 @@ def test_an_unknown_id_is_ignored_rather_than_crashing(db_session, main_branch):
     po = _po(main_branch, '00750')
 
     assert build_particulars([po.id, 999999], [888888]) == (
-        'PAYMENT FOR THE PURCHASE OF CHLORINE\n-PO NO.00750'
+        'PAYMENT FOR THE PURCHASE OF CHLORINE\n-PO#00750'
     )
 
 
 def test_the_invoice_number_is_dropped_when_several_documents_are_cited(db_session,
                                                                        main_branch):
     """The voucher carries ONE vendor invoice number, but legacy vouchers citing
-    several orders give each its own ("-PO NO.00742, SI NO.403159" then
-    "-PO NO.00743, SI NO.403160"). Repeating the single number we have onto
+    several orders give each its own ("-PO#00742, SI#403159" then
+    "-PO#00743, SI#403160"). Repeating the single number we have onto
     every line would state something false about all but one of them, so it is
     omitted rather than guessed at.
     """
@@ -232,7 +247,7 @@ def test_the_invoice_number_is_dropped_when_several_documents_are_cited(db_sessi
 
     text = build_particulars([a.id, b.id], [], invoice_number='403159')
 
-    assert 'SI NO.' not in text, (
+    assert 'SI#' not in text, (
         'the one invoice number was attributed to several orders: ' + text
     )
 
@@ -242,7 +257,7 @@ def test_the_invoice_number_still_appears_for_a_single_document(db_session, main
     po = _po(main_branch, '00762')
 
     assert build_particulars([po.id], [], invoice_number='403159').endswith(
-        '-PO NO.00762, SI NO.403159')
+        '-PO#00762, SI#403159')
 
 
 # --- the endpoint the browser calls ----------------------------------------
@@ -262,7 +277,7 @@ class TestParticularsEndpoint:
 
         assert resp.status_code == 200
         assert resp.get_json()['notes'] == (
-            'PAYMENT FOR THE PURCHASE OF CHLORINE\nFOR PRODUCTION USE\n-PO NO.00800')
+            'PAYMENT FOR THE PURCHASE OF CHLORINE\nFOR PRODUCTION USE\n-PO#00800')
 
     def test_it_refuses_an_anonymous_caller(self, client, db_session, main_branch):
         """It reads document contents, so it is behind the same gate as the form."""
