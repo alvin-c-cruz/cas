@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy.orm import selectinload
 from app import db
+from app.common.je_display import merge_same_account_lines
 from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
 from app.cash_disbursements.forms import CashDisbursementForm
 from app.accounts_payable.models import AccountsPayable
@@ -1386,7 +1387,9 @@ def print_cdv(id):
                 [l for l in lines if (l.debit_amount or 0) > 0 and l.account_id in vat_account_ids],
                 key=lambda l: l.account.code)
             credits = [l for l in lines if (l.credit_amount or 0) > 0]
-            je_lines = debit_non_vat + debit_vat + credits
+            # Same-account legs merge per side -- see the APV face and
+            # app/common/je_display.py. Never netted, so the tie-out is unchanged.
+            je_lines = merge_same_account_lines(debit_non_vat + debit_vat + credits)
         je_debits = [l for l in je_lines if (l.debit_amount or 0) > 0]
         je_credits = [l for l in je_lines if (l.credit_amount or 0) > 0]
         je_total_debit = sum((l.debit_amount or 0) for l in je_lines)

@@ -6,6 +6,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy.orm import selectinload
 from app import db
+from app.common.je_display import merge_same_account_lines
 from app.accounts_payable.models import AccountsPayable, AccountsPayableItem, AccountsPayableAttachment
 from app.accounts_payable.forms import AccountsPayableForm
 from app.vendors.models import Vendor
@@ -1060,7 +1061,12 @@ def print_ap(id):
             key=lambda line: line.account.code
         )
         credits = [line for line in lines if (line.credit_amount or 0) > 0]
-        je_lines = debit_non_vat + debit_vat + credits
+        # Legs hitting the same account on the same side print as ONE row
+        # (owner, 2026-09-09). Merged AFTER the sort, so a merged row keeps the
+        # position of its first leg and the ordering above is untouched. Never
+        # netted across sides, so both totals -- and the tie-out below -- are
+        # arithmetically unchanged. Display only; the posted entry is not touched.
+        je_lines = merge_same_account_lines(debit_non_vat + debit_vat + credits)
 
     company = {
         'name': AppSettings.get_setting('company_name', ''),
