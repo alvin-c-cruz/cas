@@ -156,7 +156,11 @@ def post_memo_je(memo, user_id, actor=None):
             current_avg = Decimal(str(bal.average_unit_cost)) if bal else Decimal('0.00')
             mv, _went_negative = post_movement(
                 li.product, memo.branch_id, 'sales_return', qty, current_avg,
-                'sales_memo', memo.id, f'{memo.memo_number} return: {li.product.code}',
+                # The product's NAME, not its code: the code is retired (owner, 2026-09-08)
+                # and became optional, so a codeless product wrote the literal string "None"
+                # into this permanent record. Entries already posted keep the text they were
+                # written with -- rewriting them would falsify the books.
+                'sales_memo', memo.id, f'{memo.memo_number} return: {li.product.name}',
                 actor, journal_entry_id=je.id, movement_date=memo.memo_date)
             cogs_net += abs(Decimal(str(mv.quantity))) * Decimal(str(mv.unit_cost))
         if cogs_net > 0:

@@ -150,7 +150,7 @@
       {%- for item in pr.line_items %}
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
-        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code ~ ' — ' ~ item.product.name }}{% else %}{{ '' }}{% endif %}
+        {%- elif col.key == 'product' -%}{{ item.product.name if item.product else '' }}
         {%- elif col.key == 'description' -%}{{ item.description or '' }}
         {%- elif col.key == 'quantity' -%}{{ item | qty_fmt }}
         {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '') }}

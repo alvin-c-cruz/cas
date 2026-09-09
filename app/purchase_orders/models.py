@@ -221,8 +221,11 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
             self.total_amount = gross
 
     def snapshot_line_extras(self, line):
+        # product_code retired from NEW snapshots (owner, 2026-09-09) -- the code
+        # is no longer shown anywhere in the app. Existing snapshot JSON is NOT
+        # rewritten: a revision records what that revision actually carried, and
+        # rewriting history would violate BIR permanence.
         return {
-            'product_code': line.product.code if line.product else None,
             'product_name': line.product.name if line.product else None,
             'uom_code': (line.unit_of_measure.code if line.unit_of_measure
                          else line.uom_text),
@@ -300,7 +303,6 @@ class PurchaseOrderItem(db.Model):
             'uom_text': self.uom_text, 'unit_of_measure_id': self.unit_of_measure_id,
             'uom_display': (self.unit_of_measure.code if self.unit_of_measure else self.uom_text),
             'product_id': self.product_id,
-            'product_code': self.product.code if self.product else None,
             'product_name': self.product.name if self.product else None,
             'vat_category': self.vat_category,
             'vat_rate': float(self.vat_rate) if self.vat_rate is not None else 0.0,

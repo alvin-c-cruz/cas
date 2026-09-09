@@ -12,15 +12,14 @@
             {{ form.hidden_tag() }}
 
             <div class="form-row-2">
-                {{ render_field(form.code, required=True) }}
                 {{ render_field(form.name, required=True) }}
             </div>
 
             <div class="form-group">
                 {{ render_field(form.customer_code) }}
                 <div class="form-hint">The customer's own code/SKU for this product (e.g. their
-                    ERP article number) -- distinct from this product's Code above. Prints on
-                    documents where the customer expects to see their own code.</div>
+                    ERP article number). Prints on documents where the customer expects to see
+                    their own code.</div>
             </div>
 
             <div class="form-group">

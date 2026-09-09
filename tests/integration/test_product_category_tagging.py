@@ -66,5 +66,6 @@ class TestProductCategoryTagging:
             'category_id': str(cat.id), 'default_unit_price': '', 'is_active': '1',
         }, follow_redirects=True)
         assert resp.status_code == 200
-        p = Product.query.filter_by(code='P3').one()
+        # prodcode_0001: code is retired from the form -- look up by name instead.
+        p = Product.query.filter_by(name='Chips').one()
         assert p.category_id == cat.id

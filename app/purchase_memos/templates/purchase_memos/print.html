@@ -48,7 +48,8 @@
       {% for li in memo.line_items %}
       <tr>
         <td>{{ li.line_number }}</td>
-        <td>{% if li.product %}{{ li.product.code }}: {{ li.product.name }}{% else %}(item){% endif %}</td>
+        {# The code is retired from display (owner, 2026-09-09). #}
+        <td>{% if li.product %}{{ li.product.name }}{% else %}(item){% endif %}</td>
         <td>{{ li.vat_category or '' }}</td>
         <td>{% if li.wt_rate %}{{ li.wt_rate }}%{% endif %}</td>
         <td class="r">{{ '%.2f'|format(li.amount) }}</td>

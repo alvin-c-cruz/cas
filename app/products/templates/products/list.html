@@ -6,7 +6,6 @@
 {% macro product_rows(rows) %}
 {% for product in rows %}
 <tr>
-    <td><strong>{{ product.code }}</strong></td>
     <td>{{ product.name }}</td>
     <td>{{ product.default_unit_of_measure.code if product.default_unit_of_measure else '—' }}</td>
     <td>
@@ -35,7 +34,7 @@
 </tr>
 {% else %}
 <tr>
-    <td colspan="6" class="empty-state-cell">
+    <td colspan="5" class="empty-state-cell">
         <p>No products found.</p>
     </td>
 </tr>
@@ -70,7 +69,6 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>CODE</th>
                         <th>NAME</th>
                         <th>DEFAULT UNIT</th>
                         <th>DEFAULT PRICE</th>
@@ -89,7 +87,6 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>CODE</th>
                         <th>NAME</th>
                         <th>DEFAULT UNIT</th>
                         <th>DEFAULT PRICE</th>
@@ -108,7 +105,6 @@
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>CODE</th>
                     <th>NAME</th>
                     <th>DEFAULT UNIT</th>
                     <th>DEFAULT PRICE</th>

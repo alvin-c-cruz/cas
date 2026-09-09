@@ -81,7 +81,10 @@ class TestApprovePhysicalCount:
         # snapshot (10): 7 counted - 15 current = -8, not -3.
         assert adjustment.lines[0].quantity_delta == Decimal('-8')
         assert len(count._drift_notices) == 1
-        assert product_moving_avg.code in count._drift_notices[0]
+        # The drift notice names the product now, not its code (owner,
+        # 2026-09-08): the code became optional, so a codeless product
+        # produced a notice reading "None: book quantity changed...".
+        assert product_moving_avg.name in count._drift_notices[0]
 
     def test_approve_does_not_commit_itself(
             self, db_session, branch_main, product_moving_avg, admin_user, control_accounts):

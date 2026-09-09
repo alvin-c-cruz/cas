@@ -322,7 +322,10 @@ class AccountsPayableItem(db.Model):
             'uom_name': self.unit_of_measure.name if self.unit_of_measure else None,
             'uom_display': (self.unit_of_measure.code if self.unit_of_measure else self.uom_text),
             'product_id': self.product_id,
-            'product_code': self.product.code if self.product else None,
+            # product_code retired from this payload (owner, 2026-09-08) -- it fed
+            # purchase_memos_form.js's "code: name" label (fixed alongside this) and
+            # this module's own detail/print/form templates, all of which already
+            # display product_name. Nothing else reads it.
             'product_name': self.product.name if self.product else None,
             'vat_category': self.vat_category,
             'vat_nature': self.vat_nature,

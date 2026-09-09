@@ -202,7 +202,9 @@
       {%- for item in ap.line_items %}
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
-        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% endif %}
+        {#- The code is retired from display (owner, 2026-09-09) -- this was
+           item.product.code joined with an em dash and item.product.name. -#}
+        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.name }}{% endif %}
         {%- elif col.key == 'description' -%}{{ item.description or '' }}
         {%- elif col.key == 'qty' -%}{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '' }}
         {#- The unit CODE ('KG'), never the long name: the pre-printed box is ~50px wide. -#}

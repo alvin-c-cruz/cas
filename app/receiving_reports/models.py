@@ -178,7 +178,9 @@ class ReceivingReportItem(db.Model):
             'received_quantity': float(self.received_quantity) if self.received_quantity is not None else 0.0,
             'ordered_quantity': float(poi.quantity) if (poi and poi.quantity is not None) else None,
             'description': (poi.description if poi else None),
-            'product_code': (poi.product.code if (poi and poi.product) else (self.product.code if self.product else None)),
+            # product_code retired from this payload (owner, 2026-09-08) -- the
+            # code is not shown anywhere in the app. Nothing in detail.html or
+            # print.html reads this key; both already display product_name.
             'product_name': (poi.product.name if (poi and poi.product) else (self.product.name if self.product else None)),
             'uom': (poi.unit_of_measure.code if (poi and poi.unit_of_measure) else (poi.uom_text if poi else None)),
             'unit_price': float(poi.unit_price) if (poi and poi.unit_price is not None) else None,

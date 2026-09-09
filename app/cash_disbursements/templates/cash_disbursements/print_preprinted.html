@@ -212,7 +212,9 @@
       {%- for exp in cdv.expense_lines %}
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ exp.line_number }}
-        {%- elif col.key == 'product' -%}{% if exp.product %}{{ exp.product.code }} — {{ exp.product.name }}{% endif %}
+        {#- The code is retired from display (owner, 2026-09-09) -- this was
+           exp.product.code joined with an em dash and exp.product.name. -#}
+        {%- elif col.key == 'product' -%}{% if exp.product %}{{ exp.product.name }}{% endif %}
         {%- elif col.key == 'description' -%}{{ exp.description or '' }}
         {%- elif col.key == 'qty' -%}{{ '{:,.4f}'.format(exp.quantity) if exp.quantity is not none else '' }}
         {#- The unit CODE ('KG'), never the long name: the pre-printed box is ~50px wide. -#}

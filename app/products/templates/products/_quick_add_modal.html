@@ -56,15 +56,15 @@
         {% endif %}
       {% endif %}
 
-      <div class="form-row-2" style="margin-bottom:12px;">
-        <div class="form-group">
-          <label class="form-label" for="pqa_code">Code <span style="color:var(--alert-error-text);">*</span></label>
-          <input type="text" id="pqa_code" name="code" class="form-control" maxlength="50" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="pqa_name">Name <span style="color:var(--alert-error-text);">*</span></label>
-          <input type="text" id="pqa_name" name="name" class="form-control" maxlength="200" required>
-        </div>
+      {# The Code field was removed here on 2026-09-09 (owner): the product code
+         is retired, and ProductForm no longer carries it, so this input was
+         REQUIRING the user to type a value that WTForms then silently discarded.
+         Name takes the full row rather than sitting in a half-width column with
+         a gap beside it. This modal is shared by eight transaction forms, so
+         removing the field fixes all of them at once. #}
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label" for="pqa_name">Name <span style="color:var(--alert-error-text);">*</span></label>
+        <input type="text" id="pqa_name" name="name" class="form-control" maxlength="200" required>
       </div>
 
       <div class="form-group" style="margin-bottom:16px;">

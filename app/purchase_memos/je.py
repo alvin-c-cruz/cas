@@ -177,12 +177,18 @@ def post_purchase_memo_je(memo, user_id, actor=None):
             # post_movement writes anything.
             if inv_account is None:
                 inv_account = get_control_account('inventory')
+            # The product's NAME, not its code: the code is retired from every
+            # surface (owner, 2026-09-08) and this text lands in the stock
+            # movement record and the negative-stock flash below, where an
+            # identifier nobody can look up is worse than none. Movements already
+            # posted keep the text they were written with -- rewriting them would
+            # falsify the record.
             mv, went_negative = post_movement(
                 li.product, memo.branch_id, 'purchase_return', -qty, None,
-                'purchase_memo', memo.id, f'{memo.memo_number} return: {li.product.code}',
+                'purchase_memo', memo.id, f'{memo.memo_number} return: {li.product.name}',
                 actor, journal_entry_id=je.id, movement_date=memo.memo_date)
             if went_negative:
-                warnings.append(li.product.code)
+                warnings.append(li.product.name)
             # Value the Cr Inventory leg at the movement's OWN current-average
             # valuation (read from the returned movement, never a separate value).
             accrued = (abs(Decimal(str(mv.quantity)))

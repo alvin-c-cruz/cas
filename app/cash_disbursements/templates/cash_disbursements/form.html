@@ -751,7 +751,13 @@ function addExpenseLine(existingItem) {
         ? `<td><select class="form-control prod-select">
                <option value="">—</option>
                <option value="__add_product__">+ Add Product</option>
-               ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
+               {# The code is retired from display (owner, 2026-09-09). It was
+                  `${escHtml(p.code)}: ${escHtml(p.name)}`; since the code became
+                  optional every new product carries None, which tojson renders as
+                  null and escHtml stringifies, so the option read literally
+                  "null: Widget". Product.to_dict() still carries the code (Task
+                  5's territory) -- this only stops showing it here. #}
+               ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.name)}</option>`).join('')}
            </select></td>`
         : '';
 
@@ -840,7 +846,8 @@ function addExpenseLine(existingItem) {
                 prodC.setChoiceByValue('');
                 openProductModal(id, function(p) {
                     products.push(p);
-                    prodC.setChoices([{value: String(p.id), label: escHtml(p.code) + ': ' + escHtml(p.name), customProperties: {name: p.name}}], 'value', 'label', false);
+                    // Name only -- same retirement as the prod-select options above.
+                    prodC.setChoices([{value: String(p.id), label: escHtml(p.name), customProperties: {name: p.name}}], 'value', 'label', false);
                     prodC.setChoiceByValue(String(p.id));
                     onProductPick(id, p.id);
                 });

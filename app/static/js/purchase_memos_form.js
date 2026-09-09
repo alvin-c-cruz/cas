@@ -31,8 +31,10 @@
     emptyMsg.hidden = lines.length > 0;
     lines.forEach(function (r) {
       var tr = document.createElement('tr');
-      var label = r.product_code ? r.product_code + ': ' + r.product_name
-                                 : (r.product_name || '(no product)');
+      // The code is retired from display (owner, 2026-09-09). The AP line's
+      // to_dict() no longer sends that field, but this label used to prefer
+      // it over the name when present -- name only now.
+      var label = r.product_name || '(no product)';
       cell(tr, label);
       cell(tr, r.uom_display || '');
       cell(tr, r.vat_category || '');

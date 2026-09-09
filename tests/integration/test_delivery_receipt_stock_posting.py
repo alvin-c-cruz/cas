@@ -107,7 +107,9 @@ def test_negative_on_hand_delivery_posts_with_warning(
     dr = _delivered_dr(db_session, branch_main, so, delivered_qty=3)
 
     post_dr_delivery(dr, admin_user)  # must not raise
-    assert dr._negative_warnings == [product_tracked.code]   # the spec-mandated warning
+    # By NAME since the code was retired and became optional (owner, 2026-09-08):
+    # a codeless product made this warning read the literal string "None".
+    assert dr._negative_warnings == [product_tracked.name]   # the spec-mandated warning
     db.session.commit()
     bal = StockBalance.query.filter_by(product_id=product_tracked.id, branch_id=branch_main.id).one()
     assert bal.quantity_on_hand == Decimal('-3.0000')
@@ -201,7 +203,7 @@ def test_deliver_route_flashes_warning_on_negative_on_hand(
     db.session.refresh(dr)
     assert dr.status == 'delivered'
     assert b'negative on-hand balance' in resp.data
-    assert product_tracked.code.encode() in resp.data
+    assert product_tracked.name.encode() in resp.data
 
 
 def test_deliver_route_fails_closed_leaves_approved(

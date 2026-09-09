@@ -51,7 +51,11 @@ class TestPurchaseOrderSnapshot:
         assert isinstance(line['line_id'], int), 'line_id stays a raw int for exact lookups'
         assert line['quantity'] == '1'
         assert line['unit_price_display'] == '121.00'
-        assert 'product_code' in line and 'product_name' in line
+        # product_code retired from NEW snapshots (owner, 2026-09-09) -- the code
+        # is not shown anywhere in the app any more. product_name stays: it is
+        # what the revision viewer and every print surface actually display.
+        assert 'product_code' not in line
+        assert 'product_name' in line
 
     def test_lines_are_ordered_by_line_number(self, db_session):
         # Appended OUT of order (1, 3, 2) and snapshotted straight off the

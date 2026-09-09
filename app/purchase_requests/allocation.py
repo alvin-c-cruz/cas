@@ -462,7 +462,6 @@ def open_lines_for_branch(branch_id, exclude_po_id=None):
                 'date_needed': pr.date_needed.isoformat() if pr.date_needed else None,
                 'date_needed_asap': bool(pr.date_needed_asap),
                 'product_id': li.product_id,
-                'product_code': li.product.code if li.product else None,
                 'product_name': li.product.name if li.product else None,
                 'description': li.description,
                 'uom_id': li.unit_of_measure_id,

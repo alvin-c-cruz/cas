@@ -51,7 +51,11 @@ class TestItBlocks:
                           'test_doc', 3, 'late entry', actor,
                           movement_date=date(2026, 1, 20))
         msg = str(e.value)
-        assert product_fifo.code in msg, 'the message must name the product'
+        # By NAME since the code was retired and became optional (owner,
+        # 2026-09-08): a codeless product made this message open with the
+        # literal string "None: a receipt dated ...". The assertion's own
+        # wording -- 'must name the product' -- is now literally true.
+        assert product_fifo.name in msg, 'the message must name the product'
         assert '2026-02-01' in msg, 'the message must name the blocking date'
 
 

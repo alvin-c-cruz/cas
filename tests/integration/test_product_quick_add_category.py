@@ -136,7 +136,9 @@ class TestQuickAddPostRoundTrip:
         assert resp.status_code == 200, resp.get_data(as_text=True)
         body = resp.get_json()
         assert body['ok'] is True
-        assert body['product']['code'] == 'ZQA01'
+        # prodcode_0001: code is retired from the AJAX picker payload -- the round
+        # trip is now proven by name instead.
+        assert body['product']['name'] == 'Quick Add Probe'
 
     def test_quick_add_still_refuses_a_missing_category(self, client, db_session,
                                                         admin_user, main_branch,

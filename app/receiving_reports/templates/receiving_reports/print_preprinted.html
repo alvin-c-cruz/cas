@@ -157,7 +157,18 @@
       {%- set product = item.product or (po_line.product if po_line else None) %}
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
-        {%- elif col.key == 'product' -%}{% if product %}{{ product.code ~ ' — ' ~ product.name }}{% else %}{{ '' }}{% endif %}
+        {#- The code is retired from display (owner, 2026-09-08) -- this was
+           product.code joined with an em dash and product.name. Not in the
+           Task 5 brief's file list; found by grepping this module for the
+           dot-code attribute pattern and classifying every hit, same as
+           Tasks 3 and 4's own overlay fixes (PR commit f1e6fb07, PO commit
+           927044e6) for the requisition/order print overlays. This comment
+           deliberately trims on both sides (unlike a plain comment tag):
+           the if/elif chain here is hyphen-trimmed throughout to keep each
+           line-item cell free of stray whitespace, and an untrimmed comment
+           would have left the LINE_NUMBER branch above carrying a trailing
+           newline the following elif's own left-trim no longer reaches. -#}
+        {%- elif col.key == 'product' -%}{% if product %}{{ product.name }}{% else %}{{ '' }}{% endif %}
         {%- elif col.key == 'description' -%}{{ (po_line.description if po_line else '') or '' }}
         {%- elif col.key == 'po_number' -%}{{ item.po_number }}
         {%- elif col.key == 'ordered_qty' -%}{{ po_line | qty_fmt }}

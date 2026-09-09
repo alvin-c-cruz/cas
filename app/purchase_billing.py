@@ -93,7 +93,9 @@ def _po_line_payload(po):
             'description': (li.description or (product.name if product else '')),
             'amount': float(li.amount) if li.amount is not None else 0.0,
             'product_id': li.product_id,
-            'product_code': product.code if product else None,
+            # product_code retired from this payload (owner, 2026-09-09) -- it fed
+            # ap_po_billing.js's line rows, which render only `description` and
+            # `amount`. Nothing reads it.
             'product_name': product.name if product else None,
             'quantity': float(li.quantity) if li.quantity is not None else None,
             'unit_price': float(li.unit_price) if li.unit_price is not None else None,
@@ -162,7 +164,9 @@ def billable_rrs_for(branch_id, vendor_id):
                 'description': (poi.description if poi else None) or (product.name if product else ''),
                 'amount': _amt,
                 'product_id': (product.id if product else None),
-                'product_code': product.code if product else None,
+                # product_code retired from this payload (owner, 2026-09-09) -- it
+                # fed ap_po_billing.js's line rows, which render only `description`
+                # and `amount`. Nothing reads it.
                 'product_name': product.name if product else None,
                 'quantity': float(li.received_quantity) if li.received_quantity is not None else 0.0,
                 'unit_price': float(poi.unit_price) if (poi and poi.unit_price is not None) else None,

@@ -190,20 +190,24 @@ def complete_work_order_batch(wo, batch_qty, actor):
     labor_amount = (inventory_amount - material_amount).quantize(Decimal('0.01'))
 
     n = 1
-    _add_line(je, n, inv_account.id, f'{product.code} produced', inventory_amount, ZERO); n += 1
-    _add_line(je, n, wip_account.id, f'{product.code} relieved from WIP', ZERO, material_amount); n += 1
-    _add_line(je, n, labor_account.id, f'{product.code} labor applied', ZERO, labor_amount); n += 1
+    # The product's NAME, not its code: the code is retired (owner, 2026-09-08)
+    # and became optional, so a codeless product wrote the literal string "None"
+    # into this permanent record. Entries already posted keep the text they were
+    # written with -- rewriting them would falsify the books.
+    _add_line(je, n, inv_account.id, f'{product.name} produced', inventory_amount, ZERO); n += 1
+    _add_line(je, n, wip_account.id, f'{product.name} relieved from WIP', ZERO, material_amount); n += 1
+    _add_line(je, n, labor_account.id, f'{product.name} labor applied', ZERO, labor_amount); n += 1
 
     if product.costing_method == 'standard':
         variance = (inventory_amount - batch_qty * Decimal(mv.unit_cost)).quantize(Decimal('0.01'))
         if variance != ZERO:
             variance_account = get_control_account('inventory_variance')
             if variance > ZERO:
-                _add_line(je, n, variance_account.id, f'{product.code} standard cost variance', variance, ZERO); n += 1
-                _add_line(je, n, inv_account.id, f'{product.code} standard cost variance', ZERO, variance); n += 1
+                _add_line(je, n, variance_account.id, f'{product.name} standard cost variance', variance, ZERO); n += 1
+                _add_line(je, n, inv_account.id, f'{product.name} standard cost variance', ZERO, variance); n += 1
             else:
-                _add_line(je, n, inv_account.id, f'{product.code} standard cost variance', -variance, ZERO); n += 1
-                _add_line(je, n, variance_account.id, f'{product.code} standard cost variance', ZERO, -variance); n += 1
+                _add_line(je, n, inv_account.id, f'{product.name} standard cost variance', -variance, ZERO); n += 1
+                _add_line(je, n, variance_account.id, f'{product.name} standard cost variance', ZERO, -variance); n += 1
 
     db.session.flush()
     je.calculate_totals()

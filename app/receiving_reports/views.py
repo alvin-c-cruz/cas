@@ -111,7 +111,12 @@ def _po_lines_payload(eligible, exclude_rr_id=None):
             ordered = Decimal(str(li.quantity or 0))
             rows.append({
                 'purchase_order_item_id': li.id,
-                'product_code': li.product.code if li.product else '',
+                # product_code retired from this payload (owner, 2026-09-08) --
+                # it fed form.html's PO_LINES/RR_LINE_INDEX and this route's own
+                # /open-lines JSON, both display-only surfaces. Not named in the
+                # Task 5 brief's file list; found by grepping this module for
+                # `.code\b` and classifying every hit (Product.code vs. UOM/
+                # vendor/account codes, which stay).
                 'product_name': (li.product.name if li.product else (li.description or '')),
                 'uom': (li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '')),
                 'ordered': float(ordered),

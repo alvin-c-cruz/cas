@@ -159,8 +159,10 @@ def test_product_quick_add_exempt_and_allows_staff(client, db_session, branch):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body['ok'] is True
-    assert body['product']['label'] == 'P001 — Widget'
-    assert Product.query.filter_by(code='P001').first() is not None
+    # the product's own `code` is retired from every screen and payload (prodcode_0001);
+    # the picker label is now just the name.
+    assert body['product']['label'] == 'Widget'
+    assert Product.query.filter_by(name='Widget').first() is not None
 
 
 def test_product_quick_add_free_rides_sales_invoices_delegate(client, db_session, branch):
@@ -179,7 +181,8 @@ def test_product_quick_add_free_rides_sales_invoices_delegate(client, db_session
                        headers={'X-Requested-With': 'XMLHttpRequest'})
     assert resp.status_code == 200
     assert resp.get_json()['ok'] is True
-    assert Product.query.filter_by(code='SIP1').first() is not None
+    # prodcode_0001: code is retired, look the product up by name instead.
+    assert Product.query.filter_by(name='SI Product').first() is not None
 
 
 def test_admin_reaches_ungranted_module(client, db_session, branch):

@@ -80,7 +80,7 @@ def approve_physical_count(count, actor):
 
         if current_qty != Decimal(line.book_qty_snapshot):
             drift_notices.append(
-                f'{product.code}: book quantity changed from {line.book_qty_snapshot} '
+                f'{product.name}: book quantity changed from {line.book_qty_snapshot} '
                 f'to {current_qty} since this count was taken.')
 
         if variance == ZERO:

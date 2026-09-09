@@ -341,6 +341,24 @@ def _drop_post_backfill(snapshot):
     return {**snapshot, 'header': header}
 
 
+# Line fields PurchaseOrder.snapshot_line_extras() STOPPED emitting *after*
+# docrev_0002 shipped (product_code retired from the app, Task 4, 2026-09-09).
+# The migration itself is NOT edited to match, for the same reason
+# POST_BACKFILL_HEADER_FIELDS above is not folded into the migration: it
+# already ran on every real deployment before this change existed, and a fresh
+# clone provisioning today must reconstruct history as the OLD live path
+# actually wrote it, not as today's code would. This is the mirror image of
+# POST_BACKFILL_HEADER_FIELDS -- there the backfill lacks a field live now has;
+# here the backfill still emits a field live no longer does.
+RETIRED_LINE_FIELDS = frozenset({'product_code'})
+
+
+def _drop_retired_line_fields(snapshot):
+    lines = [{k: v for k, v in line.items() if k not in RETIRED_LINE_FIELDS}
+             for line in snapshot['lines']]
+    return {**snapshot, 'lines': lines}
+
+
 def _assert_identical(live, back):
     # A live snapshot legitimately carries fields the backfill never knew about.
     # Compare on the shared surface -- but assert first that the live side really
@@ -350,6 +368,16 @@ def _assert_identical(live, back):
         'from POST_BACKFILL_HEADER_FIELDS rather than leaving a dead exclusion')
     live = _drop_post_backfill(live)
     back = _drop_post_backfill(back)
+
+    # The mirror check: a BACKFILLED snapshot legitimately carries a field the
+    # live path no longer writes. Assert first that `back` really does still
+    # carry it, so this exclusion cannot quietly hide it vanishing from the
+    # migration too.
+    for line in back['lines']:
+        assert RETIRED_LINE_FIELDS <= set(line), (
+            'a retired line field vanished from the backfill migration; remove '
+            'it from RETIRED_LINE_FIELDS rather than leaving a dead exclusion')
+    back = _drop_retired_line_fields(back)
 
     # Key sets first: a missing key fails here with a readable diff rather than
     # inside a 40-key value comparison.
@@ -389,7 +417,12 @@ def test_backfilled_rev0_equals_a_live_written_rev0(migrated_db):
     assert live['header']['vat_override'] == 'True'
     assert live['header']['approved_at'] == '2026-08-09T12:00:00'
     assert live['header']['total_amount_display'] == '25.50'
-    assert live['lines'][0]['product_code'] == 'P-001'
+    # product_code is retired from the LIVE path (Task 4, 2026-09-09), so it is
+    # pinned on `back` instead -- that is what actually proves the migration's
+    # own products-table join still resolves a real code now that no live
+    # snapshot exercises it. RETIRED_LINE_FIELDS (above) is what keeps this key
+    # out of the byte-for-byte comparison _assert_identical() does below.
+    assert back['lines'][0]['product_code'] == 'P-001'
     assert live['lines'][0]['uom_code'] == 'PCS'
     assert live['lines'][0]['unit_price_display'] == '10.20'
 

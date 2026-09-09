@@ -43,7 +43,7 @@ def _int_or_none(v):
 @products_bp.route('/products')
 @login_required
 def list():
-    products = Product.query.order_by(Product.code).all()
+    products = Product.query.order_by(Product.name).all()
     categories = get_active_product_categories()
     return render_template('products/list.html', products=products, categories=categories)
 
@@ -63,7 +63,6 @@ def create():
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if form.validate_on_submit():
         p = Product(
-            code=form.code.data.strip(),
             customer_code=(form.customer_code.data or '').strip() or None,
             name=form.name.data.strip(),
             description=(form.description.data or '').strip() or None,
@@ -82,11 +81,11 @@ def create():
         db.session.add(p)
         db.session.commit()
         clear_product_cache()
-        log_create('products', p.id, p.code, p.to_dict())
+        log_create('products', p.id, p.name, p.to_dict())
         if is_ajax:
             return jsonify(ok=True, product={
-                'id': p.id, 'code': p.code, 'name': p.name,
-                'label': f'{p.code} — {p.name}',
+                'id': p.id, 'name': p.name,
+                'label': p.name,
                 'default_uom_id': p.default_unit_of_measure_id,
                 'unit_price': float(p.default_unit_price or 0),
                 'default_account_id': p.default_account_id,
@@ -117,7 +116,6 @@ def edit(id):
         form.costing_method.data = p.costing_method or ''
     if form.validate_on_submit():
         old = p.to_dict()
-        p.code = form.code.data.strip()
         p.customer_code = (form.customer_code.data or '').strip() or None
         p.name = form.name.data.strip()
         p.description = (form.description.data or '').strip() or None
@@ -133,7 +131,7 @@ def edit(id):
         p.is_active = (form.is_active.data == '1')
         db.session.commit()
         clear_product_cache()
-        log_update('products', p.id, p.code, old, p.to_dict())
+        log_update('products', p.id, p.name, old, p.to_dict())
         flash('Product updated.', 'success')
         return redirect(url_for('products.list'))
     return render_template('products/form.html', form=form, title='Edit Product', product=p,

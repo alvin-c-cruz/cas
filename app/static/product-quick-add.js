@@ -17,7 +17,7 @@ function initProductQuickAdd() {
         errorBox.textContent = '';
         form.reset();
         overlay.style.display = 'flex';
-        document.getElementById('pqa_code').focus();
+        document.getElementById('pqa_name').focus();  // pqa_code is gone (code retired)
     };
 
     function closeModal() {

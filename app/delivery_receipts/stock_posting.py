@@ -60,10 +60,14 @@ def post_dr_delivery(dr, actor):
             'delivery_receipt', dr.id, f'DR {dr.dr_number}', actor, journal_entry_id=je.id,
             movement_date=dr.delivery_date)
         if went_negative:
-            warnings.append(li.product.code)
+            warnings.append(li.product.name)
         amount = (abs(Decimal(str(mv.quantity))) * Decimal(str(mv.unit_cost))).quantize(Decimal('0.01'))
-        _add_line(je, n, cogs_account.id, f'{li.product.code} COGS', amount, ZERO); n += 1
-        _add_line(je, n, inv_account.id, f'{li.product.code} relief', ZERO, amount); n += 1
+        # The product's NAME, not its code: the code is retired (owner, 2026-09-08)
+        # and became optional, so a codeless product wrote the literal string "None"
+        # into this permanent record. Entries already posted keep the text they were
+        # written with -- rewriting them would falsify the books.
+        _add_line(je, n, cogs_account.id, f'{li.product.name} COGS', amount, ZERO); n += 1
+        _add_line(je, n, inv_account.id, f'{li.product.name} relief', ZERO, amount); n += 1
 
     db.session.flush()
     je.calculate_totals()

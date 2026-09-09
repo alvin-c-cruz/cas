@@ -155,7 +155,8 @@
       <tr>
         <td>{{ exp.line_number }}</td>
         {% if module_enabled('products') %}
-        <td>{% if exp.product %}{{ exp.product.code }} — {{ exp.product.name }}{% else %}—{% endif %}</td>
+        {# The code is retired from display (owner, 2026-09-09). #}
+        <td>{% if exp.product %}{{ exp.product.name }}{% else %}—{% endif %}</td>
         {% endif %}
         <td>{{ exp.description or '—' }}</td>
         {% if module_enabled('units_of_measure') %}

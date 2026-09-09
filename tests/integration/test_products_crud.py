@@ -48,7 +48,8 @@ def test_create_and_edit_round_trips_standard_cost(client, db_session, admin_use
                      'default_account_id': '', 'category_id': '',
                      'standard_cost': '12.35', 'is_active': '1'},
                 follow_redirects=True)
-    p = Product.query.filter_by(code='WID-SC').first()
+    # prodcode_0001: code is retired from the form -- look up by name instead.
+    p = Product.query.filter_by(name='Widget SC').first()
     assert p is not None
     assert p.standard_cost == Decimal('12.35')
 
@@ -75,7 +76,8 @@ def test_create_product_persists_and_audits(client, db_session, admin_user, main
                              'default_account_id': '', 'is_active': '1'},
                        follow_redirects=True)
     assert resp.status_code == 200
-    p = Product.query.filter_by(code='WID-1').first()
+    # prodcode_0001: code is retired from the form -- look up by name instead.
+    p = Product.query.filter_by(name='Widget').first()
     assert p is not None and p.name == 'Widget'
     assert p.default_unit_price == Decimal('112.00')
     assert p.default_unit_of_measure_id == u.id
@@ -90,7 +92,9 @@ def test_create_product_persists_customer_code(client, db_session, admin_user, m
                      'description': '', 'default_unit_of_measure_id': '',
                      'default_unit_price': '', 'default_account_id': '', 'is_active': '1'},
                follow_redirects=True)
-    p = Product.query.filter_by(code='WID-2').first()
+    # prodcode_0001: code is retired from the form -- look up by name instead.
+    # customer_code is a DIFFERENT field (the customer's own SKU) and is unaffected.
+    p = Product.query.filter_by(name='Widget').first()
     assert p is not None and p.customer_code == '220176'
 
 
@@ -135,7 +139,8 @@ def test_staff_can_create_product(client, db_session, staff_user, main_branch,
                              'default_account_id': '', 'is_active': '1'},
                        follow_redirects=True)
     assert resp.status_code == 200
-    assert Product.query.filter_by(code='STF-1').first() is not None
+    # prodcode_0001: code is retired from the form -- look up by name instead.
+    assert Product.query.filter_by(name='Staff Product').first() is not None
 
 
 def test_viewer_cannot_create_product(client, db_session, viewer_user, main_branch,
@@ -151,7 +156,10 @@ def test_viewer_cannot_create_product(client, db_session, viewer_user, main_bran
                              'default_account_id': '', 'is_active': '1'},
                        follow_redirects=True)
     assert resp.status_code == 200
-    assert Product.query.filter_by(code='VWR-1').first() is None
+    # prodcode_0001: code is retired and always None now, so a lookup by code
+    # would pass whether or not the product was actually created -- look up by
+    # name (the only identifier the form still writes) to keep this assertion real.
+    assert Product.query.filter_by(name='Viewer Product').first() is None
 
 
 def test_staff_cannot_edit_product(client, db_session, staff_user, main_branch,
@@ -191,9 +199,10 @@ def test_ajax_create_product_returns_json(client, db_session, admin_user, main_b
     assert resp.status_code == 200
     data = resp.get_json()
     assert data['ok'] is True
-    assert data['product']['code'] == 'P-AJAX'
+    # prodcode_0001: code is retired from the AJAX picker payload and the form --
+    # the round trip is now proven by name instead.
     assert data['product']['name'] == 'Ajax Product'
-    assert Product.query.filter_by(code='P-AJAX').count() == 1
+    assert Product.query.filter_by(name='Ajax Product').count() == 1
 
 
 def test_ajax_create_product_validation_error(client, db_session, admin_user, main_branch,
@@ -201,7 +210,7 @@ def test_ajax_create_product_validation_error(client, db_session, admin_user, ma
     """AJAX POST to /products/create with missing required fields returns JSON with ok=False."""
     _login(client, admin_user, main_branch)
     resp = client.post('/products/create',
-                       data={},  # missing code and name
+                       data={},  # missing name (code is no longer a form field -- prodcode_0001)
                        headers={'X-Requested-With': 'XMLHttpRequest'})
     assert resp.status_code == 400
     data = resp.get_json()
@@ -220,7 +229,8 @@ def test_create_product_with_job_order_name(client, db_session, admin_user, main
                              'default_account_id': '', 'is_active': '1'},
                        follow_redirects=True)
     assert resp.status_code == 200
-    p = Product.query.filter_by(code='JON-3').first()
+    # prodcode_0001: code is retired from the form -- look up by name instead.
+    p = Product.query.filter_by(name='Widget C').first()
     assert p is not None
     assert p.job_order_name == 'WGT-C-PROD'
 
