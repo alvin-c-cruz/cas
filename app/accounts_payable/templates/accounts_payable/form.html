@@ -995,6 +995,7 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
     const rows = [];
     let firstExpenseIdx = -1;
     const vatBuckets = {};  // input VAT account id -> {code, name, amt} (B-014)
+    const expenseRowByAccount = {};  // account id -> its single merged row
 
     lineItems.forEach(item => {
         if (!item.account_id) return;
@@ -1011,15 +1012,37 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
             if (!vatBuckets[acctId]) vatBuckets[acctId] = { code: code, name: name, amt: 0 };
             vatBuckets[acctId].amt += vatAmt;
         }
-        if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
-        rows.push({
-            code: acct ? acct.code : '—',
-            // Account Title column shows the account name (matches the posted JE
-            // in print.html); the line description lives in the line-items table.
-            name: acct ? acct.name : '—',
-            debit: netBase,
-            credit: 0
-        });
+        // Legs hitting the SAME account merge into one row (owner, 2026-09-10).
+        // The saved document already did this on both server-side surfaces
+        // (print and detail); this live preview did not, so adding a second
+        // line to one account showed the title twice until the page was saved
+        // and re-rendered. The input VAT rows a few lines up were already
+        // bucketed by account -- expense rows simply were not.
+        //
+        // Merged AT PUSH TIME, not afterwards, so firstExpenseIdx keeps
+        // pointing at the first expense row: the VAT-override adjustment below
+        // indexes into rows[] by that number.
+        //
+        // A line with no account resolves to code '—' and is NEVER merged: two
+        // unrelated unassigned lines are not the same account.
+        const acctCode = acct ? acct.code : '—';
+        const existing = acct ? expenseRowByAccount[item.account_id] : null;
+        if (existing) {
+            existing.debit += netBase;
+        } else {
+            if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
+            const row = {
+                code: acctCode,
+                // Account Title column shows the account name (matches the posted
+                // JE in print.html); the line description lives in the line-items
+                // table.
+                name: acct ? acct.name : '—',
+                debit: netBase,
+                credit: 0
+            };
+            if (acct) expenseRowByAccount[item.account_id] = row;
+            rows.push(row);
+        }
     });
 
     // Per-category input VAT rows, mirroring server _input_vat_buckets():
