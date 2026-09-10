@@ -680,8 +680,14 @@ def list_ap():
     page = request.args.get('page', 1, type=int)
     per_page = 50
 
+    # id DESC is a TIEBREAKER, not decoration: the list paginates, and an
+    # unstable sort lets tied rows reorder between queries, so a row can
+    # appear on two pages or on neither. Never order by the document
+    # NUMBER -- it is a user-typed string, and '9999' sorts above '10000'.
+    # Matches the PO/PR/SO/DR/memo lists, which already do this.
     query = (_filtered_ap_query()
-             .order_by(AccountsPayable.ap_date.desc()))
+             .order_by(AccountsPayable.ap_date.desc(),
+                       AccountsPayable.id.desc()))
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
     summary = compute_ap_summary(session.get('selected_branch_id'))

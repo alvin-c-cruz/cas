@@ -183,7 +183,13 @@ def list_cdvs():
     if pm_filter != 'all':
         query = query.filter_by(payment_method=pm_filter)
 
-    query = query.order_by(CashDisbursementVoucher.cdv_date.desc())
+    # id DESC is a TIEBREAKER, not decoration: the list paginates, and an
+    # unstable sort lets tied rows reorder between queries, so a row can
+    # appear on two pages or on neither. Never order by the document
+    # NUMBER -- it is a user-typed string, and '9999' sorts above '10000'.
+    # Matches the PO/PR/SO/DR/memo lists, which already do this.
+    query = query.order_by(CashDisbursementVoucher.cdv_date.desc(),
+                           CashDisbursementVoucher.id.desc())
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     summary = compute_cdv_summary(branch_id)
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()

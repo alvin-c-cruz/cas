@@ -540,7 +540,13 @@ def list_invoices():
     from app.sales_invoices.utils import compute_invoices_summary
     page = request.args.get('page', 1, type=int)
     per_page = 50
-    query = _filtered_invoices_query().order_by(SalesInvoice.invoice_date.desc())
+    # id DESC is a TIEBREAKER, not decoration: the list paginates, and an
+    # unstable sort lets tied rows reorder between queries, so a row can
+    # appear on two pages or on neither. Never order by the document
+    # NUMBER -- it is a user-typed string, and '9999' sorts above '10000'.
+    # Matches the PO/PR/SO/DR/memo lists, which already do this.
+    query = _filtered_invoices_query().order_by(SalesInvoice.invoice_date.desc(),
+                                              SalesInvoice.id.desc())
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     summary = compute_invoices_summary(session.get('selected_branch_id'))
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()

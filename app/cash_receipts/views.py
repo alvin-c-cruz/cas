@@ -874,7 +874,13 @@ def list_crvs():
     if pm_filter != 'all':
         query = query.filter_by(payment_method=pm_filter)
 
-    query = query.order_by(CashReceiptVoucher.crv_date.desc())
+    # id DESC is a TIEBREAKER, not decoration: the list paginates, and an
+    # unstable sort lets tied rows reorder between queries, so a row can
+    # appear on two pages or on neither. Never order by the document
+    # NUMBER -- it is a user-typed string, and '9999' sorts above '10000'.
+    # Matches the PO/PR/SO/DR/memo lists, which already do this.
+    query = query.order_by(CashReceiptVoucher.crv_date.desc(),
+                           CashReceiptVoucher.id.desc())
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     summary = compute_crv_summary(branch_id)
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
