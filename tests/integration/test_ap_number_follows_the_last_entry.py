@@ -23,6 +23,18 @@ from app.accounts_payable.models import AccountsPayable
 pytestmark = [pytest.mark.integration, pytest.mark.accounts_payable]
 
 
+@pytest.fixture
+def second_branch(db_session):
+    """A real second branch. PhilGen runs CORP and EXTRA, and the whole point of
+    these tests is that the two series never touch."""
+    from app.branches.models import Branch
+    b = Branch.query.filter_by(code='EXTRA').first()
+    if not b:
+        b = Branch(code='EXTRA', name='EXTRA')
+        db.session.add(b); db.session.commit()
+    return b
+
+
 def _ap(db_session, main_branch, number, vendor=None):
     ap = AccountsPayable(branch_id=main_branch.id, ap_number=number,
                          ap_date=date(2026, 9, 10), due_date=date(2026, 10, 10),
@@ -110,6 +122,61 @@ class TestItFollowsTheLastEntry:
         _ap(db_session, main_branch, '0005')      # newest by insertion order
         _ap(db_session, main_branch, '0006')      # newest; 0007 is taken
         assert next_ap_number() == '0008'
+
+
+class TestEachBranchKeepsItsOwnSeries:
+    """Owner, 2026-09-10: "AP number should be separate numbering for different
+    branches."
+
+    PhilGen's live books already run two series -- CORP on plain 0001..0009 and
+    EXTRA on 0001E..0005E, the same pad-marker convention the purchase orders
+    use. next_ap_number() read the newest bill across ALL branches, so entering
+    a CORP bill after an EXTRA one suggested EXTRA's next number.
+
+    The marker keeps the two series globally unique, which matters: ap_number
+    carries a single-column global unique index, so two branches must never
+    produce the same string. Suggestions still skip anything already taken.
+    """
+
+    def test_corp_continues_corps_own_series(self, db_session, main_branch,
+                                             second_branch):
+        from app.accounts_payable.views import next_ap_number
+        _ap(db_session, main_branch, '0009')
+        _ap(db_session, second_branch, '0005E')      # newest overall
+        assert next_ap_number(main_branch.id) == '0010'
+
+    def test_extra_continues_its_own_marked_series(self, db_session, main_branch,
+                                                   second_branch):
+        """The marker survives verbatim and the digits climb: 0005E -> 0006E."""
+        from app.accounts_payable.views import next_ap_number
+        _ap(db_session, main_branch, '0009')
+        _ap(db_session, second_branch, '0005E')
+        assert next_ap_number(second_branch.id) == '0006E'
+
+    def test_the_marker_width_is_preserved(self, db_session, second_branch):
+        from app.accounts_payable.views import next_ap_number
+        _ap(db_session, second_branch, '0099E')
+        assert next_ap_number(second_branch.id) == '0100E'
+
+    def test_a_branch_with_no_bills_does_not_borrow_anothers(
+            self, db_session, main_branch, second_branch):
+        """STARTING a series is a business decision, never a guess: a branch
+        with nothing of its own must not inherit the other branch's run."""
+        from app.accounts_payable.views import next_ap_number
+        _ap(db_session, main_branch, '0042')
+        suggestion = next_ap_number(second_branch.id)
+        assert suggestion != '0043', suggestion
+
+    def test_a_globally_taken_number_is_still_skipped(
+            self, db_session, main_branch, second_branch):
+        """The unique index is global, so a per-branch series must still step
+        over a string another branch already used."""
+        from app.accounts_payable.views import next_ap_number
+        _ap(db_session, main_branch, '0007')
+        _ap(db_session, second_branch, '0006')   # unmarked, in the other branch
+        _ap(db_session, second_branch, '0005')
+        # second_branch's own max is 0006 -> 0007 is taken globally -> 0008
+        assert next_ap_number(second_branch.id) == '0008'
 
 
 class TestTheFormOffersIt:

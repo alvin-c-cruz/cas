@@ -880,7 +880,9 @@ def create():
             # silently substituting it or just failing (BUG-DOCNUMBER-RACE-SILENT-
             # DATA-LOSS -- see docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md).
             ap_num = (form.ap_number.data or '').strip()
-            fresh = fresh_number_if_collision(AccountsPayable, 'ap_number', ap_num, next_ap_number)
+            fresh = fresh_number_if_collision(
+                AccountsPayable, 'ap_number', ap_num,
+                lambda: next_ap_number(session.get('selected_branch_id')))
             if fresh:
                 form.ap_number.data = fresh
                 flash(f'AP number "{ap_num}" is already in use. A new number ({fresh}) has '
@@ -923,7 +925,9 @@ def create():
             db.session.add(ap)
             # Backstop for the pre-check above: a genuinely simultaneous request can pass
             # it before either has committed, so the real collision surfaces here instead.
-            fresh = flush_or_suggest_fresh_number(ap, AccountsPayable, 'ap_number', next_ap_number)
+            fresh = flush_or_suggest_fresh_number(
+                ap, AccountsPayable, 'ap_number',
+                lambda: next_ap_number(session.get('selected_branch_id')))
             if fresh:
                 form.ap_number.data = fresh
                 flash(f'AP number "{ap_num}" was just taken by another entry (concurrent '
@@ -989,7 +993,7 @@ def create():
                   'try again; if it persists, contact your administrator.', 'error')
 
     if request.method == 'GET':
-        form.ap_number.data = next_ap_number()
+        form.ap_number.data = next_ap_number(session.get('selected_branch_id'))
         form.ap_date.data = ph_now().date()
         form.due_date.data = ph_now().date() + timedelta(days=30)
         default_ap = get_control_account('ap_trade', required=False)
@@ -1934,61 +1938,70 @@ def delete_attachment(attachment_id):
     return redirect(url_for('accounts_payable.edit', id=ap.id))
 
 
-def next_ap_number():
-    """Suggest the next bill number by CONTINUING the numbering already in use.
+#: A bill number: leading digits, then an optional non-digit PAD MARKER.
+#: PhilGen's EXTRA branch runs 0001E..0005E against CORP's plain 0001..0009 --
+#: the same convention the purchase-order pads use (_PO_NUMBER_RE), and what
+#: keeps two branches' series globally unique under a single-column unique index.
+_AP_NUMBER_RE = re.compile(r'^(.*?)(\d+)(\D*)$')
 
-    Owner, 2026-09-10. PhilGen's books run plain sequential numbers (0001, 0002;
-    the orders run 00984, the receipts 00634), but generate_ap_number() imposed
-    AP-YYYY-MM-NNNN, so every bill entered through the app broke out of the
-    client's own sequence. This reads the last bill and increments it in ITS OWN
-    shape -- prefix kept, digit width kept -- and only falls back to the built-in
-    format when there is nothing to follow.
 
-    ORDER BY id DESC, never by the number string. This codebase has a bug report
-    about exactly that mistake (docs/bug-reports/2026-07-12-jv-number-race-silent-
-    data-loss.md): a lexicographic sort ranks '9999' above '10000', so the next
-    suggestion would collide with a row that already exists.
+def next_ap_number(branch_id=None):
+    """Suggest the next bill number, CONTINUING that branch's own series.
 
-    This is a SUGGESTION for the form, not an allocation. The number stays
-    editable, and the collision backstops in app/utils/concurrency.py remain the
-    real guard -- a pre-check alone is check-then-act and loses a simultaneous
-    double-submit.
+    Owner, 2026-09-10: "AP number should be separate numbering for different
+    branches." This read the newest bill across ALL branches, so entering a CORP
+    bill straight after an EXTRA one suggested EXTRA's next number.
+
+    Owner, earlier the same day: the number also has to continue the CLIENT's
+    numbering rather than impose AP-YYYY-MM-NNNN, so the SHAPE -- any prefix, the
+    digit width, and the trailing pad marker -- is read off the branch's newest
+    bill and carried forward: 0009 -> 0010, 0005E -> 0006E, 0099E -> 0100E.
+
+    ORDER BY id DESC for the shape, numeric MAX for the value. Never a
+    lexicographic sort on the number (docs/bug-reports/2026-07-12-jv-number-race-
+    silent-data-loss.md): '9999' outranks '10000' as a string, and the newest row
+    alone would rewind the series after a back-dated bill.
+
+    A branch with NO bills of its own does NOT inherit another branch's run.
+    Starting a series is a business decision the system must not guess -- the
+    same rule app/utils/doc_numbering.py states for the other documents.
+
+    Suggestions still skip anything already taken ANYWHERE: ap_number carries a
+    single-column global unique index, so two branches must never produce the
+    same string.
+
+    This is a SUGGESTION for the form, not an allocation. The field stays
+    editable and the concurrency backstops remain the real guard.
     """
-    rows = [(n, i) for n, i in
-            db.session.query(AccountsPayable.ap_number, AccountsPayable.id).all() if n]
+    q = db.session.query(AccountsPayable.ap_number, AccountsPayable.id,
+                         AccountsPayable.branch_id)
+    rows = [(n, i, b) for n, i, b in q.all() if n]
     if not rows:
         return generate_ap_number()
+    taken = {n for n, _, _ in rows}
 
-    # The newest row supplies the SHAPE -- prefix and digit width -- because the
-    # client can change series (they may move from '25-' to '26-' next year).
-    newest = max(rows, key=lambda r: r[1])
-    m = re.match(r'^(.*?)(\d+)$', newest[0].strip())
-    if not m:
-        # Nothing numeric to continue (an 'OPENING' balance, say). Inventing a
-        # sequence from a word would be a guess; use the built-in format.
+    mine = [(n, i) for n, i, b in rows if b == branch_id] if branch_id else            [(n, i) for n, i, _ in rows]
+    if not mine:
         return generate_ap_number()
-    prefix, width = m.group(1), len(m.group(2))
 
-    # The VALUE comes from the numeric MAX within that shape, never from the
-    # newest row's own tail. A back-dated or corrected bill is inserted after
-    # higher numbers routinely; incrementing whatever was typed last would
-    # suggest 0006 while the books are already at 0100, silently rewinding the
-    # series. This is the contract generate_pr_number() already uses.
+    newest = max(mine, key=lambda r: r[1])
+    m = _AP_NUMBER_RE.match(newest[0].strip())
+    if not m:
+        return generate_ap_number()
+    prefix, digits, marker = m.group(1), m.group(2), m.group(3)
+    width = len(digits)
+
     same_shape = []
-    for number, _ in rows:
-        mm = re.match(r'^(.*?)(\d+)$', number.strip())
-        if mm and mm.group(1) == prefix:
+    for number, _ in mine:
+        mm = _AP_NUMBER_RE.match(number.strip())
+        if mm and mm.group(1) == prefix and mm.group(3) == marker:
             same_shape.append(int(mm.group(2)))
     if not same_shape:
         return generate_ap_number()
 
-    taken = {n for n, _ in rows}
     candidate = max(same_shape) + 1
-    # Numbers are typed by hand, so the next one up can already exist -- handing
-    # the user a number that cannot be saved is worse than not suggesting one.
-    # Bounded so a pathological run can never spin.
     for _ in range(1000):
-        suggestion = '%s%0*d' % (prefix, width, candidate)
+        suggestion = '%s%0*d%s' % (prefix, width, candidate, marker)
         if suggestion not in taken:
             return suggestion
         candidate += 1
