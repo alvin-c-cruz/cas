@@ -166,11 +166,13 @@ def _build_je_preview(ap):
         if not item.account_id or not item.account:
             continue
         net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        # Mirrors the posting above: a negative line shows as a CREDIT, so the
+        # preview matches what saving will actually write.
         entries.append({
             'code': item.account.code if item.account else '—',
             'name': item.account.name if item.account else '—',
-            'debit': net_base,
-            'credit': Decimal('0.00'),
+            'debit': net_base if net_base >= Decimal('0.00') else Decimal('0.00'),
+            'credit': Decimal('0.00') if net_base >= Decimal('0.00') else abs(net_base),
         })
 
     try:
@@ -385,8 +387,15 @@ def _build_validated_ap_lines():
             amount = Decimal(str(item_data.get('amount', 0)))
         except (ValueError, TypeError, InvalidOperation):
             raise APVLineError('A line amount is invalid.')
-        if amount <= 0:
-            raise APVLineError('Each line amount must be greater than zero.')
+        if amount == 0:
+            raise APVLineError('Each line amount must not be zero.')
+        # A NEGATIVE line is legitimate and posts as a CREDIT (owner,
+        # 2026-09-10). A payroll bill is the plain case: gross wages debit the
+        # expense, and the employee's loan repayment credits the loan payable on
+        # the same voucher. The cash disbursement voucher has always allowed
+        # this; the bill refused it, so the voucher could not be entered at all.
+        # Same contract as CDV: a negative line is BARE -- no VAT, no
+        # withholding -- see the expense-line loop in cash_disbursements/views.py.
         account_id = int(item_data.get('account_id')) if item_data.get('account_id') else None
         if account_id not in leaf_account_ids:
             raise APVLineError('Each line must use a valid, postable account.')
@@ -1568,13 +1577,21 @@ def _post_ap_je(ap, user_id):
                     db.session.add(var_line); all_lines.append(var_line); line_num += 1
                 continue   # skip the generic single-line path below for this item
 
+        # A negative line CREDITS its account (owner, 2026-09-10). Posting it as
+        # a negative debit -- which is what this did -- leaves a JE line carrying
+        # a negative amount, which no ledger report expects and which the JE face
+        # rendered as a blank cell.
+        if net_base < ZERO:
+            dr, cr = ZERO, abs(net_base)
+        else:
+            dr, cr = net_base, ZERO
         entry_line = JournalEntryLine(
             entry_id=je.id,
             line_number=line_num,
             account_id=item.account_id,
             description=item.description or '',
-            debit_amount=net_base,
-            credit_amount=Decimal('0.00')
+            debit_amount=dr,
+            credit_amount=cr
         )
         db.session.add(entry_line)
         all_lines.append(entry_line)

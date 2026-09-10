@@ -769,9 +769,14 @@ function removeLineItem(id) {
 
 // The vendor defaults a NEW line starts from, exposed so the PO/RR billing
 // picker applies exactly what a hand-added line gets (owner, 2026-09-10:
-// "default VT and WT is not working when pulling a PO/R"). ap_po_billing.js
+// "default VT and WT is not working when pulling a PO/R"). That picker's script
 // used to hardcode wt_id/wt_rate to null and read the VAT category only off the
 // source line, so a pulled line arrived bare whenever the order carried none.
+//
+// The script's FILENAME is deliberately not written here: this is a JS comment,
+// so it reaches the response body, and test_ap_form_hides_picker_when_modules_off
+// asserts that filename is absent when the module is gated off. Naming it here
+// broke that test -- the same leak the repo's absence-assertion rule warns about.
 //
 // The single-WT rule is deliberate and matches addLineItem above: a vendor with
 // several withholding taxes is ambiguous, and guessing one would silently book
@@ -935,7 +940,11 @@ function validateForm() {
         const item = lineItems[i];
         const n = i + 1;
         if (!item.account_id)                    { block(`Line ${n}: select an account title.`); return; }
-        if (!item.amount || item.amount <= 0)     { block(`Line ${n}: enter an amount greater than zero.`); return; }
+        // A NEGATIVE amount is legitimate -- it credits the account (owner,
+        // 2026-09-10): a payroll bill deducts a loan repayment on its own line.
+        // Zero is still refused; a zero line says nothing and posts nothing.
+        if (item.amount === null || item.amount === undefined || item.amount === '' || Number(item.amount) === 0)
+                                                 { block(`Line ${n}: enter an amount other than zero.`); return; }
     }
 
     allow();
@@ -1023,7 +1032,11 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         const vat = vatCategories.find(v => v.code === item.vat_category);
         const vatRate = vat ? vat.rate : 0;
         const amt = item.amount || 0;
-        const vatAmt = vatRate > 0 ? Math.round((amt - amt / (1 + vatRate / 100)) * 100) / 100 : 0;
+        // A negative line is BARE -- no VAT, no withholding -- matching
+        // AccountsPayableItem.calculate_amounts() and the CDV's own rule.
+        // Extracting VAT from it would invent a negative input tax.
+        const vatAmt = (vatRate > 0 && amt > 0)
+            ? Math.round((amt - amt / (1 + vatRate / 100)) * 100) / 100 : 0;
         const netBase = amt - vatAmt;
         if (vatAmt > 0) {
             const acctId = (vat && vat.input_vat_account_id) ? vat.input_vat_account_id : '??';
@@ -1048,7 +1061,8 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         const acctCode = acct ? acct.code : '—';
         const existing = acct ? expenseRowByAccount[item.account_id] : null;
         if (existing) {
-            existing.debit += netBase;
+            if (netBase >= 0) { existing.debit += netBase; }
+            else { existing.credit += -netBase; }
         } else {
             if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
             const row = {
@@ -1057,8 +1071,11 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
                 // JE in print.html); the line description lives in the line-items
                 // table.
                 name: acct ? acct.name : '—',
-                debit: netBase,
-                credit: 0
+                // A negative line CREDITS its account, exactly as posting writes
+                // it. Left as a negative debit it rendered as a blank cell --
+                // which is what the owner saw on the payroll voucher.
+                debit: netBase >= 0 ? netBase : 0,
+                credit: netBase >= 0 ? 0 : -netBase
             };
             if (acct) expenseRowByAccount[item.account_id] = row;
             rows.push(row);

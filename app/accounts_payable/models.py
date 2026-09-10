@@ -271,6 +271,18 @@ class AccountsPayableItem(db.Model):
             q = Decimal(str(self.quantity)); up = Decimal(str(self.unit_price))
             if q > 0 and up > 0:
                 self.amount = (q * up).quantize(Decimal('0.01'), rounding='ROUND_HALF_UP')
+        # A NEGATIVE line is BARE -- no VAT, no withholding (owner, 2026-09-10).
+        # It is a deduction on the bill (a payroll loan repayment, a returned
+        # item) and credits its account outright. Extracting VAT from it would
+        # invent a negative input tax the BIR return has no place for, and
+        # withholding a negative would refund tax that was never withheld.
+        # Same contract the cash disbursement voucher has always used for its
+        # negative expense lines.
+        if Decimal(str(self.amount)) < 0:
+            self.line_total = Decimal(str(self.amount))
+            self.vat_amount = Decimal('0.00')
+            self.wt_amount = Decimal('0.00')
+            return
         vat_rate = Decimal(str(self.vat_rate)) if self.vat_rate else Decimal('0')
         if vat_rate > 0:
             net_base = Decimal(str(self.amount)) / (1 + vat_rate / Decimal('100'))
