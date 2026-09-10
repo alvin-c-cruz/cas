@@ -32,6 +32,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 import json
 import os
+import re
 import uuid
 from werkzeug.utils import secure_filename
 
@@ -864,7 +865,7 @@ def create():
             # silently substituting it or just failing (BUG-DOCNUMBER-RACE-SILENT-
             # DATA-LOSS -- see docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md).
             ap_num = (form.ap_number.data or '').strip()
-            fresh = fresh_number_if_collision(AccountsPayable, 'ap_number', ap_num, generate_ap_number)
+            fresh = fresh_number_if_collision(AccountsPayable, 'ap_number', ap_num, next_ap_number)
             if fresh:
                 form.ap_number.data = fresh
                 flash(f'AP number "{ap_num}" is already in use. A new number ({fresh}) has '
@@ -907,7 +908,7 @@ def create():
             db.session.add(ap)
             # Backstop for the pre-check above: a genuinely simultaneous request can pass
             # it before either has committed, so the real collision surfaces here instead.
-            fresh = flush_or_suggest_fresh_number(ap, AccountsPayable, 'ap_number', generate_ap_number)
+            fresh = flush_or_suggest_fresh_number(ap, AccountsPayable, 'ap_number', next_ap_number)
             if fresh:
                 form.ap_number.data = fresh
                 flash(f'AP number "{ap_num}" was just taken by another entry (concurrent '
@@ -973,7 +974,7 @@ def create():
                   'try again; if it persists, contact your administrator.', 'error')
 
     if request.method == 'GET':
-        form.ap_number.data = generate_ap_number()
+        form.ap_number.data = next_ap_number()
         form.ap_date.data = ph_now().date()
         form.due_date.data = ph_now().date() + timedelta(days=30)
         default_ap = get_control_account('ap_trade', required=False)
@@ -1908,6 +1909,51 @@ def delete_attachment(attachment_id):
               'try again; if it persists, contact your administrator.', 'error')
 
     return redirect(url_for('accounts_payable.edit', id=ap.id))
+
+
+def next_ap_number():
+    """Suggest the next bill number by CONTINUING the numbering already in use.
+
+    Owner, 2026-09-10. PhilGen's books run plain sequential numbers (0001, 0002;
+    the orders run 00984, the receipts 00634), but generate_ap_number() imposed
+    AP-YYYY-MM-NNNN, so every bill entered through the app broke out of the
+    client's own sequence. This reads the last bill and increments it in ITS OWN
+    shape -- prefix kept, digit width kept -- and only falls back to the built-in
+    format when there is nothing to follow.
+
+    ORDER BY id DESC, never by the number string. This codebase has a bug report
+    about exactly that mistake (docs/bug-reports/2026-07-12-jv-number-race-silent-
+    data-loss.md): a lexicographic sort ranks '9999' above '10000', so the next
+    suggestion would collide with a row that already exists.
+
+    This is a SUGGESTION for the form, not an allocation. The number stays
+    editable, and the collision backstops in app/utils/concurrency.py remain the
+    real guard -- a pre-check alone is check-then-act and loses a simultaneous
+    double-submit.
+    """
+    last = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
+    if last is None or not last.ap_number:
+        return generate_ap_number()
+
+    m = re.search(r'^(.*?)(\d+)$', last.ap_number.strip())
+    if not m:
+        # Nothing numeric to continue (an 'OPENING' balance, say). Inventing a
+        # sequence from a word would be a guess; use the built-in format.
+        return generate_ap_number()
+
+    prefix, digits = m.group(1), m.group(2)
+    width = len(digits)
+    candidate = int(digits)
+    # Numbers are typed by hand, so the next one up can already exist -- handing
+    # the user a number that cannot be saved is worse than not suggesting one.
+    # Bounded so a pathological run can never spin.
+    for _ in range(1000):
+        candidate += 1
+        suggestion = '%s%0*d' % (prefix, width, candidate)
+        if not AccountsPayable.query.filter(
+                AccountsPayable.ap_number == suggestion).first():
+            return suggestion
+    return generate_ap_number()
 
 
 def generate_ap_number():
