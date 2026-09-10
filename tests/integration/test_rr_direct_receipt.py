@@ -287,7 +287,10 @@ class TestItRefusesWhatItCannotValue:
         _login(client, admin_user, main_branch)
         body = client.post('/receiving-reports/%s/approve' % rr.id,
                            follow_redirects=True).data.decode()
-        assert product_tracked.code in body
+        # By NAME (2026-09-10): the code is retired and NULL for new products,
+        # so the refusal used to read 'Cannot value "Widget (None)"'. The name
+        # is what the receiver can actually search for to fix the master.
+        assert product_tracked.name in body
         assert product_tracked.name in body
 
     def test_nothing_is_posted_when_it_refuses(self, client, db_session, main_branch,

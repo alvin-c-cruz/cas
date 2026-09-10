@@ -91,7 +91,11 @@ def _direct_unit_cost(product, branch_id):
         return Decimal(str(bal.average_unit_cost)).quantize(Decimal('0.01'))
 
     raise DirectReceiptCostError(
-        'Cannot value "%s (%s)": it is a tracked item received without a purchase '
+        # The code used to be the parenthesised half. It is retired (owner,
+        # 2026-09-08) and now NULL for new products, so it would have read
+        # 'Cannot value "Widget (None)"'. The name alone identifies the product
+        # the user has to go and fix.
+        'Cannot value "%s": it is a tracked item received without a purchase '
         'order, and it has no standard cost and no stock on hand to average from. '
         'Set a standard cost on the product, then approve this receipt.'
         % product.name)
