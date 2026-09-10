@@ -39,6 +39,45 @@ def prefill_form(form, fields, prefix, roles):
             field.data = name
 
 
+def prefill_form_from_last(form, fields, prefix, roles, model, user_id):
+    """Seed a NEW document's signatories from THIS user's most recent one.
+
+    Owner, 2026-09-10: "signatories should autofill based on what the user
+    encoded last time." Seeding from the company default meant anyone whose crew
+    differs from the configured names retyped every line on every document.
+
+    PER USER, not per company and not per branch. Two receivers hand the goods
+    to different people; seeding from whoever saved most recently would give
+    each of them the other's crew. Same reasoning as next_po_number_for(), which
+    scopes a purchaser's number pad to the purchaser.
+
+    The company default remains the fallback PER SLOT -- for a first-ever
+    document, and for any signatory the last document left blank. Falling back
+    slot by slot rather than all-or-nothing matches for_print()'s behaviour.
+
+    This does NOT derive a name from created_by. The module docstring above
+    records why: the people who sign are frequently not CAS users, and deriving
+    them once printed "System Administrator" three times on one requisition.
+    The name is read from what the user TYPED on their last document.
+
+    Only fills a field the user has not already typed into, so a re-render after
+    a validation failure never discards what they entered.
+    """
+    last = None
+    if user_id:
+        last = (model.query
+                .filter(model.created_by_id == user_id)
+                .order_by(model.id.desc())     # insertion order, never a date
+                .first())
+
+    for field_name, (_role, default_name) in zip(fields, defaults_for(prefix, roles)):
+        field = getattr(form, field_name, None)
+        if field is None or (field.data or '').strip():
+            continue
+        previous = (getattr(last, field_name, None) or '').strip() if last else ''
+        field.data = previous or default_name
+
+
 def assign(document, form, fields):
     """Copy the submitted signatory names onto the document.
 

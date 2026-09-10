@@ -17,7 +17,8 @@ from app import db
 from app.receiving_reports.models import (
     ReceivingReport, ReceivingReportItem, po_line_open_qty, generate_rr_number,
     SIGNATORY_FIELDS, SIGNATORY_ROLES)
-from app.common.signatories import assign as assign_signatories, prefill_form
+from app.common.signatories import (assign as assign_signatories,
+                                    prefill_form_from_last)
 from app.receiving_reports.forms import ReceivingReportForm
 from app.receiving_reports.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
@@ -750,7 +751,11 @@ def create():
     if request.method == 'GET':
         # A NEW receipt starts from the company default, so an install that
         # configured its signatories keeps printing the same names.
-        prefill_form(form, SIGNATORY_FIELDS, 'rr', SIGNATORY_ROLES)
+        # From the ENCODER's last receipt, falling back to the company default
+        # per slot (owner, 2026-09-10). Was prefill_form(), which always used
+        # the company default and made the crew retype all three lines.
+        prefill_form_from_last(form, SIGNATORY_FIELDS, 'rr', SIGNATORY_ROLES,
+                               ReceivingReport, getattr(current_user, 'id', None))
     # The create view has no vendor until the user picks one: on a fresh GET
     # there is nothing submitted yet, so eligible is deliberately []. On a
     # bounced POST, re-scope by whatever vendor was actually submitted so the
