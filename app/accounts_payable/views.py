@@ -1931,28 +1931,44 @@ def next_ap_number():
     real guard -- a pre-check alone is check-then-act and loses a simultaneous
     double-submit.
     """
-    last = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
-    if last is None or not last.ap_number:
+    rows = [(n, i) for n, i in
+            db.session.query(AccountsPayable.ap_number, AccountsPayable.id).all() if n]
+    if not rows:
         return generate_ap_number()
 
-    m = re.search(r'^(.*?)(\d+)$', last.ap_number.strip())
+    # The newest row supplies the SHAPE -- prefix and digit width -- because the
+    # client can change series (they may move from '25-' to '26-' next year).
+    newest = max(rows, key=lambda r: r[1])
+    m = re.match(r'^(.*?)(\d+)$', newest[0].strip())
     if not m:
         # Nothing numeric to continue (an 'OPENING' balance, say). Inventing a
         # sequence from a word would be a guess; use the built-in format.
         return generate_ap_number()
+    prefix, width = m.group(1), len(m.group(2))
 
-    prefix, digits = m.group(1), m.group(2)
-    width = len(digits)
-    candidate = int(digits)
+    # The VALUE comes from the numeric MAX within that shape, never from the
+    # newest row's own tail. A back-dated or corrected bill is inserted after
+    # higher numbers routinely; incrementing whatever was typed last would
+    # suggest 0006 while the books are already at 0100, silently rewinding the
+    # series. This is the contract generate_pr_number() already uses.
+    same_shape = []
+    for number, _ in rows:
+        mm = re.match(r'^(.*?)(\d+)$', number.strip())
+        if mm and mm.group(1) == prefix:
+            same_shape.append(int(mm.group(2)))
+    if not same_shape:
+        return generate_ap_number()
+
+    taken = {n for n, _ in rows}
+    candidate = max(same_shape) + 1
     # Numbers are typed by hand, so the next one up can already exist -- handing
     # the user a number that cannot be saved is worse than not suggesting one.
     # Bounded so a pathological run can never spin.
     for _ in range(1000):
-        candidate += 1
         suggestion = '%s%0*d' % (prefix, width, candidate)
-        if not AccountsPayable.query.filter(
-                AccountsPayable.ap_number == suggestion).first():
+        if suggestion not in taken:
             return suggestion
+        candidate += 1
     return generate_ap_number()
 
 

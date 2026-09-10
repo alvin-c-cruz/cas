@@ -87,6 +87,21 @@ class TestItFollowsTheLastEntry:
         _ap(db_session, main_branch, '10000')
         assert next_ap_number() == '10001'
 
+    def test_it_does_not_go_BACKWARDS_after_an_out_of_order_entry(
+            self, db_session, main_branch):
+        """The series high-water mark wins, not the last row's own value.
+
+        A back-dated or corrected bill gets inserted after higher numbers all
+        the time. Incrementing whatever happened to be typed last would suggest
+        0006 while the books are already at 0100 -- silently rewinding the
+        sequence. This is the contract generate_pr_number() already uses: the
+        newest row supplies the SHAPE, the numeric MAX supplies the value.
+        """
+        from app.accounts_payable.views import next_ap_number
+        _ap(db_session, main_branch, '0100')
+        _ap(db_session, main_branch, '0005')      # back-dated, inserted later
+        assert next_ap_number() == '0101'
+
     def test_a_taken_number_is_skipped(self, db_session, main_branch):
         """Numbers can be typed by hand, so the next one up may already exist.
         Suggesting it would hand the user a value that cannot be saved."""
