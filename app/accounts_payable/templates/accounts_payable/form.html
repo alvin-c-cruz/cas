@@ -767,6 +767,26 @@ function removeLineItem(id) {
     calculateTotals();
 }
 
+// The vendor defaults a NEW line starts from, exposed so the PO/RR billing
+// picker applies exactly what a hand-added line gets (owner, 2026-09-10:
+// "default VT and WT is not working when pulling a PO/R"). ap_po_billing.js
+// used to hardcode wt_id/wt_rate to null and read the VAT category only off the
+// source line, so a pulled line arrived bare whenever the order carried none.
+//
+// The single-WT rule is deliberate and matches addLineItem above: a vendor with
+// several withholding taxes is ambiguous, and guessing one would silently book
+// the wrong rate.
+window.vendorLineDefaults = function () {
+    const autoWht = (typeof currentVendorWHTs !== 'undefined'
+                     && currentVendorWHTs.length === 1) ? currentVendorWHTs[0] : null;
+    return {
+        vat_category: (typeof currentVendorVatCategory !== 'undefined'
+                       ? currentVendorVatCategory : '') || '',
+        wt_id: autoWht ? autoWht.id : null,
+        wt_rate: autoWht ? autoWht.rate : null,
+    };
+};
+
 // Exposed for the PO/RR billing picker: when the form is still in its untouched single-blank-line
 // state (a vendor was just selected, nothing typed yet), Pull should replace that line
 // rather than leave it orphaned alongside the PO/RR's real content (BUG-AP-PULL-PORR-LEAVES-BLANK-LINE).
@@ -1360,7 +1380,7 @@ initItems();
 
 {# ap_po_billing.js must load AFTER the block above (needs window.addLineItem to already exist --
    see BUG-AP-PO-BILLING-SCRIPT-LOAD-ORDER, docs/bug-reports/2026-07-15-ap-po-billing-picker-script-order.md) #}
-{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=4"></script>{% endif %}
+{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=5"></script>{% endif %}
 
 <script>
 // ── Create-form attachment queue (held in browser until Save) ────────────────

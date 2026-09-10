@@ -237,6 +237,17 @@
   // escHtml comes from transaction-utils.js, as in AP/SI/PR. The old hand-rolled
   // `.replace(/"/g, '&quot;')` escaped the quote only, so a product code or
   // description containing & or < rendered mangled.
+  // vendor id -> default VAT category (see _common_form_ctx in views.py).
+  const VENDOR_DEFAULT_VAT = {{ vendor_default_vat | tojson }};
+
+  function vendorDefaultVat() {
+    // Read live from the picker: the buyer chooses the vendor first, then adds
+    // lines, and on a converted requisition the vendor is chosen on THIS page.
+    const sel = document.getElementById('vendorSelect');
+    const id = sel && sel.value ? String(sel.value) : '';
+    return (id && VENDOR_DEFAULT_VAT[id]) || '';
+  }
+
   function vatOptions(sel) {
     let o = '<option value="">--</option>';
     VATCATS.forEach(v => {
@@ -352,7 +363,10 @@
     + ` style="text-align:right; font-family:var(--mono); border:none; background:transparent;"`
     + ` value="${d.unit_price != null ? amtFmt(d.unit_price) : ''}"`
     + ` onfocus="poNumFocus(this)" onblur="poPriceBlur(this)"></td>`
-    + `<td><select class="form-control po-vat">${vatOptions(d.vat_category)}</select></td>`
+    // A line with no category of its own opens on the VENDOR's default. The
+    // requisition lines a pull brings across carry none, so before this they
+    // arrived on '--' and the buyer set VAT by hand line by line.
+    + `<td><select class="form-control po-vat">${vatOptions(d.vat_category || vendorDefaultVat())}</select></td>`
     + `<td class="po-amount" style="text-align:right; font-family:var(--mono);">${amtFmt(d.amount || 0)}</td>`
     + `<td style="text-align:center;">`
     + `<button type="button" class="li-btn-action po-del" title="Remove line">\u{1F5D1}</button></td>`;

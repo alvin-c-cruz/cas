@@ -407,6 +407,18 @@ def _common_form_ctx():
         'units': [u.to_dict() for u in get_active_units()],
         'products': [p.to_dict() for p in get_active_products()],
         'vat_categories': [v.to_dict() for v in get_vat_categories()],
+        # vendor id -> that vendor's default VAT category, so a line ADDED or
+        # PULLED after the vendor is chosen starts on it (owner, 2026-09-10:
+        # "default VT is not working when adding or pulling a line item").
+        # The order form had no vendor payload at all, so every new line opened
+        # on '--' however the vendor was configured.
+        #
+        # Built here rather than passed per call site: form.html is rendered
+        # from ten places in this module, and a context key threaded through all
+        # of them is one missed argument away from being silently absent.
+        'vendor_default_vat': {v.id: v.default_vat_category
+                               for v in _active_vendors()
+                               if v.default_vat_category},
     }
 
 

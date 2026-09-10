@@ -32,6 +32,9 @@
 
   function injectLines(lines) {
     if (typeof window.removeBlankStarterLine === 'function') { window.removeBlankStarterLine(); }
+    const vendorDefaults = (typeof window.vendorLineDefaults === 'function')
+        ? window.vendorLineDefaults()
+        : { vat_category: '', wt_id: null, wt_rate: null };
     (lines || []).forEach(function (ln) {
       window.addLineItem({
         description: ln.description || '',
@@ -41,9 +44,13 @@
         unit_price: ln.unit_price != null ? ln.unit_price : null,
         uom_id: ln.uom_id || null,
         uom_text: ln.uom_display || '',
-        vat_category: ln.vat_category || '',
+        // Fall back to the VENDOR's defaults, exactly as a hand-added line does
+        // (owner, 2026-09-10). The source line wins when it carries a category;
+        // otherwise a pulled line used to arrive with no VAT and never any
+        // withholding, because wt_id/wt_rate were hardcoded null here.
+        vat_category: ln.vat_category || vendorDefaults.vat_category || '',
         account_id: ln.account_id || null,
-        wt_id: null, wt_rate: null,
+        wt_id: vendorDefaults.wt_id, wt_rate: vendorDefaults.wt_rate,
         // R-02 Phase 6: which PO/RR line this was billed from, and its expected
         // price/qty at injection time -- the live variance check compares against
         // these; the server re-derives matched_* itself at submit, never trusting them.
