@@ -40,6 +40,15 @@ def _add_line(je, n, account_id, description, debit, credit):
                                     description=description, debit_amount=debit, credit_amount=credit))
 
 
+class DirectReceiptCostError(ValueError):
+    """A direct receipt names a tracked product the system cannot value.
+
+    ValueError on purpose: approve() already catches ValueError and flashes it, so this
+    reaches the user as a message rather than a 500 -- the same arrangement
+    get_control_account uses for an unassigned control account.
+    """
+
+
 def _net_unit_cost(poi):
     """Extract VAT from a PO line's unit_price via its own vat_rate -- same
     net_base = amount - vat_amount math app/accounts_payable/views.py already
@@ -49,6 +58,43 @@ def _net_unit_cost(poi):
     if vat_rate <= 0:
         return unit_price.quantize(Decimal('0.01'))
     return (unit_price / (1 + vat_rate / Decimal('100'))).quantize(Decimal('0.01'))
+
+
+def _direct_unit_cost(product, branch_id):
+    """The cost of a tracked product received WITHOUT a purchase order.
+
+    A receiving report never carries a price -- the receiver records what arrived, not
+    what it is worth (owner, 2026-09-06: "RR cannot have unit price"). So the cost comes
+    from the product master, in the order a valuation would naturally be trusted:
+
+      1. `Product.standard_cost`. Already this codebase's answer to a receipt with no
+         vendor price: a production run posts finished goods at standard and IGNORES the
+         cost passed to post_movement (app/production_runs/service.py). Using it here
+         keeps one convention for "priced by the master, not the document".
+      2. The branch's running `StockBalance.average_unit_cost` -- what the stock the
+         company already holds is carried at. Physical counts value found stock the same
+         way (app/stock_adjustments/physical_count_service.py).
+
+    FAIL-CLOSED when neither exists. Posting a zero would not merely be imprecise: the
+    GRNI accrual would be zero, the AP bill would then find `variance = net - 0` and post
+    the ENTIRE cost to `inventory_variance` instead of Inventory (see
+    app/accounts_payable/views.py's GRNI true-up), leaving the goods on the shelf valued
+    at nothing permanently. Refusing is the only outcome that keeps the ledger honest.
+    """
+    standard = product.standard_cost
+    if standard is not None and Decimal(str(standard)) > 0:
+        return Decimal(str(standard)).quantize(Decimal('0.01'))
+
+    from app.stock_adjustments.models import StockBalance
+    bal = StockBalance.query.filter_by(product_id=product.id, branch_id=branch_id).first()
+    if bal is not None and Decimal(str(bal.average_unit_cost)) > 0:
+        return Decimal(str(bal.average_unit_cost)).quantize(Decimal('0.01'))
+
+    raise DirectReceiptCostError(
+        'Cannot value "%s (%s)": it is a tracked item received without a purchase '
+        'order, and it has no standard cost and no stock on hand to average from. '
+        'Set a standard cost on the product, then approve this receipt.'
+        % product.name)
 
 
 def post_rr_receipt(rr, actor):
@@ -67,7 +113,9 @@ def post_rr_receipt(rr, actor):
     n = 1
     for li in tracked_lines:
         poi = li.purchase_order_item
-        net_unit_cost = _net_unit_cost(poi)
+        # An order line prices itself; a direct receipt is priced by the product master.
+        net_unit_cost = (_net_unit_cost(poi) if poi
+                         else _direct_unit_cost(li.product, rr.branch_id))
         net_amount = (Decimal(str(li.received_quantity)) * net_unit_cost).quantize(Decimal('0.01'))
         mv, _went_negative = post_movement(
             li.product, rr.branch_id, 'receipt', Decimal(str(li.received_quantity)), net_unit_cost,

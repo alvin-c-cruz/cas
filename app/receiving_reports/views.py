@@ -25,6 +25,8 @@ from app.common.preprinted_base import (
     DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 from app.vendors.models import Vendor
+from app.products.models import Product
+from app.units_of_measure.models import UnitOfMeasure
 from app.settings import AppSettings
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.utils import ph_now
@@ -65,6 +67,22 @@ def _approve_role_gate():
         flash('Only an approver (accountant/admin) can approve Receiving Reports.', 'error')
         return False
     return True
+
+
+def _may_return_to_draft(rr):
+    """Who may send a submitted receipt back to draft.
+
+    An approver, OR the person who submitted it. The approver half matches cancel() on
+    this same document -- reversing a submission is the same weight of act. The
+    submitter half is an owner decision (2026-09-07): pulling back your own submission
+    is not something that needs somebody else's authority.
+
+    Fails CLOSED on a NULL submitted_by_id -- receipts predating that column, or seeded
+    directly, compare False and fall back to approver-only.
+    """
+    if current_user.has_full_access or current_user.role == 'accountant':
+        return True
+    return rr.submitted_by_id is not None and rr.submitted_by_id == current_user.id
 
 
 # -- form context --------------------------------------------------------------
@@ -111,12 +129,18 @@ def _po_lines_payload(eligible, exclude_rr_id=None):
             ordered = Decimal(str(li.quantity or 0))
             rows.append({
                 'purchase_order_item_id': li.id,
-                # product_code retired from this payload (owner, 2026-09-08) --
-                # it fed form.html's PO_LINES/RR_LINE_INDEX and this route's own
-                # /open-lines JSON, both display-only surfaces. Not named in the
-                # Task 5 brief's file list; found by grepping this module for
-                # `.code\b` and classifying every hit (Product.code vs. UOM/
-                # vendor/account codes, which stay).
+                # The browser matches a chosen product to open order lines on
+                # THIS id. product_code was display text and could repeat across
+                # products; the id is the identity, so the warning is exact
+                # rather than approximate -- which is why the direct-receipt work
+                # added it here.
+                #
+                # MERGE (2026-09-10): product_code is NOT reinstated. It is
+                # retired from every surface (owner, 2026-09-08), it fed only
+                # form.html's PO_LINES/RR_LINE_INDEX and this route's own
+                # /open-lines JSON -- both display-only -- and the matching above
+                # never depended on it.
+                'product_id': li.product_id,
                 'product_name': (li.product.name if li.product else (li.description or '')),
                 'uom': (li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '')),
                 'ordered': float(ordered),
@@ -128,9 +152,62 @@ def _po_lines_payload(eligible, exclude_rr_id=None):
 
 
 def _existing_lines(rr):
+    """{purchase_order_item_id: qty} for the PO-BACKED lines only.
+
+    Direct lines (rrdirect_0001) are excluded rather than keyed by None: they would all
+    collapse onto that one key and every direct line but the last would disappear when
+    the receipt was reopened. They come back through _existing_direct_lines instead.
+    """
     if not rr:
         return {}
-    return {li.purchase_order_item_id: float(li.received_quantity) for li in rr.line_items}
+    return {li.purchase_order_item_id: float(li.received_quantity)
+            for li in rr.line_items if li.purchase_order_item_id is not None}
+
+
+def _existing_direct_lines(rr):
+    """The DIRECT lines of a saved receipt, as an ordered list.
+
+    A list, not a dict: two direct lines may name the same product (two deliveries of it
+    in one receipt), so product_id is not a key. Order follows line_number so reopening a
+    receipt shows it as it was entered.
+    """
+    if not rr:
+        return []
+    return [{'product_id': li.product_id,
+             'received_quantity': float(li.received_quantity),
+             'unit_of_measure_id': li.unit_of_measure_id,
+             'no_po_reason': li.no_po_reason}
+            for li in sorted(rr.line_items, key=lambda x: x.line_number or 0)
+            if li.purchase_order_item_id is None and li.product_id is not None]
+
+
+def _submitted_existing_direct_lines():
+    """The direct lines of a POSTed payload, for re-rendering a bounced form.
+
+    Same display-helper contract as _submitted_existing_lines: the real refusal has
+    already been flashed, so an unreadable payload degrades to "nothing to pre-fill"
+    rather than raising a second time.
+    """
+    try:
+        items = _payload_entries(request.form.get('lines', '[]'))
+    except ValueError:
+        return []
+    out = []
+    for d in items:
+        if d.get('purchase_order_item_id'):
+            continue
+        pid = d.get('product_id')
+        if not pid:
+            continue
+        try:
+            uom = d.get('unit_of_measure_id')
+            out.append({'product_id': int(pid),
+                        'received_quantity': float(d.get('received_quantity') or 0),
+                        'unit_of_measure_id': int(uom) if uom else None,
+                        'no_po_reason': (d.get('no_po_reason') or None)})
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 _UNREADABLE_PAYLOAD = ('The received lines could not be read. Please re-enter the '
@@ -212,18 +289,62 @@ def _render_create(form, eligible):
     quantity was mistyped. Mirrors _render_edit.
     """
     existing = _submitted_existing_lines() if request.method == 'POST' else {}
+    existing_direct = (_submitted_existing_direct_lines()
+                       if request.method == 'POST' else [])
     return render_template('receiving_reports/form.html', form=form, rr=None,
                            eligible=eligible, po_lines=_po_lines_payload(eligible),
-                           existing=existing)
+                           direct_products=_direct_products_payload(),
+                           units=_units_payload(),
+                           existing=existing, existing_direct=existing_direct)
 
 
 def _render_edit(rr, form, eligible):
     existing = (_submitted_existing_lines() if request.method == 'POST'
                 else _existing_lines(rr))
+    existing_direct = (_submitted_existing_direct_lines() if request.method == 'POST'
+                       else _existing_direct_lines(rr))
     return render_template('receiving_reports/form.html', form=form, rr=rr,
                            eligible=eligible,
                            po_lines=_po_lines_payload(eligible, exclude_rr_id=rr.id),
-                           existing=existing)
+                           direct_products=_direct_products_payload(),
+                           units=_units_payload(),
+                           existing=existing, existing_direct=existing_direct)
+
+
+def _units_payload():
+    """Active units of measure, for the no-PO picker's unit control.
+
+    Offered as a CHOICE rather than fixed to the product's default: goods arrive by the
+    box for a product carried by the piece, and a product may carry no default at all.
+    The receiver is the one who can see what turned up.
+    """
+    from app.units_of_measure.models import UnitOfMeasure
+    rows = UnitOfMeasure.query.filter_by(is_active=True).order_by(UnitOfMeasure.code).all()
+    return [{'id': u.id, 'code': u.code, 'name': u.name} for u in rows]
+
+
+def _direct_products_payload():
+    """Active products offered for a DIRECT receipt (rrdirect_0001) -- goods that
+    arrived without a purchase order.
+
+    Deliberately EVERY active product, not only tracked ones: most direct receipts are
+    non-inventory (freight, a repair part, a sample), and those need no valuation at all
+    because post_rr_receipt only posts stock for tracked lines. A tracked product with no
+    standard cost and no stock on hand IS offered here and refused at approval instead --
+    the receiver should not have to know the costing state of the product master, and the
+    refusal names exactly what to fix.
+
+    Ordered by code so the picker reads like the product list itself.
+    """
+    rows = (Product.query.filter_by(is_active=True)
+            # By NAME (2026-09-10): the code is retired and now NULL for every
+            # newly created product, and SQLite sorts NULLs FIRST -- so ordering
+            # on it would clump all new products at the top in arbitrary order.
+            .order_by(Product.name).all())
+    return [{'product_id': p.id, 'product_name': p.name,
+             'uom': (p.default_unit_of_measure.code if p.default_unit_of_measure else ''),
+             'tracked': bool(p.track_inventory)}
+            for p in rows]
 
 
 def _poi_label(poi):
@@ -328,33 +449,107 @@ def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None,
     return None
 
 
-def _parse_rr_lines(rr, lines_json):
-    """Attach RR lines from the hidden JSON: [{purchase_order_item_id, received_quantity}].
+def _no_po_note(rr):
+    """A one-line summary of any no-PO overrides on this receipt, for the audit note.
 
-    The whole payload is validated BEFORE the first ReceivingReportItem is built,
-    so a refusal leaves nothing half-written -- and so the ceiling is measured
-    against the payload's per-PO-line total rather than one line at a time. See
+    The columns hold the CURRENT value and are rewritten wholesale whenever the receipt
+    is saved -- edit() calls rr.line_items.clear() before re-parsing. The audit log is
+    therefore the only place an overridden reason survives a later edit, which is what
+    makes it the record worth reviewing.
+
+    Returns None when nothing was overridden, so the ordinary receipt's audit entry is
+    completely unchanged.
+    """
+    parts = ['%s: %s' % (li.product.name if li.product else li.line_number,
+                         li.no_po_reason)
+             for li in rr.line_items if li.no_po_reason]
+    return ('No-PO reasons — ' + '; '.join(parts)) if parts else None
+
+
+def _parse_rr_lines(rr, lines_json):
+    """Attach RR lines from the hidden JSON. Two kinds of entry are accepted:
+
+      {purchase_order_item_id, received_quantity}   -- received against an order
+      {product_id, received_quantity}               -- a DIRECT receipt (rrdirect_0001)
+
+    A direct line records goods that arrived with no purchase order. It carries no
+    price -- a receiving report never does -- so its cost comes from the product master
+    at approval (see stock_posting._direct_unit_cost), and its unit and description come
+    from the product too.
+
+    The whole payload is validated BEFORE the first ReceivingReportItem is built, so a
+    refusal leaves nothing half-written -- and so the ceiling is measured against the
+    payload's per-PO-line total rather than one line at a time. See
     assert_payload_within_open_qty.
+
+    Order is preserved across BOTH kinds: line numbers follow submission order, so a
+    receipt reads on screen and on paper the way it was entered rather than with the
+    direct lines herded to the end.
     """
     items = _payload_entries(lines_json)
-    kept = []
+    kept = []            # ordered (poi_id_or_None, product_id_or_None, qty)
+    po_pairs = []        # the PO-backed subset, for the open-quantity ceiling
     for position, d in enumerate(items, start=1):
         try:
             qty = Decimal(str(d.get('received_quantity')))
         except (InvalidOperation, TypeError):
             qty = Decimal('0')
-        poi_id = d.get('purchase_order_item_id')
-        if not poi_id or qty <= 0:
+        if qty <= 0:
             continue
-        try:
-            poi_id = int(poi_id)
-        except (TypeError, ValueError):
-            # The payload is raw client JSON: int('abc') would otherwise escape as
-            # a verbatim "invalid literal for int()" flash.
-            raise ValueError(
-                f'Line {position}: that purchase order line is not a valid reference.'
-            ) from None
-        kept.append((poi_id, qty))
+        poi_id = d.get('purchase_order_item_id')
+        product_id = d.get('product_id')
+        if poi_id:
+            try:
+                poi_id = int(poi_id)
+            except (TypeError, ValueError):
+                # The payload is raw client JSON: int('abc') would otherwise escape as
+                # a verbatim "invalid literal for int()" flash.
+                raise ValueError(
+                    f'Line {position}: that purchase order line is not a valid reference.'
+                ) from None
+            kept.append((poi_id, None, qty, None, None))     # PO-backed
+            po_pairs.append((poi_id, qty))
+            continue
+        if product_id:
+            # Validated HERE rather than trusted from the picker, for the same reason
+            # assert_payload_within_open_qty checks vendor/branch/status at save: A
+            # PICKER FILTER IS NOT ENFORCEMENT -- a raw POST bypasses the picker
+            # entirely, and an unknown or inactive product_id would otherwise reach the
+            # database and only surface at approval, as a receipt that cannot be valued.
+            try:
+                product_id = int(product_id)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f'Line {position}: that product is not a valid reference.') from None
+            product = db.session.get(Product, product_id)
+            if product is None or not product.is_active:
+                raise ValueError(
+                    f'Line {position}: that product does not exist or is no longer '
+                    f'active. Choose another, or receive it against a purchase order.')
+            # The unit is OPTIONAL: left unset the line falls back to the product's
+            # default, exactly as it did before rruom_0001. Validated all the same,
+            # because a raw POST reaches here without passing the picker.
+            uom_id = d.get('unit_of_measure_id')
+            if uom_id:
+                try:
+                    uom_id = int(uom_id)
+                except (TypeError, ValueError):
+                    raise ValueError(
+                        f'Line {position}: that unit is not a valid reference.') from None
+                uom = db.session.get(UnitOfMeasure, uom_id)
+                if uom is None or not uom.is_active:
+                    raise ValueError(
+                        f'Line {position}: that unit of measure does not exist or is no '
+                        f'longer active.')
+            else:
+                uom_id = None
+            # Capped rather than refused: a raw POST can send any length, and losing a
+            # whole receipt over a long sentence would be a worse outcome than a
+            # shortened note. 200 matches the input's maxlength.
+            reason = (d.get('no_po_reason') or '').strip()[:200] or None
+            kept.append((None, product_id, qty, uom_id, reason))   # direct
+            continue
+        # Neither reference: an empty row left behind by the form. Skipped, as before.
     if not kept:
         raise ValueError('Add at least one received line.')
     # rr.id is None on the create path (nothing to exclude yet). On edit, excluding
@@ -362,14 +557,26 @@ def _parse_rr_lines(rr, lines_json):
     # sums only COMMITTED_STATUSES (approved/billed) and edit() has already refused
     # a non-draft, so the receipt under check is never in that sum. Kept so the
     # guard stays correct if either of those changes.
-    assert_payload_within_open_qty(kept, exclude_rr_id=rr.id, vendor_id=rr.vendor_id,
+    # Only the PO-backed subset has a ceiling: nothing was ordered on a direct line, so
+    # there is no open quantity to exceed, and no PO whose vendor/branch/status could
+    # disagree with the header.
+    assert_payload_within_open_qty(po_pairs, exclude_rr_id=rr.id, vendor_id=rr.vendor_id,
                                    branch_id=rr.branch_id)
-    for line_number, (poi_id, qty) in enumerate(kept, start=1):
-        poi = db.session.get(PurchaseOrderItem, poi_id)
-        rr.line_items.append(ReceivingReportItem(
-            line_number=line_number, purchase_order_item_id=poi_id,
-            product_id=(poi.product_id if poi else None),
-            received_quantity=qty))
+    for line_number, (poi_id, product_id, qty, uom_id, reason) in enumerate(kept, start=1):
+        if poi_id:
+            poi = db.session.get(PurchaseOrderItem, poi_id)
+            rr.line_items.append(ReceivingReportItem(
+                line_number=line_number, purchase_order_item_id=poi_id,
+                product_id=(poi.product_id if poi else None),
+                received_quantity=qty))
+        else:
+            # A direct line: the product IS the reference. product_id is what the unit,
+            # description and cost are all derived from, so it is not a snapshot here as
+            # it is on a PO-backed line -- it is the line's only identity.
+            rr.line_items.append(ReceivingReportItem(
+                line_number=line_number, purchase_order_item_id=None,
+                product_id=product_id, received_quantity=qty,
+                unit_of_measure_id=uom_id, no_po_reason=reason))
 
 
 def _rr_or_404(id):
@@ -590,7 +797,8 @@ def create():
         else:
             log_create(module='receiving_reports', record_id=rr.id,
                        record_identifier=f'{rr.rr_number} - {rr.vendor_name}',
-                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']))
+                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']),
+                       notes=_no_po_note(rr))
             flash(f'Receiving Report "{rr.rr_number}" created.', 'success')
             return redirect(url_for('receiving_reports.view', id=rr.id))
 
@@ -660,7 +868,8 @@ def edit(id):
         else:
             log_update(module='receiving_reports', record_id=rr.id,
                        record_identifier=f'{rr.rr_number} - {rr.vendor_name}', old_values=old,
-                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']))
+                       new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']),
+                       notes=_no_po_note(rr))
             flash(f'Receiving Report "{rr.rr_number}" updated.', 'success')
             return redirect(url_for('receiving_reports.view', id=rr.id))
 
@@ -705,6 +914,20 @@ def submit(id):
     rr.status = 'submitted'
     rr.submitted_by_id = current_user.id
     rr.submitted_at = ph_now()
+    # Submitting starts a NEW cycle, so the previous one's memo stops applying. Leaving
+    # it set made a freshly submitted receipt still read "Returned to draft: ..." --
+    # describing a correction that has since been made.
+    #
+    # Cleared rather than merely hidden: no display rule keyed on status can tell a
+    # current memo from a stale one, because the status is the same either way. The
+    # provenance goes with it -- a returned_at with no return_reason says something
+    # happened and refuses to say what.
+    #
+    # No history is lost: return_to_draft writes the full memo into the audit log,
+    # which is the permanent record. These columns only ever held the current cycle.
+    rr.return_reason = None
+    rr.returned_by_id = None
+    rr.returned_at = None
     db.session.commit()
     # action='submit', not 'update': the audit log's Actions filter is built from
     # the DISTINCT actions present, so a lifecycle event logged as a generic
@@ -712,6 +935,55 @@ def submit(id):
     log_audit(module='receiving_reports', action='submit', record_id=rr.id,
               record_identifier=rr.rr_number, notes='Submitted')
     flash(f'Receiving Report "{rr.rr_number}" submitted for approval.', 'success')
+    return redirect(url_for('receiving_reports.view', id=id))
+
+
+@receiving_reports_bp.route('/receiving-reports/<int:id>/return-to-draft',
+                            methods=['POST'])
+@login_required
+def return_to_draft(id):
+    """Send a submitted receipt back to draft so its lines can be corrected.
+
+    The case this exists for: a receipt recorded goods as a DIRECT receipt (no purchase
+    order), and the order that covered them turned up afterwards. A receiving report is
+    editable only while draft and has no unsubmit, so before this the only exits were
+    approve -- committing the mistake -- or cancel, which burns the receipt number and
+    means re-keying every line.
+
+    It deliberately does NOT re-point anything. Which order a delivery belongs to is a
+    judgement only a person can make; the receiver removes the direct line and pulls the
+    real one through the ordinary picker, where the ceiling and vendor/branch/status
+    guards already apply.
+
+    A memo is REQUIRED (min 10 chars, matching reject/cancel and the requisition
+    equivalent): this reverses a submission, and "why" is the whole value of the record
+    afterwards.
+    """
+    rr = _rr_or_404(id)
+    gate = _rr_role_gate()
+    if gate:
+        return gate
+    if not _may_return_to_draft(rr):
+        flash('Only an approver or the person who submitted it can return this '
+              'Receiving Report to draft.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    if rr.status not in ReceivingReport.RETURN_TO_DRAFT_STATUSES:
+        flash('Only a submitted Receiving Report can be returned to draft.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    reason = (request.form.get('return_reason') or '').strip()
+    if len(reason) < 10:
+        flash('A reason (min 10 chars) is required to return this to draft.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    from_status = rr.status
+    rr.status = 'draft'
+    rr.returned_by_id = current_user.id
+    rr.returned_at = ph_now()
+    rr.return_reason = reason
+    db.session.commit()
+    log_audit(module='receiving_reports', action='return_to_draft', record_id=rr.id,
+              record_identifier=rr.rr_number,
+              notes=f'Returned to draft from {from_status}: {reason}')
+    flash(f'Receiving Report "{rr.rr_number}" returned to draft.', 'success')
     return redirect(url_for('receiving_reports.view', id=id))
 
 
@@ -769,8 +1041,12 @@ def approve(id):
     # po_line_open_qty sums only COMMITTED_STATUSES (approved/billed) and this route
     # has already refused a non-draft above, so this receipt cannot be in that sum.
     try:
+        # PO-backed lines only. A direct line (rrdirect_0001) has no order line, so there
+        # is no open quantity for it to exceed and no PO whose vendor/branch/status could
+        # disagree with the header -- and its None would reach int() here as a TypeError.
         assert_payload_within_open_qty(
-            [(li.purchase_order_item_id, li.received_quantity) for li in rr.line_items],
+            [(li.purchase_order_item_id, li.received_quantity) for li in rr.line_items
+             if li.purchase_order_item_id is not None],
             exclude_rr_id=rr.id, vendor_id=rr.vendor_id, branch_id=rr.branch_id)
     except ValueError as e:
         flash(str(e), 'error')
@@ -778,6 +1054,16 @@ def approve(id):
     rr.status = 'approved'
     rr.approved_by_id = current_user.id
     rr.approved_at = ph_now()
+    # Mirrors submit()'s clear, for the same reason: a return-to-draft memo describes
+    # ONE correction cycle. approve() also accepts 'submitted' (and 'draft', which can
+    # follow a return-to-draft), so approving without going back through submit() first
+    # -- return to draft, fix the line, Approve directly -- would otherwise leave a
+    # stale "Returned to draft: ..." memo reading as a current notice on an approved
+    # receipt. The audit log keeps the memo either way, so clearing it here loses
+    # nothing but the display.
+    rr.return_reason = None
+    rr.returned_by_id = None
+    rr.returned_at = None
     from app.receiving_reports.stock_posting import post_rr_receipt
     from app.posting.control_accounts import ControlAccountError
     try:

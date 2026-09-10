@@ -19,6 +19,10 @@ COMMITTED_STATUSES = ('approved', 'billed')
 class ReceivingReport(RowVersioned, db.Model):
     __tablename__ = 'receiving_reports'
 
+    #: The one status a receipt can be sent back to draft from. Unlike the purchase
+    #: requisition, a receiving report has no `rejected` state, so there is exactly one.
+    RETURN_TO_DRAFT_STATUSES = ('submitted',)
+
     id = db.Column(db.Integer, primary_key=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True, index=True)
     branch = db.relationship('Branch', foreign_keys=[branch_id])
@@ -53,6 +57,15 @@ class ReceivingReport(RowVersioned, db.Model):
     # the goods could record the receipt and then move it nowhere.
     submitted_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     submitted_at = db.Column(db.DateTime)
+    # Sent back to draft because the purchase order that covered these goods turned up
+    # after submission (rrreason_0001). CLEARED on re-submit -- a memo describes one
+    # correction cycle, and submitting starts the next.
+    #
+    # returned_by_id keeps db.ForeignKey HERE and not in the migration: a SQLite batch
+    # add_column cannot carry an inline FK.
+    returned_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    returned_at = db.Column(db.DateTime)
+    return_reason = db.Column(db.Text)
     approved_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     approved_at = db.Column(db.DateTime)
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -91,7 +104,10 @@ class ReceivingReport(RowVersioned, db.Model):
 
         Derived from the lines, never from a header column: one receipt may
         settle several of a vendor's orders, so no single header FK can be true.
-        `purchase_order_item_id` is nullable=False, so every line has one.
+        NOT every line has one: since rrdirect_0001 a line may be a DIRECT receipt
+        (`purchase_order_item_id` NULL) for goods that arrived without an order. Such
+        lines contribute no PO here, which is why the None guards below are load-bearing
+        rather than defensive habit.
         """
         seen, out = set(), []
         for li in self.line_items:
@@ -128,11 +144,29 @@ class ReceivingReportItem(db.Model):
     receiving_report_id = db.Column(db.Integer, db.ForeignKey('receiving_reports.id'),
                                     nullable=False, index=True)
     line_number = db.Column(db.Integer, nullable=False)
+    # NULLABLE since rrdirect_0001: a line with no order line is a DIRECT receipt --
+    # goods that arrived without a purchase order. Such a line takes its unit,
+    # description and cost from `product_id` below instead.
     purchase_order_item_id = db.Column(db.Integer, db.ForeignKey('purchase_order_items.id'),
-                                       nullable=False, index=True)
+                                       nullable=True, index=True)
     purchase_order_item = db.relationship('PurchaseOrderItem',
                                           foreign_keys=[purchase_order_item_id])
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)  # snapshot for print
+    # A snapshot for print on a PO-backed line; on a DIRECT line it is the line's only
+    # identity -- what was received, what unit it is in, and what it is valued at all
+    # come from it.
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)
+    # The unit a DIRECT receipt arrived in (rruom_0001). NULL on a PO-backed line, which
+    # takes its unit from the order line, and NULL on a direct line the receiver did not
+    # override -- that one falls back to the product's default. The FK lives here and
+    # NOT in the migration: a SQLite batch add_column cannot carry an inline ForeignKey.
+    unit_of_measure_id = db.Column(db.Integer, db.ForeignKey('units_of_measure.id'),
+                                   nullable=True)
+    unit_of_measure_ref = db.relationship('UnitOfMeasure',
+                                          foreign_keys=[unit_of_measure_id])
+    # Why this line was kept as a direct receipt even though the vendor had an open
+    # order line for the same product (rrreason_0001). NULL when no warning fired --
+    # a line with nothing to explain should carry no explanation.
+    no_po_reason = db.Column(db.Text)
     product = db.relationship('Product', foreign_keys=[product_id])
     received_quantity = db.Column(db.Numeric(15, 4), nullable=False)
 
@@ -146,15 +180,49 @@ class ReceivingReportItem(db.Model):
     def quantity(self):
         return self.received_quantity
 
+    # A DIRECT receipt (no order line) takes its unit, description and cost from the
+    # PRODUCT MASTER. That is the whole shape of the feature: a receiving report records
+    # what arrived, never what it is worth, so nothing here may come from the receiver
+    # (owner, 2026-09-06: "RR cannot have unit price").
+
     @property
     def unit_of_measure(self):
+        """The unit this line is counted in, most specific source first.
+
+        An order line settles it when there is one -- that is what the vendor was asked
+        for. Otherwise the receiver's own choice wins over the product's default, because
+        goods can arrive by the box for a product carried by the piece, and the person
+        unpacking them is the one who knows.
+        """
         poi = self.purchase_order_item
-        return poi.unit_of_measure if poi else None
+        if poi:
+            return poi.unit_of_measure
+        if self.unit_of_measure_ref:
+            return self.unit_of_measure_ref
+        return self.product.default_unit_of_measure if self.product else None
 
     @property
     def uom_text(self):
         poi = self.purchase_order_item
-        return poi.uom_text if poi else None
+        if poi:
+            return poi.uom_text
+        # A direct line has no free-text unit of its own; the product's default unit
+        # carries a code, which unit_of_measure above already returns.
+        return None
+
+    @property
+    def description(self):
+        """What was received. The order line's wording when there is one -- it is what
+        the vendor was actually asked for -- else the product's own name."""
+        poi = self.purchase_order_item
+        if poi and poi.description:
+            return poi.description
+        return self.product.name if self.product else None
+
+    @property
+    def is_direct(self):
+        """True when this line records goods that arrived WITHOUT a purchase order."""
+        return self.purchase_order_item_id is None
 
     @property
     def po_number(self):
@@ -177,12 +245,17 @@ class ReceivingReportItem(db.Model):
             'purchase_order_item_id': self.purchase_order_item_id,
             'received_quantity': float(self.received_quantity) if self.received_quantity is not None else 0.0,
             'ordered_quantity': float(poi.quantity) if (poi and poi.quantity is not None) else None,
-            'description': (poi.description if poi else None),
-            # product_code retired from this payload (owner, 2026-09-08) -- the
-            # code is not shown anywhere in the app. Nothing in detail.html or
-            # print.html reads this key; both already display product_name.
+            # MERGE (2026-09-10): `description` and `is_direct` come from the
+            # direct-receipt work -- a PO-less line carries its own description,
+            # so reading it off the order line would return None for exactly the
+            # lines that need it. `product_code` is NOT reinstated: the code is
+            # retired from every surface (owner, 2026-09-08) and nothing in
+            # detail.html or print.html reads the key -- both show product_name.
+            'description': self.description,
+            'is_direct': self.is_direct,
             'product_name': (poi.product.name if (poi and poi.product) else (self.product.name if self.product else None)),
-            'uom': (poi.unit_of_measure.code if (poi and poi.unit_of_measure) else (poi.uom_text if poi else None)),
+            'uom': (self.unit_of_measure.code if self.unit_of_measure
+                    else (poi.uom_text if poi else None)),
             'unit_price': float(poi.unit_price) if (poi and poi.unit_price is not None) else None,
         }
 

@@ -1795,18 +1795,29 @@ class TestReceivingReportOverlayValues:
         return m.group(1).strip()
 
     def test_the_rr_line_itself_stores_none_of_the_derived_columns(self, approved_rr):
-        """Why the assertions below matter: `ReceivingReportItem` stores only
-        line_number, a product_id snapshot and received_quantity. A template that
-        read description / ordered_qty / uom off the RR line would render three
-        empty columns and still satisfy a presence assertion."""
+        """Why the assertions below matter: `ReceivingReportItem` STORES only
+        line_number, a product_id snapshot and received_quantity. A template that read
+        description / ordered_qty / uom out of a stored column on the RR line would
+        render empty cells and still satisfy a presence assertion.
+
+        Asserted against the mapper's COLUMNS, not hasattr. `description` became a
+        derived property in rrdirect_0001 -- a direct receipt has no order line to take
+        wording from, so it falls back to the product's name -- and a hasattr probe
+        cannot tell a derived property from a stored column, which is the distinction
+        this test exists to make.
+        """
         from app.receiving_reports.models import ReceivingReportItem
+        stored = {c.key for c in ReceivingReportItem.__table__.columns}
+        assert 'description' not in stored
+        assert 'ordered_qty' not in stored
+        assert 'uom' not in stored
+        assert 'unit_price' not in stored      # an RR never carries a price at all
         line = approved_rr.line_items[0]
-        assert not hasattr(line, 'description')
-        assert not hasattr(line, 'ordered_qty')
-        assert not hasattr(ReceivingReportItem, 'uom')
-        # The FK the derived values must come through. nullable=False, so it is
-        # always present.
+        # This fixture's line receives against an order, so the derived values come
+        # through the order line. Since rrdirect_0001 that FK is nullable -- a DIRECT
+        # receipt leaves it None and derives from the product instead.
         assert line.purchase_order_item is not None
+        assert line.is_direct is False
 
     def test_each_field_prints_its_record_value(
             self, client, db_session, admin_user, branch_manila, approved_rr,

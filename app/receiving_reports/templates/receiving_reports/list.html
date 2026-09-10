@@ -74,7 +74,14 @@
             <tbody>
                 {% for rr in rr_list %}
                 <tr>
-                    <td><a href="{{ url_for('receiving_reports.view', id=rr.id) }}" style="font-weight:600;color:var(--blue);">{{ rr.rr_number }}</a></td>
+                    <td><a href="{{ url_for('receiving_reports.view', id=rr.id) }}" style="font-weight:600;color:var(--blue);">{{ rr.rr_number }}</a>
+                        {# Derived, not stored: `is_direct` reads the line's own FK, so this cannot
+                           drift from the lines themselves. #}
+                        {% if rr.line_items | selectattr('is_direct') | first %}
+                        <span title="Contains items received without a purchase order"
+                              style="margin-left:6px;color:var(--amber);font-weight:600;">no PO</span>
+                        {% endif %}
+                    </td>
                     <td>{{ rr.receipt_date.strftime('%b %d, %Y') if rr.receipt_date else '' }}</td>
                     <td>{{ rr.vendor_name }}</td>
                     <td>{{ rr.po_number_display or '—' }}</td>

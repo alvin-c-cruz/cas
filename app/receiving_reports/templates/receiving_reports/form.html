@@ -80,7 +80,10 @@
         <thead>
           <tr><th>From PO</th><th>Item</th><th>UoM</th><th class="text-end">Ordered</th>
               <th class="text-end">Already Received</th><th class="text-end">Open</th>
-              <th class="text-end">Receive Now</th></tr>
+              <th class="text-end">Receive Now</th>
+              {# No caption: the column holds one icon button per row, and a header over
+                 it would read as a sortable field. #}
+              <th></th></tr>
         </thead>
         {# Rendered by the line script below, never server-side: the grid is keyed
            by purchase order LINE now, and which lines belong on it is the receipt's
@@ -89,15 +92,70 @@
       </table>
     </div>
 
-    {# No "+ Add line" button and no blank editable row, deliberately. Every
-       ReceivingReportItem.purchase_order_item_id is NOT NULL -- a receiver cannot
-       invent a line, only receive one that was ordered. Clearing a quantity to
-       blank or 0 already drops that line at submit, so there is no remove button
-       either. #}
+    {# Two ways a line gets here, and no blank editable row for either. Pull from
+       Purchase Orders receives what was ordered; Add Item Without PO records goods that
+       arrived with no order at all (rrdirect_0001) -- a walk-in purchase, a replacement
+       part, a sample.
+
+       A direct line still carries NO PRICE. The receiver records what arrived, never
+       what it is worth: a tracked item is valued at approval from the product master
+       (standard cost, else the running average) and refused if the master cannot value
+       it. That is why this picker asks only for a product and a quantity.
+
+       Each row carries its own remove button. Clearing a quantity to blank or 0 still
+       drops the line at submit -- the two gestures agree -- but only one of them is
+       visible, and a receiver should not have to know the other. #}
     <button type="button" class="btn btn-secondary" id="pullPoBtn">+ Pull from Purchase Orders</button>
+    <button type="button" class="btn btn-secondary" id="addDirectBtn">+ Add Item Without PO</button>
     <span id="poPickerNotice" class="text-muted" style="display:none">
       Choose a vendor first -- the open lines offered are that vendor's.
     </span>
+
+    {# The no-PO picker. Deliberately asks for a product and a quantity and NOTHING else
+       -- no price field exists on a receiving report at all. #}
+    <div id="directPickerModal" class="modal-overlay no-print"
+         style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1050;">
+      <div class="modal-box" style="max-width:520px;margin:10vh auto;background:var(--card);
+           border-radius:var(--radius);padding:20px;">
+        <h4 style="margin-bottom:4px;">Add an item received without a purchase order</h4>
+        <p class="text-muted" style="font-size:13px;margin-bottom:16px;">
+          Record what arrived. Cost is taken from the product's standard cost when the
+          receipt is approved &mdash; a receiving report never carries a price.
+        </p>
+        <label class="form-label" for="directProduct">Product</label>
+        <select id="directProduct" class="form-control" style="margin-bottom:12px;"></select>
+        {# Filled by script when the chosen product matches an open order line for this
+           vendor. Hidden otherwise: a product with nothing to explain should show no
+           explanation. #}
+        <div id="directPoWarning" style="display:none;margin:0 0 12px;padding:9px 13px;
+             border-radius:var(--radius);border-left:3px solid var(--amber);
+             background:var(--alert-warning-bg);color:var(--alert-warning-text);font-size:13px;">
+          <div id="directPoWarningText" style="margin-bottom:8px;"></div>
+          {# One button per matching open order line, filled by refreshWarning() below.
+             Never a single generic button here: with two open orders for one product,
+             a lone button would have to guess which one gets the receipt -- the design
+             is that the receiver chooses, the system does not. #}
+          <div id="directUsePoContainer" style="margin-bottom:8px;"></div>
+          <label style="display:block;margin-top:10px;">
+            It really had no purchase order &mdash; why?
+            <input type="text" id="directNoPoReason" class="form-control"
+                   maxlength="200" placeholder="e.g. free replacement for the damaged unit">
+          </label>
+        </div>
+        <label class="form-label" for="directUom">Unit</label>
+        <select id="directUom" class="form-control" style="margin-bottom:12px;max-width:220px;">
+          <option value="">Use the product's default</option>
+        </select>
+        <label class="form-label" for="directQty">Quantity received</label>
+        <input type="number" step="0.0001" min="0" id="directQty" class="form-control"
+               style="max-width:160px;margin-bottom:16px;">
+        <div>
+          <button type="button" class="btn btn-primary" id="directPickerAdd">Add to receipt</button>
+          <button type="button" class="btn btn-secondary" id="directPickerClose">Cancel</button>
+        </div>
+        <p id="directPickerError" class="form-error" style="display:none;margin-top:12px;"></p>
+      </div>
+    </div>
 
     <div id="poPickerModal" class="modal-overlay no-print"
          style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
@@ -149,6 +207,11 @@
 
   const PO_LINES = {{ po_lines | tojson }};   // {po_id: [{purchase_order_item_id, product_name, uom, ordered, received, open}]}
   const EXISTING = {{ existing | tojson }};   // {purchase_order_item_id: received_qty} (edit / bounce pre-fill)
+  const EXISTING_DIRECT = {{ existing_direct | tojson }};  // [{product_id, received_quantity}]
+  const DIRECT_PRODUCTS = {{ direct_products | tojson }};  // every active product, for the no-PO picker
+  const UNITS = {{ units | tojson }};                      // active units of measure
+  const DIRECT_INDEX = {};
+  DIRECT_PRODUCTS.forEach(function (p) { DIRECT_INDEX[p.product_id] = p; });
   // _po_lines_payload carries no PO number, and "which order is this line from?"
   // is now a per-LINE question -- one receipt can span several orders of one vendor.
   // Keys are STRINGS, matching PO_LINES' own (a JSON object has no integer keys,
@@ -180,7 +243,7 @@
   });
 
   const RR_PLACEHOLDER =
-    '<tr id="rrGridEmptyRow"><td colspan="7" class="text-muted">'
+    '<tr id="rrGridEmptyRow"><td colspan="8" class="text-muted">'
     + 'No lines yet. Choose the vendor above, then pull the open lines of its '
     + 'purchase orders.</td></tr>';
 
@@ -194,6 +257,78 @@
   function rrClearGrid() {
     rrGridBody().innerHTML = RR_PLACEHOLDER;
     RR_ROW_COUNT = 0;
+  }
+
+  // A DIRECT row: no PO, and no ordered/received/open figures, because nothing was
+  // ordered. Em dashes rather than zeros -- zero would read as "ordered none", which is
+  // a different and wrong statement.
+  function rrDirectRowHtml(r, qty, uom, reason) {
+    const item = r.product_name || '';   // the code is retired (2026-09-10)
+    const pid = escHtml(r.product_id);
+    // The receiver's chosen unit when there is one, else the product's default. Both the
+    // id and the label are carried: the id is what posts, the label is what is read.
+    const uomId = uom && uom.id ? uom.id : '';
+    const uomText = uom && uom.code ? uom.code : (r.uom || '');
+    return '<tr class="rr-line rr-line--direct" data-product="' + pid + '"'
+         + ' data-uom="' + escHtml(uomId) + '"'
+         + ' data-reason="' + escHtml(reason || '') + '">'
+         + '<td class="text-muted">No PO</td>'
+         + '<td>' + escHtml(item) + '</td>'
+         + '<td>' + escHtml(uomText) + '</td>'
+         + '<td class="text-end text-muted">&mdash;</td>'
+         + '<td class="text-end text-muted">&mdash;</td>'
+         + '<td class="text-end text-muted">&mdash;</td>'
+         + '<td class="text-end"><input type="number" step="0.0001" min="0"'
+         + ' class="form-control rr-recv"'
+         + ' data-product="' + pid + '"'
+         + ' data-uom="' + escHtml(uomId) + '"'
+         + ' data-reason="' + escHtml(reason || '') + '"'
+         + ' value="' + escHtml(qty === null || qty === undefined ? '' : qty) + '"'
+         + ' style="max-width:120px;display:inline-block"></td>'
+         + rrRemoveCell() + '</tr>';
+  }
+
+  function rrAddDirectLine(r, qty, uom, reason) {
+    if (!RR_ROW_COUNT) rrGridBody().innerHTML = '';
+    rrGridBody().insertAdjacentHTML('beforeend', rrDirectRowHtml(r, qty, uom, reason));
+    RR_ROW_COUNT += 1;
+    return true;
+  }
+
+  // Removing a line was only ever possible by clearing its quantity to blank -- the
+  // serialiser drops a row with no quantity, so it worked, but nothing on the page said
+  // so (owner, 2026-09-07: "user should be able to delete a line item after adding it").
+  // Both gestures now do the same thing; this one is visible.
+  function rrRemoveCell() {
+    return '<td class="text-end">'
+         + '<button type="button" class="btn btn-secondary rr-remove"'
+         + ' title="Remove this line" aria-label="Remove this line"'
+         + ' style="padding:2px 10px;line-height:1.2;">&times;</button></td>';
+  }
+
+  // Delegated, so it covers rows added later by either picker without rebinding. Placed
+  // in THIS block rather than the picker block below because it is core grid behaviour:
+  // a row the receiver can add and not remove is the actual defect being fixed.
+  let RR_REMOVE_BOUND = false;
+  function rrBindRemove() {
+    const body = rrGridBody();
+    // A closure flag, not a data-* attribute on the tbody: the DOM shim that executes
+    // this block in tests does not implement `dataset` on that element, and reading it
+    // there throws before any assertion runs.
+    if (!body || RR_REMOVE_BOUND) return;
+    body.addEventListener('click', function (e) {
+      const btn = e.target.closest && e.target.closest('.rr-remove');
+      if (!btn) return;
+      const row = btn.closest('tr');
+      if (!row) return;
+      row.remove();
+      RR_ROW_COUNT = Math.max(0, RR_ROW_COUNT - 1);
+      // Put the placeholder back when the last line goes: an empty grid with no message
+      // reads as broken rather than as empty, and rrAddLine consumes the placeholder
+      // again on the next add.
+      if (!RR_ROW_COUNT) rrClearGrid();
+    });
+    RR_REMOVE_BOUND = true;
   }
 
   function rrRowHtml(r, qty) {
@@ -216,7 +351,8 @@
          + ' max="' + escHtml(r.open) + '" class="form-control rr-recv"'
          + ' data-poi="' + poi + '"'
          + ' value="' + escHtml(qty === null || qty === undefined ? '' : qty) + '"'
-         + ' style="max-width:120px;display:inline-block"></td></tr>';
+         + ' style="max-width:120px;display:inline-block"></td>'
+         + rrRemoveCell() + '</tr>';
   }
 
   function rrExistingRowFor(poiId) {
@@ -254,6 +390,17 @@
     const r = RR_LINE_INDEX[poiId];
     if (r) rrAddLine(r, EXISTING[poiId]);
   });
+  // Direct lines come back as a LIST, not a map: two of them may name the same product
+  // (two deliveries of it in one receipt), so product_id is not a key. Rendered after
+  // the PO-backed pre-fill; the receiver can see both kinds in one grid.
+  const UNIT_INDEX = {};
+  (UNITS || []).forEach(function (u) { UNIT_INDEX[u.id] = u; });
+  EXISTING_DIRECT.forEach(function (d) {
+    const r = DIRECT_INDEX[d.product_id];
+    if (r) rrAddDirectLine(r, d.received_quantity, UNIT_INDEX[d.unit_of_measure_id],
+                           d.no_po_reason);
+  });
+  rrBindRemove();
 
   // On an EDIT the vendor is FIXED. edit() builds `eligible` from the RECEIPT's own
   // rr.vendor_id and deliberately ignores any POSTed vendor_id, so a switch in the
@@ -284,15 +431,29 @@
     });
   })();
 
-  // The submit contract Tasks 2-3 decode: [{purchase_order_item_id, received_quantity}],
-  // only for quantities > 0. Read off the live inputs, so whatever the receiver
-  // last typed is what posts.
+  // The submit contract the server decodes, one entry per line with a quantity > 0:
+  //     {purchase_order_item_id, received_quantity}   received against an order
+  //     {product_id, received_quantity}               a direct receipt, no order
+  // Read off the live inputs, so whatever the receiver last typed is what posts, and in
+  // DOM order, so line numbers follow the order on screen rather than herding the direct
+  // lines to the end.
   document.getElementById('rrForm').addEventListener('submit', function () {
     const lines = [];
     document.querySelectorAll('.rr-recv').forEach(function (inp) {
       const q = parseFloat(inp.value);
-      if (q > 0) lines.push({ purchase_order_item_id: parseInt(inp.dataset.poi, 10),
-                              received_quantity: inp.value });
+      if (!(q > 0)) return;
+      if (inp.dataset.poi) {
+        lines.push({ purchase_order_item_id: parseInt(inp.dataset.poi, 10),
+                     received_quantity: inp.value });
+      } else if (inp.dataset.product) {
+        const entry = { product_id: parseInt(inp.dataset.product, 10),
+                        received_quantity: inp.value };
+        // Omitted rather than sent null when unset, so the server's "no unit chosen"
+        // branch is reached by absence -- the same shape a pre-rruom_0001 payload has.
+        if (inp.dataset.uom) entry.unit_of_measure_id = parseInt(inp.dataset.uom, 10);
+        if (inp.dataset.reason) entry.no_po_reason = inp.dataset.reason;
+        lines.push(entry);
+      }
     });
     document.getElementById('rrLinesJson').value = JSON.stringify(lines);
   });
@@ -303,6 +464,22 @@
    tests/integration/_line_identity_js.py for the other document forms), and picker
    code throws there on APIs the shim does not provide -- fetch, Choices, modals. #}
 <script>
+  const excludeRrId = {{ (rr.id if rr else 0) | tojson }};
+
+  // On an EDIT the pickers ask the RECEIPT for its vendor, never the live select:
+  // edit() scopes `eligible` by rr.vendor_id and ignores any POSTed vendor_id, so
+  // reading the select here would offer lines from a vendor the save must refuse,
+  // and the bounce would re-render from the submitted set -- losing the typed
+  // quantity and the receipt's own lines with it. 0 on create means "not chosen".
+  const RR_FIXED_VENDOR_ID = {{ (rr.vendor_id if rr else 0) | tojson }};
+
+  function chosenVendorId() {
+    if (RR_FIXED_VENDOR_ID) return RR_FIXED_VENDOR_ID;
+    const sel = document.getElementById('vendorSelect');
+    const v = sel ? parseInt(sel.value, 10) : 0;
+    return v > 0 ? v : 0;      // 0 is the "-- Select vendor --" sentinel
+  }
+
   (function () {
     // The vendor picker gets the same treatment as every other counterparty
     // select -- a plain <select> against 150 vendors is unusable. No addAction:
@@ -318,21 +495,6 @@
     const body = document.getElementById('poPickerBody');
     const empty = document.getElementById('poPickerEmpty');
     const notice = document.getElementById('poPickerNotice');
-    const excludeRrId = {{ (rr.id if rr else 0) | tojson }};
-
-    // On an EDIT the picker asks the RECEIPT for its vendor, never the live select:
-    // edit() scopes `eligible` by rr.vendor_id and ignores any POSTed vendor_id, so
-    // reading the select here would offer lines from a vendor the save must refuse,
-    // and the bounce would re-render from the submitted set -- losing the typed
-    // quantity and the receipt's own lines with it. 0 on create means "not chosen".
-    const RR_FIXED_VENDOR_ID = {{ (rr.vendor_id if rr else 0) | tojson }};
-
-    function chosenVendorId() {
-      if (RR_FIXED_VENDOR_ID) return RR_FIXED_VENDOR_ID;
-      const sel = document.getElementById('vendorSelect');
-      const v = sel ? parseInt(sel.value, 10) : 0;
-      return v > 0 ? v : 0;      // 0 is the "-- Select vendor --" sentinel
-    }
 
     btn.addEventListener('click', function () {
       const vendorId = chosenVendorId();
@@ -392,6 +554,205 @@
       });
       modal.style.display = 'none';
     });
+  })();
+
+  // ── The no-PO picker ─────────────────────────────────────────────────────────
+  // In THIS block, not the line block above: a DOM shim executes that one in tests and
+  // throws on modal APIs. Nothing here is enforcement -- views._parse_rr_lines revalidates
+  // the product on save, because a raw POST bypasses this entirely.
+  (function () {
+    const btn = document.getElementById('addDirectBtn');
+    const modal = document.getElementById('directPickerModal');
+    const sel = document.getElementById('directProduct');
+    const qty = document.getElementById('directQty');
+    const err = document.getElementById('directPickerError');
+    if (!btn || !modal || !sel || !qty) return;
+
+    const uomSel = document.getElementById('directUom');
+    (DIRECT_PRODUCTS || []).forEach(function (p) {
+      const o = document.createElement('option');
+      o.value = p.product_id;
+      // MERGE (2026-09-10): name only. This picker was written before the
+      // code was retired and joined the two unconditionally, so every product
+      // created since the code became optional would read "null - Widget".
+      o.textContent = p.product_name
+                    + (p.uom ? ' (' + p.uom + ')' : '');
+      sel.appendChild(o);
+    });
+    (UNITS || []).forEach(function (u) {
+      const o = document.createElement('option');
+      o.value = u.id;
+      o.textContent = u.code + ' — ' + u.name;
+      uomSel.appendChild(o);
+    });
+
+    // Same treatment as the vendor picker above -- a plain <select> against a full
+    // product master (typically far longer than 150 vendors) is unusable. No
+    // addAction on either: this modal carries no quick-add for products or units.
+    // Instances kept: once Choices wraps a <select>, resetting it back to the
+    // placeholder means calling setChoiceByValue, not assigning .value -- the
+    // wrapped widget does not repaint from a bare DOM assignment.
+    let uomChoices = null;
+    if (typeof initSearchSelect === 'function') {
+      if (sel && !sel.closest('.choices')) initSearchSelect(sel);
+      if (uomSel && !uomSel.closest('.choices')) uomChoices = initSearchSelect(uomSel);
+    }
+
+    // product_id -> [row] for the CURRENT vendor, rebuilt each time this modal opens.
+    //
+    // FETCHED, not read from the page-load payload: on a fresh create page the view
+    // sets `eligible = []` on purpose -- there is no vendor until the receiver picks
+    // one -- so PO_LINES is empty exactly when the warning matters most. The
+    // open-lines endpoint is the same source the Pull picker uses, already scoped to
+    // the selected vendor and already excluding this receipt, and its rows carry
+    // po_number as well. Fetching on open also keeps the index current, which narrows
+    // the window where an order is approved between picking and saving.
+    let OPEN_BY_PRODUCT = {};
+
+    function loadOpenLines() {
+      const vendorId = chosenVendorId();
+      OPEN_BY_PRODUCT = {};
+      if (!vendorId) return Promise.resolve();
+      const url = '/receiving-reports/open-lines?vendor_id=' + vendorId
+                + (excludeRrId ? ('&exclude_rr_id=' + excludeRrId) : '');
+      return fetch(url, {credentials: 'same-origin'})
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          (d.lines || []).forEach(function (row) {
+            if (!row.product_id || !(row.open > 0)) return;
+            (OPEN_BY_PRODUCT[row.product_id] =
+              OPEN_BY_PRODUCT[row.product_id] || []).push(row);
+          });
+        })
+        .catch(function () { OPEN_BY_PRODUCT = {}; });   // a warning is guidance; its
+                                                          // absence must never block a
+                                                          // receipt from being recorded
+    }
+
+    const warnBox = document.getElementById('directPoWarning');
+    const warnText = document.getElementById('directPoWarningText');
+    const reasonInput = document.getElementById('directNoPoReason');
+    const usePoContainer = document.getElementById('directUsePoContainer');
+
+    function matchesFor(productId) { return OPEN_BY_PRODUCT[productId] || []; }
+
+    function refreshWarning() {
+      // A reason belongs to the product it was typed for -- cleared unconditionally,
+      // not only on the no-match branch below, so switching from product A (typed a
+      // reason) to product B never lets A's text ride along and get stored on B's
+      // line further down at Add-to-receipt time.
+      reasonInput.value = '';
+      const matches = matchesFor(parseInt(sel.value, 10));
+      if (!matches.length) {
+        warnBox.style.display = 'none';
+        usePoContainer.innerHTML = '';
+        return;
+      }
+      warnText.textContent = 'This vendor has '
+        + matches.map(function (m) { return m.open + ' open on ' + m.po_number; }).join(', ')
+        + '.';
+      // One button per match -- the warning already enumerates every open order, and
+      // the design is explicit that the receiver chooses which one, the system does
+      // not guess. Each button carries its own matched row (the fetched row IS the
+      // shape rrAddLine expects, same as the Pull picker's own rows) so the delegated
+      // listener below can act on exactly the order that was clicked.
+      usePoContainer.innerHTML = matches.map(function (m) {
+        return '<button type="button" class="btn btn-secondary directUsePoBtn"'
+             + ' data-row=\'' + escHtml(JSON.stringify(m)) + '\''
+             + ' style="padding:2px 10px;margin:0 6px 6px 0;">Receive against '
+             + escHtml(m.po_number) + '</button>';
+      }).join('');
+      warnBox.style.display = 'block';
+    }
+    sel.addEventListener('change', refreshWarning);
+
+    // Switch to the ordered line: adds it through the SAME path the Pull picker uses,
+    // so the ceiling and the vendor/branch/status guards apply unchanged. No direct
+    // line is created at all. Delegated on the container (rather than one listener per
+    // button) so the buttons refreshWarning() re-renders after every product change
+    // still work without being re-wired.
+    usePoContainer.addEventListener('click', function (e) {
+      const target = e.target.closest('.directUsePoBtn');
+      if (!target) return;
+      const row = JSON.parse(target.dataset.row);
+      rrAddLine(row, qty.value || row.open);
+      close();
+    });
+
+    function close() { modal.style.display = 'none'; err.style.display = 'none'; }
+
+    // Kept so the Add handler below can wait on the SAME fetch this click started --
+    // see the MINOR-A comment there.
+    let openLinesPromise = Promise.resolve();
+
+    btn.addEventListener('click', function () {
+      if (!sel.options.length) {
+        // No active products at all: say so rather than opening an empty picker.
+        alertless('There are no active products to receive. Create one first.');
+        return;
+      }
+      qty.value = '';
+      // Back to "use the product's default" each time: a unit left over from the last
+      // item would silently attach itself to the next one. Via the Choices instance
+      // when the select is enhanced -- assigning .value directly leaves the wrapped
+      // widget showing the stale label.
+      if (uomChoices) { uomChoices.setChoiceByValue(''); } else { uomSel.value = ''; }
+      reasonInput.value = '';
+      err.style.display = 'none';
+      modal.style.display = 'block';
+      warnBox.style.display = 'none';          // no stale warning while the fetch runs
+      openLinesPromise = loadOpenLines().then(refreshWarning);
+      qty.focus();
+    });
+    document.getElementById('directPickerClose').addEventListener('click', close);
+    modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+
+    document.getElementById('directPickerAdd').addEventListener('click', function () {
+      const q = parseFloat(qty.value);
+      if (!(q > 0)) {
+        err.textContent = 'Enter how many arrived.';
+        err.style.display = 'block';
+        qty.focus();
+        return;
+      }
+      const p = DIRECT_INDEX[parseInt(sel.value, 10)];
+      if (!p) { err.textContent = 'Choose a product.'; err.style.display = 'block'; return; }
+      // MINOR-A: wait on the SAME in-flight open-lines fetch the modal-open handler
+      // started, so a click that lands before it resolves still gets the real
+      // warning state instead of an empty index. openLinesPromise already chains
+      // through refreshWarning(), so by the time this callback runs warnBox/matches
+      // reflect the fetch's answer -- not a race. The fetch is already running and
+      // finishes far faster than a human types a quantity, so nobody notices the
+      // wait; Add stays enabled the whole time on purpose (disabling it was
+      // considered and rejected -- friction on every use for a race nobody hits).
+      openLinesPromise.then(function () {
+        // The reason travels with the line. Only meaningful when the warning fired --
+        // a product with no matching order has nothing to explain.
+        const reason = (warnBox.style.display === 'block')
+          ? (reasonInput.value || '').trim() : '';
+        if (warnBox.style.display === 'block' && !reason) {
+          err.textContent = 'Say why this had no purchase order, or receive it against the order.';
+          err.style.display = 'block';
+          reasonInput.focus();
+          return;
+        }
+        // Not merged with an existing row for the same product, unlike the PO picker: two
+        // deliveries of one product in a single receipt are a real thing, and with no
+        // ordered quantity there is no ceiling that a second row could breach.
+        rrAddDirectLine(p, qty.value, UNIT_INDEX[parseInt(uomSel.value, 10)], reason);
+        close();
+      });
+    });
+
+    // Inline error text instead of a blocking browser dialog. A modal popup halts the
+    // page and, in an automated browser, wedges the session until someone dismisses it
+    // by hand -- so this project forbids them outright, and a test enforces it by
+    // scanning the served HTML, comments included.
+    function alertless(msg) {
+      err.textContent = msg;
+      err.style.display = 'block';
+      modal.style.display = 'block';
+    }
   })();
 </script>
 {% endblock %}
