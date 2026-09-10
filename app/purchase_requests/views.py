@@ -1000,7 +1000,11 @@ def convert(id):
                   record_identifier=pr.pr_number, notes=f'Converted -> {po.po_number}')
         flash(f'Purchase Requisition "{pr.pr_number}" converted to draft Purchase Order '
               f'"{po.po_number}". Add the vendor and prices.', 'success')
-        return redirect(url_for('purchase_orders.view', id=po.id))
+        # Straight to EDIT, not view (owner, 2026-09-10). The converted order
+        # carries NO VENDOR -- a requisition asks for goods, it does not choose a
+        # supplier -- so the view page is a dead end for the one thing that
+        # always has to happen next.
+        return redirect(url_for('purchase_orders.edit', id=po.id))
     except Exception as e:
         db.session.rollback()
         log_exception(e, severity='ERROR', module='purchase_requests.convert')

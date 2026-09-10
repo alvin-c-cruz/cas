@@ -539,6 +539,23 @@
   if (typeof initSearchSelect === 'function') {
     const vSel = document.getElementById('vendorSelect');
     if (vSel && !vSel.closest('.choices')) initSearchSelect(vSel);
+    // An order with no vendor yet -- which is every order just converted from a
+    // requisition -- opens with the cursor in the vendor picker, so the buyer
+    // can type straight away instead of hunting for the field (owner,
+    // 2026-09-10). Only when it is EMPTY: stealing focus while editing an
+    // existing order scrolls the page away from whatever the buyer came for.
+    {# Derived here rather than passed in: this template is rendered from TEN
+       call sites in views.py, and a flag threaded through all of them is one
+       missed argument away from being silently false. #}
+    {% if po and not po.vendor_id %}
+    const focusVendorOnLoad = true;
+    if (vSel) {
+      const choices = vSel.closest('.picker-field');
+      const target = (choices && choices.querySelector('input.choices__input'))
+                   || vSel;
+      try { target.focus(); } catch (e) { /* focus is a convenience, never fatal */ }
+    }
+    {% endif %}
   }
 
   // Start with one blank row so the grid is usable on first load -- a bare
