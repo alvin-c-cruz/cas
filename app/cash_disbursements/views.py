@@ -3,7 +3,8 @@ from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy.orm import selectinload
 from app import db
-from app.common.je_display import merge_same_account_lines
+from app.common.je_display import (merge_same_account_lines,
+                                   merge_same_account_rows)
 from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
 from app.cash_disbursements.forms import CashDisbursementForm
 from app.accounts_payable.models import AccountsPayable
@@ -594,8 +595,11 @@ def _debits_first(rows):
 def _build_cdv_je_preview(cdv):
     """Return [{code, name, debit, credit}] for the JE section on the detail page,
     always debits-first."""
+    # Same-account legs merge per side -- see the APV preview and
+    # app/common/je_display.py. Merged BEFORE the debits-first sort so a merged
+    # row sorts on its summed value, not on its first leg's.
     if cdv.journal_entry:
-        return _debits_first([
+        return _debits_first(merge_same_account_rows([
             {
                 'code': line.account.code if line.account else '—',
                 'name': line.account.name if line.account else '—',
@@ -603,7 +607,7 @@ def _build_cdv_je_preview(cdv):
                 'credit': line.credit_amount,
             }
             for line in cdv.journal_entry.lines.all()
-        ])
+        ]))
     accts = _get_gl_accounts()
     entries = []
     for g in _grouped_ap_lines(cdv, accts['ap']):
@@ -667,7 +671,9 @@ def _build_cdv_je_preview(cdv):
         else:
             entries.append({'code': cdv.cash_account.code, 'name': cdv.cash_account.name,
                             'debit': abs(cash_net), 'credit': Decimal('0.00')})
-    return _debits_first(entries)
+    # Draft preview: same merge as the posted branch, so the preview matches
+    # what posting will actually write.
+    return _debits_first(merge_same_account_rows(entries))
 
 
 def _parse_and_attach_expense_lines(cdv, exp_lines_json):

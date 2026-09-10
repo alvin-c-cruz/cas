@@ -192,3 +192,46 @@ class TestTheCDVFace:
     def test_the_face_still_ties(self, cdv_face):
         html, _, _ = cdv_face
         assert 'JOURNAL ENTRY UNBALANCED' not in html
+
+
+class TestTheDetailPagesToo:
+    """The owner found this on /accounts-payable/<id>, NOT on the printed face.
+
+    The print route and the detail page read the same journal entry through
+    DIFFERENT builders -- print uses the stored ORM lines, detail builds dict
+    rows so it can preview an unposted bill. Fixing only the print face left
+    the same voucher reading two different ways depending on where you opened
+    it, which is how this was missed the first time.
+    """
+
+    def test_the_apv_detail_page_sums_the_repeated_account(self, client, db_session,
+                                                           admin_user, main_branch,
+                                                           make_account, login_user):
+        from app.accounts_payable.models import AccountsPayable
+        from app.vendors.models import Vendor
+        login_user(client, 'admin', 'admin123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        v = Vendor(code='DTL-V', name='Detail Vendor')
+        db_session.add(v); db_session.commit()
+        je, freight, payable = _je_with_two_legs_on_one_account(
+            db_session, main_branch, make_account, 'DTL-JE-1')
+        ap = AccountsPayable(branch_id=main_branch.id, ap_number='DTL-AP-1',
+                             ap_date=date(2026, 9, 10), due_date=date(2026, 10, 10),
+                             payee_type='vendor', payee_id=v.id, vendor_id=v.id,
+                             vendor_name=v.name, notes='', status='posted',
+                             journal_entry_id=je.id)
+        db_session.add(ap); db_session.commit()
+
+        resp = client.get('/accounts-payable/%s' % ap.id)
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+
+        # Control: the JE section rendered at all, so the count below is real.
+        assert payable.code in html, 'the journal entry section did not render'
+
+        # The repeated account appears ONCE in the JE section, carrying the sum.
+        assert html.count('>%s<' % freight.code) == 1
+        assert '2,500.00' in html
+        assert '1,000.00' not in html
+        assert '1,500.00' not in html

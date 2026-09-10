@@ -9,7 +9,8 @@ from decimal import Decimal
 
 import pytest
 
-from app.common.je_display import merge_same_account_lines
+from app.common.je_display import (merge_same_account_lines,
+                                   merge_same_account_rows)
 
 pytestmark = [pytest.mark.unit]
 
@@ -117,3 +118,61 @@ def test_a_leg_carrying_both_sides_is_left_alone():
 
 def test_no_legs_is_no_rows():
     assert merge_same_account_lines([]) == []
+
+
+class TestTheDictRows:
+    """The detail and preview pages build dict rows, not ORM lines. Both shapes
+    must sum the same way, or one voucher reads differently depending on whether
+    you open the detail page or print it -- which is the complaint that produced
+    this second function."""
+
+    def _rows(self, *triples):
+        return [{'code': c, 'name': n, 'debit': Decimal(str(d)),
+                 'credit': Decimal(str(cr))} for c, n, d, cr in triples]
+
+    def test_two_debits_on_one_account_become_one_row(self):
+        rows = merge_same_account_rows(self._rows(
+            ('60110', 'Repairs and Maintenance', '1000.00', '0'),
+            ('60110', 'Repairs and Maintenance', '1500.00', '0'),
+        ))
+        assert len(rows) == 1
+        assert rows[0]['debit'] == Decimal('2500.00')
+        assert rows[0]['name'] == 'Repairs and Maintenance'
+
+    def test_a_different_account_is_not_swept_in(self):
+        rows = merge_same_account_rows(self._rows(
+            ('60110', 'Maintenance', '1000.00', '0'),
+            ('60120', 'Supplies', '800.00', '0'),
+        ))
+        assert [r['code'] for r in rows] == ['60110', '60120']
+
+    def test_the_same_account_on_both_sides_keeps_both_rows(self):
+        rows = merge_same_account_rows(self._rows(
+            ('20101', 'AP Trade', '500.00', '0'),
+            ('20101', 'AP Trade', '0', '3800.00'),
+        ))
+        assert len(rows) == 2
+
+    def test_rows_without_an_account_are_never_merged_together(self):
+        """Two unrelated rows can both lack an account; merging them would
+        invent a relationship that is not there."""
+        rows = merge_same_account_rows(self._rows(
+            ('—', '—', '10.00', '0'),
+            ('—', '—', '20.00', '0'),
+        ))
+        assert len(rows) == 2
+
+    def test_the_totals_are_unchanged(self):
+        src = self._rows(('60110', 'Maintenance', '1000.00', '0'),
+                         ('60110', 'Maintenance', '1500.00', '0'),
+                         ('20101', 'AP Trade', '0', '2500.00'))
+        rows = merge_same_account_rows(src)
+        assert sum(Decimal(str(r['debit'])) for r in rows) == Decimal('2500.00')
+        assert sum(Decimal(str(r['credit'])) for r in rows) == Decimal('2500.00')
+
+    def test_the_source_rows_are_not_mutated(self):
+        src = self._rows(('60110', 'Maintenance', '1000.00', '0'),
+                         ('60110', 'Maintenance', '1500.00', '0'))
+        merge_same_account_rows(src)
+        assert src[0]['debit'] == Decimal('1000.00')
+        assert src[1]['debit'] == Decimal('1500.00')

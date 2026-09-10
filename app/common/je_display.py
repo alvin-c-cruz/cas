@@ -71,3 +71,43 @@ def merge_same_account_lines(lines):
             existing.credit_amount += credit
             existing.merged_count += 1
     return out
+
+
+def merge_same_account_rows(rows):
+    """The same rule as merge_same_account_lines, for the DICT rows the detail
+    and preview pages build: {'code', 'name', 'debit', 'credit'}.
+
+    Two shapes exist because the two surfaces read different sources -- the
+    printed face reads the stored JournalEntry's ORM lines, while the detail
+    page builds dicts so it can show a PREVIEW for a bill that is not posted
+    yet. Both must sum the same way or the same voucher reads differently
+    depending on where you look at it, which is exactly the complaint this
+    was written for.
+
+    PER SIDE, NEVER NETTED. Keyed on the account CODE, which is the identity
+    the row carries; a row with no account renders '-' and is never merged
+    with another, since two unrelated rows can both lack one.
+    """
+    out = []
+    index = {}
+    for row in rows:
+        debit = Decimal(str(row.get('debit') or 0))
+        credit = Decimal(str(row.get('credit') or 0))
+        code = row.get('code')
+        if (debit > 0 and credit > 0) or not code or code == '—':
+            out.append(dict(row))
+            continue
+        side = 'D' if debit > 0 else 'C'
+        key = (code, side)
+        existing = index.get(key)
+        if existing is None:
+            fresh = dict(row)
+            fresh['debit'] = debit
+            fresh['credit'] = credit
+            index[key] = fresh
+            out.append(fresh)
+        elif side == 'D':
+            existing['debit'] = Decimal(str(existing['debit'])) + debit
+        else:
+            existing['credit'] = Decimal(str(existing['credit'])) + credit
+    return out

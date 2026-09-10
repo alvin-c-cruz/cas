@@ -6,7 +6,8 @@ from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy.orm import selectinload
 from app import db
-from app.common.je_display import merge_same_account_lines
+from app.common.je_display import (merge_same_account_lines,
+                                   merge_same_account_rows)
 from app.accounts_payable.models import AccountsPayable, AccountsPayableItem, AccountsPayableAttachment
 from app.accounts_payable.forms import AccountsPayableForm
 from app.vendors.models import Vendor
@@ -142,8 +143,12 @@ def _build_je_preview(ap):
     For posted bills reads from the stored JournalEntry. For drafts,
     computes the same entries the post route would create.
     """
+    # Legs hitting the same account on the same side show as ONE row (owner,
+    # 2026-09-10). The printed face already did this; the DETAIL page built its
+    # own preview and did not, so the same voucher read differently depending on
+    # where you looked at it. Per side, never netted -- both totals unchanged.
     if ap.journal_entry:
-        return [
+        return merge_same_account_rows([
             {
                 'code': line.account.code if line.account else '—',
                 'name': line.account.name if line.account else '—',
@@ -151,7 +156,7 @@ def _build_je_preview(ap):
                 'credit': line.credit_amount,
             }
             for line in ap.journal_entry.lines.all()
-        ]
+        ])
 
     accts = _get_gl_accounts()
     entries = []
@@ -208,7 +213,10 @@ def _build_je_preview(ap):
             'credit': Decimal(str(ap.total_amount)),
         })
 
-    return entries
+    # A DRAFT preview builds one row per line item, so two lines on the same
+    # account read as two rows there too. Merged for the same reason as the
+    # posted branch above: the preview must look like what will be posted.
+    return merge_same_account_rows(entries)
 
 
 def _get_all_accounts_for_select():
