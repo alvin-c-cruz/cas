@@ -30,9 +30,47 @@
 
 **Phase 1 — this plan.** Schema, the purchasing area, and the products module itself. That is a coherent shippable slice: no new product needs a code, and nothing in purchasing shows one.
 
-**Phase 2 — a later plan, not this one.** Sales (delivery receipts, sales orders, invoices, quotations, memos), inventory and manufacturing (stock adjustments, BOM, work orders, production runs), and reports. Roughly 60 further references. Named here so the boundary is deliberate rather than forgotten.
+**Phase 2 — a later plan, not this one.** Sales (delivery receipts, sales orders, invoices, quotations, memos), inventory and manufacturing (stock adjustments, BOM, work orders, production runs), and reports. Named here so the boundary is deliberate rather than forgotten.
 
 Counted 2026-09-08: 32 references in the purchasing area, ~96 Python and 44 templates in total.
+
+### Re-measured 2026-09-10, after Phase 1 shipped
+
+The "roughly 60" above was an undercount. Task 7's verification swept
+`\.code` (not the narrower `product_code`, which missed live defects in four
+consecutive tasks) and found **135** remaining sites, itemised with file:line in
+`.git/sdd/task-7-report.md`:
+
+| Module | Sites | | Module | Sites |
+|---|---|---|---|---|
+| reports | 21 | | sales_orders | 10 |
+| delivery_receipts | 21 | | sales_invoices | 6 |
+| bill_of_materials | 16 | | quotations | 6 |
+| stock_adjustments | 15 | | cash_receipts | 5 |
+| work_orders | 14 | | sales_memos | 4 |
+| production_runs | 13 | | static/js | 3 |
+
+**Making the column optional turned some of these into live defects**, because
+they interpolate the code unconditionally and it is now `None`/`null`. Two sets
+were therefore pulled forward out of Phase 2 and are already fixed:
+
+- **The 26 ledger-writing sites** (`fix: the ledger stops recording "None"`,
+  2026-09-10). They wrote the literal string `"None"` into JournalEntryLine
+  descriptions and StockMovement reasons -- permanent records. Bounded rather
+  than retroactive: the 566 existing products all carry codes, so the damage
+  would have begun with the first product created after deploy.
+- **`static/js/stock_adjustments_form.js`** and its `ORDER BY Product.code`
+  (2026-09-10). The picker read `"null - Widget"`, and SQLite sorts NULLs FIRST
+  so every new product clumped above the coded ones.
+
+**Only two sites in the whole 135 guard against a null code**
+(`static/js/delivery_receipts.js:33`, `static/js/sales_memos_form.js:33`, plus
+`amendments/validation.py::_line_label()`), so a Phase 2 plan should open by
+sweeping for unconditional interpolation rather than by module.
+
+Also out of scope and still true: `_build_crv_je_preview` (cash receipts) does
+not sum same-account journal-entry legs, unlike the APV and CDV faces fixed on
+2026-09-10.
 
 ---
 

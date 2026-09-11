@@ -34,8 +34,11 @@ def _can_manage():
 
 def _tracked_products():
     from app.products.models import Product
+    # By NAME: the code is retired and NULL for every newly created product,
+    # and SQLite sorts NULLs FIRST -- ordering on it buried the 566 coded
+    # products beneath every new one, in arbitrary order.
     return (Product.query.filter_by(is_active=True, track_inventory=True)
-            .order_by(Product.code).all())
+            .order_by(Product.name).all())
 
 
 def _product_options(products):

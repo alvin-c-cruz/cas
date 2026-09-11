@@ -38,7 +38,11 @@
     products.forEach(function (p) {
       var opt = document.createElement('option');
       opt.value = String(p.id);
-      opt.textContent = p.code + ' - ' + p.name;
+      // Name only. The code is retired and now optional (owner, 2026-09-08),
+      // so this join rendered the literal string "null - Widget" for every
+      // product created since. The payload still carries `code` because the
+      // sales-side pickers read it; only the DISPLAY changes here.
+      opt.textContent = p.name;
       if (selectedId != null && String(p.id) === String(selectedId)) { opt.selected = true; }
       sel.appendChild(opt);
     });
