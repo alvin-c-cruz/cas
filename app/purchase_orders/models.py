@@ -14,15 +14,29 @@ from app.utils.concurrency import RowVersioned
 from app.amendments.mixins import Amendable
 from app.amendments.snapshot import money
 
-VAT_TREATMENTS = ('inclusive', 'exclusive', 'zero_rated')
+#: Owner's note, 2026-09-07: the order form offers all five. `exempt` and
+#: `non_vat` are distinct BIR classifications -- an exempt transaction is
+#: outside VAT by law, a non-VAT supplier is not registered for it -- but both
+#: carry no VAT, which is all the arithmetic on an order needs to know.
+VAT_TREATMENTS = ('inclusive', 'exclusive', 'zero_rated', 'exempt', 'non_vat')
+
+#: Treatments that carry NO VAT. Kept as a named set so calculate_totals() and
+#: anything downstream cannot drift apart on which ones those are.
+NO_VAT_TREATMENTS = ('zero_rated', 'exempt', 'non_vat')
 
 # The wording PurchaseOrderForm's SelectField shows (app/purchase_orders/forms.py:25).
 # Form, detail and print must share the document's jargon, so the labels live in ONE
 # place rather than being re-spelled per template.
+#: What the PRINTED order shows (vat_treatment_label). A token missing from
+#: here falls back to the raw value, so an order would have gone to the vendor
+#: reading "non_vat" -- every value in VAT_TREATMENTS needs an entry, and there
+#: is a test asserting the two lists cannot drift apart.
 VAT_TREATMENT_LABELS = {
     'inclusive': 'VAT Inclusive',
     'exclusive': 'VAT Exclusive',
+    'exempt': 'VAT Exempt',
     'zero_rated': 'Zero-Rated',
+    'non_vat': 'Non-VAT',
 }
 
 STANDARD_VAT_RATE = Decimal('12')
@@ -210,14 +224,24 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
             self.subtotal = gross                                 # net
             self.vat_amount = (gross * STANDARD_VAT_RATE / 100).quantize(Decimal('0.01'), ROUND_HALF_UP)
             self.total_amount = self.subtotal + self.vat_amount
-        elif self.vat_treatment == 'zero_rated':
+        elif self.vat_treatment in NO_VAT_TREATMENTS:
             self.subtotal = gross
             self.vat_amount = Decimal('0.00')
             self.total_amount = gross
-        else:  # inclusive
+        elif self.vat_treatment == 'inclusive':
             self.subtotal = gross
             self.vat_amount = sum((Decimal(str(li.vat_amount or 0)) for li in self.line_items),
                                   Decimal('0.00'))
+            self.total_amount = gross
+        else:
+            # UNRECOGNISED. This used to be `else:  # inclusive`, which meant any
+            # value the method did not know about silently extracted VAT -- so
+            # adding 'exempt' to the dropdown alone would have charged tax on an
+            # exempt order while the header still read "VAT Exempt". A bug that
+            # charges tax must not be the quiet path, so an unknown treatment
+            # carries no VAT.
+            self.subtotal = gross
+            self.vat_amount = Decimal('0.00')
             self.total_amount = gross
 
     def snapshot_line_extras(self, line):

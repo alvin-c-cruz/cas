@@ -10,7 +10,12 @@ pytestmark = [pytest.mark.purchase_orders]
 
 
 def test_vat_treatments_constant():
-    assert VAT_TREATMENTS == ('inclusive', 'exclusive', 'zero_rated')
+    # VAT Exempt and Non-VAT added 2026-09-11 (owner's note of 2026-09-07).
+    # Both carry NO VAT -- see NO_VAT_TREATMENTS and the explicit fallback in
+    # calculate_totals(), which is what stops a new token here from silently
+    # charging tax through the old `else:  # inclusive` branch.
+    assert VAT_TREATMENTS == ('inclusive', 'exclusive', 'zero_rated',
+                              'exempt', 'non_vat')
 
 
 def test_generate_po_number_first_of_month(db_session):

@@ -32,9 +32,14 @@ class PurchaseOrderForm(RowVersionFormMixin, FlaskForm):
         ('HKD', 'HKD - Hong Kong Dollar'), ('AUD', 'AUD - Australian Dollar'),
     ], default='PHP', validators=[DataRequired()])
 
+    # Five options, in the owner's own order (handwritten note, 2026-09-07).
+    # 'exempt' and 'non_vat' carry no VAT -- see NO_VAT_TREATMENTS and the
+    # explicit fallback in PurchaseOrder.calculate_totals(), which is what stops
+    # a new value here from silently charging tax.
     vat_treatment = SelectField('VAT Treatment', choices=[
         ('inclusive', 'VAT Inclusive'), ('exclusive', 'VAT Exclusive'),
-        ('zero_rated', 'Zero-Rated'),
+        ('exempt', 'VAT Exempt'), ('zero_rated', 'Zero-Rated'),
+        ('non_vat', 'Non-VAT'),
     ], default='inclusive', validators=[DataRequired()])
 
     payment_terms = SelectField('Payment Terms', validators=[DataRequired()], choices=[
