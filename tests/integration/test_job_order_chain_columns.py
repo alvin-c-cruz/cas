@@ -1,8 +1,9 @@
-"""The Job Order Slips page shows each order's DR / SI / CR document chain.
+"""The Job Order Slips page shows each order's DR / SI document chain.
 
 Owner request 2026-09-12: the Purchase Requests list's PO/RR/AP/CD columns, on the
 sell side. Columns only -- the page stays operations-facing and unpriced, so the
-Sales Invoice and Cash Receipt appear as numbers, never as amounts.
+Sales Invoice appears as a number, never as an amount. The collection column was
+dropped the same day: collection is money, and this page is unpriced.
 Spec: docs/design/2026-09-12-job-order-chain-columns-design.md.
 """
 import re
@@ -86,10 +87,10 @@ def test_headers_add_the_chain_between_status_and_actions(client, db_session, ad
     html = client.get('/sales-orders/job-order-slips').get_data(as_text=True)
     heads = re.findall(r'<th(?:\s[^>]*)?>(.*?)</th>', html, re.S)   # not <thead>
     assert heads == ['SO #', 'Customer', 'Order Date', 'Expected Delivery', 'Status',
-                     'DR #', 'SI #', 'CR #', 'Actions']
+                     'DR #', 'SI #', 'Actions']
 
 
-def test_order_with_full_chain_links_all_three(client, db_session, admin_user, main_branch):
+def test_order_with_full_chain_links_dr_and_si(client, db_session, admin_user, main_branch):
     so = _so(main_branch, 'SO-JO-2')
     dr, si, crv = _chain(so)
     _login(client, admin_user, main_branch)
@@ -97,7 +98,7 @@ def test_order_with_full_chain_links_all_three(client, db_session, admin_user, m
     row = _row(html, 'SO-JO-2')
     assert f'href="/delivery-receipts/{dr.id}"' in row and '70001' in row
     assert f'href="/sales-invoices/{si.id}"' in row and 'SI-7001' in row
-    assert f'href="/cash-receipts/{crv.id}"' in row and 'CR-7001' in row
+    assert 'CR-7001' not in row      # collection column dropped (owner, 2026-09-12)
 
 
 def test_order_with_nothing_shows_em_dashes(client, db_session, admin_user, main_branch):
@@ -105,10 +106,10 @@ def test_order_with_nothing_shows_em_dashes(client, db_session, admin_user, main
     _login(client, admin_user, main_branch)
     html = client.get('/sales-orders/job-order-slips').get_data(as_text=True)
     row = _row(html, 'SO-JO-3')
-    # Cells: SO#, Customer, Order Date, Expected Delivery, Status, DR#, SI#, CR#, Actions.
+    # Cells: SO#, Customer, Order Date, Expected Delivery, Status, DR#, SI#, Actions.
     # An em dash, not a blank: an undelivered row reads as answered, not as a gap.
     cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.S)
-    assert [c.strip() for c in cells[5:8]] == ['—', '—', '—']
+    assert [c.strip() for c in cells[5:7]] == ['—', '—']
 
 
 def test_no_amount_leaks_into_the_row(client, db_session, admin_user, main_branch):

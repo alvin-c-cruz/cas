@@ -18,7 +18,6 @@
                     <th>Status</th>
                     <th>DR #</th>
                     <th>SI #</th>
-                    <th>CR #</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -34,8 +33,9 @@
                             {{ order.status|replace('_', ' ')|title }}
                         </span>
                     </td>
-                    {# The sell-side chain: SO -> DR -> SI -> CR, the Purchase Requests
-                       list's PO/RR/AP/CD columns mirrored. Each dict is resolved ONCE
+                    {# The sell-side chain: SO -> DR -> SI (no collection column -- owner,
+                       2026-09-12: collection is money, this page is unpriced), the
+                       Purchase Requests list's PO/RR/AP/CD columns mirrored. Each dict is resolved ONCE
                        for the page in job_order_list(); never query per row here.
                        Numbers only -- this page is unpriced by design. An em dash, not
                        a blank, so an undelivered row reads as answered rather than as
@@ -53,12 +53,6 @@
                       {%- else -%}—{%- endfor -%}
                     </td>
                     <td>
-                      {%- for cr_id, cr_number in cr_links.get(order.id, []) -%}
-                        <a href="{{ url_for('cash_receipts.view', id=cr_id) }}">{{ cr_number }}</a>
-                        {{- ', ' if not loop.last -}}
-                      {%- else -%}—{%- endfor -%}
-                    </td>
-                    <td>
                         <a href="{{ url_for('sales_orders.print_job_order', so_number=order.so_number) }}"
                            class="btn-action" target="_blank" rel="noopener">Print</a>
                     </td>
@@ -71,7 +65,7 @@
                 {% for item in order.line_items %}
                 <tr class="job-order-item{{ ' job-order-item--closed' if item.line_status == 'closed' else '' }}">
                     <td></td>
-                    <td colspan="8">
+                    <td colspan="7">
                         <span class="job-order-item-qty">{{ item | qty_fmt('—') }}{{ ' ' ~ item.uom_text if item.uom_text else '' }}</span>
                         <span class="job-order-item-desc">{% if item.product %}{{ item.product.job_order_name or item.product.name }}{% else %}—{% endif %}</span>
                         {% if item.delivery_date %}<span class="job-order-item-date">{{ item.delivery_date.strftime('%d-%b-%Y') }}</span>{% endif %}

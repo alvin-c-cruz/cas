@@ -1,4 +1,4 @@
-"""Page-level document-chain resolvers for the Job Order Slips page (SO -> DR -> SI -> CR).
+"""Page-level document-chain resolvers for the Job Order Slips page (SO -> DR -> SI).
 
 The Purchase Requests list answers "where have the goods got to?" with one query per
 document type for the whole page (app/purchase_requests/allocation.py). These are the
@@ -6,7 +6,6 @@ sell-side twins. Rules under test, from docs/design/2026-09-12-job-order-chain-c
 
 - a Delivery Receipt counts only when committed (a draft has delivered nothing);
 - a Sales Invoice counts by the DR->SI link alone (cleared on void by _unbill_drs);
-- a Cash Receipt counts unless voided/cancelled (a voided receipt collected nothing);
 - one document feeding two lines/DRs/SIs of the same order shows ONCE;
 - empty or None ids -> {}.
 """
@@ -50,26 +49,6 @@ def _si(so, number, status='posted'):
                       branch_id=so.branch_id, status=status, total_amount=Decimal('1120'))
     db.session.add(si); db.session.commit()
     return si
-
-
-def _crv(so, number, invoices, status='posted'):
-    from app.accounts.models import Account
-    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
-    cash = Account.query.filter_by(code='1011').first()
-    if cash is None:
-        cash = Account(code='1011', name='Cash in Bank', account_type='Asset',
-                       normal_balance='debit', is_active=True)
-        db.session.add(cash); db.session.commit()
-    crv = CashReceiptVoucher(branch_id=so.branch_id, crv_number=number, crv_date=date(2026, 9, 5),
-                             customer_id=so.customer_id, customer_name=so.customer_name,
-                             cash_account_id=cash.id, status=status, total_amount=Decimal('1120'))
-    db.session.add(crv); db.session.commit()
-    for n, inv in enumerate(invoices, start=1):
-        db.session.add(CRVArLine(crv_id=crv.id, line_number=n, invoice_id=inv.id,
-                                 invoice_number=inv.invoice_number,
-                                 original_balance=Decimal('1120'), amount_applied=Decimal('1120')))
-    db.session.commit()
-    return crv
 
 
 class TestDrLinks:
@@ -129,35 +108,3 @@ class TestSiLinks:
         si.status = 'voided'
         db.session.commit()
         assert si_links_for_so_ids([so.id]) == {}
-
-
-class TestCrLinks:
-
-    def test_posted_crv_listed_voided_not(self, db_session, main_branch):
-        from app.sales_orders.chain_links import cr_links_for_so_ids
-        so = _so(main_branch)
-        si = _si(so, 'SI-0001')
-        _dr(so, '00001', status='billed', invoice=si)
-        _crv(so, 'CR-0002', [si], status='posted')
-        _crv(so, 'CR-0001', [si], status='voided')
-        _crv(so, 'CR-0003', [si], status='cancelled')
-        links = cr_links_for_so_ids([so.id])
-        assert [n for _id, n in links[so.id]] == ['CR-0002']
-
-    def test_one_crv_over_two_sis_listed_once(self, db_session, main_branch):
-        from app.sales_orders.chain_links import cr_links_for_so_ids
-        so = _so(main_branch)
-        si1 = _si(so, 'SI-0001'); si2 = _si(so, 'SI-0002')
-        _dr(so, '00001', status='billed', invoice=si1)
-        _dr(so, '00002', status='billed', invoice=si2)
-        crv = _crv(so, 'CR-0001', [si1, si2])
-        assert cr_links_for_so_ids([so.id]) == {so.id: [(crv.id, 'CR-0001')]}
-
-    def test_crv_on_another_order_not_listed(self, db_session, main_branch):
-        from app.sales_orders.chain_links import cr_links_for_so_ids
-        so = _so(main_branch)
-        other = _so(main_branch, number='SO-CH-2')
-        si = _si(other, 'SI-0009')
-        _dr(other, '00009', status='billed', invoice=si)
-        _crv(other, 'CR-0009', [si])
-        assert cr_links_for_so_ids([so.id]) == {}

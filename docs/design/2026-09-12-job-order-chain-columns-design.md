@@ -3,6 +3,10 @@
 **Date:** 2026-09-12 · **Owner decision:** upgrade the Job Order Slips page in place;
 chain columns only (no cards, no filters, no amounts).
 
+**Amendment, same day:** the **CR # column was dropped** — collection is money, and the
+slips page is unpriced. The chain shown is SO → DR → SI. The order's line items are
+listed under each order row (quantity, description, delivery date; no price).
+
 ## Why
 
 The Purchase Requests list answers "where have this requisition's goods got to?" with

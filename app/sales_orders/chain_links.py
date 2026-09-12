@@ -1,4 +1,4 @@
-"""Document-chain resolvers for the Job Order Slips page: SO -> DR -> SI -> CR.
+"""Document-chain resolvers for the Job Order Slips page: SO -> DR -> SI.
 
 The sell-side twin of app/purchase_requests/allocation.py's po/rr/ap/cd_links_for_pr_ids.
 Each helper answers, for a whole page of Sales Orders in ONE query, "which documents of
@@ -14,7 +14,9 @@ Rules (docs/design/2026-09-12-job-order-chain-columns-design.md):
   link ALONE: the app sets it when the DR is billed and clears it when the SI is voided
   or cancelled (sales_invoices.views._unbill_drs), so the link is the truth and an SI
   status filter would only drift from it;
-- a Cash Receipt counts unless voided/cancelled -- a voided receipt collected nothing.
+
+No Cash Receipt resolver: the owner dropped the collection column (2026-09-12) --
+collection is money and the slips page is unpriced.
 """
 from app import db
 
@@ -68,29 +70,6 @@ def si_links_for_so_ids(so_ids):
             .filter(DeliveryReceipt.sales_order_id.in_(ids))
             .filter(DeliveryReceipt.status.in_(COMMITTED_STATUSES))
             .order_by(SalesInvoice.invoice_number.asc())
-            .distinct()
-            .all())
-    return _dedup_links(rows)
-
-
-def cr_links_for_so_ids(so_ids):
-    """``{so_id: [(crv_id, crv_number), ...]}`` -- Cash Receipts applied to the Sales
-    Invoices that billed the order's Delivery Receipts; voided/cancelled excluded."""
-    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
-    from app.delivery_receipts.models import COMMITTED_STATUSES, DeliveryReceipt
-    from app.sales_invoices.models import SalesInvoice
-    ids = _clean_ids(so_ids)
-    if not ids:
-        return {}
-    rows = (db.session.query(DeliveryReceipt.sales_order_id,
-                             CashReceiptVoucher.id, CashReceiptVoucher.crv_number)
-            .join(SalesInvoice, SalesInvoice.id == DeliveryReceipt.sales_invoice_id)
-            .join(CRVArLine, CRVArLine.invoice_id == SalesInvoice.id)
-            .join(CashReceiptVoucher, CashReceiptVoucher.id == CRVArLine.crv_id)
-            .filter(DeliveryReceipt.sales_order_id.in_(ids))
-            .filter(DeliveryReceipt.status.in_(COMMITTED_STATUSES))
-            .filter(CashReceiptVoucher.status.notin_(('voided', 'cancelled')))
-            .order_by(CashReceiptVoucher.crv_number.asc())
             .distinct()
             .all())
     return _dedup_links(rows)
