@@ -85,15 +85,20 @@
      Two per-field options: boxed date digits (one cell per digit) and protective
      asterisks bracketing an amount (none/left/right/both). #}
   {% for key, f in layout.fields.items() %}
-  {%- set opt = 'data-stars="' ~ f.stars ~ '" data-boxed="' ~ ('1' if f.boxed else '') ~ '" data-pitch="' ~ f.pitch ~ '"' -%}
+  {#- The three option attributes are written inline on each tag, NOT built into one
+      string and emitted as {{ opt }}: autoescape turned that string's quotes into &#34;,
+      the parser then read `data-stars=&#34;both&#34;` as the unquoted value `"both"`
+      (quotes included), the designer strip showed none / unticked, and the next Save
+      wrote that back -- both options wiped. Found on production 2026-09-12. Same class
+      of bug as the body font-family; see test_preprinted_font_family_renders. -#}
   {% if key == 'check_date' and f.boxed %}
-  <div class="pp-el pp-boxed{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" {{ opt }}
+  <div class="pp-el pp-boxed{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" data-stars="{{ f.stars }}" data-boxed="{{ '1' if f.boxed else '' }}" data-pitch="{{ f.pitch }}"
        style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{% for ch in date_digits %}<span class="pp-digit" style="display:inline-block;width:{{ f.pitch }}px;text-align:center;">{{ ch }}</span>{% endfor %}</div>
   {% else %}
   {%- set raw = values[key] -%}
   {%- set lead = star_run if f.stars in ('left', 'both') else '' -%}
   {%- set trail = star_run if f.stars in ('right', 'both') else '' -%}
-  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" {{ opt }}
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" data-stars="{{ f.stars }}" data-boxed="{{ '1' if f.boxed else '' }}" data-pitch="{{ f.pitch }}"
        style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ lead ~ raw ~ trail }}</div>
   {% endif %}
   {% endfor %}

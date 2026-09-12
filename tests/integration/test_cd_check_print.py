@@ -204,6 +204,28 @@ class TestCheckOptions:
         assert '***5,550.00***' in body                              # both sides
         assert '***FIVE THOUSAND' in body                            # left only
 
+    def test_option_data_attributes_are_real_attributes(self, client, db_session, admin_user, main_branch):
+        """The designer reads stars/boxed/pitch back from data-* attributes. Found on
+        production 2026-09-12: the template built the three attributes as ONE string and
+        emitted it with `{{ opt }}`, so autoescape turned every quote into `&#34;` and the
+        browser parsed `data-stars=&#34;both&#34;` as the unquoted value `"both"` -- quotes
+        included. The strip then showed `* none` / boxed-unticked for a layout that had
+        both set, and the next Save wrote what the strip showed: stars and boxed wiped."""
+        from app.cash_disbursements.check_layout import save_layout
+        cdv = _check_cdv(db_session, main_branch)
+        save_layout({'fields': {'amount_figures': {'stars': 'both'},
+                                'check_date': {'boxed': True, 'pitch': 26}}},
+                    'admin', account_id=cdv._cash_acct_id)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        assert 'data-el="amount_figures"' in body
+        figures = body[body.index('data-el="amount_figures"'):]
+        figures = figures[:figures.index('>')]
+        assert 'data-stars="both"' in figures
+        date = body[body.index('data-el="check_date"'):]
+        date = date[:date.index('>')]
+        assert 'data-boxed="1"' in date and 'data-pitch="26"' in date
+
     def test_boxed_date_renders_digit_cells(self, client, db_session, admin_user, main_branch):
         from app.cash_disbursements.check_layout import save_layout
         cdv = _check_cdv(db_session, main_branch)
