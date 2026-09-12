@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/apv_preprinted_designer.css') }}?v=2">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
+  body { color: #111; background: #eee; }  /* font-family is on the <body> tag: an attribute decodes autoescaped quotes, a <style> block does not */
   /* Canvas size is paper-driven (set inline; JS updates it live on paper change). */
   .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
   /* `pre`, not `nowrap` (owner 2026-09-06: "Notes (Particulars) accepted multi line...
@@ -93,7 +93,7 @@
 </style>
 <style id="ppPageStyle">@page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; }</style>
 </head>
-<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
+<body style="font-family: {{ layout.page.fontFamily }};" data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
 
 {% macro field(key, value, iso='') %}
   {% set f = layout.fields[key] %}

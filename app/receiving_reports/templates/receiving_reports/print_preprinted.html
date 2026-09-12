@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/preprinted_designer.css') }}?v=1">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
+  body { color: #111; background: #eee; }  /* font-family is on the <body> tag: an attribute decodes autoescaped quotes, a <style> block does not */
   /* Canvas size is paper-driven (set inline; JS updates it live on paper change). */
   .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
   .pp-el { position: absolute; white-space: nowrap; }
@@ -55,7 +55,7 @@
 </style>
 <style id="ppPageStyle">@page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; }</style>
 </head>
-<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
+<body style="font-family: {{ layout.page.fontFamily }};" data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
 
 {# `width` is emitted deliberately. Every preprinted_base document declares a
    mandatory per-field `w` (the RR sets 500/200), and the shared designer's

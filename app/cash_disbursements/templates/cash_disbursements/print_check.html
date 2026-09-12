@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/cd_check_designer.css') }}?v=2">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
+  body { color: #111; background: #eee; }  /* font-family is on the <body> tag: an attribute decodes autoescaped quotes, a <style> block does not */
   .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
   /* Optional scanned-check background: screen-only positioning aid, NEVER printed (we
      overprint the physical stock). */
@@ -40,7 +40,7 @@
 </style>
 <style id="ppPageStyle">@page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; }</style>
 </head>
-<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
+<body style="font-family: {{ layout.page.fontFamily }};" data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
 
 <div class="pp-toolbar screen-only">
   <button type="button" class="btn btn-print" onclick="window.print()">Print</button>
