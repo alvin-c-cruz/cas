@@ -986,7 +986,16 @@ def job_order_list():
     if AppSettings.get_setting('job_order_slips_show_drafts', '0') != '1':
         query = query.filter(SalesOrder.status != 'draft')
     orders = query.order_by(SalesOrder.order_date.desc(), SalesOrder.id.desc()).all()
-    return render_template('sales_orders/job_order_list.html', orders=orders)
+    # The sell-side document chain, SO -> DR -> SI -> CR, each ONE query for the
+    # whole list (owner request 2026-09-12, the Purchase Requests list's PO/RR/AP/CD
+    # columns mirrored). Never a per-row property here.
+    from app.sales_orders.chain_links import (
+        cr_links_for_so_ids, dr_links_for_so_ids, si_links_for_so_ids)
+    so_ids = [o.id for o in orders]
+    return render_template('sales_orders/job_order_list.html', orders=orders,
+                           dr_links=dr_links_for_so_ids(so_ids),
+                           si_links=si_links_for_so_ids(so_ids),
+                           cr_links=cr_links_for_so_ids(so_ids))
 
 
 @sales_orders_bp.route('/sales-orders/print-layout', methods=['POST'])

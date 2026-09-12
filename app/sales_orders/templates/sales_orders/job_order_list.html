@@ -16,6 +16,9 @@
                     <th>Order Date</th>
                     <th>Expected Delivery</th>
                     <th>Status</th>
+                    <th>DR #</th>
+                    <th>SI #</th>
+                    <th>CR #</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -30,6 +33,30 @@
                         <span class="badge badge-{{ badge_map.get(order.status, 'draft') }}">
                             {{ order.status|replace('_', ' ')|title }}
                         </span>
+                    </td>
+                    {# The sell-side chain: SO -> DR -> SI -> CR, the Purchase Requests
+                       list's PO/RR/AP/CD columns mirrored. Each dict is resolved ONCE
+                       for the page in job_order_list(); never query per row here.
+                       Numbers only -- this page is unpriced by design. An em dash, not
+                       a blank, so an undelivered row reads as answered rather than as
+                       a rendering gap. #}
+                    <td>
+                      {%- for dr_id, dr_number in dr_links.get(order.id, []) -%}
+                        <a href="{{ url_for('delivery_receipts.view', id=dr_id) }}">{{ dr_number }}</a>
+                        {{- ', ' if not loop.last -}}
+                      {%- else -%}—{%- endfor -%}
+                    </td>
+                    <td>
+                      {%- for si_id, si_number in si_links.get(order.id, []) -%}
+                        <a href="{{ url_for('sales_invoices.view', id=si_id) }}">{{ si_number }}</a>
+                        {{- ', ' if not loop.last -}}
+                      {%- else -%}—{%- endfor -%}
+                    </td>
+                    <td>
+                      {%- for cr_id, cr_number in cr_links.get(order.id, []) -%}
+                        <a href="{{ url_for('cash_receipts.view', id=cr_id) }}">{{ cr_number }}</a>
+                        {{- ', ' if not loop.last -}}
+                      {%- else -%}—{%- endfor -%}
                     </td>
                     <td>
                         <a href="{{ url_for('sales_orders.print_job_order', so_number=order.so_number) }}"

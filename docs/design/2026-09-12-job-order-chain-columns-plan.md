@@ -30,11 +30,11 @@
 **Interfaces:**
 - Produces: `dr_links_for_so_ids(so_ids) -> dict[int, list[tuple[int, str]]]`, `si_links_for_so_ids(so_ids)`, `cr_links_for_so_ids(so_ids)` — same return shape; `[]`/`None` → `{}`.
 
-- [ ] **Step 1: Write the failing tests** (`tests/unit/test_so_chain_links.py`; fixtures build real rows through the ORM — see file in repo after this task).
-- [ ] **Step 2: Run** `pytest tests/unit/test_so_chain_links.py -q` → FAIL `ModuleNotFoundError: app.sales_orders.chain_links`.
-- [ ] **Step 3: Implement** `app/sales_orders/chain_links.py` (queries below).
-- [ ] **Step 4: Run** the file again → all PASS.
-- [ ] **Step 5: Commit** `feat(so): chain-link resolvers for the Job Order Slips page`.
+- [x] **Step 1: Write the failing tests** (`tests/unit/test_so_chain_links.py`; fixtures build real rows through the ORM — see file in repo after this task).
+- [x] **Step 2: Run** `pytest tests/unit/test_so_chain_links.py -q` → FAIL `ModuleNotFoundError: app.sales_orders.chain_links`.
+- [x] **Step 3: Implement** `app/sales_orders/chain_links.py` (queries below).
+- [x] **Step 4: Run** the file again → all PASS.
+- [x] **Step 5: Commit** `feat(so): chain-link resolvers for the Job Order Slips page`.
 
 Queries:
 
@@ -58,8 +58,8 @@ db.session.query(DeliveryReceipt.sales_order_id, DeliveryReceipt.id, DeliveryRec
 **Interfaces:**
 - Consumes: the three resolvers from Task 1.
 
-- [ ] **Step 1: Write the failing integration test** — SO with delivered DR + SI + posted CRV renders the three links; an untouched SO renders `—` ×3; the SO's row contains no amount; header order `Status · DR # · SI # · CR # · Actions`.
-- [ ] **Step 2: Run** → FAIL (no `DR #` header).
-- [ ] **Step 3: Implement** — view passes `dr_links`, `si_links`, `cr_links`; template adds the `<th>`s and `<td>`s copied from `purchase_requests/list.html:100-131` with the once-per-page comment.
-- [ ] **Step 4: Run** the new test + `pytest -m sales_orders -q` → PASS.
-- [ ] **Step 5: Commit** `feat(so): DR/SI/CR chain columns on the Job Order Slips page`.
+- [x] **Step 1: Write the failing integration test** — SO with delivered DR + SI + posted CRV renders the three links; an untouched SO renders `—` ×3; the SO's row contains no amount; header order `Status · DR # · SI # · CR # · Actions`.
+- [x] **Step 2: Run** → FAIL (no `DR #` header).
+- [x] **Step 3: Implement** — view passes `dr_links`, `si_links`, `cr_links`; template adds the `<th>`s and `<td>`s copied from `purchase_requests/list.html:100-131` with the once-per-page comment.
+- [x] **Step 4: Run** the new test + `pytest -m sales_orders -q` → PASS.
+- [x] **Step 5: Commit** `feat(so): DR/SI/CR chain columns on the Job Order Slips page`.
