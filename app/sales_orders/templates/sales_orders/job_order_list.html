@@ -24,7 +24,7 @@
             </thead>
             <tbody>
                 {% for order in orders %}
-                <tr>
+                <tr class="job-order-row">
                     <td>{{ order.so_number }}</td>
                     <td>{{ order.customer_name }}</td>
                     <td>{{ order.order_date.strftime('%b %d, %Y') }}</td>
@@ -63,6 +63,22 @@
                            class="btn-action" target="_blank" rel="noopener">Print</a>
                     </td>
                 </tr>
+                {# The order's line items, always visible (owner, 2026-09-12): the same
+                   three facts the Job Order Slip print carries per line -- quantity,
+                   description (job-order name, else product name), delivery date. No
+                   price. A closed line stays listed but is struck and marked so ops
+                   does not produce it. Loaded once per page in job_order_list(). #}
+                {% for item in order.line_items %}
+                <tr class="job-order-item{{ ' job-order-item--closed' if item.line_status == 'closed' else '' }}">
+                    <td></td>
+                    <td colspan="8">
+                        <span class="job-order-item-qty">{{ item | qty_fmt('—') }}{{ ' ' ~ item.uom_text if item.uom_text else '' }}</span>
+                        <span class="job-order-item-desc">{% if item.product %}{{ item.product.job_order_name or item.product.name }}{% else %}—{% endif %}</span>
+                        {% if item.delivery_date %}<span class="job-order-item-date">{{ item.delivery_date.strftime('%d-%b-%Y') }}</span>{% endif %}
+                        {% if item.line_status == 'closed' %}<span class="job-order-item-closed">(closed)</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
                 {% endfor %}
             </tbody>
         </table>

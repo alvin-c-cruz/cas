@@ -2188,3 +2188,10 @@ tr.pc-row-excluded { background: var(--bg); }
   color: var(--text-2);
   margin: 6px 0;
 }
+
+/* Job Order Slips: line items nested under each order row (always visible). */
+.job-order-item td { padding-top: 2px; padding-bottom: 2px; font-size: 0.9em; background: #fafbfc; color: var(--text-2, #334155); border-top: 0; }
+.job-order-item-qty { display: inline-block; min-width: 7em; text-align: right; font-variant-numeric: tabular-nums; margin-right: 12px; }
+.job-order-item-date { margin-left: 12px; color: var(--text-3, #64748b); }
+.job-order-item--closed .job-order-item-desc, .job-order-item--closed .job-order-item-qty { text-decoration: line-through; color: var(--text-3, #64748b); }
+.job-order-item-closed { margin-left: 8px; font-size: 0.85em; color: var(--text-3, #64748b); }

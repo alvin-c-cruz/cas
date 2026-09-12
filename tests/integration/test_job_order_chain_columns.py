@@ -75,7 +75,7 @@ def _chain(so):
 
 def _row(html, so_number):
     """The whole <tr> for one order -- assertions are scoped to it, not the page."""
-    m = re.search(r'<tr>(?:(?!</tr>).)*?' + re.escape(so_number) + r'(?:(?!</tr>).)*?</tr>', html, re.S)
+    m = re.search(r'<tr class="job-order-row">(?:(?!</tr>).)*?' + re.escape(so_number) + r'(?:(?!</tr>).)*?</tr>', html, re.S)
     assert m, f'no row for {so_number}'
     return m.group(0)
 

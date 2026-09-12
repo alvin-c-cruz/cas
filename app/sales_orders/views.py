@@ -981,8 +981,13 @@ def print_job_order(so_number):
 def job_order_list():
     """Operations-facing list of Sales Orders for printing Job Order Slips -- no pricing
     columns. Draft-status SOs are hidden unless job_order_slips_show_drafts is on."""
+    from sqlalchemy.orm import selectinload
     branch_id = session.get('selected_branch_id')
-    query = SalesOrder.query.filter_by(branch_id=branch_id)
+    # Items are listed under every order (owner request 2026-09-12, "always
+    # visible"): load them and their products for the whole page in two extra
+    # queries, not two per row.
+    query = (SalesOrder.query.filter_by(branch_id=branch_id)
+             .options(selectinload(SalesOrder.line_items).selectinload(SalesOrderItem.product)))
     if AppSettings.get_setting('job_order_slips_show_drafts', '0') != '1':
         query = query.filter(SalesOrder.status != 'draft')
     orders = query.order_by(SalesOrder.order_date.desc(), SalesOrder.id.desc()).all()
