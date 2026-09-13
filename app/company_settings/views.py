@@ -259,6 +259,67 @@ def save_control_accounts():
     return redirect(url_for('company_settings.control_accounts'))
 
 
+# ---------------------------------------------------------------------------
+# Owners' View -- the VAT-inclusive reporting basis (spec 2026-09-13)
+# ---------------------------------------------------------------------------
+def _owners_view_context():
+    from app.posting.control_accounts import get_postable_accounts
+    from app.accounts.account_types import BASE_CATEGORY
+    from app.reports.basis import (ENABLED_KEY, vat_expense_setting_key,
+                                   vat_expense_account_map, _active_categories)
+    expense_accounts = [a for a in get_postable_accounts() if BASE_CATEGORY.get(a.account_type) == 'Expense']
+    current = vat_expense_account_map()
+    rows = [{'category': c, 'field': vat_expense_setting_key(c.id),
+             'code': current[c.id].code if current.get(c.id) else ''} for c in _active_categories()]
+    return {'enabled': AppSettings.get_setting(ENABLED_KEY) == '1',
+            'rows': rows, 'expense_accounts': expense_accounts}
+
+
+@company_settings_bp.route('/owners-view')
+@login_required
+def owners_view():
+    if not current_user.has_full_access:
+        flash("Only Administrators and Chief Accountants can configure the Owners' View.", 'error')
+        return redirect(url_for('dashboard.index'))
+    return render_template('company_settings/owners_view.html', **_owners_view_context())
+
+
+@company_settings_bp.route('/owners-view', methods=['POST'])
+@login_required
+def save_owners_view():
+    """All-or-nothing: validate every field, then write. The switch cannot go on while
+    any active category lacks a usable expense account."""
+    if not current_user.has_full_access:
+        flash('Only Administrators and Chief Accountants can perform this action.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.reports.basis import ENABLED_KEY
+    ctx = _owners_view_context()
+    valid = {a.code: a for a in ctx['expense_accounts']}
+    want_enabled = request.form.get('owners_basis_enabled') == '1'
+    new_values, missing = {}, []
+    for row in ctx['rows']:
+        code = (request.form.get(row['field']) or '').strip()
+        if code and code not in valid:
+            flash(f"Account {code} for {row['category'].name} is not an active, postable expense account.", 'error')
+            return redirect(url_for('company_settings.owners_view'))
+        if not code:
+            missing.append(row['category'].name)
+        new_values[row['field']] = code
+    if want_enabled and missing:
+        flash("Cannot enable the owners' basis: no VAT expense account for " + ', '.join(missing) + '.', 'error')
+        return redirect(url_for('company_settings.owners_view'))
+    new_values[ENABLED_KEY] = '1' if want_enabled else '0'
+    old_values = {k: (AppSettings.get_setting(k) or ('0' if k == ENABLED_KEY else ''))
+                  for k in new_values}
+    for key, value in new_values.items():
+        AppSettings.set_setting(key, value, updated_by=current_user.username)
+    log_audit(module='company_settings', action='update', record_id=None,
+              record_identifier='owners_view', old_values=old_values, new_values=new_values,
+              user_id=current_user.id)
+    flash("Owners' View settings saved.", 'success')
+    return redirect(url_for('company_settings.owners_view'))
+
+
 @company_settings_bp.route('', methods=['GET', 'POST'])
 @login_required
 @admin_panel_required

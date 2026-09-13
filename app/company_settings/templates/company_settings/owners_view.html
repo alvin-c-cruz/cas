@@ -1,0 +1,60 @@
+{# app/company_settings/templates/company_settings/owners_view.html #}
+{% extends "base.html" %}
+{% block title %}Owners' View - {{ company_name }}{% endblock %}
+{% block page_title %}Owners' View{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Owners' View</div>
+    <div class="card-sub">A second reporting basis for the owners: output VAT folded into income, input VAT into expenses, VAT remitted to the BIR shown as VAT expense by product line. The books of record are never changed. Only Administrators and Chief Accountants see the switch on reports.</div>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('company_settings.save_owners_view') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div class="form-group">
+        <label class="form-label" style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" name="owners_basis_enabled" value="1" {{ 'checked' if enabled else '' }}>
+          Enable owners' reporting basis
+        </label>
+        <div class="form-hint">Every active product category must have a VAT expense account before this can be turned on.</div>
+      </div>
+      <h4 style="margin:18px 0 8px;">VAT expense account per product line</h4>
+      {% if rows %}
+      <div class="form-row-2">
+        {% for r in rows %}
+        <div class="form-group">
+          <label class="form-label" for="ov_{{ r.category.id }}">{{ r.category.code }} &mdash; {{ r.category.name }}</label>
+          <select name="{{ r.field }}" id="ov_{{ r.category.id }}" class="form-control">
+            <option value="">&mdash; not assigned &mdash;</option>
+            {% for a in expense_accounts %}
+            <option value="{{ a.code }}" {{ 'selected' if r.code == a.code else '' }}>{{ a.code }}: {{ a.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted">No active product categories. Create them under Product Categories first.</p>
+      {% endif %}
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=3"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('select[id^="ov_"]').forEach(function (sel) {
+    if (typeof initSearchSelect === 'function' && !sel.closest('.choices')) {
+      initSearchSelect(sel);
+    }
+  });
+});
+</script>
+{% endblock %}
