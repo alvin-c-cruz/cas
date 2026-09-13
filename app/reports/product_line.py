@@ -14,22 +14,25 @@ from app.product_categories.models import ProductCategory
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
 from app.sales_memos.models import SalesMemo, SalesMemoItem
 from app.reports.financial import generate_income_statement
+from app.reports.basis import GAAP, OWNERS
 
 # Invoices are "on the books" once posted and through their paid lifecycle.
 _SI_ON_BOOKS = ('posted', 'partially_paid', 'paid')
 
 
 def _net_by_category(item_model, header_model, header_fk, date_col,
-                     start_date, end_date, branch_id, extra_filters):
-    """Return [(category_id_or_None, net_decimal_as_db_number)] grouped by product category.
+                     start_date, end_date, branch_id, extra_filters, gross=False):
+    """Return [(category_id_or_None, amount)] grouped by product category.
 
-    net per line = line_total - vat_amount. An outer join to Product means a NULL
+    amount per line = line_total - vat_amount (GAAP), or line_total when gross=True (the
+    owners' basis keeps VAT inside sales). An outer join to Product means a NULL
     product_id yields category_id None; a product with a NULL category also yields None.
     """
     branch = [header_model.branch_id == branch_id] if branch_id else []
+    measure = item_model.line_total if gross else (item_model.line_total - item_model.vat_amount)
     return db.session.query(
         Product.category_id,
-        func.coalesce(func.sum(item_model.line_total - item_model.vat_amount), 0),
+        func.coalesce(func.sum(measure), 0),
     ).select_from(item_model).join(
         header_model, getattr(item_model, header_fk) == header_model.id
     ).outerjoin(
@@ -39,27 +42,28 @@ def _net_by_category(item_model, header_model, header_fk, date_col,
     ).group_by(Product.category_id).all()
 
 
-def generate_sales_by_product_line(start_date, end_date, branch_id=None):
+def generate_sales_by_product_line(start_date, end_date, branch_id=None, reporting_basis=GAAP):
+    gross = reporting_basis == OWNERS
     acc = defaultdict(lambda: Decimal('0.00'))
 
     # + Sales Invoices
     for cid, net in _net_by_category(
             SalesInvoiceItem, SalesInvoice, 'invoice_id', SalesInvoice.invoice_date,
-            start_date, end_date, branch_id, [SalesInvoice.status.in_(_SI_ON_BOOKS)]):
+            start_date, end_date, branch_id, [SalesInvoice.status.in_(_SI_ON_BOOKS)], gross=gross):
         acc[cid] += Decimal(str(net))
 
     # - Credit memos (returns/allowances reduce sales)
     for cid, net in _net_by_category(
             SalesMemoItem, SalesMemo, 'sales_memo_id', SalesMemo.memo_date,
             start_date, end_date, branch_id,
-            [SalesMemo.status == 'posted', SalesMemo.memo_type == 'credit']):
+            [SalesMemo.status == 'posted', SalesMemo.memo_type == 'credit'], gross=gross):
         acc[cid] -= Decimal(str(net))
 
     # + Debit notes (additional charges add to sales)
     for cid, net in _net_by_category(
             SalesMemoItem, SalesMemo, 'sales_memo_id', SalesMemo.memo_date,
             start_date, end_date, branch_id,
-            [SalesMemo.status == 'posted', SalesMemo.memo_type == 'debit']):
+            [SalesMemo.status == 'posted', SalesMemo.memo_type == 'debit'], gross=gross):
         acc[cid] += Decimal(str(net))
 
     cats = {c.id: c for c in ProductCategory.query.all()}
@@ -73,16 +77,17 @@ def generate_sales_by_product_line(start_date, end_date, branch_id=None):
         rows.append({'category_id': c.id, 'code': c.code, 'name': c.name, 'net': float(net)})
     rows.sort(key=lambda r: r['code'])
     return {'period_start': start_date, 'period_end': end_date, 'rows': rows,
-            'unassigned': float(unassigned), 'total': float(total)}
+            'unassigned': float(unassigned), 'total': float(total),
+            'reporting_basis': reporting_basis}
 
 
 def _pct(net, total):
     return round(net / total * 100, 2) if total else 0.0
 
 
-def build_sales_by_product_line(as_of, mtd_start, ytd_start, branch_id=None):
-    mtd = generate_sales_by_product_line(mtd_start, as_of, branch_id)
-    ytd = generate_sales_by_product_line(ytd_start, as_of, branch_id)
+def build_sales_by_product_line(as_of, mtd_start, ytd_start, branch_id=None, reporting_basis=GAAP):
+    mtd = generate_sales_by_product_line(mtd_start, as_of, branch_id, reporting_basis=reporting_basis)
+    ytd = generate_sales_by_product_line(ytd_start, as_of, branch_id, reporting_basis=reporting_basis)
 
     mtd_by_id = {r['category_id']: r for r in mtd['rows']}
     ytd_by_id = {r['category_id']: r for r in ytd['rows']}
@@ -101,8 +106,10 @@ def build_sales_by_product_line(as_of, mtd_start, ytd_start, branch_id=None):
                   'ytd_pct': _pct(ytd['unassigned'], ytd['total'])}
     total = {'mtd': mtd['total'], 'ytd': ytd['total']}
 
-    is_mtd = generate_income_statement(mtd_start, as_of, branch_id=branch_id).get('net_sales', 0.0)
-    is_ytd = generate_income_statement(ytd_start, as_of, branch_id=branch_id).get('net_sales', 0.0)
+    is_mtd = generate_income_statement(mtd_start, as_of, branch_id=branch_id,
+                                       reporting_basis=reporting_basis).get('net_sales', 0.0)
+    is_ytd = generate_income_statement(ytd_start, as_of, branch_id=branch_id,
+                                       reporting_basis=reporting_basis).get('net_sales', 0.0)
     var_mtd = round(is_mtd - total['mtd'], 2)
     var_ytd = round(is_ytd - total['ytd'], 2)
     reconciliation = {'is_net_sales_mtd': is_mtd, 'is_net_sales_ytd': is_ytd,
@@ -111,7 +118,7 @@ def build_sales_by_product_line(as_of, mtd_start, ytd_start, branch_id=None):
 
     return {'as_of': as_of, 'mtd_start': mtd_start, 'ytd_start': ytd_start,
             'rows': rows, 'unassigned': unassigned, 'total': total,
-            'reconciliation': reconciliation}
+            'reconciliation': reconciliation, 'reporting_basis': reporting_basis}
 
 
 def sales_by_product_line_rows(data):

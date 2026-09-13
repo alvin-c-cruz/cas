@@ -224,3 +224,45 @@ def test_general_journal_rows_from_remapped_lines(books):
     own = build_general_journal(entries, remapped=remapped)
     assert own['rows'][0]['debits'][0]['account'].code == '213005'      # manual voucher: kept, flagged
     assert own['balanced'] and own['total_debit'] == D('5.00')
+
+
+from app.product_categories.models import ProductCategory
+from app.products.models import Product
+from app.reports.basis import vat_expense_setting_key
+from app.reports.product_line import generate_sales_by_product_line
+from app.reports.income_statement_by_product_line import generate_income_statement_by_product_line
+
+
+@pytest.fixture
+def categorized(books):
+    tin = ProductCategory(code='TIN', name='Tincan'); db.session.add(tin); db.session.commit()
+    p = Product(name='Can', category_id=tin.id, track_inventory=False); db.session.add(p); db.session.commit()
+    inv = SalesInvoice.query.filter_by(invoice_number='SI-1').one()
+    inv.line_items[0].product_id = p.id
+    vat_tin = _acct('811001', 'VAT EXPENSE - TINCAN', 'Other Expense', 'Debit')
+    AppSettings.set_setting(vat_expense_setting_key(tin.id), vat_tin.code)
+    db.session.commit()
+    _je(books['branch'], 'JV-VAT', date(2026, 3, 25), [(vat_tin, '3.00', 0), (books['cash'], 0, '3.00')],
+        entry_type='adjustment')
+    books['tin'] = tin
+    return books
+
+
+def test_sales_by_product_line_gross_under_owners(categorized):
+    gaap = generate_sales_by_product_line(date(2026, 3, 1), date(2026, 3, 31), categorized['branch'])
+    own = generate_sales_by_product_line(date(2026, 3, 1), date(2026, 3, 31), categorized['branch'],
+                                         reporting_basis=OWNERS)
+    assert gaap['rows'][0]['net'] == 100.0 and own['rows'][0]['net'] == 112.0
+    assert own['reporting_basis'] == OWNERS
+
+
+def test_is_by_product_line_ties_under_owners_and_attributes_vat_expense(categorized):
+    data = generate_income_statement_by_product_line(date(2026, 3, 31), date(2026, 3, 1), date(2026, 1, 1),
+                                                     branch_id=categorized['branch'], reporting_basis=OWNERS)
+    assert data['reporting_basis'] == OWNERS
+    assert all(chk['ties'] for chk in data['ytd']['reconciliation'].values())
+    rows = {r['key']: r for r in data['ytd']['rows']}
+    tin = categorized['tin'].id
+    assert rows['revenue']['by_column'][tin] == pytest.approx(112.0)
+    assert rows['other_expense']['by_column'][tin] == pytest.approx(3.0)        # direct, not "Unallocated"
+    assert rows['other_expense']['by_column']['unallocated'] == pytest.approx(0.0)

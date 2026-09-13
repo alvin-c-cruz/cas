@@ -17,6 +17,7 @@ from app.expense_allocation_rules.models import ExpenseAllocationRule
 from app.reports.financial import generate_income_statement
 from app.reports.product_line import generate_sales_by_product_line
 from app.reports.sections import IS_SECTIONS
+from app.reports.basis import GAAP, OWNERS, vat_expense_account_map
 
 UNALLOCATED = 'unallocated'
 TOTAL = 'total'
@@ -48,8 +49,8 @@ def _categories():
     return {c.id: c for c in ProductCategory.query.all()}
 
 
-def _revenue_by_category(start_date, end_date, branch_id):
-    data = generate_sales_by_product_line(start_date, end_date, branch_id)
+def _revenue_by_category(start_date, end_date, branch_id, reporting_basis=GAAP):
+    data = generate_sales_by_product_line(start_date, end_date, branch_id, reporting_basis=reporting_basis)
     return {r['category_id']: Decimal(str(r['net'])) for r in data['rows']}
 
 
@@ -164,11 +165,11 @@ def _cogs_variance_distribution(actual_cogs_total, standard_cogs_by_cat, categor
     return _distribute(variance, shares)
 
 
-def _matrix_for_period(start_date, end_date, branch_id, categories):
-    stmt = generate_income_statement(start_date, end_date, branch_id=branch_id)
+def _matrix_for_period(start_date, end_date, branch_id, categories, reporting_basis=GAAP):
+    stmt = generate_income_statement(start_date, end_date, branch_id=branch_id, reporting_basis=reporting_basis)
     category_ids = list(categories.keys())
 
-    revenue_by_cat = _revenue_by_category(start_date, end_date, branch_id)
+    revenue_by_cat = _revenue_by_category(start_date, end_date, branch_id, reporting_basis)
     total_revenue = sum(revenue_by_cat.values(), Decimal('0'))
     revenue_shares = ({cid: revenue_by_cat.get(cid, Decimal('0')) / total_revenue
                       for cid in category_ids} if total_revenue != 0 else {})
@@ -180,6 +181,10 @@ def _matrix_for_period(start_date, end_date, branch_id, categories):
                           for cid in category_ids}
 
     rules = {r.account_id: r.basis for r in ExpenseAllocationRule.query.all()}
+
+    # Owners' basis: a VAT expense account mapped to a product category belongs wholly to it.
+    direct = ({a.id: cid for cid, a in vat_expense_account_map().items() if a}
+              if reporting_basis == OWNERS else {})
 
     rows = []
     running_by_col = defaultdict(lambda: Decimal('0'))
@@ -221,9 +226,12 @@ def _matrix_for_period(start_date, end_date, branch_id, categories):
         else:
             distributions = []
             for leaf in leaves:
-                basis = rules.get(leaf['account_id'], 'none')
-                shares = _allocation_shares(basis, revenue_by_cat, gross_profit_by_cat,
-                                            units_by_cat, category_ids)
+                if leaf['account_id'] in direct:
+                    shares = {direct[leaf['account_id']]: Decimal('1')}
+                else:
+                    basis = rules.get(leaf['account_id'], 'none')
+                    shares = _allocation_shares(basis, revenue_by_cat, gross_profit_by_cat,
+                                                units_by_cat, category_ids)
                 distributions.append(_distribute(leaf['amount'], shares))
             _add_row(section['key'], section['label'], distributions)
         if section.get('subtotal_label'):
@@ -255,16 +263,20 @@ def _finalize_rows(period):
            for r in period['rows']]
 
 
-def generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=None):
+def generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=None,
+                                              reporting_basis=GAAP):
     categories = _categories()
-    mtd = _matrix_for_period(mtd_start, as_of, branch_id, categories)
-    ytd = _matrix_for_period(ytd_start, as_of, branch_id, categories)
+    mtd = _matrix_for_period(mtd_start, as_of, branch_id, categories, reporting_basis)
+    ytd = _matrix_for_period(ytd_start, as_of, branch_id, categories, reporting_basis)
 
     columns = ([{'category_id': c.id, 'code': c.code, 'name': c.name}
                for c in sorted(categories.values(), key=lambda c: c.code)]
               + [{'category_id': UNALLOCATED, 'code': None, 'name': 'Unallocated'},
                  {'category_id': TOTAL, 'code': None, 'name': 'Total'}])
 
-    return {'as_of': as_of, 'columns': columns,
+    out = {'as_of': as_of, 'columns': columns, 'reporting_basis': reporting_basis,
            'mtd': {'rows': _finalize_rows(mtd), 'reconciliation': _reconcile(mtd)},
            'ytd': {'rows': _finalize_rows(ytd), 'reconciliation': _reconcile(ytd)}}
+    if reporting_basis == OWNERS:
+        out['basis_summary'] = {'mtd': mtd['stmt'].get('basis_summary'), 'ytd': ytd['stmt'].get('basis_summary')}
+    return out
