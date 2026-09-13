@@ -119,6 +119,7 @@
     <div style="background: var(--card); padding: 30px; border-radius: 8px; max-width: 400px; width: 90%;">
         <h3 style="margin-top: 0;">Select Date</h3>
         <form action="{{ url_for('reports.trial_balance') }}" method="get">
+            {% if can_switch_basis %}<input type="hidden" name="basis" value="{{ reporting_basis }}">{% endif %}
             <div style="margin-bottom: 20px;">
                 <label for="as_of" style="display: block; margin-bottom: 8px; font-weight: 600;">As of Date:</label>
                 <input type="date" id="as_of" name="as_of" value="{{ as_of_date.isoformat() }}"

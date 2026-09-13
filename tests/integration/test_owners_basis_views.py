@@ -1,6 +1,4 @@
 """Route-level behaviour of the Basis switch across the seven report families."""
-from datetime import date
-from decimal import Decimal
 from io import BytesIO
 import pytest
 import openpyxl
@@ -134,3 +132,41 @@ def test_gaap_export_has_no_note(client, books, admin_user):
     wb = openpyxl.load_workbook(BytesIO(resp.data))
     text = ' '.join(str(c.value) for row in wb.active.iter_rows() for c in row if c.value)
     assert OWNERS_NOTE not in text
+
+
+# --- Review Finding 1: the basis must survive a re-submit of the report's own filter form ---
+
+@pytest.mark.parametrize('url', PAGES)
+def test_filter_form_keeps_basis_owners(client, books, admin_user, url):
+    """Every filter/date form on these pages (not just the Basis switch) must carry
+    ?basis forward, or re-submitting it silently falls back to GAAP."""
+    AppSettings.set_setting(ENABLED_KEY, '1')
+    _login(client, admin_user); _branch(client, books['branch'])
+    html = client.get(url + '&basis=owners').data.decode()
+    assert '<input type="hidden" name="basis" value="owners">' in html
+
+
+@pytest.mark.parametrize('url', PAGES)
+def test_filter_form_keeps_basis_gaap(client, books, admin_user, url):
+    AppSettings.set_setting(ENABLED_KEY, '1')
+    _login(client, admin_user); _branch(client, books['branch'])
+    html = client.get(url).data.decode()
+    assert '<input type="hidden" name="basis" value="gaap">' in html
+
+
+# --- Review Finding 2: the General Ledger CSV export must be marked when owners' basis ---
+
+def test_owners_general_ledger_csv_marks_owners_basis(client, books, admin_user):
+    AppSettings.set_setting(ENABLED_KEY, '1')
+    _login(client, admin_user); _branch(client, books['branch'])
+    resp = client.get('/reports/general-ledger/export/csv'
+                      '?start_date=2026-03-01&end_date=2026-03-31&basis=owners')
+    assert OWNERS_NOTE in resp.data.decode()
+
+
+def test_gaap_general_ledger_csv_has_no_note(client, books, admin_user):
+    AppSettings.set_setting(ENABLED_KEY, '1')
+    _login(client, admin_user); _branch(client, books['branch'])
+    resp = client.get('/reports/general-ledger/export/csv'
+                      '?start_date=2026-03-01&end_date=2026-03-31')
+    assert OWNERS_NOTE not in resp.data.decode()

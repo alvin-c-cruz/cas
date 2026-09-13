@@ -38,6 +38,7 @@
   <div class="card-body">
     <form method="GET" style="margin-bottom:20px;">
       <input type="hidden" name="mode" value="custom">
+      {% if can_switch_basis %}<input type="hidden" name="basis" value="{{ reporting_basis }}">{% endif %}
       <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
         <div class="form-group" style="margin:0;">
           <label>From</label>

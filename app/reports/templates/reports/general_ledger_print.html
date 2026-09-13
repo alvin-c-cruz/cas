@@ -35,7 +35,7 @@
                 <tr>
                     <td>{{ line.entry_date.strftime('%Y-%m-%d') }}</td>
                     <td>{{ line.source.label }}</td>
-                    <td>{{ line.description }}</td>
+                    <td>{{ line.description }}{% if line.moved_from %} (from {{ line.moved_from }}){% endif %}</td>
                     <td class="num">{% if line.debit %}₱{{ "{:,.2f}".format(line.debit) }}{% endif %}</td>
                     <td class="num">{% if line.credit %}₱{{ "{:,.2f}".format(line.credit) }}{% endif %}</td>
                     <td class="num">{{ bal(line.running_balance) }}</td>

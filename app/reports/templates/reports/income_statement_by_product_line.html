@@ -7,6 +7,7 @@
     <form method="GET" class="filter-form">
         <label for="as_of">As of</label>
         <input type="date" id="as_of" name="as_of" value="{{ as_of.isoformat() }}">
+        {% if can_switch_basis %}<input type="hidden" name="basis" value="{{ reporting_basis }}">{% endif %}
         <button type="submit" class="btn btn-secondary">Apply</button>
     </form>
     <div class="page-actions">

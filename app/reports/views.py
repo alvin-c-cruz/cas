@@ -752,6 +752,8 @@ def general_ledger_export_csv():
     ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id, reporting_basis=rb)
     _attach_source_links(ledger, branch_id)
     rows = _flatten_ledger(ledger)
+    if rb == OWNERS:
+        rows = [{'date': OWNERS_NOTE, 'source': '', 'particulars': '', 'debit': '', 'credit': '', 'balance': ''}] + rows
     return export_to_csv(
         rows, _GL_COLUMNS, _GL_HEADERS,
         filename=f'general_ledger_{start_date.isoformat()}_to_{end_date.isoformat()}.csv')
@@ -1227,7 +1229,7 @@ def trial_balance_print():
     branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     return render_template('reports/trial_balance_print.html',
                            trial_balance=trial_balance_data, as_of_date=as_of_date,
-                           company=company, branch_name=branch_name, basis_summary=None)
+                           company=company, branch_name=branch_name)
 
 
 def _stmt_params():
@@ -1383,8 +1385,7 @@ def income_statement_by_product_line_print():
     data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id, reporting_basis=rb)
     company, branch_name = _bs_company_branch(branch_id)
     return render_template('reports/income_statement_by_product_line_print.html',
-                           data=data, as_of=as_of, company=company, branch_name=branch_name,
-                           basis_summary=data.get('basis_summary'))
+                           data=data, as_of=as_of, company=company, branch_name=branch_name)
 
 
 @reports_bp.route('/reports/income-statement-by-product-line/export/excel')
@@ -1592,7 +1593,7 @@ def cash_flow():
         generate_cash_flow(mtd_start, as_of, branch_id=branch_id, reporting_basis=rb),
         generate_cash_flow(ytd_start, as_of, branch_id=branch_id, reporting_basis=rb))
     return render_template('reports/cash_flow.html', cash_flow=data, as_of=as_of,
-                           mtd_start=mtd_start, ytd_start=ytd_start, basis_summary=None)
+                           mtd_start=mtd_start, ytd_start=ytd_start)
 
 
 @reports_bp.route('/reports/cash-flow/export/excel')
@@ -1623,7 +1624,7 @@ def cash_flow_print():
     company, branch_name = _bs_company_branch(branch_id)
     return render_template('reports/cash_flow_print.html',
                            lines=cash_flow_lines(cf), as_of=as_of,
-                           company=company, branch_name=branch_name, basis_summary=None)
+                           company=company, branch_name=branch_name)
 
 
 def _descendant_leaf_ids(account):
@@ -2023,6 +2024,17 @@ def _general_journal_entries(branch_id, period):
     ).order_by(JournalEntry.entry_date, JournalEntry.id).all()
 
 
+def _gj_remapped(rb, branch_id, period):
+    """{entry_id: [LedgerLine]} for the owners' basis, or None for GAAP."""
+    if rb != OWNERS:
+        return None
+    from app.reports.ledger import ledger_lines
+    remapped = {}
+    for ln in ledger_lines(period['date_from'], period['date_to'], branch_id, reporting_basis=rb):
+        remapped.setdefault(ln.entry_id, []).append(ln)
+    return remapped
+
+
 @reports_bp.route('/reports/general-journal')
 @login_required
 def general_journal():
@@ -2033,12 +2045,7 @@ def general_journal():
         return redirect(url_for('users.select_branch', next=request.url))
     period = resolve_period(request.args, ph_now().date())
     rb = _basis()
-    remapped = None
-    if rb == OWNERS:
-        from app.reports.ledger import ledger_lines
-        remapped = {}
-        for ln in ledger_lines(period['date_from'], period['date_to'], branch_id, reporting_basis=rb):
-            remapped.setdefault(ln.entry_id, []).append(ln)
+    remapped = _gj_remapped(rb, branch_id, period)
     gj = build_general_journal(_general_journal_entries(branch_id, period), remapped=remapped)
     return render_template('reports/general_journal.html', gj=gj, period=period)
 
@@ -2053,12 +2060,7 @@ def general_journal_print():
         return redirect(url_for('users.select_branch', next=request.url))
     period = resolve_period(request.args, ph_now().date())
     rb = _basis()
-    remapped = None
-    if rb == OWNERS:
-        from app.reports.ledger import ledger_lines
-        remapped = {}
-        for ln in ledger_lines(period['date_from'], period['date_to'], branch_id, reporting_basis=rb):
-            remapped.setdefault(ln.entry_id, []).append(ln)
+    remapped = _gj_remapped(rb, branch_id, period)
     gj = build_general_journal(_general_journal_entries(branch_id, period), remapped=remapped)
     return render_template('reports/general_journal_print.html', gj=gj, period=period,
                            company=get_company_identity(), printed_at=ph_now())
@@ -2076,12 +2078,7 @@ def general_journal_export():
         return redirect(url_for('users.select_branch', next=request.url))
     period = resolve_period(request.args, ph_now().date())
     rb = _basis()
-    remapped = None
-    if rb == OWNERS:
-        from app.reports.ledger import ledger_lines
-        remapped = {}
-        for ln in ledger_lines(period['date_from'], period['date_to'], branch_id, reporting_basis=rb):
-            remapped.setdefault(ln.entry_id, []).append(ln)
+    remapped = _gj_remapped(rb, branch_id, period)
     gj = build_general_journal(_general_journal_entries(branch_id, period), remapped=remapped)
     branch = db.session.get(Branch, branch_id)
     branch_name = branch.name if branch else None
