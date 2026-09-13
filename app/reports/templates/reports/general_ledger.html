@@ -4,10 +4,11 @@
 {% block page_title %}General Ledger{% endblock %}
 
 {% block content %}
+{% from 'reports/_basis.html' import basis_switch, basis_banner with context %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 {% macro balance_dr_cr(value) %}{% if value >= 0 %}₱{{ "{:,.2f}".format(value) }} Dr{% else %}₱{{ "{:,.2f}".format(-value) }} Cr{% endif %}{% endmacro %}
 
-{% set q = 'start_date=' ~ start_date.isoformat() ~ '&end_date=' ~ end_date.isoformat() ~ ('&account_id=' ~ selected_account_id if selected_account_id else '') %}
+{% set q = 'start_date=' ~ start_date.isoformat() ~ '&end_date=' ~ end_date.isoformat() ~ ('&account_id=' ~ selected_account_id if selected_account_id else '') ~ '&basis=' ~ reporting_basis %}
 <div class="card">
     <div class="card-header">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -18,6 +19,7 @@
                 </p>
             </div>
             <div class="card-header-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                {{ basis_switch() }}
                 <a href="{{ url_for('reports.general_ledger_export_excel') }}?{{ q }}" class="btn btn-secondary">Excel</a>
                 <a href="{{ url_for('reports.general_ledger_export_csv') }}?{{ q }}" class="btn btn-secondary">CSV</a>
                 <a href="{{ url_for('reports.general_ledger_print') }}?{{ q }}" class="btn btn-secondary" target="_blank">Print</a>
@@ -49,6 +51,7 @@
                 <button type="submit" class="btn btn-primary">Generate</button>
             </div>
         </form>
+        {{ basis_banner() }}
 
         {% if ledger.accounts %}
         {% for acct in ledger.accounts %}
@@ -80,7 +83,7 @@
                             <a href="{{ line.source.url }}" style="color:var(--blue)">{{ line.source.label }}</a>
                             {% else %}{{ line.source.label }}{% endif %}
                         </td>
-                        <td>{{ line.description }}</td>
+                        <td>{{ line.description }}{% if line.moved_from %} <span class="badge" style="background:#fde68a;color:#78350f;">from {{ line.moved_from }}</span>{% endif %}</td>
                         <td style="text-align:right;">{% if line.debit %}₱{{ "{:,.2f}".format(line.debit) }}{% endif %}</td>
                         <td style="text-align:right;">{% if line.credit %}₱{{ "{:,.2f}".format(line.credit) }}{% endif %}</td>
                         <td style="text-align:right;">{{ balance_dr_cr(line.running_balance) }}</td>

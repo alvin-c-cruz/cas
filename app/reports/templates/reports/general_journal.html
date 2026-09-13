@@ -15,6 +15,7 @@
 {% endblock %}
 
 {% block content %}
+{% from 'reports/_basis.html' import basis_switch, basis_banner with context %}
 <div class="card">
   <div class="card-header">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -23,7 +24,8 @@
         <p style="margin:4px 0 0 0;color:var(--text-2);">{{ period.label }}</p>
       </div>
       <div class="card-header-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        {% set q = 'date_from=' ~ period.date_from.isoformat() ~ '&date_to=' ~ period.date_to.isoformat() ~ '&mode=custom' %}
+        {% set q = 'date_from=' ~ period.date_from.isoformat() ~ '&date_to=' ~ period.date_to.isoformat() ~ '&mode=custom' ~ '&basis=' ~ reporting_basis %}
+        {{ basis_switch() }}
         <a href="{{ url_for('reports.general_journal_export') }}?{{ q }}"
            class="btn btn-secondary">Excel</a>
         <a href="{{ url_for('reports.general_journal_print') }}?{{ q }}"
@@ -50,6 +52,7 @@
         <button type="submit" class="btn btn-primary">Enter</button>
       </div>
     </form>
+    {{ basis_banner(book=True) }}
 
     {% if gj.rows %}
     <table class="table" style="font-size:0.9rem;">
@@ -68,7 +71,7 @@
         {% for d in row.debits %}
         <tr class="{{ row_cls }}">
           <td>{% if loop.first %}{{ row.entry.entry_date.strftime('%m/%d/%Y') }}{% endif %}</td>
-          <td>{{ d.account.name }}</td>
+          <td>{{ d.account.name }}{% if d.moved_from %} <small>(from {{ d.moved_from.code }})</small>{% endif %}</td>
           <td>{% if loop.first %}{{ row.entry.display_number }}{% endif %}</td>
           <td style="text-align:right;">₱{{ '{:,.2f}'.format(d.amount) }}</td>
           <td></td>
@@ -77,7 +80,7 @@
         {% for c in row.credits %}
         <tr class="{{ row_cls }}">
           <td></td>
-          <td style="padding-left:28px;">{{ c.account.name }}</td>
+          <td style="padding-left:28px;">{{ c.account.name }}{% if c.moved_from %} <small>(from {{ c.moved_from.code }})</small>{% endif %}</td>
           <td></td>
           <td></td>
           <td style="text-align:right;">₱{{ '{:,.2f}'.format(c.amount) }}</td>

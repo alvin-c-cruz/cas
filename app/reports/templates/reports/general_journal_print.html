@@ -30,6 +30,8 @@
   </div></div>
   <div class="card-body">
     {{ bir_book_header(company, 'GENERAL JOURNAL', period.label) }}
+    {% set BOOK = true %}
+    {% if reporting_basis == 'owners' %}<div class="meta" style="border:1px solid #000;padding:4px 8px;font-weight:bold;">{{ OWNERS_NOTE|safe }}{% if BOOK %} {{ NOT_BOOK_OF_RECORD }}{% endif %}</div>{% endif %}
     {% if gj.rows %}
     <table class="gj-table">
       <thead>

@@ -4,6 +4,7 @@
 {% block page_title %}Statement of Cash Flows{% endblock %}
 
 {% block content %}
+{% from 'reports/_basis.html' import basis_switch, basis_banner with context %}
 {% macro cell(v) %}<td style="text-align:right;font-family:var(--mono);">{% if v < 0 %}(₱{{ '{:,.2f}'.format(-v) }}){% else %}₱{{ '{:,.2f}'.format(v) }}{% endif %}</td>{% endmacro %}
 {% macro amt(p) %}{{ cell(p.mtd) }}{{ cell(p.ytd) }}{% endmacro %}
 {% macro amt2(m, y) %}{{ cell(m) }}{{ cell(y) }}{% endmacro %}
@@ -14,15 +15,17 @@
             <div class="card-sub">Indirect Method · As of {{ as_of.strftime('%B %d, %Y') }} — Current month vs. Year to date</div>
         </div>
         <div class="card-header-actions" style="display:flex;gap:8px;">
-            <a href="{{ url_for('reports.cash_flow_export_excel', as_of=as_of.isoformat()) }}"
+            {{ basis_switch() }}
+            <a href="{{ url_for('reports.cash_flow_export_excel', as_of=as_of.isoformat(), basis=reporting_basis) }}"
                class="btn btn-secondary">📊 Excel</a>
-            <a href="{{ url_for('reports.cash_flow_print', as_of=as_of.isoformat()) }}"
+            <a href="{{ url_for('reports.cash_flow_print', as_of=as_of.isoformat(), basis=reporting_basis) }}"
                target="_blank" class="btn btn-secondary">Print</a>
             <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Date</button>
         </div>
     </div>
 
     <div class="card-body">
+        {{ basis_banner() }}
         <table class="table" style="margin:0;">
             <tbody>
                 <tr style="font-weight:700;"><td></td>

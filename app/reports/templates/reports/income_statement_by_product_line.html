@@ -2,6 +2,7 @@
 {% block title %}Income Statement by Product Line{% endblock %}
 {% block page_title %}Income Statement by Product Line{% endblock %}
 {% block content %}
+{% from 'reports/_basis.html' import basis_switch, basis_banner with context %}
 <div class="content-header">
     <form method="GET" class="filter-form">
         <label for="as_of">As of</label>
@@ -9,12 +10,14 @@
         <button type="submit" class="btn btn-secondary">Apply</button>
     </form>
     <div class="page-actions">
-        <a href="{{ url_for('reports.income_statement_by_product_line_print', as_of=as_of.isoformat()) }}"
+        {{ basis_switch() }}
+        <a href="{{ url_for('reports.income_statement_by_product_line_print', as_of=as_of.isoformat(), basis=reporting_basis) }}"
            class="btn btn-secondary" target="_blank">Print</a>
-        <a href="{{ url_for('reports.income_statement_by_product_line_export_excel', as_of=as_of.isoformat()) }}"
+        <a href="{{ url_for('reports.income_statement_by_product_line_export_excel', as_of=as_of.isoformat(), basis=reporting_basis) }}"
            class="btn btn-secondary">Export Excel</a>
     </div>
 </div>
+{{ basis_banner(basis_summary) }}
 
 {% macro matrix(period_data, heading) %}
 <div class="card" style="margin-bottom: 20px;">

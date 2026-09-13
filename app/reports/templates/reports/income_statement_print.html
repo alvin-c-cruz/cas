@@ -28,7 +28,11 @@
         {% if branch_name %}Branch: {{ branch_name }} &nbsp; {% endif %}
     </div>
     <h1>Income Statement (Profit &amp; Loss)</h1>
+    {% if reporting_basis == 'owners' %}<div class="meta" style="border:1px solid #000;padding:4px 8px;font-weight:bold;">{{ OWNERS_NOTE|safe }}</div>{% endif %}
     <div class="meta">As of {{ as_of.strftime('%B %d, %Y') }} — Current month vs. Year to date</div>
+    {% if basis_summary and basis_summary.ytd %}
+    <div class="meta">Owners' basis effect YTD: +{{ '{:,.2f}'.format(basis_summary.ytd.moved_to_income) }} output VAT in income, &minus;{{ '{:,.2f}'.format(basis_summary.ytd.moved_to_expense) }} input VAT in expense, &minus;{{ '{:,.2f}'.format(basis_summary.ytd.vat_expense_total) }} VAT expense, {{ '{:,.2f}'.format(basis_summary.ytd.untraced_total) }} untraced.</div>
+    {% endif %}
 
     <table>
         <tbody>

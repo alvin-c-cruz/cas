@@ -1,0 +1,43 @@
+{# Basis switch + owners' banner. Context comes from reports_bp's context processor:
+   reporting_basis, can_switch_basis, OWNERS_NOTE, NOT_BOOK_OF_RECORD. #}
+{% macro basis_switch() %}
+{% if can_switch_basis %}
+<form method="get" class="basis-switch" style="display:inline-flex;align-items:center;gap:6px;margin:0;">
+  {% for k, v in request.args.items() if k != 'basis' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <label for="basis" style="font-weight:600;">Basis:</label>
+  <select name="basis" id="basis" class="form-control" style="width:auto;" onchange="this.form.submit()">
+    <option value="gaap" {{ 'selected' if reporting_basis == 'gaap' else '' }}>GAAP</option>
+    <option value="owners" {{ 'selected' if reporting_basis == 'owners' else '' }}>Owners</option>
+  </select>
+</form>
+{% endif %}
+{% endmacro %}
+
+{% macro basis_banner(summary=None, book=False, gaap_net_income=None) %}
+{# summary: RemapSummary.as_dict(), or {'mtd': dict, 'ytd': dict} for two-column statements.
+   gaap_net_income: number, or {'mtd': n, 'ytd': n} matching summary. None -> no GAAP line. #}
+{% if reporting_basis == 'owners' %}
+<div class="basis-banner" style="border:2px solid #b45309;background:#fffbeb;color:#78350f;padding:10px 14px;margin:0 0 14px 0;border-radius:6px;">
+  <strong>{{ OWNERS_NOTE|safe }}</strong>{% if book %} <strong>{{ NOT_BOOK_OF_RECORD }}</strong>{% endif %}
+  {% if summary %}
+  {% set two_col = summary.mtd is defined or summary.ytd is defined %}
+  {% set blocks = [('Current month', summary.mtd, gaap_net_income.mtd if gaap_net_income else none), ('Year to date', summary.ytd, gaap_net_income.ytd if gaap_net_income else none)] if two_col else [('Reconciliation', summary, gaap_net_income)] %}
+  <table class="basis-recon" style="margin-top:8px;border-collapse:collapse;">
+    {% for title, s, gaap in blocks if s %}
+    <tr><td colspan="2" style="font-weight:600;padding:2px 8px;">{{ title }}</td></tr>
+    {% if gaap is not none %}<tr><td style="padding:2px 8px;">GAAP net income</td><td style="text-align:right;padding:2px 8px;">{{ '{:,.2f}'.format(gaap) }}</td></tr>{% endif %}
+    <tr><td style="padding:2px 8px;">+ Output VAT moved to income</td><td style="text-align:right;padding:2px 8px;">{{ '{:,.2f}'.format(s.moved_to_income) }}</td></tr>
+    <tr><td style="padding:2px 8px;">&minus; Input VAT moved to expense</td><td style="text-align:right;padding:2px 8px;">{{ '{:,.2f}'.format(s.moved_to_expense) }}</td></tr>
+    <tr><td style="padding:2px 8px;">&nbsp;&nbsp;Input VAT moved to asset accounts (no P&amp;L effect)</td><td style="text-align:right;padding:2px 8px;">{{ '{:,.2f}'.format(s.moved_to_balance_sheet) }}</td></tr>
+    <tr><td style="padding:2px 8px;">&minus; VAT expense recognised</td><td style="text-align:right;padding:2px 8px;">{{ '{:,.2f}'.format(s.vat_expense_total) }}</td></tr>
+    <tr><td style="padding:2px 8px;">Untraced VAT (flagged, left on VAT accounts)</td><td style="text-align:right;padding:2px 8px;">{{ '{:,.2f}'.format(s.untraced_total) }}</td></tr>
+    {% if gaap is not none %}<tr><td style="padding:2px 8px;font-weight:600;">= Owners' net income</td><td style="text-align:right;padding:2px 8px;font-weight:600;">{{ '{:,.2f}'.format(gaap + s.net_income_effect) }}</td></tr>{% endif %}
+    {% for u in s.untraced %}
+    <tr><td colspan="2" style="padding:1px 8px 1px 24px;font-size:0.9em;">{{ u.entry_number }} &middot; {{ u.account_code }} &middot; {{ '{:,.2f}'.format(u.amount) }} &middot; {{ u.reason }}</td></tr>
+    {% endfor %}
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}

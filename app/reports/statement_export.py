@@ -103,7 +103,7 @@ def _xlsx_response_or_bytes(wb, filename):
     return _wb_bytes(wb)
 
 
-def build_income_statement_xlsx(stmt, as_of_label, company, branch_name, filename):
+def build_income_statement_xlsx(stmt, as_of_label, company, branch_name, filename, basis_note=None):
     """Render the two-column Income Statement as a formatted workbook.
 
     Consumes the merged two-column shape from merge_is_two_column(); writes a
@@ -141,6 +141,8 @@ def build_income_statement_xlsx(stmt, as_of_label, company, branch_name, filenam
         put('Branch: ' + branch_name)
     r = put('Income Statement (Profit & Loss)'); ws.cell(r, 1).font = Font(bold=True, size=13)
     put(as_of_label)
+    if basis_note:
+        r = put(basis_note); ws.cell(r, 1).font = Font(bold=True, color='B45309')
     put()
 
     as_of = stmt['as_of']
@@ -231,7 +233,7 @@ def balance_sheet_lines(bs):
     return lines
 
 
-def build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename):
+def build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename, basis_note=None):
     """Classified Balance Sheet as a formatted workbook with live SUM formulas.
 
     Consumes the type-driven shape from generate_balance_sheet().
@@ -281,6 +283,8 @@ def build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename):
         put('Branch: ' + branch_name)
     r = put('Balance Sheet'); ws.cell(r, 1).font = Font(bold=True, size=13)
     put(as_of_label)
+    if basis_note:
+        r = put(basis_note); ws.cell(r, 1).font = Font(bold=True, color='B45309')
     put()
     r = put('Particulars', 'Amount')
     for cell in ws[r]:
@@ -417,7 +421,7 @@ def cash_flow_lines(cf):
     return lines
 
 
-def build_cash_flow_xlsx(cf, as_of_label, company, branch_name, filename):
+def build_cash_flow_xlsx(cf, as_of_label, company, branch_name, filename, basis_note=None):
     """Two-column (indirect) Statement of Cash Flows as a formatted workbook.
 
     Consumes the merged shape from merge_cf_two_column(); writes a Particulars
@@ -466,6 +470,8 @@ def build_cash_flow_xlsx(cf, as_of_label, company, branch_name, filename):
     r = put('Statement of Cash Flows'); ws.cell(r, 1).font = Font(bold=True, size=13)
     put('Indirect Method')
     put(as_of_label)
+    if basis_note:
+        r = put(basis_note); ws.cell(r, 1).font = Font(bold=True, color='B45309')
     put()
 
     as_of = cf['as_of']

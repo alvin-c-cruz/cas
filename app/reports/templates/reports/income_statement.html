@@ -4,6 +4,7 @@
 {% block page_title %}Income Statement (P&L){% endblock %}
 
 {% block content %}
+{% from 'reports/_basis.html' import basis_switch, basis_banner with context %}
 <div class="card">
     <div class="card-header">
         <div>
@@ -11,15 +12,21 @@
             <div class="card-sub">As of {{ as_of.strftime('%B %d, %Y') }} — Current month vs. Year to date</div>
         </div>
         <div class="card-header-actions" style="display:flex;gap:8px;">
-            <a href="{{ url_for('reports.income_statement_export_excel', as_of=as_of.isoformat()) }}"
+            {{ basis_switch() }}
+            <a href="{{ url_for('reports.income_statement_export_excel', as_of=as_of.isoformat(), basis=reporting_basis) }}"
                class="btn btn-secondary">📊 Excel</a>
-            <a href="{{ url_for('reports.income_statement_print', as_of=as_of.isoformat()) }}"
+            <a href="{{ url_for('reports.income_statement_print', as_of=as_of.isoformat(), basis=reporting_basis) }}"
                target="_blank" class="btn btn-secondary">Print</a>
             <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Date</button>
         </div>
     </div>
 
     <div class="card-body">
+        {% if basis_summary %}
+        {% set gaap_ni = {'mtd': income_statement.net_income.mtd - (basis_summary.mtd.net_income_effect if basis_summary.mtd else 0),
+                          'ytd': income_statement.net_income.ytd - (basis_summary.ytd.net_income_effect if basis_summary.ytd else 0)} %}
+        {{ basis_banner(basis_summary, gaap_net_income=gaap_ni) }}
+        {% endif %}
         <table class="table" style="margin:0;">
             <tbody>
                 {# Two-column header #}

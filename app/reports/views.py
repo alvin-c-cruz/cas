@@ -45,6 +45,7 @@ from app.reports.general_journal_data import (build_general_journal,
 from app.reports.books_data import BOOKS
 from app.reports.two_column import merge_is_two_column, merge_cf_two_column
 from app.journals.ap_journal_data import resolve_period   # pure fn, not modified
+from app.reports.basis import resolve_basis, can_switch_basis, OWNERS, OWNERS_NOTE, NOT_BOOK_OF_RECORD
 from app.utils import ph_now, end_of_month
 from datetime import date, timedelta, datetime
 from decimal import Decimal
@@ -59,6 +60,23 @@ def _reset_ledger_cache():
     """app/reports/ledger.py memoises the owners' remap on g for the life of ONE request."""
     from flask import g
     g._ledger_cache = {}
+
+
+def _basis():
+    """Effective reporting basis for this request: GAAP unless the Owners' View is enabled,
+    the user has full access, and ?basis=owners."""
+    return resolve_basis(current_user, request.args)
+
+
+@reports_bp.context_processor
+def _inject_basis():
+    return {'reporting_basis': _basis(), 'can_switch_basis': can_switch_basis(current_user),
+            'OWNERS_NOTE': OWNERS_NOTE, 'NOT_BOOK_OF_RECORD': NOT_BOOK_OF_RECORD}
+
+
+def _export_note(reporting_basis):
+    return OWNERS_NOTE if reporting_basis == OWNERS else None
+
 
 # entry_type -> (Model, number column, view endpoint, short label prefix)
 _SOURCE_MAP = {
@@ -679,7 +697,8 @@ def _flatten_ledger(ledger):
         for line in acct['lines']:
             rows.append({
                 'date': line['entry_date'],
-                'source': line['source']['label'], 'particulars': line['description'],
+                'source': line['source']['label'],
+                'particulars': line['description'] + (f"  (from {line['moved_from']})" if line.get('moved_from') else ''),
                 'debit': line['debit'] or '', 'credit': line['credit'] or '',
                 'balance': line['running_balance'],
             })
@@ -698,7 +717,8 @@ _GL_HEADERS = ['Date', 'Source', 'Particulars', 'Debit', 'Credit', 'Balance']
 def general_ledger():
     """All-accounts General Ledger book for the selected branch."""
     start_date, end_date, account_id, branch_id = _gl_params()
-    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
+    rb = _basis()
+    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id, reporting_basis=rb)
     _attach_source_links(ledger, branch_id)
 
     accounts = get_postable_accounts()
@@ -714,20 +734,22 @@ def general_ledger():
 @login_required
 def general_ledger_export_excel():
     start_date, end_date, account_id, branch_id = _gl_params()
-    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
+    rb = _basis()
+    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id, reporting_basis=rb)
     _attach_source_links(ledger, branch_id)
     rows = _flatten_ledger(ledger)
     return export_to_excel(
         rows, _GL_COLUMNS, _GL_HEADERS,
         filename=f'general_ledger_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx',
-        title=f'General Ledger - {start_date.isoformat()} to {end_date.isoformat()}')
+        title=f'General Ledger - {start_date.isoformat()} to {end_date.isoformat()}' + (f' - {OWNERS_NOTE}' if rb == OWNERS else ''))
 
 
 @reports_bp.route('/reports/general-ledger/export/csv')
 @login_required
 def general_ledger_export_csv():
     start_date, end_date, account_id, branch_id = _gl_params()
-    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
+    rb = _basis()
+    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id, reporting_basis=rb)
     _attach_source_links(ledger, branch_id)
     rows = _flatten_ledger(ledger)
     return export_to_csv(
@@ -739,7 +761,8 @@ def general_ledger_export_csv():
 @login_required
 def general_ledger_print():
     start_date, end_date, account_id, branch_id = _gl_params()
-    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
+    rb = _basis()
+    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id, reporting_basis=rb)
     _attach_source_links(ledger, branch_id)
     period_label = (f"{start_date.strftime('%b %d, %Y')} to "
                     f"{end_date.strftime('%b %d, %Y')}")
@@ -1168,7 +1191,8 @@ _TB_HEADERS = ['Account Code', 'Account Name', 'Debit', 'Credit']
 @login_required
 def trial_balance():
     as_of_date, branch_id = _tb_params()
-    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id)
+    rb = _basis()
+    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id, reporting_basis=rb)
     return render_template('reports/trial_balance.html',
                            trial_balance=trial_balance_data,
                            as_of_date=as_of_date)
@@ -1179,9 +1203,10 @@ def trial_balance():
 def trial_balance_export_excel():
     """Export Trial Balance to Excel"""
     as_of_date, branch_id = _tb_params()
-    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id)
+    rb = _basis()
+    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id, reporting_basis=rb)
     filename = f'Trial_Balance_{as_of_date.isoformat()}.xlsx'
-    title = f'Trial Balance - As of {as_of_date.strftime("%B %d, %Y")}'
+    title = f'Trial Balance - As of {as_of_date.strftime("%B %d, %Y")}' + (f' - {OWNERS_NOTE}' if rb == OWNERS else '')
     return export_to_excel(trial_balance_data['accounts'], _TB_COLUMNS, _TB_HEADERS, filename, title)
 
 
@@ -1191,7 +1216,8 @@ def trial_balance_print():
     from app.settings import AppSettings
     from app.branches.models import Branch
     as_of_date, branch_id = _tb_params()
-    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id)
+    rb = _basis()
+    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id, reporting_basis=rb)
     company = {
         'name': AppSettings.get_setting('company_name', ''),
         'address': AppSettings.get_setting('company_address', ''),
@@ -1201,7 +1227,7 @@ def trial_balance_print():
     branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     return render_template('reports/trial_balance_print.html',
                            trial_balance=trial_balance_data, as_of_date=as_of_date,
-                           company=company, branch_name=branch_name)
+                           company=company, branch_name=branch_name, basis_summary=None)
 
 
 def _stmt_params():
@@ -1243,12 +1269,14 @@ def _budget_variance_params():
 @login_required
 def income_statement():
     as_of, mtd_start, ytd_start, branch_id = _stmt_params()
-    mtd = generate_income_statement(mtd_start, as_of, branch_id=branch_id)
-    ytd = generate_income_statement(ytd_start, as_of, branch_id=branch_id)
+    rb = _basis()
+    mtd = generate_income_statement(mtd_start, as_of, branch_id=branch_id, reporting_basis=rb)
+    ytd = generate_income_statement(ytd_start, as_of, branch_id=branch_id, reporting_basis=rb)
     data = merge_is_two_column(mtd, ytd)
     return render_template('reports/income_statement.html',
                            income_statement=data, as_of=as_of,
-                           mtd_start=mtd_start, ytd_start=ytd_start)
+                           mtd_start=mtd_start, ytd_start=ytd_start,
+                           basis_summary=data.get('basis_summary'))
 
 
 @reports_bp.route('/reports/income-statement/export/excel')
@@ -1257,13 +1285,14 @@ def income_statement_export_excel():
     """Export the two-column Income Statement to a formatted Excel workbook."""
     from app.reports.statement_export import build_income_statement_xlsx
     as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    rb = _basis()
     stmt = merge_is_two_column(
-        generate_income_statement(mtd_start, as_of, branch_id=branch_id),
-        generate_income_statement(ytd_start, as_of, branch_id=branch_id))
+        generate_income_statement(mtd_start, as_of, branch_id=branch_id, reporting_basis=rb),
+        generate_income_statement(ytd_start, as_of, branch_id=branch_id, reporting_basis=rb))
     company, branch_name = _bs_company_branch(branch_id)
     as_of_label = f'As of {as_of.strftime("%B %d, %Y")}'
     filename = f'Income_Statement_{as_of.isoformat()}.xlsx'
-    return build_income_statement_xlsx(stmt, as_of_label, company, branch_name, filename)
+    return build_income_statement_xlsx(stmt, as_of_label, company, branch_name, filename, basis_note=_export_note(rb))
 
 
 @reports_bp.route('/reports/income-statement/print')
@@ -1271,13 +1300,15 @@ def income_statement_export_excel():
 def income_statement_print():
     from app.reports.statement_export import income_statement_lines
     as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    rb = _basis()
     stmt = merge_is_two_column(
-        generate_income_statement(mtd_start, as_of, branch_id=branch_id),
-        generate_income_statement(ytd_start, as_of, branch_id=branch_id))
+        generate_income_statement(mtd_start, as_of, branch_id=branch_id, reporting_basis=rb),
+        generate_income_statement(ytd_start, as_of, branch_id=branch_id, reporting_basis=rb))
     company, branch_name = _bs_company_branch(branch_id)
     return render_template('reports/income_statement_print.html',
                            lines=income_statement_lines(stmt), as_of=as_of,
-                           company=company, branch_name=branch_name)
+                           company=company, branch_name=branch_name,
+                           basis_summary=stmt.get('basis_summary'))
 
 
 def _bs_company_branch(branch_id):
@@ -1336,9 +1367,11 @@ def sales_by_product_line_export_excel():
 def income_statement_by_product_line():
     from app.reports.income_statement_by_product_line import generate_income_statement_by_product_line
     as_of, mtd_start, ytd_start, branch_id = _stmt_params()
-    data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id)
+    rb = _basis()
+    data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id, reporting_basis=rb)
     return render_template('reports/income_statement_by_product_line.html',
-                           data=data, as_of=as_of, mtd_start=mtd_start, ytd_start=ytd_start)
+                           data=data, as_of=as_of, mtd_start=mtd_start, ytd_start=ytd_start,
+                           basis_summary=data.get('basis_summary'))
 
 
 @reports_bp.route('/reports/income-statement-by-product-line/print')
@@ -1346,10 +1379,12 @@ def income_statement_by_product_line():
 def income_statement_by_product_line_print():
     from app.reports.income_statement_by_product_line import generate_income_statement_by_product_line
     as_of, mtd_start, ytd_start, branch_id = _stmt_params()
-    data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id)
+    rb = _basis()
+    data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id, reporting_basis=rb)
     company, branch_name = _bs_company_branch(branch_id)
     return render_template('reports/income_statement_by_product_line_print.html',
-                           data=data, as_of=as_of, company=company, branch_name=branch_name)
+                           data=data, as_of=as_of, company=company, branch_name=branch_name,
+                           basis_summary=data.get('basis_summary'))
 
 
 @reports_bp.route('/reports/income-statement-by-product-line/export/excel')
@@ -1358,7 +1393,8 @@ def income_statement_by_product_line_export_excel():
     from app.reports.income_statement_by_product_line import generate_income_statement_by_product_line
     from app.utils.export import export_to_excel
     as_of, mtd_start, ytd_start, branch_id = _stmt_params()
-    data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id)
+    rb = _basis()
+    data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id, reporting_basis=rb)
     col_keys = [c['category_id'] for c in data['columns']]
     col_headers = [c['name'] for c in data['columns']]
     rows = []
@@ -1372,7 +1408,7 @@ def income_statement_by_product_line_export_excel():
     headers = ['Period', 'Caption'] + col_headers
     filename = f'Income_Statement_by_Product_Line_{as_of.isoformat()}.xlsx'
     return export_to_excel(rows, columns, headers, filename,
-                           title='Income Statement by Product Line')
+                           title='Income Statement by Product Line' + (f' - {OWNERS_NOTE}' if rb == OWNERS else ''))
 
 
 @reports_bp.route('/reports/budget-variance')
@@ -1512,9 +1548,11 @@ def work_order_costing_variance_export_excel():
 @login_required
 def balance_sheet():
     as_of_date, branch_id = _tb_params()
-    balance_sheet_data = generate_balance_sheet(as_of_date, branch_id=branch_id)
+    rb = _basis()
+    bs = generate_balance_sheet(as_of_date, branch_id=branch_id, reporting_basis=rb)
     return render_template('reports/balance_sheet.html',
-                           balance_sheet=balance_sheet_data, as_of_date=as_of_date)
+                           balance_sheet=bs, as_of_date=as_of_date,
+                           basis_summary=bs.get('basis_summary'))
 
 
 @reports_bp.route('/reports/balance-sheet/export/excel')
@@ -1523,11 +1561,12 @@ def balance_sheet_export_excel():
     """Export Balance Sheet to a formatted Excel workbook."""
     from app.reports.statement_export import build_balance_sheet_xlsx
     as_of_date, branch_id = _tb_params()
-    bs = generate_balance_sheet(as_of_date, branch_id=branch_id)
+    rb = _basis()
+    bs = generate_balance_sheet(as_of_date, branch_id=branch_id, reporting_basis=rb)
     company, branch_name = _bs_company_branch(branch_id)
     as_of_label = f'As of {as_of_date.strftime("%B %d, %Y")}'
     filename = f'Balance_Sheet_{as_of_date.isoformat()}.xlsx'
-    return build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename)
+    return build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename, basis_note=_export_note(rb))
 
 
 @reports_bp.route('/reports/balance-sheet/print')
@@ -1535,22 +1574,25 @@ def balance_sheet_export_excel():
 def balance_sheet_print():
     from app.reports.statement_export import balance_sheet_lines
     as_of_date, branch_id = _tb_params()
-    bs = generate_balance_sheet(as_of_date, branch_id=branch_id)
+    rb = _basis()
+    bs = generate_balance_sheet(as_of_date, branch_id=branch_id, reporting_basis=rb)
     company, branch_name = _bs_company_branch(branch_id)
     return render_template('reports/balance_sheet_print.html',
                            lines=balance_sheet_lines(bs), as_of_date=as_of_date,
-                           company=company, branch_name=branch_name)
+                           company=company, branch_name=branch_name,
+                           basis_summary=bs.get('basis_summary'))
 
 
 @reports_bp.route('/reports/cash-flow')
 @login_required
 def cash_flow():
     as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    rb = _basis()
     data = merge_cf_two_column(
-        generate_cash_flow(mtd_start, as_of, branch_id=branch_id),
-        generate_cash_flow(ytd_start, as_of, branch_id=branch_id))
+        generate_cash_flow(mtd_start, as_of, branch_id=branch_id, reporting_basis=rb),
+        generate_cash_flow(ytd_start, as_of, branch_id=branch_id, reporting_basis=rb))
     return render_template('reports/cash_flow.html', cash_flow=data, as_of=as_of,
-                           mtd_start=mtd_start, ytd_start=ytd_start)
+                           mtd_start=mtd_start, ytd_start=ytd_start, basis_summary=None)
 
 
 @reports_bp.route('/reports/cash-flow/export/excel')
@@ -1559,13 +1601,14 @@ def cash_flow_export_excel():
     """Export the two-column Statement of Cash Flows to a formatted Excel workbook."""
     from app.reports.statement_export import build_cash_flow_xlsx
     as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    rb = _basis()
     cf = merge_cf_two_column(
-        generate_cash_flow(mtd_start, as_of, branch_id=branch_id),
-        generate_cash_flow(ytd_start, as_of, branch_id=branch_id))
+        generate_cash_flow(mtd_start, as_of, branch_id=branch_id, reporting_basis=rb),
+        generate_cash_flow(ytd_start, as_of, branch_id=branch_id, reporting_basis=rb))
     company, branch_name = _bs_company_branch(branch_id)
     as_of_label = f'As of {as_of.strftime("%B %d, %Y")}'
     filename = f'Cash_Flow_{as_of.isoformat()}.xlsx'
-    return build_cash_flow_xlsx(cf, as_of_label, company, branch_name, filename)
+    return build_cash_flow_xlsx(cf, as_of_label, company, branch_name, filename, basis_note=_export_note(rb))
 
 
 @reports_bp.route('/reports/cash-flow/print')
@@ -1573,13 +1616,14 @@ def cash_flow_export_excel():
 def cash_flow_print():
     from app.reports.statement_export import cash_flow_lines
     as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    rb = _basis()
     cf = merge_cf_two_column(
-        generate_cash_flow(mtd_start, as_of, branch_id=branch_id),
-        generate_cash_flow(ytd_start, as_of, branch_id=branch_id))
+        generate_cash_flow(mtd_start, as_of, branch_id=branch_id, reporting_basis=rb),
+        generate_cash_flow(ytd_start, as_of, branch_id=branch_id, reporting_basis=rb))
     company, branch_name = _bs_company_branch(branch_id)
     return render_template('reports/cash_flow_print.html',
                            lines=cash_flow_lines(cf), as_of=as_of,
-                           company=company, branch_name=branch_name)
+                           company=company, branch_name=branch_name, basis_summary=None)
 
 
 def _descendant_leaf_ids(account):
@@ -1988,7 +2032,14 @@ def general_journal():
         flash('Please select a branch to view the General Journal.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
     period = resolve_period(request.args, ph_now().date())
-    gj = build_general_journal(_general_journal_entries(branch_id, period))
+    rb = _basis()
+    remapped = None
+    if rb == OWNERS:
+        from app.reports.ledger import ledger_lines
+        remapped = {}
+        for ln in ledger_lines(period['date_from'], period['date_to'], branch_id, reporting_basis=rb):
+            remapped.setdefault(ln.entry_id, []).append(ln)
+    gj = build_general_journal(_general_journal_entries(branch_id, period), remapped=remapped)
     return render_template('reports/general_journal.html', gj=gj, period=period)
 
 
@@ -2001,7 +2052,14 @@ def general_journal_print():
         flash('Please select a branch.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
     period = resolve_period(request.args, ph_now().date())
-    gj = build_general_journal(_general_journal_entries(branch_id, period))
+    rb = _basis()
+    remapped = None
+    if rb == OWNERS:
+        from app.reports.ledger import ledger_lines
+        remapped = {}
+        for ln in ledger_lines(period['date_from'], period['date_to'], branch_id, reporting_basis=rb):
+            remapped.setdefault(ln.entry_id, []).append(ln)
+    gj = build_general_journal(_general_journal_entries(branch_id, period), remapped=remapped)
     return render_template('reports/general_journal_print.html', gj=gj, period=period,
                            company=get_company_identity(), printed_at=ph_now())
 
@@ -2017,10 +2075,18 @@ def general_journal_export():
         flash('Please select a branch.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
     period = resolve_period(request.args, ph_now().date())
-    gj = build_general_journal(_general_journal_entries(branch_id, period))
+    rb = _basis()
+    remapped = None
+    if rb == OWNERS:
+        from app.reports.ledger import ledger_lines
+        remapped = {}
+        for ln in ledger_lines(period['date_from'], period['date_to'], branch_id, reporting_basis=rb):
+            remapped.setdefault(ln.entry_id, []).append(ln)
+    gj = build_general_journal(_general_journal_entries(branch_id, period), remapped=remapped)
     branch = db.session.get(Branch, branch_id)
     branch_name = branch.name if branch else None
-    bio = build_general_journal_xlsx(gj, period['label'], get_company_identity(),
+    period_label = period['label'] + (f' - {OWNERS_NOTE} {NOT_BOOK_OF_RECORD}' if rb == OWNERS else '')
+    bio = build_general_journal_xlsx(gj, period_label, get_company_identity(),
                                      branch_name, 'General_Journal.xlsx')
     return send_file(bio, as_attachment=True, download_name='General_Journal.xlsx',
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

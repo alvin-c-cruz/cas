@@ -4,6 +4,7 @@
 {% block page_title %}Balance Sheet{% endblock %}
 
 {% block content %}
+{% from 'reports/_basis.html' import basis_switch, basis_banner with context %}
 <div class="card">
     <div class="card-header">
         <div>
@@ -11,15 +12,17 @@
             <div class="card-sub">As of {{ as_of_date.strftime('%B %d, %Y') }}</div>
         </div>
         <div class="card-header-actions" style="display:flex;gap:8px;">
-            <a href="{{ url_for('reports.balance_sheet_export_excel', as_of=as_of_date.isoformat()) }}"
+            {{ basis_switch() }}
+            <a href="{{ url_for('reports.balance_sheet_export_excel', as_of=as_of_date.isoformat(), basis=reporting_basis) }}"
                class="btn btn-secondary">📊 Excel</a>
-            <a href="{{ url_for('reports.balance_sheet_print', as_of=as_of_date.isoformat()) }}"
+            <a href="{{ url_for('reports.balance_sheet_print', as_of=as_of_date.isoformat(), basis=reporting_basis) }}"
                target="_blank" class="btn btn-secondary">Print</a>
             <button class="btn btn-secondary" onclick="showDatePicker()">📅 Change Date</button>
         </div>
     </div>
 
     <div class="card-body">
+        {{ basis_banner(basis_summary) }}
         <table class="table" style="margin:0;">
             <tbody>
                 {% for sec in balance_sheet.sections %}

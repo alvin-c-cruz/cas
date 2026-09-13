@@ -25,6 +25,7 @@
         {% if branch_name %}Branch: {{ branch_name }} &nbsp; {% endif %}
     </div>
     <h1>Income Statement by Product Line</h1>
+    {% if reporting_basis == 'owners' %}<div class="meta" style="border:1px solid #000;padding:4px 8px;font-weight:bold;">{{ OWNERS_NOTE|safe }}</div>{% endif %}
     <div class="meta">As of {{ as_of.strftime('%B %d, %Y') }} &mdash; Current month vs. Year to date</div>
 
     {% macro matrix(period_data, heading) %}
