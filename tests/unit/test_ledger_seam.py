@@ -73,6 +73,66 @@ def test_ledger_lines_ordered_and_filterable(books):
     assert lines[0].display_number == 'J1'
 
 
-def test_owners_not_yet_available_raises(books):
-    with pytest.raises(NotImplementedError):
-        L.period_balances(None, None, books['main'], reporting_basis=L.OWNERS)
+from app.reports.owners_ledger import RemapSummary
+from app.sales_vat_categories.models import SalesVATCategory
+from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+
+
+@pytest.fixture
+def vat_books(db_session, main_branch, vl_customer):
+    ar = _acct('112001', 'Asset', 'Debit')
+    sales = _acct('411001', 'Revenue', 'Credit')
+    output = _acct('213005', 'Liability', 'Credit')
+    db.session.add(SalesVATCategory(code='V12', name='V', rate=Decimal('12.00'),
+                                    transaction_nature='regular', output_vat_account_id=output.id))
+    db.session.commit()
+    je = JournalEntry(entry_number='J1', entry_date=date(2026, 3, 10), description='d', reference='J1',
+                      entry_type='sale', branch_id=main_branch.id, status='posted', is_balanced=True,
+                      total_debit=Decimal('112'), total_credit=Decimal('112'))
+    db.session.add(je); db.session.flush()
+    db.session.add_all([
+        JournalEntryLine(entry_id=je.id, line_number=1, account_id=ar.id, debit_amount=Decimal('112'), credit_amount=0),
+        JournalEntryLine(entry_id=je.id, line_number=2, account_id=sales.id, debit_amount=0, credit_amount=Decimal('100')),
+        JournalEntryLine(entry_id=je.id, line_number=3, account_id=output.id, debit_amount=0, credit_amount=Decimal('12'))])
+    inv = SalesInvoice(branch_id=main_branch.id, invoice_number='SI-1', invoice_date=date(2026, 3, 10),
+                       due_date=date(2026, 3, 10), customer_id=vl_customer.id, customer_name=vl_customer.name,
+                       customer_tin=vl_customer.tin, status='posted', journal_entry_id=je.id)
+    inv.line_items.append(SalesInvoiceItem(line_number=1, description='x', amount=Decimal('112'),
+                                           vat_rate=Decimal('12'), vat_category='V12', vat_nature='regular',
+                                           line_total=Decimal('112'), vat_amount=Decimal('12'), account_id=sales.id))
+    db.session.add(inv); db.session.commit()
+    return {'sales': sales, 'output': output, 'main': main_branch.id}
+
+
+def test_owners_balances_fold_output_vat_into_sales(vat_books):
+    b = L.period_balances(None, None, vat_books['main'], reporting_basis=L.OWNERS)
+    assert b[vat_books['sales'].id] == (Decimal('0.00'), Decimal('112.00'))
+    assert vat_books['output'].id not in b
+    s = L.owners_summary(None, None, vat_books['main'])
+    assert isinstance(s, RemapSummary) and s.moved_to_income == Decimal('12.00')
+
+
+def test_owners_lines_annotate_moved_from(vat_books):
+    lines = L.ledger_lines(None, None, vat_books['main'], reporting_basis=L.OWNERS, account_id=vat_books['sales'].id)
+    assert [(l.credit, l.moved_from_account_id) for l in lines] == \
+        [(Decimal('100.00'), None), (Decimal('12.00'), vat_books['output'].id)]
+
+
+def test_owners_result_is_cached_within_a_request_only(app, vat_books, monkeypatch):
+    import app.reports.owners_ledger as O
+    calls = {'n': 0}
+    real = O.remap
+    def counting(lines):
+        calls['n'] += 1
+        return real(lines)
+    monkeypatch.setattr(O, 'remap', counting)
+    L.period_balances(None, None, vat_books['main'], reporting_basis=L.OWNERS)
+    L.period_balances(None, None, vat_books['main'], reporting_basis=L.OWNERS)
+    assert calls['n'] == 2                                  # no request -> no cache
+    with app.test_request_context('/reports/income-statement'):
+        from flask import g
+        g._ledger_cache = {}
+        L.period_balances(None, None, vat_books['main'], reporting_basis=L.OWNERS)
+        L.ledger_lines(None, None, vat_books['main'], reporting_basis=L.OWNERS)
+        L.owners_summary(None, None, vat_books['main'])
+    assert calls['n'] == 3                                  # one remap for the three reads

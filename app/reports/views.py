@@ -53,6 +53,13 @@ import re
 
 reports_bp = Blueprint('reports', __name__, template_folder='templates')
 
+
+@reports_bp.before_request
+def _reset_ledger_cache():
+    """app/reports/ledger.py memoises the owners' remap on g for the life of ONE request."""
+    from flask import g
+    g._ledger_cache = {}
+
 # entry_type -> (Model, number column, view endpoint, short label prefix)
 _SOURCE_MAP = {
     'sale':         (SalesInvoice,            'invoice_number', 'sales_invoices.view',    'SI'),

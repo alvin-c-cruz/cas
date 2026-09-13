@@ -75,8 +75,17 @@ def _gaap_balances(start, end, branch_id, exclude_closing):
 
 
 def _owners(start, end, branch_id, exclude_closing):
-    """(remapped lines, RemapSummary), cached per request. Task 6 fills this in."""
-    raise NotImplementedError('owners basis lands in Task 6')
+    """(remapped lines, RemapSummary). Cached on g._ledger_cache inside a request; the
+    reports blueprint resets that dict in before_request so nothing leaks across requests."""
+    from app.reports.owners_ledger import remap
+    key = (start, end, branch_id, exclude_closing)
+    cache = getattr(g, '_ledger_cache', None) if has_request_context() else None
+    if cache is not None and key in cache:
+        return cache[key]
+    result = remap(fetch_lines(start, end, branch_id, exclude_closing))
+    if cache is not None:
+        cache[key] = result
+    return result
 
 
 def period_balances(start, end, branch_id, reporting_basis=GAAP, exclude_closing=False):
