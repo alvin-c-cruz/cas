@@ -11,17 +11,33 @@ VOUCHER_ENTRY_TYPES = ('reversal', 'adjustment', 'closing', 'closing_reversal',
                        'manufacturing_conversion', 'manufacturing_abnormal_loss')
 
 
-def build_general_journal(entries):
+def build_general_journal(entries, remapped=None):
     """Shape an iterable of JournalEntry into General Journal rows. Only posted
-    entries contribute to totals; drafts and voided entries are listed but excluded."""
+    entries contribute to totals; drafts and voided entries are listed but excluded.
+
+    remapped: optional {entry_id: [LedgerLine]} from app/reports/ledger.py on the owners'
+    basis. An entry present there is rendered from those lines (a moved line names the VAT
+    account it came from in 'moved_from'); everything else renders from entry.lines."""
+    from app.accounts.models import Account
+    remapped = remapped or {}
+    acct_by_id = {a.id: a for a in Account.query.all()} if remapped else {}
+
     rows, total_debit, total_credit = [], Decimal('0.00'), Decimal('0.00')
     for e in entries:
         debits, credits = [], []
-        for line in e.lines:
-            if line.debit_amount and line.debit_amount > 0:
-                debits.append({'account': line.account, 'amount': line.debit_amount})
-            if line.credit_amount and line.credit_amount > 0:
-                credits.append({'account': line.account, 'amount': line.credit_amount})
+        if e.id in remapped:
+            for ln in remapped[e.id]:
+                src = acct_by_id.get(ln.moved_from_account_id) if ln.moved_from_account_id else None
+                if ln.debit > 0:
+                    debits.append({'account': acct_by_id[ln.account_id], 'amount': ln.debit, 'moved_from': src})
+                if ln.credit > 0:
+                    credits.append({'account': acct_by_id[ln.account_id], 'amount': ln.credit, 'moved_from': src})
+        else:
+            for line in e.lines:
+                if line.debit_amount and line.debit_amount > 0:
+                    debits.append({'account': line.account, 'amount': line.debit_amount, 'moved_from': None})
+                if line.credit_amount and line.credit_amount > 0:
+                    credits.append({'account': line.account, 'amount': line.credit_amount, 'moved_from': None})
         if e.status == 'posted':
             total_debit += sum((d['amount'] for d in debits), Decimal('0.00'))
             total_credit += sum((c['amount'] for c in credits), Decimal('0.00'))
@@ -40,9 +56,11 @@ def _write_gj_rows(ws, gj):
         e = row['entry']
         ws.append([e.entry_date.strftime('%m/%d/%Y'), '', e.display_number, None, None])
         for d in row['debits']:
-            ws.append(['', d['account'].name, '', float(d['amount']), None])
+            name = d['account'].name + (f"  (from {d['moved_from'].code})" if d.get('moved_from') else '')
+            ws.append(['', name, '', float(d['amount']), None])
         for c in row['credits']:
-            ws.append(['', '    ' + c['account'].name, '', None, float(c['amount'])])
+            name = c['account'].name + (f"  (from {c['moved_from'].code})" if c.get('moved_from') else '')
+            ws.append(['', '    ' + name, '', None, float(c['amount'])])
         if row['explanation']:
             ws.append(['', '(' + row['explanation'] + ')', '', None, None])
     ws.append(['', 'TOTAL', '', float(gj['total_debit']), float(gj['total_credit'])])

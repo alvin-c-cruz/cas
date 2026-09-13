@@ -203,3 +203,24 @@ def test_general_ledger_owners_opening_balance_is_remapped(books):
     gl = generate_general_ledger(date(2026, 4, 1), date(2026, 4, 30), books['branch'], reporting_basis=OWNERS)
     supplies = next(a for a in gl['accounts'] if a['code'] == '721001')
     assert supplies['opening_balance'] == 44.8 and supplies['lines'] == []
+
+
+from app.journal_entries.models import JournalEntry as JE
+from app.reports.general_journal_data import build_general_journal
+from app.reports.ledger import ledger_lines
+
+
+def test_general_journal_rows_from_remapped_lines(books):
+    c = books
+    jv = _je(c['branch'], 'JV-2026-03-0001', date(2026, 3, 20), [
+        (c['output'], '5.00', 0), (c['cash'], 0, '5.00')], entry_type='adjustment')
+    entries = [db.session.get(JE, jv.id)]
+    gaap = build_general_journal(entries)
+    assert gaap['rows'][0]['debits'][0]['account'].code == '213005'
+    assert gaap['rows'][0]['debits'][0]['moved_from'] is None
+    remapped = {}
+    for ln in ledger_lines(date(2026, 3, 1), date(2026, 3, 31), c['branch'], reporting_basis=OWNERS):
+        remapped.setdefault(ln.entry_id, []).append(ln)
+    own = build_general_journal(entries, remapped=remapped)
+    assert own['rows'][0]['debits'][0]['account'].code == '213005'      # manual voucher: kept, flagged
+    assert own['balanced'] and own['total_debit'] == D('5.00')
