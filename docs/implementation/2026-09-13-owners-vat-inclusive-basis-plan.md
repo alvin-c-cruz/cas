@@ -13,7 +13,7 @@
 - Never edit a posted journal entry. The lens is read-only. Posting code is untouched.
 - Never hardcode a GL account code. VAT accounts come from `output_account_ids()`, `input_account_ids()`, and the `vat_payable_account_code` / `input_vat_carryover_account_code` settings (`app/vat_settlement/service.py`).
 - Never call `datetime.now()`; use `ph_now()` from `app.utils`.
-- The keyword is `reporting_basis` everywhere (`'gaap'` | `'owners'`), default `'gaap'`. It is NOT `basis` — `income_statement_by_product_line.py` already uses `basis` for its allocation rule.
+- The Python keyword argument is `reporting_basis` everywhere (`'gaap'` | `'owners'`), default `'gaap'`. It is NOT `basis` — `income_statement_by_product_line.py` already uses a local named `basis` for its allocation rule. The URL query parameter, by contrast, IS `basis` (`?basis=owners`), exactly as the spec section 2 states; `resolve_basis()` reads `args['basis']`.
 - "Admin-type role" = `current_user.has_full_access` (admin or Chief Accountant), per `app/users/models.py`.
 - Copy, verbatim: banner `Owners' basis: VAT included in income and expenses. Not for external reporting.`; General Journal adds `Not a book of record.`; settings switch label `Enable owners' reporting basis`; settings card title `Owners' View`; report control label `Basis:` with options `GAAP` and `Owners`.
 - Settings keys, verbatim: `owners_basis_enabled` (`'1'`/`'0'`), `owners_basis_vat_expense_account:<product_category_id>` (account code).
