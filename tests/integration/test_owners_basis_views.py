@@ -26,6 +26,10 @@ def _is_by_product_line_module_enabled(db_session):
 
 
 SWITCH = 'name="basis"'
+# The `books` fixture: one sale 100 + 12 VAT. Net sales are 100.00 at GAAP and 112.00 under
+# the owners' basis; the statement renders every figure as '₱{:,.2f}' inside a <td>.
+GAAP_NET_SALES = '₱100.00<'
+OWNERS_NET_SALES = '₱112.00<'
 PAGES = ['/reports/income-statement?as_of=2026-03-31',
          '/reports/income-statement-by-product-line?as_of=2026-03-31',
          '/reports/balance-sheet?as_of=2026-03-31',
@@ -68,12 +72,28 @@ def test_staff_pasting_owners_url_gets_gaap(client, books, staff_user, url):
     assert SWITCH not in html and OWNERS_NOTE not in html
 
 
+def test_non_full_access_user_pasting_owners_url_gets_gaap_figures(client, books, accountant_user):
+    """The absence of the banner is not proof the FIGURES fell back, so assert the books.
+
+    staff_user cannot open the Income Statement at all (the route bounces them to the
+    dashboard), so the parametrized test above can only ever prove the banner is absent.
+    An accountant CAN open it and still may not switch basis -- the right user for this."""
+    AppSettings.set_setting(ENABLED_KEY, '1')
+    _login(client, accountant_user); _branch(client, books['branch'])
+    html = client.get('/reports/income-statement?as_of=2026-03-31&basis=owners').data.decode()
+    assert SWITCH not in html and OWNERS_NOTE not in html
+    assert GAAP_NET_SALES in html and OWNERS_NET_SALES not in html
+
+
 @pytest.mark.parametrize('url', PAGES)
 def test_owners_page_shows_banner(client, books, admin_user, url):
     AppSettings.set_setting(ENABLED_KEY, '1')
     _login(client, admin_user); _branch(client, books['branch'])
     html = client.get(url + '&basis=owners').data.decode()
     assert OWNERS_NOTE in html
+    # Review finding: the reconciliation box belongs on EVERY owners' page, not only the
+    # statements -- a page that shows the note but no reconciliation cannot be checked.
+    assert 'Output VAT moved to income' in html
     if 'general-journal' in url:
         assert NOT_BOOK_OF_RECORD in html
 
@@ -84,6 +104,43 @@ def test_owners_income_statement_reconciliation_box(client, books, admin_user):
     html = client.get('/reports/income-statement?as_of=2026-03-31&basis=owners').data.decode()
     assert 'GAAP net income' in html and 'Output VAT moved to income' in html
     assert '67.20' in html and '12.00' in html and '4.80' in html
+
+
+def test_owners_income_statement_box_shows_the_real_gaap_net_income(client, books, admin_user):
+    """The box must reconcile two independently computed figures: the GAAP line comes from a
+    real GAAP run of the generator, not from owners' NI minus the effect (which could never
+    disagree and so could never catch a bug in the lens)."""
+    AppSettings.set_setting(ENABLED_KEY, '1')
+    _login(client, admin_user); _branch(client, books['branch'])
+    html = client.get('/reports/income-statement?as_of=2026-03-31&basis=owners').data.decode()
+    box = html.split('basis-recon')[1].split('</table>')[0]
+    assert '>GAAP net income</td><td style="text-align:right;padding:2px 8px;">60.00<' in box
+    assert ">= Owners' net income</td>" in box and '>67.20<' in box
+
+
+def test_owners_is_by_product_line_box_shows_the_real_gaap_net_income(client, books, admin_user):
+    AppSettings.set_setting(ENABLED_KEY, '1')
+    _login(client, admin_user); _branch(client, books['branch'])
+    html = client.get('/reports/income-statement-by-product-line'
+                      '?as_of=2026-03-31&basis=owners').data.decode()
+    box = html.split('basis-recon')[1].split('</table>')[0]
+    assert 'GAAP net income' in box and '>60.00<' in box and '>67.20<' in box
+
+
+# --- Review Finding 5: route tests must assert FIGURES, not only the banner ------------
+
+def test_admin_gaap_income_statement_shows_gaap_figures(client, books, admin_user):
+    AppSettings.set_setting(ENABLED_KEY, '1')
+    _login(client, admin_user); _branch(client, books['branch'])
+    html = client.get('/reports/income-statement?as_of=2026-03-31').data.decode()
+    assert GAAP_NET_SALES in html and OWNERS_NET_SALES not in html
+
+
+def test_admin_owners_income_statement_shows_owners_figures(client, books, admin_user):
+    AppSettings.set_setting(ENABLED_KEY, '1')
+    _login(client, admin_user); _branch(client, books['branch'])
+    html = client.get('/reports/income-statement?as_of=2026-03-31&basis=owners').data.decode()
+    assert OWNERS_NET_SALES in html
 
 
 def test_owners_general_ledger_marks_moved_lines(client, books, admin_user):

@@ -52,7 +52,7 @@
                 <button type="submit" class="btn btn-primary">Generate</button>
             </div>
         </form>
-        {{ basis_banner() }}
+        {{ basis_banner(basis_summary) }}
 
         {% if ledger.accounts %}
         {% for acct in ledger.accounts %}

@@ -189,7 +189,9 @@ def test_document_line_without_account_keeps_its_share_flagged(coa, main_branch,
     assert _balanced(lines)
     assert _bal(lines, coa['output']) == D('-12.00')
     assert _bal(lines, coa['sales_tin']) == D('-212.00')
-    assert s.untraced[0].reason == 'no_line_account' and s.untraced[0].amount == D('12.00')
+    # Untraced.amount is SIGNED debit-positive: this is an output-VAT credit share.
+    assert s.untraced[0].reason == 'no_line_account' and s.untraced[0].amount == D('-12.00')
+    assert s.untraced_total == D('-12.00')
 
 
 def test_document_with_no_vat_lines_is_flagged(coa, main_branch, vl_customer):
@@ -286,3 +288,112 @@ def test_reversal_follows_original_document_and_nets_to_zero(coa, main_branch, v
     assert _balanced(lines)
     assert _bal(lines, coa['output']) == D('0.00') and _bal(lines, coa['sales_tin']) == D('0.00')
     assert s.moved_to_income == D('0.00') and s.untraced == []
+
+
+def test_untraced_reversal_nets_against_its_original(coa, main_branch):
+    """Finding 9: a flagged line and its reversal must cancel in untraced_total, not
+    double-count. Signed, debit-positive amounts are what make that true."""
+    jv = _je(main_branch.id, 'JV-1', date(2026, 3, 20), [
+        (coa['output'], '5.00', 0), (coa['cash'], 0, '5.00')], entry_type='adjustment')
+    _je(main_branch.id, 'JV-1R', date(2026, 3, 21), [
+        (coa['cash'], '5.00', 0), (coa['output'], 0, '5.00')],
+        entry_type='reversal', reversed_entry_id=jv.id)
+    lines, s = O.remap(L.fetch_lines(None, None, main_branch.id))
+    assert _balanced(lines) and _bal(lines, coa['output']) == D('0.00')
+    assert [u.amount for u in s.untraced] == [D('5.00'), D('-5.00')]
+    assert s.untraced_total == D('0.00')
+
+
+def test_vat_payable_debit_on_a_non_payment_document_is_manual_entry(coa, main_branch, vl_customer):
+    """Finding 10: the document WAS found, it just isn't a CDV -- so it is not a
+    remittance, and 'no_source_document' would have been a lie."""
+    je = _je(main_branch.id, 'J1', date(2026, 3, 10), [
+        (coa['payable'], '10.00', 0), (coa['sales_tin'], 0, '10.00')])
+    _si(main_branch.id, vl_customer, je, [(coa['sales_tin'], '10.00', '0.00')])
+    lines, s = O.remap(L.fetch_lines(None, None, main_branch.id))
+    assert _bal(lines, coa['payable']) == D('10.00')
+    assert s.untraced[0].reason == 'manual_entry'
+
+
+# --- Finding 4: the remittance split is memo-aware -------------------------------------
+
+from app.sales_memos.models import SalesMemo, SalesMemoItem   # noqa: E402
+
+
+def _credit_memo(branch_id, invoice, si_item, amount, vat, on, number='CM-1', memo_type='credit'):
+    m = SalesMemo(branch_id=branch_id, memo_type=memo_type, memo_number=number, memo_date=on,
+                  sales_invoice_id=invoice.id, original_invoice_number=invoice.invoice_number,
+                  customer_id=invoice.customer_id, customer_name=invoice.customer_name,
+                  reason='return', notes='', status='posted')
+    m.line_items.append(SalesMemoItem(
+        line_number=1, sales_invoice_item_id=si_item.id, product_id=si_item.product_id,
+        amount=D(str(amount)), line_total=D(str(amount)),
+        vat_rate=D('12.00'), vat_amount=D(str(vat)), account_id=si_item.account_id))
+    db.session.add(m); db.session.commit()
+    return m
+
+
+def test_remittance_split_is_reduced_by_a_posted_credit_memo(coa, main_branch, lines_of_business):
+    """TIN 24 / PLA 12 of output VAT invoiced in Q1; a posted credit memo returns 12.00 of
+    TIN's VAT, so the quarter's split is 12:12 and a 36.00 remittance halves."""
+    inv = SalesInvoice.query.filter_by(invoice_number='SI-1').one()
+    _credit_memo(main_branch.id, inv, inv.line_items[0], '112.00', '12.00', date(2026, 3, 20))
+    _je(main_branch.id, 'JV-2', date(2026, 4, 25), [
+        (coa['payable'], '36.00', 0), (coa['cash'], 0, '36.00')], entry_type='adjustment')
+    lines, s = O.remap(L.fetch_lines(date(2026, 4, 1), None, main_branch.id))
+    assert _balanced(lines) and _bal(lines, coa['payable']) == D('0.00')
+    assert _bal(lines, lines_of_business['vat_tin']) == D('18.00')
+    assert _bal(lines, lines_of_business['vat_pla']) == D('18.00')
+
+
+def test_remittance_split_is_increased_by_a_posted_debit_note(coa, main_branch, lines_of_business):
+    """A debit note adds to that line's output VAT: TIN 36 / PLA 12 -> 3:1 of 36.00."""
+    inv = SalesInvoice.query.filter_by(invoice_number='SI-1').one()
+    _credit_memo(main_branch.id, inv, inv.line_items[0], '112.00', '12.00', date(2026, 3, 20),
+                 number='DM-1', memo_type='debit')
+    _je(main_branch.id, 'JV-2', date(2026, 4, 25), [
+        (coa['payable'], '36.00', 0), (coa['cash'], 0, '36.00')], entry_type='adjustment')
+    lines, s = O.remap(L.fetch_lines(date(2026, 4, 1), None, main_branch.id))
+    assert _bal(lines, lines_of_business['vat_tin']) == D('27.00')
+    assert _bal(lines, lines_of_business['vat_pla']) == D('9.00')
+
+
+# --- Finding 3: the lens must not issue a query per source document ---------------------
+
+from sqlalchemy import event   # noqa: E402
+
+
+def _remap_statement_count(branch_id):
+    """SQL statements issued by remap() alone (the fetch is done first, outside the count)."""
+    raw = L.fetch_lines(None, None, branch_id)
+    seen = []
+
+    def _count(conn, cursor, statement, params, context, executemany):
+        seen.append(statement)
+
+    event.listen(db.engine, 'before_cursor_execute', _count)
+    try:
+        O.remap(raw)
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', _count)
+    return len(seen)
+
+
+def _n_invoices(coa, branch_id, customer, n, start=1):
+    for i in range(start, start + n):
+        je = _je(branch_id, f'J{i}', date(2026, 3, 10), [
+            (coa['ar'], '112.00', 0), (coa['sales_tin'], 0, '100.00'), (coa['output'], 0, '12.00')])
+        _si(branch_id, customer, je, [(coa['sales_tin'], '112.00', '12.00')], number=f'SI-{i}')
+
+
+def test_remap_query_count_does_not_grow_with_document_count(coa, main_branch, vl_customer):
+    """Finding 3: _source_docs bulk-loads headers AND eager-loads their lines, so the lens
+    costs a fixed number of statements no matter how many documents are in scope."""
+    _n_invoices(coa, main_branch.id, vl_customer, 5)
+    few = _remap_statement_count(main_branch.id)
+    _n_invoices(coa, main_branch.id, vl_customer, 25, start=6)
+    many = _remap_statement_count(main_branch.id)
+    assert few == many, f'{few} statements for 5 documents, {many} for 30'
+    # 15 today (2 VAT-account lookups, 2 settings, the COA, 6 document headers + 6 eager
+    # line loads, categories); the bound is the tripwire, `few == many` is the invariant.
+    assert many <= 16, f'{many} statements -- the lens got chattier'

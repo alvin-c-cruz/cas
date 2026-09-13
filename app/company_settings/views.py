@@ -305,6 +305,20 @@ def save_owners_view():
         if not code:
             missing.append(row['category'].name)
         new_values[row['field']] = code
+    # Two categories on ONE account is silently lossy: income_statement_by_product_line.py
+    # builds {account_id: category_id}, so the duplicate would attribute every peso on that
+    # account to whichever category happened to win the dict.
+    by_code = {}
+    for row in ctx['rows']:
+        code = new_values[row['field']]
+        if code:
+            by_code.setdefault(code, []).append(row['category'].name)
+    for code, names in by_code.items():
+        if len(names) > 1:
+            flash(f"Account {code} is mapped to more than one product line "
+                  f"({', '.join(names)}). Give each product line its own VAT expense account.",
+                  'error')
+            return redirect(url_for('company_settings.owners_view'))
     if want_enabled and missing:
         flash("Cannot enable the owners' basis: no VAT expense account for " + ', '.join(missing) + '.', 'error')
         return redirect(url_for('company_settings.owners_view'))

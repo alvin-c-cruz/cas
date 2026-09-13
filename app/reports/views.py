@@ -78,6 +78,29 @@ def _export_note(reporting_basis):
     return OWNERS_NOTE if reporting_basis == OWNERS else None
 
 
+def _owners_summary(reporting_basis, start, end, branch_id, exclude_closing=False):
+    """RemapSummary.as_dict() for the scope a page already reads, or None under GAAP.
+
+    The per-request cache in app/reports/ledger.py makes this free whenever the page's own
+    generators already remapped the same (start, end, branch, exclude_closing) scope."""
+    if reporting_basis != OWNERS:
+        return None
+    from app.reports.ledger import owners_summary
+    return owners_summary(start, end, branch_id, exclude_closing=exclude_closing).as_dict()
+
+
+def _gaap_net_income(reporting_basis, mtd_start, ytd_start, as_of, branch_id):
+    """{'mtd': n, 'ytd': n} of REAL GAAP net income, or None under GAAP.
+
+    The reconciliation box must reconcile two independently computed figures. Deriving the
+    GAAP line as owners' NI minus the basis effect would make the box an identity that can
+    never disagree, and so could never catch a bug in the lens."""
+    if reporting_basis != OWNERS:
+        return None
+    return {'mtd': generate_income_statement(mtd_start, as_of, branch_id=branch_id)['net_income'],
+            'ytd': generate_income_statement(ytd_start, as_of, branch_id=branch_id)['net_income']}
+
+
 # entry_type -> (Model, number column, view endpoint, short label prefix)
 _SOURCE_MAP = {
     'sale':         (SalesInvoice,            'invoice_number', 'sales_invoices.view',    'SI'),
@@ -727,7 +750,8 @@ def general_ledger():
                            start_date=start_date,
                            end_date=end_date,
                            accounts=accounts,
-                           selected_account_id=account_id)
+                           selected_account_id=account_id,
+                           basis_summary=_owners_summary(rb, start_date, end_date, branch_id))
 
 
 @reports_bp.route('/reports/general-ledger/export/excel')
@@ -770,7 +794,8 @@ def general_ledger_print():
                     f"{end_date.strftime('%b %d, %Y')}")
     return render_template('reports/general_ledger_print.html',
                            ledger=ledger, start_date=start_date, end_date=end_date,
-                           company=get_company_identity(), period_label=period_label)
+                           company=get_company_identity(), period_label=period_label,
+                           basis_summary=_owners_summary(rb, start_date, end_date, branch_id))
 
 
 # BIR Compliance Reports
@@ -1197,7 +1222,8 @@ def trial_balance():
     trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id, reporting_basis=rb)
     return render_template('reports/trial_balance.html',
                            trial_balance=trial_balance_data,
-                           as_of_date=as_of_date)
+                           as_of_date=as_of_date,
+                           basis_summary=_owners_summary(rb, None, as_of_date, branch_id))
 
 
 @reports_bp.route('/reports/trial-balance/export/excel')
@@ -1229,7 +1255,8 @@ def trial_balance_print():
     branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     return render_template('reports/trial_balance_print.html',
                            trial_balance=trial_balance_data, as_of_date=as_of_date,
-                           company=company, branch_name=branch_name)
+                           company=company, branch_name=branch_name,
+                           basis_summary=_owners_summary(rb, None, as_of_date, branch_id))
 
 
 def _stmt_params():
@@ -1278,7 +1305,8 @@ def income_statement():
     return render_template('reports/income_statement.html',
                            income_statement=data, as_of=as_of,
                            mtd_start=mtd_start, ytd_start=ytd_start,
-                           basis_summary=data.get('basis_summary'))
+                           basis_summary=data.get('basis_summary'),
+                           gaap_net_income=_gaap_net_income(rb, mtd_start, ytd_start, as_of, branch_id))
 
 
 @reports_bp.route('/reports/income-statement/export/excel')
@@ -1310,7 +1338,8 @@ def income_statement_print():
     return render_template('reports/income_statement_print.html',
                            lines=income_statement_lines(stmt), as_of=as_of,
                            company=company, branch_name=branch_name,
-                           basis_summary=stmt.get('basis_summary'))
+                           basis_summary=stmt.get('basis_summary'),
+                           gaap_net_income=_gaap_net_income(rb, mtd_start, ytd_start, as_of, branch_id))
 
 
 def _bs_company_branch(branch_id):
@@ -1373,7 +1402,8 @@ def income_statement_by_product_line():
     data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id, reporting_basis=rb)
     return render_template('reports/income_statement_by_product_line.html',
                            data=data, as_of=as_of, mtd_start=mtd_start, ytd_start=ytd_start,
-                           basis_summary=data.get('basis_summary'))
+                           basis_summary=data.get('basis_summary'),
+                           gaap_net_income=_gaap_net_income(rb, mtd_start, ytd_start, as_of, branch_id))
 
 
 @reports_bp.route('/reports/income-statement-by-product-line/print')
@@ -1593,7 +1623,9 @@ def cash_flow():
         generate_cash_flow(mtd_start, as_of, branch_id=branch_id, reporting_basis=rb),
         generate_cash_flow(ytd_start, as_of, branch_id=branch_id, reporting_basis=rb))
     return render_template('reports/cash_flow.html', cash_flow=data, as_of=as_of,
-                           mtd_start=mtd_start, ytd_start=ytd_start)
+                           mtd_start=mtd_start, ytd_start=ytd_start,
+                           basis_summary=_owners_summary(rb, ytd_start, as_of, branch_id,
+                                                         exclude_closing=True))
 
 
 @reports_bp.route('/reports/cash-flow/export/excel')
@@ -1624,7 +1656,9 @@ def cash_flow_print():
     company, branch_name = _bs_company_branch(branch_id)
     return render_template('reports/cash_flow_print.html',
                            lines=cash_flow_lines(cf), as_of=as_of,
-                           company=company, branch_name=branch_name)
+                           company=company, branch_name=branch_name,
+                           basis_summary=_owners_summary(rb, ytd_start, as_of, branch_id,
+                                                         exclude_closing=True))
 
 
 def _descendant_leaf_ids(account):
@@ -1706,6 +1740,9 @@ def _aggregated_ledger_response(account, leaf_ids, start_date, end_date, branch_
 @login_required
 def account_ledger_json():
     """JSON endpoint: per-account ledger for a date range (FS drill-down).
+
+    Deliberately GAAP-only: this is the Chart-of-Accounts drill-down, not one of the seven
+    basis-aware reports, so it never reads ?basis and always shows the books as posted.
 
     GET /reports/account-ledger?account_id=<id>&start=<YYYY-MM-DD>&end=<YYYY-MM-DD>
 
@@ -2047,7 +2084,9 @@ def general_journal():
     rb = _basis()
     remapped = _gj_remapped(rb, branch_id, period)
     gj = build_general_journal(_general_journal_entries(branch_id, period), remapped=remapped)
-    return render_template('reports/general_journal.html', gj=gj, period=period)
+    return render_template('reports/general_journal.html', gj=gj, period=period,
+                           basis_summary=_owners_summary(rb, period['date_from'],
+                                                         period['date_to'], branch_id))
 
 
 @reports_bp.route('/reports/general-journal/print')
@@ -2063,7 +2102,9 @@ def general_journal_print():
     remapped = _gj_remapped(rb, branch_id, period)
     gj = build_general_journal(_general_journal_entries(branch_id, period), remapped=remapped)
     return render_template('reports/general_journal_print.html', gj=gj, period=period,
-                           company=get_company_identity(), printed_at=ph_now())
+                           company=get_company_identity(), printed_at=ph_now(),
+                           basis_summary=_owners_summary(rb, period['date_from'],
+                                                         period['date_to'], branch_id))
 
 
 @reports_bp.route('/reports/general-journal/export')

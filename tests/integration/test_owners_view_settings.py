@@ -118,3 +118,17 @@ def test_saves_mapping_then_enable_and_audits(client, db_session, admin_user, se
     assert log is not None
     assert '"owners_basis_enabled": "0"' in (log.old_values or '') or "'owners_basis_enabled': '0'" in (log.old_values or '')
     assert 'owners_basis_enabled' in (log.new_values or '')
+
+
+def test_rejects_two_categories_on_one_account(client, db_session, admin_user, setup):
+    """income_statement_by_product_line.py builds {account_id: category_id}; a duplicate
+    would silently attribute every peso on that account to one product line."""
+    _login(client, admin_user)
+    resp = client.post('/settings/owners-view', data={
+        vat_expense_setting_key(setup['tin'].id): '811001',
+        vat_expense_setting_key(setup['pla'].id): '811001',
+    }, follow_redirects=True)
+    html = resp.data.decode()
+    assert '811001' in html and 'Tincan' in html and 'Plastic' in html
+    assert AppSettings.get_setting(vat_expense_setting_key(setup['tin'].id)) is None
+    assert AppSettings.get_setting(vat_expense_setting_key(setup['pla'].id)) is None

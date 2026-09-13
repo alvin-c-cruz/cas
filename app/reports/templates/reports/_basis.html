@@ -13,13 +13,10 @@
 {% endif %}
 {% endmacro %}
 
-{% macro basis_banner(summary=None, book=False, gaap_net_income=None) %}
-{# summary: RemapSummary.as_dict(), or {'mtd': dict, 'ytd': dict} for two-column statements.
-   gaap_net_income: number, or {'mtd': n, 'ytd': n} matching summary. None -> no GAAP line. #}
-{% if reporting_basis == 'owners' %}
-<div class="basis-banner" style="border:2px solid #b45309;background:#fffbeb;color:#78350f;padding:10px 14px;margin:0 0 14px 0;border-radius:6px;">
-  <strong>{{ OWNERS_NOTE|safe }}</strong>{% if book %} <strong>{{ NOT_BOOK_OF_RECORD }}</strong>{% endif %}
-  {% if summary %}
+{% macro basis_recon(summary, gaap_net_income=None) %}
+{# The reconciliation table on its own, for print layouts that carry their own note line.
+   gaap_net_income must be the REAL GAAP net income (views.py::_gaap_net_income), never
+   owners' NI minus the effect -- a derived line makes the box an identity. #}
   {% set two_col = summary.mtd is defined or summary.ytd is defined %}
   {% set blocks = [('Current month', summary.mtd, gaap_net_income.mtd if gaap_net_income else none), ('Year to date', summary.ytd, gaap_net_income.ytd if gaap_net_income else none)] if two_col else [('Reconciliation', summary, gaap_net_income)] %}
   <table class="basis-recon" style="margin-top:8px;border-collapse:collapse;">
@@ -33,11 +30,19 @@
     <tr><td style="padding:2px 8px;">Untraced VAT (flagged, left on VAT accounts)</td><td style="text-align:right;padding:2px 8px;">{{ '{:,.2f}'.format(s.untraced_total) }}</td></tr>
     {% if gaap is not none %}<tr><td style="padding:2px 8px;font-weight:600;">= Owners' net income</td><td style="text-align:right;padding:2px 8px;font-weight:600;">{{ '{:,.2f}'.format(gaap + s.net_income_effect) }}</td></tr>{% endif %}
     {% for u in s.untraced %}
-    <tr><td colspan="2" style="padding:1px 8px 1px 24px;font-size:0.9em;">{{ u.entry_number }} &middot; {{ u.account_code }} &middot; {{ '{:,.2f}'.format(u.amount) }} &middot; {{ u.reason }}</td></tr>
+    <tr><td colspan="2" style="padding:1px 8px 1px 24px;font-size:0.9em;">{{ u.entry_number }} &middot; {{ u.account_code }} &middot; {{ '{:,.2f}'.format(u.amount|abs) }} &middot; {{ u.reason }}</td></tr>
     {% endfor %}
     {% endfor %}
   </table>
-  {% endif %}
+{% endmacro %}
+
+{% macro basis_banner(summary=None, book=False, gaap_net_income=None) %}
+{# summary: RemapSummary.as_dict(), or {'mtd': dict, 'ytd': dict} for two-column statements.
+   gaap_net_income: number, or {'mtd': n, 'ytd': n} matching summary. None -> no GAAP line. #}
+{% if reporting_basis == 'owners' %}
+<div class="basis-banner" style="border:2px solid #b45309;background:#fffbeb;color:#78350f;padding:10px 14px;margin:0 0 14px 0;border-radius:6px;">
+  <strong>{{ OWNERS_NOTE|safe }}</strong>{% if book %} <strong>{{ NOT_BOOK_OF_RECORD }}</strong>{% endif %}
+  {% if summary %}{{ basis_recon(summary, gaap_net_income) }}{% endif %}
 </div>
 {% endif %}
 {% endmacro %}

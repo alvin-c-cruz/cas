@@ -11,13 +11,20 @@ Rules, applied line by line to posted LedgerLines (closing entries are the calle
   3. Any line of a vat_settlement / vat_settlement_reversal entry -> dropped (all legs are VAT).
   4. A debit to VAT Payable outside a settlement (a remittance) -> VAT expense by product line,
      split by each category's output VAT in the last settled quarter on/before the payment date
-     (else the payment's own quarter).
+     (else the payment's own quarter). A debit to VAT Payable that sits on a NON-payment source
+     document (AP / SI / CRV / memo) is not a remittance: it is kept and flagged `manual_entry`.
   5. Anything else on a VAT account -> left where it is and listed in RemapSummary.untraced.
+
+The remittance window (rule 4) is company-wide, never branch-filtered: VAT is a per-TIN tax
+filed once per quarter, so a branch-filtered owners' report still splits VAT expense on the
+company-wide output-VAT ratios of that quarter.
 
 Pure-read. Never raises for data it cannot handle: it keeps the line and records why.
 """
 from collections import defaultdict, namedtuple
 from decimal import Decimal, ROUND_HALF_UP
+
+from sqlalchemy.orm import selectinload
 
 from app import db
 from app.accounts.models import Account
@@ -29,6 +36,8 @@ CENT = Decimal('0.01')
 SALES_KINDS = ('si', 'crv', 'sales_memo')
 PURCHASE_KINDS = ('ap', 'cdv', 'purchase_memo')
 
+# amount is SIGNED, debit-positive, so a flagged line and its reversal cancel in untraced_total
+# instead of double-counting. Templates display abs().
 Untraced = namedtuple('Untraced', ['entry_number', 'entry_date', 'account_code', 'amount', 'reason'])
 
 
@@ -53,6 +62,7 @@ class RemapSummary:
 
     @property
     def untraced_total(self):
+        """Signed (debit-positive) sum, so a flagged line and its reversal net to zero."""
         return sum((u.amount for u in self.untraced), ZERO)
 
     @property
@@ -133,19 +143,38 @@ def _source_docs(entry_ids):
     out = {}
     for ids in _chunks(entry_ids):
         for kind, model, attr in specs:
-            for doc in model.query.filter(model.journal_entry_id.in_(ids)).all():
+            rows = (model.query.filter(model.journal_entry_id.in_(ids))
+                    .options(selectinload(getattr(model, attr))).all())
+            for doc in rows:
                 out[doc.journal_entry_id] = (
                     kind, [(li.account_id, Decimal(str(li.vat_amount or 0))) for li in getattr(doc, attr)])
     return out
 
 
-def _remittance_shares(entry_date):
-    """{category_id_or_None: output VAT} in the window rule 4 prescribes for a payment on
-    entry_date: the most recently settled quarter on/before that date, else its own quarter."""
-    from datetime import datetime, time, timedelta
+def _output_vat_by_category(item_model, header_model, header_fk, date_col, qs, qe, extra):
+    """[(category_id_or_None, output VAT)] for one document family in [qs, qe]."""
     from sqlalchemy import func
     from app.products.models import Product
+    return db.session.query(
+        Product.category_id, func.coalesce(func.sum(item_model.vat_amount), 0),
+    ).select_from(item_model).join(
+        header_model, getattr(item_model, header_fk) == header_model.id
+    ).outerjoin(Product, item_model.product_id == Product.id).filter(
+        date_col >= qs, date_col <= qe, *extra,
+    ).group_by(Product.category_id).all()
+
+
+def _remittance_shares(entry_date):
+    """{category_id_or_None: output VAT} in the window rule 4 prescribes for a payment on
+    entry_date: the most recently settled quarter on/before that date, else its own quarter.
+
+    Mirrors app/reports/product_line.py::generate_sales_by_product_line: invoices plus debit
+    notes minus credit memos, so a return in the quarter reduces that line's share of the
+    remittance. Company-wide (VAT is per-TIN), never branch-filtered. Only positive totals."""
+    from collections import defaultdict
+    from datetime import datetime, time, timedelta
     from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    from app.sales_memos.models import SalesMemo, SalesMemoItem
     from app.vat_settlement.models import VatSettlement
     from app.vat_settlement.service import quarter_bounds
     cutoff = datetime.combine(entry_date + timedelta(days=1), time.min)
@@ -157,15 +186,20 @@ def _remittance_shares(entry_date):
     else:
         year, quarter = entry_date.year, (entry_date.month - 1) // 3 + 1
     qs, qe = quarter_bounds(year, quarter)
-    rows = db.session.query(
-        Product.category_id, func.coalesce(func.sum(SalesInvoiceItem.vat_amount), 0),
-    ).select_from(SalesInvoiceItem).join(
-        SalesInvoice, SalesInvoiceItem.invoice_id == SalesInvoice.id
-    ).outerjoin(Product, SalesInvoiceItem.product_id == Product.id).filter(
-        SalesInvoice.status.in_(('posted', 'partially_paid', 'paid')),
-        SalesInvoice.invoice_date >= qs, SalesInvoice.invoice_date <= qe,
-    ).group_by(Product.category_id).all()
-    return {cid: Decimal(str(v)) for cid, v in rows if Decimal(str(v)) > 0}
+    acc = defaultdict(lambda: ZERO)
+    for cid, v in _output_vat_by_category(
+            SalesInvoiceItem, SalesInvoice, 'invoice_id', SalesInvoice.invoice_date, qs, qe,
+            [SalesInvoice.status.in_(('posted', 'partially_paid', 'paid'))]):
+        acc[cid] += Decimal(str(v))
+    for cid, v in _output_vat_by_category(
+            SalesMemoItem, SalesMemo, 'sales_memo_id', SalesMemo.memo_date, qs, qe,
+            [SalesMemo.status == 'posted', SalesMemo.memo_type == 'debit']):
+        acc[cid] += Decimal(str(v))
+    for cid, v in _output_vat_by_category(
+            SalesMemoItem, SalesMemo, 'sales_memo_id', SalesMemo.memo_date, qs, qe,
+            [SalesMemo.status == 'posted', SalesMemo.memo_type == 'credit']):
+        acc[cid] -= Decimal(str(v))
+    return {cid: v for cid, v in acc.items() if v > 0}
 
 
 class _Lens:
@@ -174,7 +208,11 @@ class _Lens:
         self.vat_ids = self.output_ids | self.input_ids | {i for i in (self.payable_id, self.carry_id) if i}
         self.summary = RemapSummary()
         self.accounts = {a.id: a for a in Account.query.all()}
-        wanted = {l.entry_id for l in lines} | {l.reversed_entry_id for l in lines if l.reversed_entry_id}
+        # Only entries that actually touch a VAT account can need a source document; loading
+        # headers for every entry in scope was the N+1's other half.
+        vat_entries = {l.entry_id for l in lines if l.account_id in self.vat_ids}
+        wanted = vat_entries | {l.reversed_entry_id for l in lines
+                                if l.reversed_entry_id and l.entry_id in vat_entries}
         self.docs = _source_docs(wanted) if self.vat_ids else {}
         self.dropped_entries = set()
 
@@ -194,8 +232,9 @@ class _Lens:
     def _keep(self, ln, reason, amount=None):
         """Leave (part of) a line on its VAT account and record why."""
         amt = (ln.debit - ln.credit) if amount is None else amount
+        acct = self.accounts.get(ln.account_id)            # spec section 4: the lens never raises
         self.summary.untraced.append(Untraced(
-            ln.entry_number, ln.entry_date, self.accounts[ln.account_id].code, abs(amt), reason))
+            ln.entry_number, ln.entry_date, acct.code if acct else '?', amt, reason))
         if amount is None:
             return ln
         return ln._replace(debit=max(amt, ZERO), credit=max(-amt, ZERO))
@@ -262,7 +301,8 @@ class _Lens:
         if ln.account_id == self.payable_id and (ln.debit > ln.credit or ln.reversed_entry_id):
             if doc is None or doc[0] == 'cdv':
                 return self._remit(ln)
-            return [self._keep(ln, 'no_source_document')]
+            # The document WAS found, it just isn't a payment: not a remittance.
+            return [self._keep(ln, 'manual_entry')]
         return [self._keep(ln, 'manual_entry')]
 
     def run(self, lines):

@@ -23,9 +23,9 @@
 
     <div class="card-body">
         {% if basis_summary %}
-        {% set gaap_ni = {'mtd': income_statement.net_income.mtd - (basis_summary.mtd.net_income_effect if basis_summary.mtd else 0),
-                          'ytd': income_statement.net_income.ytd - (basis_summary.ytd.net_income_effect if basis_summary.ytd else 0)} %}
-        {{ basis_banner(basis_summary, gaap_net_income=gaap_ni) }}
+        {# gaap_net_income comes from a real GAAP run of the generator (views.py), not from
+           owners' NI minus the effect -- see the review note in _gaap_net_income(). #}
+        {{ basis_banner(basis_summary, gaap_net_income=gaap_net_income) }}
         {% endif %}
         <table class="table" style="margin:0;">
             <tbody>

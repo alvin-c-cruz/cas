@@ -11,7 +11,6 @@ from app.settings import AppSettings
 
 GAAP = 'gaap'
 OWNERS = 'owners'
-BASES = (GAAP, OWNERS)
 
 ENABLED_KEY = 'owners_basis_enabled'
 VAT_EXPENSE_KEY_PREFIX = 'owners_basis_vat_expense_account:'

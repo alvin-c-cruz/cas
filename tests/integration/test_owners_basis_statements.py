@@ -156,6 +156,36 @@ def test_owners_balance_sheet_carries_prior_closed_year_adjustment(books, admin_
     assert names['Net Income (current year)'] == pytest.approx(67.2)
 
 
+def test_owners_balance_sheet_prior_year_adjustment_can_be_negative(books, admin_user):
+    """The mirror image of the credit-side case: a closed year whose only owners'-basis
+    residual is INPUT VAT moved into expense. The prior-years line must go NEGATIVE
+    (owners' equity is lower than the books say) and the sheet must still balance."""
+    c = books
+    buy = _je(c['branch'], 'P0', date(2025, 6, 1), [
+        (c['supplies'], '40.00', 0), (c['input'], '4.80', 0), (c['ap'], 0, '44.80')],
+        entry_type='purchase')
+    ap = AccountsPayable(branch_id=c['branch'], ap_number='AP-0', ap_date=date(2025, 6, 1),
+                         due_date=date(2025, 6, 1), payee_type='vendor',
+                         payee_id=AccountsPayable.query.first().vendor_id,
+                         vendor_id=AccountsPayable.query.first().vendor_id, vendor_name='x',
+                         notes='', status='posted', journal_entry_id=buy.id)
+    ap.line_items.append(AccountsPayableItem(line_number=1, description='x', amount=D('44.80'),
+                                             vat_rate=D('12'), line_total=D('44.80'),
+                                             vat_amount=D('4.80'), account_id=c['supplies'].id))
+    db.session.add(ap)
+    _je(c['branch'], 'CLOSE-2025', date(2025, 12, 31), [(c['re'], '40.00', 0), (c['supplies'], 0, '40.00')],
+        entry_type='closing')
+    db.session.add(FiscalYearClose(fiscal_year=2025, branch_id=c['branch'], status='closed',
+                                   net_income=D('-40'), closed_at=datetime(2026, 1, 5),
+                                   closed_by_id=admin_user.id))
+    db.session.commit()
+    own = generate_balance_sheet(date(2026, 3, 31), branch_id=c['branch'], reporting_basis=OWNERS)
+    assert own['is_balanced']
+    equity = next(s for s in own['sections'] if s['key'] == 'equity')
+    names = {ln['name']: ln['total'] for dv in equity['divisions'] for ln in dv['lines']}
+    assert names["Prior years' VAT adjustment (owners' basis)"] == pytest.approx(-4.8)
+
+
 def test_cash_flow_gaap_unchanged_and_reconciled(books):
     cf = generate_cash_flow(date(2026, 1, 1), date(2026, 3, 31), branch_id=books['branch'])
     assert cf['is_reconciled'] and cf['reporting_basis'] == GAAP

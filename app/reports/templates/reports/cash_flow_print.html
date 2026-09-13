@@ -30,6 +30,7 @@
     </div>
     <h1>Statement of Cash Flows</h1>
     {% if reporting_basis == 'owners' %}<div class="meta" style="border:1px solid #000;padding:4px 8px;font-weight:bold;">{{ OWNERS_NOTE|safe }}</div>{% endif %}
+    {% if reporting_basis == 'owners' and basis_summary %}{% from 'reports/_basis.html' import basis_recon with context %}{{ basis_recon(basis_summary) }}{% endif %}
     <div class="meta">Indirect Method &nbsp;·&nbsp; As of {{ as_of.strftime('%B %d, %Y') }} — Current month vs. Year to date</div>
 
     <table>
