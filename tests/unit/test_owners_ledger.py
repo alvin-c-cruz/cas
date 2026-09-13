@@ -201,9 +201,88 @@ def test_document_with_no_vat_lines_is_flagged(coa, main_branch, vl_customer):
     assert s.untraced[0].reason == 'no_vat_on_document_lines'
 
 
-def test_payable_debit_is_flagged_until_task_4(coa, main_branch):
+from datetime import datetime
+from app.product_categories.models import ProductCategory
+from app.products.models import Product
+from app.vat_settlement.models import VatSettlement
+from app.reports.basis import vat_expense_setting_key
+
+
+@pytest.fixture
+def lines_of_business(db_session, coa, main_branch, vl_customer, admin_user):
+    """TINCAN 24.00 and PLASTIC 12.00 of output VAT invoiced in Q1 2026, one settlement of
+    Q1 recorded on 2026-04-20, VAT expense accounts mapped for both categories."""
+    tin = ProductCategory(code='TIN', name='Tincan'); pla = ProductCategory(code='PLA', name='Plastic')
+    db.session.add_all([tin, pla]); db.session.commit()
+    p_tin = Product(name='Can', category_id=tin.id, track_inventory=False)
+    p_pla = Product(name='Tub', category_id=pla.id, track_inventory=False)
+    db.session.add_all([p_tin, p_pla]); db.session.commit()
+    je = _je(main_branch.id, 'J1', date(2026, 3, 10), [
+        (coa['ar'], '336.00', 0), (coa['sales_tin'], 0, '200.00'),
+        (coa['sales_pla'], 0, '100.00'), (coa['output'], 0, '36.00')])
+    inv = _si(main_branch.id, vl_customer, je, [(coa['sales_tin'], '224.00', '24.00'),
+                                                (coa['sales_pla'], '112.00', '12.00')])
+    inv.line_items[0].product_id = p_tin.id; inv.line_items[1].product_id = p_pla.id
+    db.session.add(VatSettlement(fiscal_year=2026, quarter=1, status='settled',
+                                 output_vat=D('36.00'), net_payable=D('36.00'),
+                                 settled_at=datetime(2026, 4, 20, 9, 0), settled_by_id=admin_user.id))
+    db.session.commit()
+    vat_tin = _acct('811001', 'VAT EXPENSE - TINCAN', 'Other Expense', 'Debit')
+    vat_pla = _acct('811003', 'VAT EXPENSE - PLASTIC', 'Other Expense', 'Debit')
+    AppSettings.set_setting(vat_expense_setting_key(tin.id), vat_tin.code)
+    AppSettings.set_setting(vat_expense_setting_key(pla.id), vat_pla.code)
+    return {'tin': tin, 'pla': pla, 'vat_tin': vat_tin, 'vat_pla': vat_pla, 'je': je}
+
+
+def test_remittance_splits_by_output_vat_of_settled_quarter(coa, main_branch, lines_of_business):
     _je(main_branch.id, 'JV-2', date(2026, 4, 25), [
-        (coa['payable'], '14.00', 0), (coa['cash'], 0, '14.00')], entry_type='adjustment')
+        (coa['payable'], '36.00', 0), (coa['cash'], 0, '36.00')], entry_type='adjustment')
+    lines, s = O.remap(L.fetch_lines(date(2026, 4, 1), None, main_branch.id))
+    assert _balanced(lines) and _bal(lines, coa['payable']) == D('0.00')
+    assert _bal(lines, lines_of_business['vat_tin']) == D('24.00')
+    assert _bal(lines, lines_of_business['vat_pla']) == D('12.00')
+    assert s.vat_expense_by_category == {lines_of_business['tin'].id: D('24.00'),
+                                         lines_of_business['pla'].id: D('12.00')}
+    assert s.net_income_effect == D('-36.00') and s.untraced == []
+
+
+def test_remittance_before_any_settlement_uses_its_own_quarter(coa, main_branch, lines_of_business):
+    VatSettlement.query.delete(); db.session.commit()
+    _je(main_branch.id, 'JV-3', date(2026, 3, 28), [
+        (coa['payable'], '9.00', 0), (coa['cash'], 0, '9.00')], entry_type='adjustment')
+    lines, s = O.remap(L.fetch_lines(date(2026, 3, 20), None, main_branch.id))
+    assert _bal(lines, lines_of_business['vat_tin']) == D('6.00')     # 24:12 of Q1 2026
+    assert _bal(lines, lines_of_business['vat_pla']) == D('3.00')
+
+
+def test_remittance_with_no_output_vat_in_window_is_flagged(coa, main_branch, lines_of_business):
+    _je(main_branch.id, 'JV-4', date(2027, 2, 1), [
+        (coa['payable'], '5.00', 0), (coa['cash'], 0, '5.00')], entry_type='adjustment')
+    VatSettlement.query.delete(); db.session.commit()
+    lines, s = O.remap(L.fetch_lines(date(2027, 1, 1), None, main_branch.id))
+    assert _bal(lines, coa['payable']) == D('5.00')
+    assert s.untraced[0].reason == 'no_output_vat_in_window'
+
+
+def test_unmapped_category_share_stays_flagged_others_move(coa, main_branch, lines_of_business):
+    AppSettings.set_setting(vat_expense_setting_key(lines_of_business['pla'].id), '')
+    _je(main_branch.id, 'JV-2', date(2026, 4, 25), [
+        (coa['payable'], '36.00', 0), (coa['cash'], 0, '36.00')], entry_type='adjustment')
+    lines, s = O.remap(L.fetch_lines(date(2026, 4, 1), None, main_branch.id))
+    assert _balanced(lines)
+    assert _bal(lines, lines_of_business['vat_tin']) == D('24.00')
+    assert _bal(lines, coa['payable']) == D('12.00')
+    assert s.untraced[0].reason == 'unmapped_category:Plastic' and s.untraced[0].amount == D('12.00')
+
+
+def test_reversal_follows_original_document_and_nets_to_zero(coa, main_branch, vl_customer):
+    je = _je(main_branch.id, 'J1', date(2026, 3, 10), [
+        (coa['ar'], '112.00', 0), (coa['sales_tin'], 0, '100.00'), (coa['output'], 0, '12.00')])
+    _si(main_branch.id, vl_customer, je, [(coa['sales_tin'], '112.00', '12.00')])
+    _je(main_branch.id, 'JV-R', date(2026, 3, 15), [
+        (coa['sales_tin'], '100.00', 0), (coa['output'], '12.00', 0), (coa['ar'], 0, '112.00')],
+        entry_type='reversal', reversed_entry_id=je.id)
     lines, s = O.remap(L.fetch_lines(None, None, main_branch.id))
-    assert _bal(lines, coa['payable']) == D('14.00')
-    assert s.untraced[0].reason == 'manual_entry'
+    assert _balanced(lines)
+    assert _bal(lines, coa['output']) == D('0.00') and _bal(lines, coa['sales_tin']) == D('0.00')
+    assert s.moved_to_income == D('0.00') and s.untraced == []

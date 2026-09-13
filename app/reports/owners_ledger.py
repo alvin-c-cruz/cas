@@ -9,8 +9,9 @@ Rules, applied line by line to posted LedgerLines (closing entries are the calle
   2. Input VAT on a purchase document (AP / CDV / purchase memo) -> the document lines'
      accounts, pro rata (expense usually; an asset for capital goods).
   3. Any line of a vat_settlement / vat_settlement_reversal entry -> dropped (all legs are VAT).
-  4. A debit to VAT Payable outside a settlement (a remittance) -> VAT expense by product
-     line (Task 4; until then it is kept and flagged manual_entry).
+  4. A debit to VAT Payable outside a settlement (a remittance) -> VAT expense by product line,
+     split by each category's output VAT in the last settled quarter on/before the payment date
+     (else the payment's own quarter).
   5. Anything else on a VAT account -> left where it is and listed in RemapSummary.untraced.
 
 Pure-read. Never raises for data it cannot handle: it keeps the line and records why.
@@ -138,6 +139,35 @@ def _source_docs(entry_ids):
     return out
 
 
+def _remittance_shares(entry_date):
+    """{category_id_or_None: output VAT} in the window rule 4 prescribes for a payment on
+    entry_date: the most recently settled quarter on/before that date, else its own quarter."""
+    from datetime import datetime, time, timedelta
+    from sqlalchemy import func
+    from app.products.models import Product
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    from app.vat_settlement.models import VatSettlement
+    from app.vat_settlement.service import quarter_bounds
+    cutoff = datetime.combine(entry_date + timedelta(days=1), time.min)
+    settled = (VatSettlement.query.filter(VatSettlement.status == 'settled',
+                                          VatSettlement.settled_at < cutoff)
+               .order_by(VatSettlement.settled_at.desc()).first())
+    if settled:
+        year, quarter = settled.fiscal_year, settled.quarter
+    else:
+        year, quarter = entry_date.year, (entry_date.month - 1) // 3 + 1
+    qs, qe = quarter_bounds(year, quarter)
+    rows = db.session.query(
+        Product.category_id, func.coalesce(func.sum(SalesInvoiceItem.vat_amount), 0),
+    ).select_from(SalesInvoiceItem).join(
+        SalesInvoice, SalesInvoiceItem.invoice_id == SalesInvoice.id
+    ).outerjoin(Product, SalesInvoiceItem.product_id == Product.id).filter(
+        SalesInvoice.status.in_(('posted', 'partially_paid', 'paid')),
+        SalesInvoice.invoice_date >= qs, SalesInvoice.invoice_date <= qe,
+    ).group_by(Product.category_id).all()
+    return {cid: Decimal(str(v)) for cid, v in rows if Decimal(str(v)) > 0}
+
+
 class _Lens:
     def __init__(self, lines):
         self.output_ids, self.input_ids, self.payable_id, self.carry_id = _vat_account_ids()
@@ -147,6 +177,12 @@ class _Lens:
         wanted = {l.entry_id for l in lines} | {l.reversed_entry_id for l in lines if l.reversed_entry_id}
         self.docs = _source_docs(wanted) if self.vat_ids else {}
         self.dropped_entries = set()
+
+        from app.reports.basis import vat_expense_account_map
+        from app.product_categories.models import ProductCategory
+        self.vat_expense = {cid: (a.id if a else None) for cid, a in vat_expense_account_map().items()}
+        self.category_names = {c.id: c.name for c in ProductCategory.query.all()}
+        self._shares_cache = {}
 
     # -- helpers -------------------------------------------------------------------------
     def _doc_for(self, ln):
@@ -193,8 +229,24 @@ class _Lens:
         return out
 
     def _remit(self, ln):
-        """Rule 4 lands in Task 4."""
-        return [self._keep(ln, 'manual_entry')]
+        """Rule 4: a VAT remittance becomes VAT expense by product line."""
+        if ln.entry_date not in self._shares_cache:
+            self._shares_cache[ln.entry_date] = _remittance_shares(ln.entry_date)
+        parts = distribute(ln.debit - ln.credit, self._shares_cache[ln.entry_date])
+        if not parts:
+            return [self._keep(ln, 'no_output_vat_in_window')]
+        out = []
+        for cid, amt in parts.items():
+            if cid is None:
+                out.append(self._keep(ln, 'uncategorized_sales', amt))
+                continue
+            target = self.vat_expense.get(cid)
+            if not target:
+                out.append(self._keep(ln, f'unmapped_category:{self.category_names.get(cid, cid)}', amt))
+                continue
+            out.append(self._moved(ln, target, amt))
+            self.summary.vat_expense_by_category[cid] = self.summary.vat_expense_by_category.get(cid, ZERO) + amt
+        return out
 
     # -- the rule table ------------------------------------------------------------------
     def vat_line(self, ln):
