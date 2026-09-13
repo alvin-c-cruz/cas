@@ -1,7 +1,7 @@
 """Company Settings -> Owners' View: full-access only; cannot enable with an unmapped
 category; saves keys verbatim; writes a real before/after audit diff."""
-from datetime import date
 import pytest
+from flask import url_for
 
 from app import db
 from app.accounts.models import Account
@@ -37,10 +37,36 @@ def setup(db_session, main_branch):
     return {'tin': tin, 'pla': pla, 'a1': a1, 'a2': a2, 'asset': asset}
 
 
-def test_page_requires_full_access(client, db_session, staff_user, setup):
+def test_page_requires_full_access(client, db_session, staff_user, main_branch, setup):
+    # Give staff_user exactly one accessible branch so the app-wide branch-selection
+    # before_request hook (validate_branch_session) auto-selects it instead of
+    # redirecting to /select-branch -- otherwise the request never reaches the
+    # view's own has_full_access gate and this test would pass even if that check
+    # were deleted.
+    staff_user.set_branches([main_branch])
+    db.session.commit()
     _login(client, staff_user)
     resp = client.get('/settings/owners-view', follow_redirects=False)
     assert resp.status_code == 302
+    assert '/select-branch' not in resp.headers['Location']
+    with client.application.app_context():
+        assert resp.headers['Location'] == url_for('dashboard.index')
+
+
+def test_post_requires_full_access(client, db_session, staff_user, main_branch, setup):
+    staff_user.set_branches([main_branch])
+    db.session.commit()
+    _login(client, staff_user)
+    resp = client.post('/settings/owners-view', data={
+        'owners_basis_enabled': '1',
+        vat_expense_setting_key(setup['tin'].id): '811001',
+        vat_expense_setting_key(setup['pla'].id): '811003',
+    }, follow_redirects=False)
+    assert resp.status_code == 302
+    assert '/select-branch' not in resp.headers['Location']
+    with client.application.app_context():
+        assert resp.headers['Location'] == url_for('dashboard.index')
+    assert owners_basis_enabled() is False
 
 
 def test_page_renders_switch_and_one_select_per_category(client, db_session, admin_user, setup):
