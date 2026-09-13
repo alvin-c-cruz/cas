@@ -15,7 +15,7 @@ from app.vat_categories.models import VATCategory
 from app.year_end.models import FiscalYearClose
 from app.reports.basis import GAAP, OWNERS
 from app.reports.financial import (generate_trial_balance, generate_income_statement,
-                                   generate_balance_sheet)
+                                   generate_balance_sheet, generate_cash_flow)
 from app.reports.two_column import merge_is_two_column
 
 pytestmark = [pytest.mark.owners_basis, pytest.mark.integration]
@@ -154,3 +154,25 @@ def test_owners_balance_sheet_carries_prior_closed_year_adjustment(books, admin_
     names = {ln['name']: ln['total'] for dv in equity['divisions'] for ln in dv['lines']}
     assert names["Prior years' VAT adjustment (owners' basis)"] == pytest.approx(24.0)
     assert names['Net Income (current year)'] == pytest.approx(67.2)
+
+
+def test_cash_flow_gaap_unchanged_and_reconciled(books):
+    cf = generate_cash_flow(date(2026, 1, 1), date(2026, 3, 31), branch_id=books['branch'])
+    assert cf['is_reconciled'] and cf['reporting_basis'] == GAAP
+    assert cf['operating']['net_income'] == 60.0
+    direct = generate_cash_flow(date(2026, 1, 1), date(2026, 3, 31), branch_id=books['branch'], method='direct')
+    assert direct['is_reconciled'] and direct['net_change'] == pytest.approx(1000.0)
+
+
+def test_cash_flow_owners_reconciles_to_same_cash(books):
+    gaap = generate_cash_flow(date(2026, 1, 1), date(2026, 3, 31), branch_id=books['branch'])
+    own = generate_cash_flow(date(2026, 1, 1), date(2026, 3, 31), branch_id=books['branch'], reporting_basis=OWNERS)
+    assert own['is_reconciled']
+    assert own['operating']['net_income'] == pytest.approx(67.2)
+    assert own['cash_end'] == gaap['cash_end'] and own['net_change'] == pytest.approx(gaap['net_change'])
+    wc = {w['name']: w['amount'] for w in own['operating']['working_capital']}
+    assert '(Increase)/decrease in INPUT TAX' not in wc and 'Increase/(decrease) in OUTPUT TAX' not in wc
+    assert wc['(Increase)/decrease in AR'] == pytest.approx(-112.0)
+    d = generate_cash_flow(date(2026, 1, 1), date(2026, 3, 31), branch_id=books['branch'],
+                           method='direct', reporting_basis=OWNERS)
+    assert d['is_reconciled']
