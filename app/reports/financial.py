@@ -476,47 +476,34 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect', 
     }
 
 
-def generate_general_ledger(start_date, end_date, branch_id, account_id=None):
+def generate_general_ledger(start_date, end_date, branch_id, account_id=None, reporting_basis=GAAP):
     """All-accounts General Ledger book over posted journal entries.
 
     Per account: opening balance (debit-positive) carried from before start_date,
     each in-range posted line with a running balance, and a closing subtotal.
     Accounts with no opening balance and no in-range activity are omitted.
+    Under the owners' basis a line the lens moved carries 'moved_from' naming the VAT
+    account it came from; GAAP lines carry None.
     """
     accounts_q = Account.query.filter_by(is_active=True)
     if account_id:
         accounts_q = accounts_q.filter(Account.id == account_id)
     accounts = accounts_q.order_by(Account.code).all()
+    all_accounts = {a.id: a for a in Account.query.all()}
+
+    opening_by = period_balances(None, start_date - timedelta(days=1), branch_id, reporting_basis)
+    lines_by = {}
+    for ln in ledger_lines(start_date, end_date, branch_id, reporting_basis):
+        lines_by.setdefault(ln.account_id, []).append(ln)
 
     result_accounts = []
     grand_debit = Decimal('0.00')
     grand_credit = Decimal('0.00')
 
     for account in accounts:
-        opening = db.session.query(
-            func.coalesce(
-                func.sum(JournalEntryLine.debit_amount - JournalEntryLine.credit_amount),
-                0)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.branch_id == branch_id,
-            JournalEntry.entry_date < start_date,
-            JournalEntryLine.account_id == account.id,
-        ).scalar()
-        opening = Decimal(str(opening or '0.00'))
-
-        rows = db.session.query(JournalEntryLine, JournalEntry).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.branch_id == branch_id,
-            JournalEntry.entry_date >= start_date,
-            JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == account.id,
-        ).order_by(
-            JournalEntry.entry_date,
-            JournalEntry.entry_number,
-            JournalEntryLine.line_number,
-        ).all()
-
+        od, oc = opening_by.get(account.id, (ZERO, ZERO))
+        opening = od - oc
+        rows = lines_by.get(account.id, [])
         if opening == 0 and not rows:
             continue
 
@@ -524,21 +511,23 @@ def generate_general_ledger(start_date, end_date, branch_id, account_id=None):
         total_debit = Decimal('0.00')
         total_credit = Decimal('0.00')
         line_dicts = []
-        for line, entry in rows:
-            running += (line.debit_amount - line.credit_amount)
-            total_debit += line.debit_amount
-            total_credit += line.credit_amount
+        for line in rows:
+            running += (line.debit - line.credit)
+            total_debit += line.debit
+            total_credit += line.credit
+            src = all_accounts.get(line.moved_from_account_id) if line.moved_from_account_id else None
             line_dicts.append({
-                'entry_id': entry.id,
-                'entry_number': entry.entry_number,
-                'display_number': entry.display_number,
-                'entry_date': entry.entry_date,
-                'entry_type': entry.entry_type,
-                'reference': entry.reference,
-                'description': line.description or entry.description,
-                'debit': float(line.debit_amount),
-                'credit': float(line.credit_amount),
+                'entry_id': line.entry_id,
+                'entry_number': line.entry_number,
+                'display_number': line.display_number,
+                'entry_date': line.entry_date,
+                'entry_type': line.entry_type,
+                'reference': line.reference,
+                'description': line.description,
+                'debit': float(line.debit),
+                'credit': float(line.credit),
                 'running_balance': float(running),
+                'moved_from': f'{src.code} {src.name}' if src else None,
             })
 
         closing = opening + (total_debit - total_credit)
@@ -561,6 +550,7 @@ def generate_general_ledger(start_date, end_date, branch_id, account_id=None):
         'accounts': result_accounts,
         'grand_total_debit': float(grand_debit),
         'grand_total_credit': float(grand_credit),
+        'reporting_basis': reporting_basis,
     }
 
 

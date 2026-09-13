@@ -176,3 +176,30 @@ def test_cash_flow_owners_reconciles_to_same_cash(books):
     d = generate_cash_flow(date(2026, 1, 1), date(2026, 3, 31), branch_id=books['branch'],
                            method='direct', reporting_basis=OWNERS)
     assert d['is_reconciled']
+
+
+from app.reports.financial import generate_general_ledger
+
+
+def test_general_ledger_gaap_unchanged(books):
+    gl = generate_general_ledger(date(2026, 3, 1), date(2026, 3, 31), books['branch'])
+    sales = next(a for a in gl['accounts'] if a['code'] == '411001')
+    assert sales['closing_balance'] == -100.0 and sales['lines'][0]['moved_from'] is None
+    assert gl['reporting_basis'] == GAAP
+
+
+def test_general_ledger_owners_shows_moved_lines(books):
+    gl = generate_general_ledger(date(2026, 3, 1), date(2026, 3, 31), books['branch'], reporting_basis=OWNERS)
+    codes = {a['code'] for a in gl['accounts']}
+    assert '213005' not in codes and '129008' not in codes
+    sales = next(a for a in gl['accounts'] if a['code'] == '411001')
+    assert sales['closing_balance'] == -112.0
+    moved = [l for l in sales['lines'] if l['moved_from']]
+    assert moved == [dict(moved[0], moved_from='213005 OUTPUT TAX')] and moved[0]['credit'] == 12.0
+    assert gl['grand_total_debit'] == pytest.approx(gl['grand_total_credit'])
+
+
+def test_general_ledger_owners_opening_balance_is_remapped(books):
+    gl = generate_general_ledger(date(2026, 4, 1), date(2026, 4, 30), books['branch'], reporting_basis=OWNERS)
+    supplies = next(a for a in gl['accounts'] if a['code'] == '721001')
+    assert supplies['opening_balance'] == 44.8 and supplies['lines'] == []
