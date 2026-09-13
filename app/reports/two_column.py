@@ -80,6 +80,9 @@ def merge_is_two_column(mtd, ytd):
            'ytd_start': ytd.get('period_start'), 'as_of': ytd.get('period_end')}
     for k in _IS_SCALARS:
         out[k] = {'mtd': mtd.get(k, 0.0), 'ytd': ytd.get(k, 0.0)}
+    out['reporting_basis'] = ytd.get('reporting_basis', 'gaap')
+    if 'basis_summary' in mtd or 'basis_summary' in ytd:
+        out['basis_summary'] = {'mtd': mtd.get('basis_summary'), 'ytd': ytd.get('basis_summary')}
     return out
 
 

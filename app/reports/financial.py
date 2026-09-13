@@ -18,76 +18,36 @@ from app.accounts.models import Account
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.reports.sections import IS_SECTIONS, BS_SECTIONS, rollup
 from app.accounts.account_types import BASE_CATEGORY, DEFAULT_NORMAL_BALANCE
+from app.reports.basis import GAAP, OWNERS
+from app.reports.ledger import period_balances, ledger_lines, owners_summary, ZERO
 
 
-def generate_trial_balance(as_of_date=None, branch_id=None):
-    """
-    Generate Trial Balance as of a specific date
-
-    The Trial Balance lists all accounts with their debit or credit balances.
-    It verifies that total debits equal total credits.
-
-    Args:
-        as_of_date: date - As of date for the report (defaults to today)
-
-    Returns:
-        dict with:
-        - as_of_date: The report date
-        - accounts: List of account balances
-        - total_debit: Sum of all debit balances
-        - total_credit: Sum of all credit balances
-        - is_balanced: Whether debits = credits
-    """
+def generate_trial_balance(as_of_date=None, branch_id=None, reporting_basis=GAAP):
+    """Trial Balance as of a date: every active account's debit or credit balance over
+    posted lines, read through the ledger seam so the owners' basis is one argument."""
     if as_of_date is None:
         as_of_date = date.today()
 
-    # Get all active accounts
     accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    balances = period_balances(None, as_of_date, branch_id, reporting_basis)
 
     account_balances = []
     total_debit = Decimal('0.00')
     total_credit = Decimal('0.00')
 
     for account in accounts:
-        # Calculate balance for this account from journal entry lines
-        # Get all posted journal entries up to the as_of_date
-        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
-        debit_sum = db.session.query(
-            func.sum(JournalEntryLine.debit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
-
-        credit_sum = db.session.query(
-            func.sum(JournalEntryLine.credit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
-
-        # Calculate net balance
+        debit_sum, credit_sum = balances.get(account.id, (ZERO, ZERO))
         balance = debit_sum - credit_sum
-
-        # Skip accounts with zero balance
         if balance == 0:
             continue
-
-        # Determine debit or credit balance based on normal balance
         debit_balance = Decimal('0.00')
         credit_balance = Decimal('0.00')
-
         if balance > 0:
             debit_balance = balance
             total_debit += balance
         else:
             credit_balance = abs(balance)
             total_credit += abs(balance)
-
         account_balances.append({
             'code': account.code,
             'name': account.name,
@@ -102,7 +62,8 @@ def generate_trial_balance(as_of_date=None, branch_id=None):
         'total_debit': float(total_debit),
         'total_credit': float(total_credit),
         'is_balanced': (total_debit == total_credit),
-        'difference': float(abs(total_debit - total_credit))
+        'difference': float(abs(total_debit - total_credit)),
+        'reporting_basis': reporting_basis,
     }
 
 
@@ -122,21 +83,25 @@ def _period_balance(account_id, start_date, end_date, branch_id):
     return Decimal(str(d)), Decimal(str(c))
 
 
-def generate_income_statement(start_date, end_date, branch_id=None):
+def generate_income_statement(start_date, end_date, branch_id=None, reporting_basis=GAAP):
     """Hierarchical, type-driven Income Statement for a period.
 
     Sections and their subtotal chain come from IS_SECTIONS; each account's
     placement is its account_type. Revenue-natured types are credit-positive,
     everything else debit-positive. Returns floats for template/export use.
     'net_income' key/semantics preserved (Balance Sheet + Year-End depend on it).
+    Balances come through app/reports/ledger.py, so reporting_basis='owners' folds VAT
+    into income/expense per app/reports/owners_ledger.py without touching this layout.
     """
     accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
     by_type = {}
     for a in accounts:
         by_type.setdefault(a.account_type, []).append(a)
 
+    balances = period_balances(start_date, end_date, branch_id, reporting_basis, exclude_closing=True)
+
     def amount(a):
-        d, c = _period_balance(a.id, start_date, end_date, branch_id)
+        d, c = balances.get(a.id, (ZERO, ZERO))
         return float((c - d) if DEFAULT_NORMAL_BALANCE.get(a.account_type) == 'credit' else (d - c))
 
     sections, running, subtotals = [], Decimal('0.00'), {}
@@ -158,17 +123,34 @@ def generate_income_statement(start_date, end_date, branch_id=None):
             subtotals[spec['subtotal']] = float(running)
         sections.append(section)
 
-    return {
+    out = {
         'period_start': start_date, 'period_end': end_date, 'sections': sections,
         'net_sales': subtotals.get('Net Sales', 0.0),
         'gross_profit': subtotals.get('Gross Profit', 0.0),
         'operating_income': subtotals.get('Operating Income', 0.0),
         'income_before_tax': subtotals.get('Income Before Tax', 0.0),
         'net_income': subtotals.get('Net Income', 0.0),
+        'reporting_basis': reporting_basis,
     }
+    if reporting_basis == OWNERS:
+        out['basis_summary'] = owners_summary(start_date, end_date, branch_id, exclude_closing=True).as_dict()
+    return out
 
 
-def generate_balance_sheet(as_of_date=None, branch_id=None):
+PRIOR_YEARS_ADJ_LABEL = "Prior years' VAT adjustment (owners' basis)"
+
+
+def _owners_prior_years_adjustment(upto, branch_id):
+    """Closed years were closed at GAAP figures, so under the owners' basis the VAT that the
+    lens moved into P&L accounts in those years is still sitting there. Return it
+    (credit-positive) so the Balance Sheet can carry it as its own equity line."""
+    from app.accounts.account_types import IS_TYPES
+    balances = period_balances(None, upto, branch_id, OWNERS)
+    is_ids = {a.id for a in Account.query.filter(Account.account_type.in_(IS_TYPES)).all()}
+    return sum((c - d for aid, (d, c) in balances.items() if aid in is_ids), Decimal('0.00'))
+
+
+def generate_balance_sheet(as_of_date=None, branch_id=None, reporting_basis=GAAP):
     """Classified, type-driven Balance Sheet. Assets/Liabilities split into
     Current/Non-Current by classification; Equity carries Retained Earnings +
     current-year Net Income. Verifies Assets = Liabilities + Equity."""
@@ -179,18 +161,10 @@ def generate_balance_sheet(as_of_date=None, branch_id=None):
     for a in accounts:
         by_type.setdefault(a.account_type, []).append(a)
 
+    balances = period_balances(None, as_of_date, branch_id, reporting_basis)
+
     def bal(account_id, credit_positive):
-        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
-        d, c = db.session.query(
-            func.coalesce(func.sum(JournalEntryLine.debit_amount), 0),
-            func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account_id,
-            *branch_filter
-        ).one()
-        d, c = Decimal(str(d)), Decimal(str(c))
+        d, c = balances.get(account_id, (ZERO, ZERO))
         return (c - d) if credit_positive else (d - c)
 
     sections, totals = [], {}
@@ -220,27 +194,39 @@ def generate_balance_sheet(as_of_date=None, branch_id=None):
     from app.year_end.service import latest_closed_year_end
     last_close = latest_closed_year_end(branch_id)
     open_start = date(last_close.year + 1, 1, 1) if last_close else date(1900, 1, 1)
-    ni = Decimal(str(generate_income_statement(open_start, as_of_date, branch_id=branch_id)['net_income']))
+    ni = Decimal(str(generate_income_statement(open_start, as_of_date, branch_id=branch_id,
+                                               reporting_basis=reporting_basis)['net_income']))
     equity = next(s for s in sections if s['key'] == 'equity')
-    if ni != 0:
+
+    def _add_equity_line(name, amount):
         eded = equity['divisions'][0] if equity['divisions'] else None
-        line = {'code': '', 'name': 'Net Income (current year)', 'account_id': None,
-                'total': float(ni), 'children': []}
+        line = {'code': '', 'name': name, 'account_id': None, 'total': float(amount), 'children': []}
         if eded:
-            eded['lines'].append(line); eded['total'] = float(Decimal(str(eded['total'])) + ni)
+            eded['lines'].append(line); eded['total'] = float(Decimal(str(eded['total'])) + amount)
         else:
-            equity['divisions'].append({'label': 'Equity', 'total': float(ni), 'lines': [line]})
-        equity['total'] = float(Decimal(str(equity['total'])) + ni)
-        totals['equity'] += ni
+            equity['divisions'].append({'label': 'Equity', 'total': float(amount), 'lines': [line]})
+        equity['total'] = float(Decimal(str(equity['total'])) + amount)
+        totals['equity'] += amount
+
+    if ni != 0:
+        _add_equity_line('Net Income (current year)', ni)
+    if reporting_basis == OWNERS and last_close:
+        prior = _owners_prior_years_adjustment(open_start - timedelta(days=1), branch_id)
+        if prior != 0:
+            _add_equity_line(PRIOR_YEARS_ADJ_LABEL, prior)
 
     tle = totals['liabilities'] + totals['equity']
     diff = abs(totals['assets'] - tle)
-    return {'as_of_date': as_of_date, 'sections': sections,
-            'total_assets': float(totals['assets']),
-            'total_liabilities': float(totals['liabilities']),
-            'total_equity': float(totals['equity']),
-            'total_liabilities_equity': float(tle),
-            'is_balanced': bool(diff < Decimal('0.01')), 'difference': float(diff)}
+    out = {'as_of_date': as_of_date, 'sections': sections,
+           'total_assets': float(totals['assets']),
+           'total_liabilities': float(totals['liabilities']),
+           'total_equity': float(totals['equity']),
+           'total_liabilities_equity': float(tle),
+           'is_balanced': bool(diff < Decimal('0.01')), 'difference': float(diff),
+           'reporting_basis': reporting_basis}
+    if reporting_basis == OWNERS:
+        out['basis_summary'] = owners_summary(None, as_of_date, branch_id).as_dict()
+    return out
 
 
 def _is_cash(account):
