@@ -980,7 +980,7 @@ def create():
                 flash('Some files were not attached and were skipped: '
                       + ', '.join(skipped), 'warning')
             flash(f'CDV "{cdv.cdv_number}" entered successfully!', 'success')
-            return redirect(url_for('cash_disbursements.view', id=cdv.id))
+            return redirect(url_for('cash_disbursements.edit', id=cdv.id))
 
         except CDVLineError as ce:
             db.session.rollback()

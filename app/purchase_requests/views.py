@@ -392,7 +392,7 @@ def create():
                 flash('Some files were not attached and were skipped: '
                       + ', '.join(skipped), 'warning')
             flash(f'Purchase Requisition "{pr.pr_number}" created.', 'success')
-            return redirect(url_for('purchase_requests.view', id=pr.id))
+            return redirect(url_for('purchase_requests.edit', id=pr.id))
         except ValueError as e:
             db.session.rollback(); flash(str(e), 'error')
             return render_template('purchase_requests/form.html', form=form, pr=None,

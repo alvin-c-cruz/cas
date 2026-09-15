@@ -610,7 +610,7 @@ def create():
                 flash('Some files were not attached and were skipped: '
                       + ', '.join(skipped), 'warning')
             flash(f'Purchase Order "{po.po_number}" created successfully!', 'success')
-            return redirect(url_for('purchase_orders.list_po'))
+            return redirect(url_for('purchase_orders.edit', id=po.id))
 
         except ValueError as e:
             db.session.rollback()

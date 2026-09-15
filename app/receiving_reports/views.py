@@ -812,7 +812,7 @@ def create():
                 flash('Some files were not attached and were skipped: '
                       + ', '.join(skipped), 'warning')
             flash(f'Receiving Report "{rr.rr_number}" created.', 'success')
-            return redirect(url_for('receiving_reports.view', id=rr.id))
+            return redirect(url_for('receiving_reports.edit', id=rr.id))
 
     if request.method == 'GET':
         form.rr_number.data = generate_rr_number(branch_id)
