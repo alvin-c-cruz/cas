@@ -51,6 +51,12 @@ class CashDisbursementVoucher(RowVersioned, db.Model):
 
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
 
+    # Snapshot of required attachment slots that were empty at the moment this
+    # document was approved/posted (JSON list of slot keys), NULL if it was not
+    # approved with anything missing. Written in the approval transaction; drives
+    # the post-approval 'Incomplete' badge. See required-labeled-attachments spec.
+    approved_incomplete_slots = db.Column(db.Text, nullable=True)
+
     journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
     journal_entry = db.relationship('JournalEntry', foreign_keys=[journal_entry_id])
 

@@ -68,6 +68,12 @@ class ReceivingReport(RowVersioned, db.Model):
     return_reason = db.Column(db.Text)
     approved_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     approved_at = db.Column(db.DateTime)
+
+    # Snapshot of required attachment slots that were empty at the moment this
+    # document was approved/posted (JSON list of slot keys), NULL if it was not
+    # approved with anything missing. Written in the approval transaction; drives
+    # the post-approval 'Incomplete' badge. See required-labeled-attachments spec.
+    approved_incomplete_slots = db.Column(db.Text, nullable=True)
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     cancelled_at = db.Column(db.DateTime)
     cancel_reason = db.Column(db.String(500))

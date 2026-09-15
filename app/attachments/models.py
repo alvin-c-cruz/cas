@@ -31,6 +31,9 @@ class DocumentAttachment(db.Model):
     original_filename = db.Column(db.String(255), nullable=False)
     stored_filename = db.Column(db.String(255), nullable=False, unique=True)  # uuid4 hex + ext
     mime_type = db.Column(db.String(100), nullable=False)
+    # Named slot this file fills (e.g. 'signed_pr'), or NULL for an unlabeled
+    # 'Other' file. Drives the required/labeled completeness check.
+    kind = db.Column(db.String(40), nullable=True, index=True)
     file_size = db.Column(db.Integer, nullable=False)  # bytes
 
     uploaded_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)

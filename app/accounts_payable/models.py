@@ -95,6 +95,12 @@ class AccountsPayable(RowVersioned, db.Model):
 
     # Status tracking
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
+
+    # Snapshot of required attachment slots that were empty at the moment this
+    # document was approved/posted (JSON list of slot keys), NULL if it was not
+    # approved with anything missing. Written in the approval transaction; drives
+    # the post-approval 'Incomplete' badge. See required-labeled-attachments spec.
+    approved_incomplete_slots = db.Column(db.Text, nullable=True)
     # Statuses: draft, posted, partially_paid, paid, cancelled, voided
 
     # Payment tracking
@@ -366,6 +372,10 @@ class AccountsPayableAttachment(db.Model):
     original_filename = db.Column(db.String(255), nullable=False)
     stored_filename   = db.Column(db.String(255), nullable=False, unique=True)  # uuid4 hex + ext
     mime_type         = db.Column(db.String(100), nullable=False)
+    # Named slot this file fills (e.g. 'signed_ap'), or NULL for an unlabeled
+    # 'Other' file. Mirrors DocumentAttachment.kind so the shared completeness
+    # resolver can span both tables.
+    kind              = db.Column(db.String(40), nullable=True)
     file_size         = db.Column(db.Integer, nullable=False)   # bytes
     uploaded_by_id    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     uploaded_by       = db.relationship('User', foreign_keys=[uploaded_by_id],
