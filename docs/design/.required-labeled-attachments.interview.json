@@ -1,0 +1,50 @@
+{
+  "specName": "required-labeled-attachments",
+  "timestamp": "2026-09-15",
+  "status": "spec-written",
+  "capturedAtCommit": "65b569c3",
+  "sourceIssue": null,
+  "previewUrl": null,
+  "redTeamStatus": "completed",
+  "baseline": {
+    "derivedFrom": "codebase",
+    "capturedAtCommit": "65b569c3",
+    "claims": [
+      {"area": "data-model", "claim": "document_attachments has no kind/label column", "evidence": "app/attachments/models.py"},
+      {"area": "data-model", "claim": "AP uses separate accounts_payable_attachments table with ~153 live files", "evidence": "app/accounts_payable/models.py:361"},
+      {"area": "soft-gate", "claim": "approval routes: PR/PO/RR /approve, AP/CV /post", "evidence": "views.py approve/post routes"},
+      {"area": "action-items", "claim": "gather_draft_items + gather_document_approval_items feed action items and sidebar count", "evidence": "app/dashboard/action_items_service.py"},
+      {"area": "audit", "claim": "log_audit commits independently and swallows exceptions", "evidence": "CLAUDE.md audit caveat"}
+    ]
+  },
+  "coverageMap": {
+    "problem": "done", "labeling-model": "done", "slot-config": "done", "slots-per-doc": "done",
+    "data-model-ap-split": "done", "assignment-ux": "done", "soft-gate": "done",
+    "exception-record": "done", "action-items": "done", "post-approval-amendment": "done",
+    "config-scope": "done", "retroactive": "done", "edge-cases": "done"
+  },
+  "qaLog": [
+    {"area": "labeling-model", "q": "How to model upload kinds", "a": "Named slots + free Other"},
+    {"area": "slot-config", "q": "Where do slots live", "a": "Company Settings (per company)"},
+    {"area": "slots-per-doc", "q": "Which extras required", "a": "PO Vendor Quotation, RR Vendor DR/SR, CV Check copy (if by check)"},
+    {"area": "data-model-ap-split", "q": "AP separate table", "a": "Add kind to both tables"},
+    {"area": "assignment-ux", "q": "Tagging + missing display", "a": "Per-slot checklist panel"},
+    {"area": "soft-gate", "q": "Behavior when required missing", "a": "Confirm dialog, proceed on explicit OK"},
+    {"area": "exception-record", "q": "What persists", "a": "Audit event + live Incomplete badge"},
+    {"area": "action-items", "q": "Surface + post-approval residue", "a": "Flag pre-approval in Action Items AND keep post-approval badge"},
+    {"area": "post-approval-amendment", "q": "How far post-approval amendment goes", "a": "Full amendment RR/AP/CV deferred to separate spec; this spec attachments-only"},
+    {"area": "config-scope", "q": "How much owner can change", "a": "Toggle required on seeded slots"},
+    {"area": "retroactive", "q": "Evaluate historical docs", "a": "Only docs approved after ship"},
+    {"area": "edge-cases", "q": "RT: badge basis on config change", "a": "Freeze required-ness at approval"},
+    {"area": "edge-cases", "q": "RT: CV check rule timing", "a": "At post time from posted method"}
+  ],
+  "redTeamFindings": [
+    {"dimension": "security", "severity": "major", "title": "Client dialog bypassable", "resolution": "D14 server recheck authoritative"},
+    {"dimension": "data-integrity", "severity": "major", "title": "Audit swallows errors, unreliable badge source", "resolution": "D7 durable marker in approval txn"},
+    {"dimension": "contradictory", "severity": "major", "title": "Config change rewrites past incompleteness", "resolution": "D15 snapshot required-ness at approval"},
+    {"dimension": "failure-modes", "severity": "minor", "title": "CV check conditional timing", "resolution": "D16 evaluate at post from posted method"},
+    {"dimension": "scaling", "severity": "minor", "title": "Badge/action-items N+1", "resolution": "D17 batched grouped query"},
+    {"dimension": "operational", "severity": "minor", "title": "Grandfather cutoff mechanism", "resolution": "marker only set by new code; no date needed"}
+  ],
+  "specFile": "docs/design/2026-09-15-required-labeled-attachments-spec.md"
+}
