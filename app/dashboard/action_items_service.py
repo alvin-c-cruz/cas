@@ -125,6 +125,82 @@ def gather_draft_items(user, branch_id):
     return items
 
 
+def _missing_attachment_sources():
+    """(label, icon, Model, num_attr, document_type, pre-approval statuses,
+    detail-url template, module key) for the required-attachment worklist.
+
+    Pre-approval statuses only: an item drops off this list the moment the
+    document is approved/posted ("once approved it is considered complete").
+    PR/PO/RR carry a 'submitted' step; AP/CV go draft -> posted.
+    """
+    from app.accounts_payable.models import AccountsPayable
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    from app.purchase_orders.models import PurchaseOrder
+    from app.purchase_requests.models import PurchaseRequest
+    from app.receiving_reports.models import ReceivingReport
+    return [
+        ('Purchase Requisition', '📝', PurchaseRequest, 'pr_number', 'purchase_requests',
+         ('draft', 'submitted'), '/purchase-requests/{id}', 'purchase_requests'),
+        ('Purchase Order', '🛒', PurchaseOrder, 'po_number', 'purchase_orders',
+         ('draft', 'submitted'), '/purchase-orders/{id}', 'purchase_orders'),
+        ('Receiving Report', '📦', ReceivingReport, 'rr_number', 'receiving_reports',
+         ('draft', 'submitted'), '/receiving-reports/{id}', 'receiving_reports'),
+        ('Accounts Payable', '🧾', AccountsPayable, 'ap_number', 'accounts_payable',
+         ('draft',), '/accounts-payable/{id}', None),
+        ('Cash Disbursement', '💸', CashDisbursementVoucher, 'cdv_number', 'cash_disbursements',
+         ('draft',), '/cash-disbursements/{id}', None),
+    ]
+
+
+def _missing_attachment_docs(user, branch_id):
+    """Yield (source, doc, missing_labels) for pre-approval documents that are
+    missing a required attachment slot. Batched: one incomplete_map query per
+    document type. Same gating as drafts (module access + staff-own + branch)."""
+    from app.users.module_access import can_access_module
+    from app.attachments.completeness import incomplete_map
+    from app.attachments.registry import slots_for
+    for src in _missing_attachment_sources():
+        label, icon, Model, num_attr, doc_type, statuses, url_tmpl, key = src
+        if key is not None and not can_access_module(user, key):
+            continue
+        q = Model.query.filter(Model.status.in_(statuses), Model.branch_id == branch_id)
+        if user.role == 'staff':
+            q = q.filter(Model.created_by_id == user.id)
+        docs = q.all()
+        if not docs:
+            continue
+        miss = incomplete_map(doc_type, docs)
+        if not miss:
+            continue
+        labels = {s.key: s.label for s in slots_for(doc_type)}
+        for doc in docs:
+            if doc.id in miss:
+                names = [labels.get(s.key, s.key) for s in miss[doc.id]]
+                yield src, doc, names
+
+
+def gather_missing_attachment_items(user, branch_id):
+    """Pre-approval documents missing a required attachment. Empty for viewers or
+    with no branch selected. Drops off automatically once a document is
+    approved/posted (those statuses are not in the pre-approval set)."""
+    if not user or user.role == 'viewer' or not branch_id:
+        return []
+    items = []
+    for src, doc, names in _missing_attachment_docs(user, branch_id):
+        label, icon, Model, num_attr, doc_type, statuses, url_tmpl, key = src
+        items.append({
+            'type': label,
+            'icon': '📎',
+            'id': getattr(doc, num_attr, None) or '#{}'.format(doc.id),
+            'desc': 'Missing required file(s): ' + ', '.join(names),
+            'by': _creator_name(doc),
+            'when': '—',
+            'state': getattr(doc, 'status', '').replace('_', ' ').title() or '—',
+            'editUrl': url_tmpl.format(id=doc.id),
+        })
+    return items
+
+
 def _document_approval_sources():
     """(label, icon, Model, number attr, review-url template, module key).
 
@@ -358,6 +434,9 @@ def count_action_items(user, branch_id):
         # badge says 1 while the page shows 2 -- the same list/badge divergence
         # the draft sources guard against.
         n += len(gather_document_approval_items(user, branch_id))
+        # Pre-approval documents missing a required attachment. Listed and
+        # counted together, same as the sources above.
+        n += len(gather_missing_attachment_items(user, branch_id))
     if user.has_full_access or user.role == 'accountant':
         # Same gate AND same branch scoping as gather_approval_items' PR block.
         # Counting them ungated would put a number on the badge that the page
