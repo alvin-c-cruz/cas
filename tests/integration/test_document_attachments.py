@@ -449,3 +449,61 @@ def test_pr_create_saves_the_queued_files_after_the_document(client, db_session,
     assert names == ['photo.png', 'signed-pr.pdf']
     body = resp.data.decode()
     assert 'bad.svg' in body and 'skipped' in body      # the warning names the bad file
+
+
+# ── Completeness resolver (kind-aware) ─────────────────────────────────────
+
+def _set_kind(doc_type, doc_id, filename, kind):
+    """Upload helper that tags the stored row with a kind (simulates a slot upload)."""
+    from app.attachments.models import DocumentAttachment
+    att = DocumentAttachment.query.filter_by(document_type=doc_type, document_id=doc_id,
+                                             original_filename=filename).first()
+    att.kind = kind
+    from app import db
+    db.session.commit()
+
+
+def test_missing_required_reflects_present_kinds(client, db_session, admin_user, main_branch):
+    from app.attachments.completeness import missing_required
+    doc = make_doc(db_session, main_branch, 'purchase_orders')
+    _login(client, 'admin', main_branch)
+    # PO requires signed_po + vendor_quotation. Start: both missing.
+    miss = [s.key for s in missing_required('purchase_orders', doc)]
+    assert miss == ['signed_po', 'vendor_quotation']
+
+    # Attach a file and tag it signed_po → only vendor_quotation remains.
+    _upload(client, 'purchase_orders', doc.id, filename='po.pdf')
+    _set_kind('purchase_orders', doc.id, 'po.pdf', 'signed_po')
+    miss = [s.key for s in missing_required('purchase_orders', doc)]
+    assert miss == ['vendor_quotation']
+
+    # Attach the quotation → complete.
+    _upload(client, 'purchase_orders', doc.id, filename='quote.pdf')
+    _set_kind('purchase_orders', doc.id, 'quote.pdf', 'vendor_quotation')
+    assert missing_required('purchase_orders', doc) == []
+
+
+def test_incomplete_map_is_batched_over_many_docs(client, db_session, admin_user, main_branch):
+    from app.attachments.completeness import incomplete_map
+    _login(client, 'admin', main_branch)
+    d1 = make_doc(db_session, main_branch, 'purchase_orders', number='PO-INC-1')
+    d2 = make_doc(db_session, main_branch, 'purchase_orders', number='PO-INC-2')
+    # d1 gets both required files; d2 gets none.
+    for fn, kind in [('a.pdf', 'signed_po'), ('b.pdf', 'vendor_quotation')]:
+        _upload(client, 'purchase_orders', d1.id, filename=fn)
+        _set_kind('purchase_orders', d1.id, fn, kind)
+
+    result = incomplete_map('purchase_orders', [d1, d2])
+    assert d1.id not in result                       # complete
+    assert [s.key for s in result[d2.id]] == ['signed_po', 'vendor_quotation']
+
+
+def test_cv_check_copy_only_required_when_paid_by_check(client, db_session, admin_user, main_branch):
+    from app.attachments.completeness import missing_required
+    cash = make_doc(db_session, main_branch, 'cash_disbursements', number='CDV-CASH-1')
+    cash.payment_method = 'cash'; db_session.commit()
+    assert [s.key for s in missing_required('cash_disbursements', cash)] == ['signed_cv']
+
+    chk = make_doc(db_session, main_branch, 'cash_disbursements', number='CDV-CHK-1')
+    chk.payment_method = 'check'; db_session.commit()
+    assert [s.key for s in missing_required('cash_disbursements', chk)] == ['signed_cv', 'check_copy']

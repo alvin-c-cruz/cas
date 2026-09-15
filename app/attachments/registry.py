@@ -33,6 +33,30 @@ def _approve_level(user):
     return bool(user.has_full_access or user.role == 'accountant')
 
 
+def _paid_by_check(doc):
+    """CV 'Check copy' slot applies only when the voucher is paid by check."""
+    return getattr(doc, 'payment_method', None) == 'check'
+
+
+@dataclass(frozen=True)
+class Slot:
+    """A named attachment slot on a document type.
+
+    `required` is the CODE-SEEDED default; Company Settings may override it per
+    company (task 4). `applies_when`, when set, is a predicate `(doc) -> bool`:
+    the slot is only shown and only considered required for documents it applies
+    to (e.g. a CV 'Check copy' only when paid by check). A slot with
+    `applies_when=None` always applies.
+    """
+    key: str
+    label: str
+    required: bool = False
+    applies_when: object = None
+
+    def applies_to(self, doc):
+        return self.applies_when is None or bool(self.applies_when(doc))
+
+
 @dataclass(frozen=True)
 class AttachmentTarget:
     #: Matches the module's audit `module` name and the upload folder name.
@@ -51,6 +75,9 @@ class AttachmentTarget:
     amend_statuses: tuple = ()
     #: (user) -> bool. Who may attach through the amend path.
     amend_level: object = None
+    #: Named slots (Slot objects) this document type defines, in display order.
+    #: A file with kind=NULL is an unlabeled "Other" and belongs to no slot.
+    slots: tuple = ()
 
     def model(self):
         module_name, _, class_name = self.model_path.partition(':')
@@ -76,6 +103,9 @@ TARGETS = {
         amend_statuses=('approved', 'partially_converted', 'partially_received',
                         'converted'),
         amend_level=_approve_level,
+        slots=(
+            Slot('signed_pr', 'Signed PR', required=True),
+        ),
     ),
     'purchase_orders': AttachmentTarget(
         document_type='purchase_orders',
@@ -85,6 +115,10 @@ TARGETS = {
         open_statuses=('draft', 'submitted'),
         amend_statuses=('approved', 'partially_received'),
         amend_level=_approve_level,
+        slots=(
+            Slot('signed_po', 'Signed PO', required=True),
+            Slot('vendor_quotation', 'Vendor Quotation', required=True),
+        ),
     ),
     'receiving_reports': AttachmentTarget(
         document_type='receiving_reports',
@@ -92,6 +126,10 @@ TARGETS = {
         number_attr='rr_number',
         view_endpoint='receiving_reports.view',
         open_statuses=('draft', 'submitted'),
+        slots=(
+            Slot('signed_rr', 'Signed RR', required=True),
+            Slot('vendor_dr_sr', 'Vendor DR/SR', required=True),
+        ),
     ),
     'cash_disbursements': AttachmentTarget(
         document_type='cash_disbursements',
@@ -99,12 +137,34 @@ TARGETS = {
         number_attr='cdv_number',
         view_endpoint='cash_disbursements.view',
         open_statuses=('draft',),
+        slots=(
+            Slot('signed_cv', 'Signed CV', required=True),
+            Slot('check_copy', 'Check copy', required=True, applies_when=_paid_by_check),
+        ),
     ),
 }
 
 
 def get_target(document_type):
     return TARGETS.get(document_type)
+
+
+# Accounts Payable keeps its own attachment table and its own upload routes, so
+# it is deliberately NOT a shared-attachment TARGET above. Required/labeled
+# completeness spans it too (spec D4), so its slots live here, and slots_for()
+# unifies the lookup across all five document types.
+_AP_SLOTS = (
+    Slot('signed_ap', 'Signed AP', required=True),
+)
+
+
+def slots_for(document_type):
+    """Named slots for any of the five document types (AP included), in display
+    order. Empty tuple for an unknown type."""
+    if document_type == 'accounts_payable':
+        return _AP_SLOTS
+    target = TARGETS.get(document_type)
+    return target.slots if target else ()
 
 
 def can_upload(target, doc, user):
