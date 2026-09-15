@@ -37,8 +37,8 @@ def _po(db_session, branch, vendor, status='draft', number='PO-AI-1', creator=No
     return po
 
 
-def test_draft_missing_required_appears_in_action_items(db_session, admin_user, main_branch, vl_vendor):
-    po = _po(db_session, main_branch, vl_vendor)
+def test_submitted_missing_required_appears_in_action_items(db_session, admin_user, main_branch, vl_vendor):
+    po = _po(db_session, main_branch, vl_vendor, status='submitted')
     items = gather_missing_attachment_items(admin_user, main_branch.id)
     ids = [i['id'] for i in items]
     assert po.po_number in ids
@@ -54,10 +54,10 @@ def test_approved_document_drops_off(db_session, admin_user, main_branch, vl_ven
     assert 'PO-AI-APPROVED' not in [i['id'] for i in items]
 
 
-def test_complete_draft_not_listed(db_session, admin_user, main_branch, vl_vendor):
+def test_complete_submitted_not_listed(db_session, admin_user, main_branch, vl_vendor):
     from app.attachments.models import DocumentAttachment
     from app.utils import ph_now
-    po = _po(db_session, main_branch, vl_vendor, number='PO-AI-COMPLETE')
+    po = _po(db_session, main_branch, vl_vendor, status='submitted', number='PO-AI-COMPLETE')
     for kind in ('signed_po', 'vendor_quotation'):
         db.session.add(DocumentAttachment(
             document_type='purchase_orders', document_id=po.id, kind=kind,

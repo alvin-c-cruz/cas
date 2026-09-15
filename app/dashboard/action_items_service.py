@@ -129,26 +129,27 @@ def _missing_attachment_sources():
     """(label, icon, Model, num_attr, document_type, pre-approval statuses,
     detail-url template, module key) for the required-attachment worklist.
 
-    Pre-approval statuses only: an item drops off this list the moment the
-    document is approved/posted ("once approved it is considered complete").
-    PR/PO/RR carry a 'submitted' step; AP/CV go draft -> posted.
+    SUBMITTED only, deliberately: a draft is already flagged in the Drafts
+    category (with its own "continue editing" nudge), so also listing it here
+    would double-count it in the sidebar badge and show it twice on the page.
+    The distinct value of this category is the submitted document awaiting
+    approval — past draft, files still missing, about to be approved.
+
+    AP and CV have no 'submitted' step (draft -> posted), so they contribute
+    nothing here; their missing files surface on the detail panel and at the
+    posting soft gate instead. An item drops off the moment the document is
+    approved/posted ("once approved it is considered complete").
     """
-    from app.accounts_payable.models import AccountsPayable
-    from app.cash_disbursements.models import CashDisbursementVoucher
     from app.purchase_orders.models import PurchaseOrder
     from app.purchase_requests.models import PurchaseRequest
     from app.receiving_reports.models import ReceivingReport
     return [
         ('Purchase Requisition', '📝', PurchaseRequest, 'pr_number', 'purchase_requests',
-         ('draft', 'submitted'), '/purchase-requests/{id}', 'purchase_requests'),
+         ('submitted',), '/purchase-requests/{id}', 'purchase_requests'),
         ('Purchase Order', '🛒', PurchaseOrder, 'po_number', 'purchase_orders',
-         ('draft', 'submitted'), '/purchase-orders/{id}', 'purchase_orders'),
+         ('submitted',), '/purchase-orders/{id}', 'purchase_orders'),
         ('Receiving Report', '📦', ReceivingReport, 'rr_number', 'receiving_reports',
-         ('draft', 'submitted'), '/receiving-reports/{id}', 'receiving_reports'),
-        ('Accounts Payable', '🧾', AccountsPayable, 'ap_number', 'accounts_payable',
-         ('draft',), '/accounts-payable/{id}', None),
-        ('Cash Disbursement', '💸', CashDisbursementVoucher, 'cdv_number', 'cash_disbursements',
-         ('draft',), '/cash-disbursements/{id}', None),
+         ('submitted',), '/receiving-reports/{id}', 'receiving_reports'),
     ]
 
 
@@ -434,9 +435,11 @@ def count_action_items(user, branch_id):
         # badge says 1 while the page shows 2 -- the same list/badge divergence
         # the draft sources guard against.
         n += len(gather_document_approval_items(user, branch_id))
-        # Pre-approval documents missing a required attachment. Listed and
-        # counted together, same as the sources above.
-        n += len(gather_missing_attachment_items(user, branch_id))
+        # NOTE: gather_missing_attachment_items is intentionally NOT added to the
+        # badge count. It re-surfaces SUBMITTED documents that are already counted
+        # above (approval items) as a distinct "missing required files" line on
+        # the Action Items page; counting it here too would double-count the same
+        # document in the sidebar badge.
     if user.has_full_access or user.role == 'accountant':
         # Same gate AND same branch scoping as gather_approval_items' PR block.
         # Counting them ungated would put a number on the badge that the page
