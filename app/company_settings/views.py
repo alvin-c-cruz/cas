@@ -260,6 +260,78 @@ def save_control_accounts():
 
 
 # ---------------------------------------------------------------------------
+# Required attachment slots -- per-company required/hidden overrides on the
+# code-seeded slots (required-labeled-attachments spec, task 4).
+# ---------------------------------------------------------------------------
+_ATTACHMENT_DOC_TYPES = [
+    ('purchase_requests', 'Purchase Requisition'),
+    ('purchase_orders', 'Purchase Order'),
+    ('receiving_reports', 'Receiving Report'),
+    ('accounts_payable', 'AP Voucher'),
+    ('cash_disbursements', 'Cash Disbursement Voucher'),
+]
+
+
+def _attachment_slot_groups():
+    """[(document_type, label, [ {slot, required, hidden, conditional}, ... ]), ...]
+    with the CURRENT effective required/hidden values per slot."""
+    from app.attachments.registry import slots_for
+    from app.attachments import config_overrides
+    groups = []
+    for dt, label in _ATTACHMENT_DOC_TYPES:
+        rows = []
+        for slot in slots_for(dt):
+            rows.append({
+                'key': slot.key,
+                'label': slot.label,
+                'required': config_overrides.is_required(dt, slot),
+                'hidden': config_overrides.is_hidden(dt, slot),
+                'conditional': slot.applies_when is not None,
+            })
+        if rows:
+            groups.append({'document_type': dt, 'label': label, 'slots': rows})
+    return groups
+
+
+@company_settings_bp.route('/attachment-slots')
+@login_required
+def attachment_slots():
+    if not _accountant_or_full_access():
+        flash('Only Accountants and Administrators can manage required attachments.', 'error')
+        return redirect(url_for('dashboard.index'))
+    return render_template('company_settings/attachment_slots.html',
+                           groups=_attachment_slot_groups())
+
+
+@company_settings_bp.route('/attachment-slots', methods=['POST'])
+@login_required
+def save_attachment_slots():
+    if not _accountant_or_full_access():
+        flash('Only Accountants and Administrators can perform this action.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.attachments.registry import slots_for
+    from app.attachments import config_overrides
+    changed = {}
+    # Only the slots the template rendered are processed; a checkbox absent from
+    # the POST means unchecked (HTML omits unchecked boxes), so every rendered
+    # slot is written explicitly from whether its box is present.
+    for dt, _label in _ATTACHMENT_DOC_TYPES:
+        for slot in slots_for(dt):
+            req = '1' if request.form.get(f'required:{dt}:{slot.key}') else '0'
+            hid = '1' if request.form.get(f'hidden:{dt}:{slot.key}') else '0'
+            AppSettings.set_setting(config_overrides.required_key(dt, slot.key), req,
+                                    updated_by=current_user.username)
+            AppSettings.set_setting(config_overrides.hidden_key(dt, slot.key), hid,
+                                    updated_by=current_user.username)
+            changed[f'{dt}:{slot.key}'] = f'required={req} hidden={hid}'
+    log_audit(module='company_settings', action='save_attachment_slots',
+              record_id=None, record_identifier='attachment_slots',
+              new_values=changed, user_id=current_user.id)
+    flash('Required attachment settings saved.', 'success')
+    return redirect(url_for('company_settings.attachment_slots'))
+
+
+# ---------------------------------------------------------------------------
 # Owners' View -- the VAT-inclusive reporting basis (spec 2026-09-13)
 # ---------------------------------------------------------------------------
 def _owners_view_context():

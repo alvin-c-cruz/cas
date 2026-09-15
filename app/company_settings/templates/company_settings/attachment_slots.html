@@ -1,0 +1,58 @@
+{# app/company_settings/templates/company_settings/attachment_slots.html #}
+{% extends "base.html" %}
+{% block title %}Required Attachments - {{ company_name }}{% endblock %}
+{% block page_title %}Required Attachments{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Required Attachments</div>
+    <div class="card-sub">
+      Choose which document scans are <strong>required</strong> before approval, per document type.
+      A required file that is missing does not block approval — it warns the approver and flags the
+      record until the file is attached. Hide a slot to drop it from the checklist entirely.
+    </div>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('company_settings.save_attachment_slots') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      {% for group in groups %}
+      <h3 style="font-size:14px; font-weight:600; margin:18px 0 8px;">{{ group.label }}</h3>
+      <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:8px;">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border);">
+            <th style="text-align:left; padding:6px 12px; color:var(--text-2);">Slot</th>
+            <th style="text-align:center; padding:6px 12px; color:var(--text-2); width:120px;">Required</th>
+            <th style="text-align:center; padding:6px 12px; color:var(--text-2); width:120px;">Hidden</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for slot in group.slots %}
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:6px 12px;">
+              {{ slot.label }}
+              {% if slot.conditional %}
+              <span style="color:var(--text-3); font-size:12px;">(only when it applies, e.g. paid by check)</span>
+              {% endif %}
+            </td>
+            <td style="text-align:center; padding:6px 12px;">
+              <input type="checkbox" name="required:{{ group.document_type }}:{{ slot.key }}"
+                     {{ 'checked' if slot.required else '' }}>
+            </td>
+            <td style="text-align:center; padding:6px 12px;">
+              <input type="checkbox" name="hidden:{{ group.document_type }}:{{ slot.key }}"
+                     {{ 'checked' if slot.hidden else '' }}>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endfor %}
+      <div class="form-actions" style="margin-top:16px;">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{{ url_for('company_settings.edit_settings') }}" class="btn btn-secondary">Back to Settings</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
