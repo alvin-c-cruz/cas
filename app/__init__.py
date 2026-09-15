@@ -794,6 +794,7 @@ def create_app(config_name=None):
     if not app.debug:
         from flask import render_template, request
         from flask_login import current_user
+        from werkzeug.exceptions import HTTPException
 
         @app.errorhandler(404)
         def not_found_error(error):
@@ -816,8 +817,24 @@ def create_app(config_name=None):
             db.session.rollback()
             return render_template('errors/500.html'), 500
 
+        @app.errorhandler(HTTPException)
+        def http_exception(error):
+            # Keep a real HTTP status (405 wrong method, 413 upload too large,
+            # 400 bad request, ...) instead of letting the catch-all Exception
+            # handler below relabel every one of them as a 500. 404/403/500 have
+            # their own code-specific handlers above and are matched first, so
+            # they never reach here. A client-side HTTP error is not an app crash,
+            # so it is logged at WARNING and NOT written to the CRITICAL error log.
+            # (Regression: a GET on the POST-only /attachments/.../upload route,
+            # and a file over MAX_CONTENT_LENGTH, both rendered the 500 page.)
+            app.logger.warning(f"{error.code} error: {request.url}")
+            return error
+
         @app.errorhandler(Exception)
         def unhandled_exception(error):
+            # HTTPExceptions are handled above; this catches genuine crashes only.
+            if isinstance(error, HTTPException):
+                return error
             app.logger.critical(f"Unhandled exception: {request.url}", exc_info=True)
             from app.errors.utils import log_error_to_db
             log_error_to_db(error, severity='CRITICAL')

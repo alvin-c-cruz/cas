@@ -26,6 +26,15 @@ def _app_with_boom(config_name):
         raise RuntimeError('kaboom for tests')
 
     app.add_url_rule('/__boom__', '__boom__', boom)
+
+    # A POST-only route, so a GET raises Werkzeug's MethodNotAllowed (405). Used
+    # to prove the catch-all Exception handler does not downgrade an HTTP status
+    # to 500 (the /attachments/.../upload route is POST-only and did exactly that
+    # on a GET before the fix).
+    def post_only():
+        return 'ok'
+
+    app.add_url_rule('/__postonly__', '__postonly__', post_only, methods=['POST'])
     return app
 
 
@@ -70,6 +79,20 @@ class TestErrorHandlersActiveInProduction:
         assert len(logged) == 1
         assert logged[0].severity == 'CRITICAL'
         assert 'kaboom for tests' in logged[0].error_message
+
+    def test_wrong_method_keeps_405_not_downgraded_to_500(self, prod_app):
+        """A GET on a POST-only route is a 405, not a server error. The catch-all
+        Exception handler must not relabel HTTP errors as 500 (regression:
+        /attachments/.../upload returned a 500 page on a GET)."""
+        resp = prod_app.test_client().get('/__postonly__')
+        assert resp.status_code == 405
+        assert 'Something went wrong on our end' not in resp.get_data(as_text=True)
+
+    def test_http_error_is_not_logged_as_a_crash(self, prod_app):
+        """A routine 405 is client error, not an app crash — it must not fill the
+        error log with CRITICAL rows the way a real 500 does."""
+        prod_app.test_client().get('/__postonly__')
+        assert ErrorLog.query.filter_by(error_type='MethodNotAllowed').count() == 0
 
 
 class TestErrorHandlersDisabledInDevelopment:
