@@ -827,9 +827,20 @@ def approve(id):
     # that may, and an amendment finding no baseline starts at Rev 1 rather than
     # occupying the slot (see app/amendments/service.py::write_revision).
     write_revision(pr, current_user.id, baseline=True)
+    # Soft gate: snapshot any required attachment slots still empty at approval,
+    # in this same transaction. Does not block approval.
+    from app.attachments.service import record_approval_completeness, missing_slot_labels
+    _missing = record_approval_completeness('purchase_requests', pr)
     db.session.commit()
-    log_audit(module='purchase_requests', action='approve', record_id=pr.id,
-              record_identifier=pr.pr_number, notes='Approved')
+    if _missing:
+        labels = ', '.join(missing_slot_labels('purchase_requests', _missing))
+        log_audit(module='purchase_requests', action='approve', record_id=pr.id,
+                  record_identifier=pr.pr_number,
+                  notes=f'Approved with required files missing: {labels}')
+        flash(f'Approved. Note: required files still missing — {labels}.', 'warning')
+    else:
+        log_audit(module='purchase_requests', action='approve', record_id=pr.id,
+                  record_identifier=pr.pr_number, notes='Approved')
     # The follow-up instruction has to match what the recompute just settled on.
     # "Convert it to a Purchase Order" is wrong advice for a requisition that was
     # already ordered against before it was approved -- the picker has nothing

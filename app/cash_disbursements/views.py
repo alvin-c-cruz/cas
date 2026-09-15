@@ -1240,14 +1240,27 @@ def post(id):
             cdv.journal_entry.posted_by_id = current_user.id
             cdv.journal_entry.posted_at = ph_now()
         _apply_ap_payments(cdv)
+        # Soft gate: snapshot required attachment slots still empty at posting,
+        # in this same transaction. Does not block posting. Uses the
+        # 'cash_disbursements' document type (matches the attachments registry).
+        from app.attachments.service import record_approval_completeness, missing_slot_labels
+        _missing = record_approval_completeness('cash_disbursements', cdv)
         db.session.commit()
+        note = f'Posted by {current_user.username}'
+        if _missing:
+            labels = ', '.join(missing_slot_labels('cash_disbursements', _missing))
+            note += f' with required files missing: {labels}'
         log_audit(
             module='cash_disbursement', action='post',
             record_id=cdv.id,
             record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
-            notes=f'Posted by {current_user.username}'
+            notes=note
         )
-        flash(f'CDV "{cdv.cdv_number}" posted successfully!', 'success')
+        if _missing:
+            flash(f'CDV "{cdv.cdv_number}" posted. Note: required files still missing — '
+                  + ', '.join(missing_slot_labels('cash_disbursements', _missing)) + '.', 'warning')
+        else:
+            flash(f'CDV "{cdv.cdv_number}" posted successfully!', 'success')
     except ValueError as e:
         db.session.rollback()
         flash(str(e), 'error')

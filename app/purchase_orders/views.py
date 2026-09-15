@@ -1067,11 +1067,23 @@ def approve(id):
     # may, and an amendment that finds no baseline starts at Rev 1 rather than
     # occupying the slot (see write_revision).
     write_revision(po, current_user.id, baseline=True)
+    # Soft gate: snapshot required attachment slots still empty at approval,
+    # in this same transaction. Does not block approval.
+    from app.attachments.service import record_approval_completeness, missing_slot_labels
+    _missing = record_approval_completeness('purchase_orders', po)
     db.session.commit()
 
+    note = 'Approved'
+    if _missing:
+        labels = ', '.join(missing_slot_labels('purchase_orders', _missing))
+        note = f'Approved with required files missing: {labels}'
     log_update(module='purchase_orders', record_id=po.id, record_identifier=po.po_number,
-               old_values=old_values, new_values=model_to_dict(po, ['status']), notes='Approved')
-    flash(f'Purchase Order "{po.po_number}" has been approved.', 'success')
+               old_values=old_values, new_values=model_to_dict(po, ['status']), notes=note)
+    if _missing:
+        flash(f'Purchase Order "{po.po_number}" approved. Note: required files still missing — '
+              + ', '.join(missing_slot_labels('purchase_orders', _missing)) + '.', 'warning')
+    else:
+        flash(f'Purchase Order "{po.po_number}" has been approved.', 'success')
     return redirect(url_for('purchase_orders.view', id=id))
 
 

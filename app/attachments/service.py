@@ -225,9 +225,33 @@ def panel_context(target, doc, user, next_url=None):
         'slot_rows': slot_rows,
         'other_files': other_files,
         'missing_required_count': sum(1 for r in slot_rows if r['required'] and not r['filled']),
+        'missing_required_labels': [r['label'] for r in slot_rows if r['required'] and not r['filled']],
         'can_upload': upload_ok,
         'deletable_ids': deletable,
         'closed_note': closed_note,
         'accept': ACCEPT_ATTR,
         'next_url': next_url,
     }
+
+
+def record_approval_completeness(document_type, doc):
+    """Soft gate: snapshot the required slots that are empty at approval/post time
+    onto ``doc.approved_incomplete_slots`` (JSON list, or None when complete) and
+    return the list of missing slot keys.
+
+    Sets the attribute only; it does NOT commit -- the caller's approval commit
+    persists it in the same transaction, so the marker can never disagree with
+    the status. Returns [] when nothing is missing.
+    """
+    import json
+    from app.attachments.completeness import missing_required
+    missing = [s.key for s in missing_required(document_type, doc)]
+    doc.approved_incomplete_slots = json.dumps(missing) if missing else None
+    return missing
+
+
+def missing_slot_labels(document_type, missing_keys):
+    """Human labels for a list of slot keys, for flash/audit messages."""
+    from app.attachments.registry import slots_for
+    by_key = {s.key: s.label for s in slots_for(document_type)}
+    return [by_key.get(k, k) for k in missing_keys]

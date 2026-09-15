@@ -170,3 +170,56 @@
     {% endif %}
   </div>
 </div>
+
+{% if att.missing_required_count %}
+{# Soft gate (advisory): if a user presses Approve / Post / Submit while required
+   files are missing, list them and require an explicit "Proceed". The server
+   re-checks and records the exception regardless, so this is a courtesy, not the
+   gate. Scoped to forms whose action ends in /approve, /post or /submit. #}
+<div id="attGateModal" data-missing="{{ att.missing_required_labels|join('||') }}"
+     style="display:none; position:fixed; inset:0; background:var(--backdrop, rgba(0,0,0,.4));
+            z-index:1200; align-items:center; justify-content:center;">
+  <div style="background:var(--card); border-radius:8px; padding:28px; max-width:460px; width:90%;">
+    <h3 style="margin:0 0 12px 0;">Required files missing</h3>
+    <p style="color:var(--text-2); margin:0 0 8px;">This document is missing required attachments:</p>
+    <ul id="attGateList" style="margin:0 0 20px; padding-left:20px; color:var(--text-1);"></ul>
+    <p style="color:var(--text-2); margin:0 0 20px; font-size:13px;">You can proceed — it will be recorded as approved with files missing, and flagged until they are added.</p>
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button type="button" class="btn btn-secondary" id="attGateCancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="attGateProceed">Proceed anyway</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+    var modal = document.getElementById('attGateModal');
+    if (!modal) return;
+    var labels = (modal.getAttribute('data-missing') || '').split('||').filter(Boolean);
+    var list = document.getElementById('attGateList');
+    list.innerHTML = '';
+    labels.forEach(function (l) { var li = document.createElement('li'); li.textContent = l; list.appendChild(li); });
+
+    var pending = null;
+    function isGated(form) {
+        var a = (form.getAttribute('action') || '');
+        return /\/(approve|post|submit)$/.test(a);
+    }
+    document.querySelectorAll('form').forEach(function (form) {
+        if (!isGated(form)) return;
+        form.addEventListener('submit', function (e) {
+            if (form.dataset.attGatePassed) return;      // already confirmed
+            e.preventDefault();
+            pending = form;
+            modal.style.display = 'flex';
+        });
+    });
+    document.getElementById('attGateCancel').addEventListener('click', function () {
+        modal.style.display = 'none'; pending = null;
+    });
+    document.getElementById('attGateProceed').addEventListener('click', function () {
+        modal.style.display = 'none';
+        if (pending) { pending.dataset.attGatePassed = '1'; pending.submit(); }
+    });
+})();
+</script>
+{% endif %}

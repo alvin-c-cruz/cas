@@ -1392,17 +1392,29 @@ def post(id):
             ap.journal_entry.status = 'posted'
             ap.journal_entry.posted_by_id = current_user.id
             ap.journal_entry.posted_at = ph_now()
+        # Soft gate: snapshot required attachment slots still empty at posting,
+        # in this same transaction. Does not block posting.
+        from app.attachments.service import record_approval_completeness, missing_slot_labels
+        _missing = record_approval_completeness('accounts_payable', ap)
         db.session.commit()
 
+        note = f'Bill posted by {current_user.username}'
+        if _missing:
+            labels = ', '.join(missing_slot_labels('accounts_payable', _missing))
+            note += f' with required files missing: {labels}'
         log_audit(
             module='accounts_payable',
             action='post',
             record_id=ap.id,
             record_identifier=f'{ap.ap_number} - {ap.vendor_name}',
-            notes=f'Bill posted by {current_user.username}'
+            notes=note
         )
 
-        flash(f'AP Voucher "{ap.ap_number}" posted successfully!', 'success')
+        if _missing:
+            flash(f'AP Voucher "{ap.ap_number}" posted. Note: required files still missing — '
+                  + ', '.join(missing_slot_labels('accounts_payable', _missing)) + '.', 'warning')
+        else:
+            flash(f'AP Voucher "{ap.ap_number}" posted successfully!', 'success')
     except Exception as e:
         from app.errors.utils import log_exception
         # Roll back BEFORE logging — log_exception commits the session,

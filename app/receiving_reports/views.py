@@ -1087,10 +1087,22 @@ def approve(id):
     # AFTER the status write and BEFORE the commit: recompute reads
     # COMMITTED_STATUSES, so it must see this receipt already 'approved'.
     _refresh_source_requisitions(rr)
+    # Soft gate: snapshot required attachment slots still empty at approval,
+    # in this same transaction. Does not block approval.
+    from app.attachments.service import record_approval_completeness, missing_slot_labels
+    _missing = record_approval_completeness('receiving_reports', rr)
     db.session.commit()
-    log_audit(module='receiving_reports', action='approve', record_id=rr.id,
-              record_identifier=rr.rr_number, notes='Approved')
-    flash(f'Receiving Report "{rr.rr_number}" approved.', 'success')
+    if _missing:
+        labels = ', '.join(missing_slot_labels('receiving_reports', _missing))
+        log_audit(module='receiving_reports', action='approve', record_id=rr.id,
+                  record_identifier=rr.rr_number,
+                  notes=f'Approved with required files missing: {labels}')
+        flash(f'Receiving Report "{rr.rr_number}" approved. Note: required files still '
+              f'missing — {labels}.', 'warning')
+    else:
+        log_audit(module='receiving_reports', action='approve', record_id=rr.id,
+                  record_identifier=rr.rr_number, notes='Approved')
+        flash(f'Receiving Report "{rr.rr_number}" approved.', 'success')
     return redirect(url_for('receiving_reports.view', id=id))
 
 
