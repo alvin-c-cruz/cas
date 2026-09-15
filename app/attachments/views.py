@@ -43,11 +43,27 @@ def _back(target, doc):
                       methods=['POST'])
 @login_required
 def upload(document_type, document_id):
+    from app.attachments.registry import slots_for, can_late_complete
+    from app.attachments.completeness import _present_kinds
     target, doc = _resolve(document_type, document_id)
 
-    if not can_upload(target, doc, current_user):
-        flash('Attachments can no longer be added to this document.', 'error')
-        return _back(target, doc)
+    # Slot the files fill. Validate against this document's slots; unknown/blank
+    # → unlabeled "Other" (None).
+    kind = (request.form.get('kind') or '').strip() or None
+    if kind and kind not in {s.key for s in slots_for(document_type)}:
+        kind = None
+
+    # Normal (pre-approval / amend) upload, OR attachments-only late completion:
+    # an approver filling a STILL-EMPTY required slot after approval (RR/CV).
+    normal_ok = can_upload(target, doc, current_user)
+    late = False
+    if not normal_ok:
+        if kind and can_late_complete(target, doc, current_user, kind) \
+                and kind not in _present_kinds(document_type, doc.id):
+            late = True
+        else:
+            flash('Attachments can no longer be added to this document.', 'error')
+            return _back(target, doc)
 
     files = [f for f in request.files.getlist('attachments') if f and f.filename]
     single = request.files.get('attachment')
@@ -57,12 +73,10 @@ def upload(document_type, document_id):
         flash('No file selected.', 'error')
         return _back(target, doc)
 
-    # Optional slot the files fill. Validate against this document's slots; an
-    # unknown/blank kind is stored as an unlabeled "Other" (None).
-    from app.attachments.registry import slots_for
-    kind = (request.form.get('kind') or '').strip() or None
-    if kind and kind not in {s.key for s in slots_for(document_type)}:
-        kind = None
+    # Late completion fills exactly one required slot; ignore extra files beyond
+    # the first so it can never become a bulk post-approval upload.
+    if late and len(files) > 1:
+        files = files[:1]
 
     saved, skipped = [], []
     for f in files:
@@ -73,8 +87,9 @@ def upload(document_type, document_id):
             skipped.append(f'{secure_filename(f.filename) or f.filename}: {err}')
 
     if saved:
-        flash(f'Uploaded {len(saved)} file{"s" if len(saved) != 1 else ""}: '
-              + ', '.join(saved), 'success')
+        verb = 'Completed required file' if late else \
+            f'Uploaded {len(saved)} file{"s" if len(saved) != 1 else ""}'
+        flash(f'{verb}: ' + ', '.join(saved), 'success')
     for msg in skipped:
         flash(msg, 'error')
     return _back(target, doc)

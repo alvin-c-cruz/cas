@@ -78,6 +78,11 @@ class AttachmentTarget:
     #: Named slots (Slot objects) this document type defines, in display order.
     #: A file with kind=NULL is an unlabeled "Other" and belongs to no slot.
     slots: tuple = ()
+    #: Post-approval statuses in which an APPROVE-level user may fill a STILL-EMPTY
+    #: required slot (attachments-only late completion; no replace, no Other).
+    #: PR/PO leave this empty -- their amend path already allows post-approval
+    #: uploads. RR and CV use it because they have no amendment path.
+    late_complete_statuses: tuple = ()
 
     def model(self):
         module_name, _, class_name = self.model_path.partition(':')
@@ -130,6 +135,7 @@ TARGETS = {
             Slot('signed_rr', 'Signed RR', required=True),
             Slot('vendor_dr_sr', 'Vendor DR/SR', required=True),
         ),
+        late_complete_statuses=('approved', 'billed'),
     ),
     'cash_disbursements': AttachmentTarget(
         document_type='cash_disbursements',
@@ -141,6 +147,7 @@ TARGETS = {
             Slot('signed_cv', 'Signed CV', required=True),
             Slot('check_copy', 'Check copy', required=True, applies_when=_paid_by_check),
         ),
+        late_complete_statuses=('posted',),
     ),
 }
 
@@ -185,3 +192,20 @@ def can_delete(target, doc, user, attachment):
     return (attachment.uploaded_by_id == user.id
             or user.has_full_access
             or user.role == 'accountant')
+
+
+def can_late_complete(target, doc, user, kind):
+    """May *user* fill the *kind* required slot on an already-approved *doc*?
+
+    Attachments-only late completion (spec task 10/D10): an APPROVE-level user may
+    add a file to a STILL-EMPTY REQUIRED slot on a document in a
+    late_complete_status. It never permits replacing an existing file, filling a
+    non-required/Other slot, or any financial change. Emptiness is checked by the
+    caller (the route), which knows what is already present.
+    """
+    if not target.late_complete_statuses or doc.status not in target.late_complete_statuses:
+        return False
+    if not (user.has_full_access or user.role == 'accountant'):
+        return False
+    from app.attachments.completeness import required_slots
+    return kind in {s.key for s in required_slots(target.document_type, doc)}

@@ -197,15 +197,23 @@ def panel_context(target, doc, user, next_url=None):
     for a in atts:
         by_kind.setdefault(a.kind, []).append(a)
 
+    from app.attachments.registry import can_late_complete
     slot_rows = []
     for slot in slots:
         files = by_kind.get(slot.key, [])
+        is_required = slot.key in required_keys
+        # Late completion: approver may fill a still-empty required slot after
+        # approval (RR/CV). Only when normal upload is closed and the slot is
+        # empty and required.
+        can_fill = (not upload_ok and not files and is_required
+                    and can_late_complete(target, doc, user, slot.key))
         slot_rows.append({
             'key': slot.key,
             'label': slot.label,
-            'required': slot.key in required_keys,
+            'required': is_required,
             'files': files,
             'filled': bool(files),
+            'can_fill': can_fill,
         })
     # "Other": kind is None, or kind not among the currently visible slots.
     other_files = [a for a in atts if not a.kind or a.kind not in slot_keys]

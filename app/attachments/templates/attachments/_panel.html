@@ -124,7 +124,7 @@
               {% endfor %}
             </td>
             <td style="padding:8px 12px; text-align:right; vertical-align:top; white-space:nowrap;">
-              {% if att.can_upload %}
+              {% if att.can_upload or row.can_fill %}
               <form method="POST" enctype="multipart/form-data"
                     action="{{ url_for('attachments.upload', document_type=att.document_type, document_id=att.document.id) }}"
                     style="display:flex; gap:6px; align-items:center; justify-content:flex-end; flex-wrap:wrap;">
