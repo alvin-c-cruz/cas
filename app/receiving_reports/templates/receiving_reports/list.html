@@ -85,7 +85,7 @@
                     <td>{{ rr.receipt_date.strftime('%b %d, %Y') if rr.receipt_date else '' }}</td>
                     <td>{{ rr.vendor_name }}</td>
                     <td>{{ rr.po_number_display or '—' }}</td>
-                    <td><span class="badge badge-{{ badge_map.get(rr.status, 'draft') }}">{{ rr.status|replace('_', ' ')|title }}</span></td>
+                    <td><span class="badge badge-{{ badge_map.get(rr.status, 'draft') }}">{{ rr.status|replace('_', ' ')|title }}</span> {% if attachment_incomplete_count('receiving_reports', rr) %}<span class="badge badge-warning" title="Approved with required files missing">⚠</span>{% endif %}</td>
                     <td>
                         <a href="{{ url_for('receiving_reports.view', id=rr.id) }}" class="pb-btn-action">👁️</a>
                         {% if rr.status == 'draft' %}<a href="{{ url_for('receiving_reports.edit', id=rr.id) }}" class="pb-btn-action">✏️</a>{% endif %}

@@ -170,7 +170,7 @@
                     <td style="text-align:right;font-family:var(--mono);font-weight:600;">
                         {% if ap.status in ['paid', 'voided', 'cancelled'] %}—{% else %}₱{{ '{:,.2f}'.format(ap.balance) }}{% endif %}
                     </td>
-                    <td><span class="badge badge-{{ badge_map.get(ap.status, 'draft') }}">{{ ap.status|replace('_', ' ')|title }}</span></td>
+                    <td><span class="badge badge-{{ badge_map.get(ap.status, 'draft') }}">{{ ap.status|replace('_', ' ')|title }}</span> {% if attachment_incomplete_count('accounts_payable', ap) %}<span class="badge badge-warning" title="Approved with required files missing">⚠</span>{% endif %}</td>
                     <td>
                         <a href="{{ url_for('accounts_payable.view', id=ap.id) }}" class="btn-action">👁️</a>
                         {% if ap.status == 'draft' %}<a href="{{ url_for('accounts_payable.edit', id=ap.id) }}" class="btn-action">✏️</a>{% endif %}

@@ -83,7 +83,7 @@
                     <td>{{ po.order_date.strftime('%b %d, %Y') if po.order_date else '' }}</td>
                     <td>{{ po.vendor_name }}</td>
                     <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(po.total_amount or 0) }}</td>
-                    <td><span class="badge badge-{{ badge_map.get(po.status, 'draft') }}">{{ po.status|replace('_', ' ')|title }}</span></td>
+                    <td><span class="badge badge-{{ badge_map.get(po.status, 'draft') }}">{{ po.status|replace('_', ' ')|title }}</span> {% if attachment_incomplete_count('purchase_orders', po) %}<span class="badge badge-warning" title="Approved with required files missing">⚠</span>{% endif %}</td>
                     <td>
                         <a href="{{ url_for('purchase_orders.view', id=po.id) }}" class="pb-btn-action">👁️</a>
                         {% if po.status == 'draft' %}<a href="{{ url_for('purchase_orders.edit', id=po.id) }}" class="pb-btn-action">✏️</a>{% endif %}

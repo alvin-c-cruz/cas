@@ -102,6 +102,9 @@
             <span class="badge badge-{{ 'secondary' if ap.status=='draft' else 'info' if ap.status=='posted' else 'success' if ap.status=='paid' else 'warning' if ap.status=='partially_paid' else 'danger' if ap.status=='cancelled' else 'dark' }}">
                 {{ ap.status | replace('_', ' ') | title }}
             </span>
+            {% if attachment_incomplete_count('accounts_payable', ap) %}
+            <span class="badge badge-warning" title="Posted with required files missing">⚠ Incomplete</span>
+            {% endif %}
             {% set today = now.date() %}
             {% if ap.status in ('posted', 'partially_paid') and ap.due_date and ap.due_date < today %}
             <span class="badge" style="background:var(--amber); color:white;">Overdue</span>

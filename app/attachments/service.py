@@ -183,7 +183,7 @@ def panel_context(target, doc, user, next_url=None):
     whether it is filled, plus an "Other" bucket for unlabeled files and any
     file whose kind is no longer a visible slot (e.g. a slot later hidden).
     """
-    from app.attachments.completeness import visible_slots, required_slots
+    from app.attachments.completeness import visible_slots, required_slots, approved_incomplete
 
     atts = attachments_for(target.document_type, doc.id)
     upload_ok = can_upload(target, doc, user)
@@ -226,6 +226,7 @@ def panel_context(target, doc, user, next_url=None):
         'other_files': other_files,
         'missing_required_count': sum(1 for r in slot_rows if r['required'] and not r['filled']),
         'missing_required_labels': [r['label'] for r in slot_rows if r['required'] and not r['filled']],
+        'approved_incomplete_count': len(approved_incomplete(target.document_type, doc)),
         'can_upload': upload_ok,
         'deletable_ids': deletable,
         'closed_note': closed_note,

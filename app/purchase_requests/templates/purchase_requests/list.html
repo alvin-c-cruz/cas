@@ -86,7 +86,7 @@
                     <td>{{ pr.request_date.strftime('%b %d, %Y') if pr.request_date else '' }}</td>
                     <td>{{ (pr.reason or '')[:60] }}</td>
                     <td>
-                        <span class="badge badge-{{ badge_map.get(pr.status, 'draft') }}">{{ status_label.get(pr.status) or pr.status|replace('_', ' ')|title }}</span>
+                        <span class="badge badge-{{ badge_map.get(pr.status, 'draft') }}">{{ status_label.get(pr.status) or pr.status|replace('_', ' ')|title }}</span> {% if attachment_incomplete_count('purchase_requests', pr) %}<span class="badge badge-warning" title="Approved with required files missing">⚠</span>{% endif %}
                         {# A pending amendment request BLOCKS conversion to a PO, so the
                            list has to say so -- otherwise a buyer picks this row to
                            convert and only meets the refusal on the detail page.

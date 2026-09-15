@@ -82,7 +82,12 @@
   <div class="card-body">
     <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:4px;">
       Attachments
-      {% if att.missing_required_count %}
+      {% if att.approved_incomplete_count %}
+      <span class="att-approved-incomplete" style="margin-left:6px; background:var(--alert-warning-bg, #fff3cd); color:var(--alert-warning-text, #856404); padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600;"
+            title="This document was approved with required files missing.">
+        Incomplete — approved with {{ att.approved_incomplete_count }} required file{{ 's' if att.approved_incomplete_count != 1 else '' }} missing
+      </span>
+      {% elif att.missing_required_count %}
       <span class="att-incomplete" style="margin-left:6px; background:var(--alert-warning-bg, #fff3cd); color:var(--alert-warning-text, #856404); padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600;">
         {{ att.missing_required_count }} required file{{ 's' if att.missing_required_count != 1 else '' }} missing
       </span>

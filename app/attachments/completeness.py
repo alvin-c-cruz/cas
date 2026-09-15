@@ -57,6 +57,28 @@ def missing_required(document_type, doc):
     return [s for s in required_slots(document_type, doc) if s.key not in present]
 
 
+def approved_incomplete(document_type, doc):
+    """For an approved/posted document: the snapshot slots (from
+    `approved_incomplete_slots`) that STILL have no file. Empty list when the
+    document was approved complete, was not approved with anything missing, or
+    has since been completed (the badge self-heals). Required-ness is frozen at
+    approval — this reads the snapshot, not current config — so later config
+    changes never rewrite which past approvals look incomplete.
+    """
+    import json
+    raw = getattr(doc, 'approved_incomplete_slots', None)
+    if not raw:
+        return []
+    try:
+        snapshot = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    if not snapshot:
+        return []
+    present = _present_kinds(document_type, doc.id)
+    return [k for k in snapshot if k not in present]
+
+
 def incomplete_map(document_type, docs):
     """{doc_id: [missing Slot, ...]} for the docs that are missing a required
     slot. One grouped query over the attachment table for the whole set."""

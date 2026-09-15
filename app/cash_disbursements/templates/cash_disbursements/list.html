@@ -169,7 +169,7 @@
                         {% if cdv.total_wt > 0 %}-₱{{ '{:,.2f}'.format(cdv.total_wt) }}{% else %}—{% endif %}
                     </td>
                     <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(cdv.total_amount) }}</td>
-                    <td><span class="badge badge-{{ badge_map.get(cdv.status, 'draft') }}">{{ cdv.status|replace('_', ' ')|title }}</span></td>
+                    <td><span class="badge badge-{{ badge_map.get(cdv.status, 'draft') }}">{{ cdv.status|replace('_', ' ')|title }}</span> {% if attachment_incomplete_count('cash_disbursements', cdv) %}<span class="badge badge-warning" title="Approved with required files missing">⚠</span>{% endif %}</td>
                     <td>
                         <a href="{{ url_for('cash_disbursements.view', id=cdv.id) }}" class="btn-action">&#128065;</a>
                         {% if cdv.status == 'draft' %}<a href="{{ url_for('cash_disbursements.edit', id=cdv.id) }}" class="btn-action">&#9999;</a>{% endif %}

@@ -159,3 +159,14 @@ def attachment_panel(document_type, doc, next_url=None):
     if target is None:
         raise ValueError(f'No attachment target registered for {document_type!r}')
     return panel_context(target, doc, current_user, next_url=next_url)
+
+
+@attachments_bp.app_template_global('attachment_incomplete_count')
+def attachment_incomplete_count(document_type, doc):
+    """Badge helper: how many required slots this APPROVED/posted document was
+    approved with, that are still empty. 0 when complete or not applicable, so a
+    template can do `{% if attachment_incomplete_count('purchase_orders', po) %}`.
+    Self-heals — returns 0 once the missing files are added. Works for AP too
+    (document_type 'accounts_payable'), which is not a shared TARGET."""
+    from app.attachments.completeness import approved_incomplete
+    return len(approved_incomplete(document_type, doc))
