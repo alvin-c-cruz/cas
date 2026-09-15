@@ -16,6 +16,8 @@ from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.common.vat_nature import resolve_purchase_nature
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
+from app.attachments.registry import get_target
+from app.attachments.service import save_queued_attachments
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products
@@ -972,6 +974,11 @@ def create():
                 new_values=model_to_dict(cdv, ['cdv_number', 'cdv_date', 'vendor_name',
                                                'payment_method', 'total_amount', 'status'])
             )
+            skipped = save_queued_attachments(get_target('cash_disbursements'), cdv,
+                                              request.files.getlist('attachments'), current_user)
+            if skipped:
+                flash('Some files were not attached and were skipped: '
+                      + ', '.join(skipped), 'warning')
             flash(f'CDV "{cdv.cdv_number}" entered successfully!', 'success')
             return redirect(url_for('cash_disbursements.view', id=cdv.id))
 

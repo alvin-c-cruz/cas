@@ -13,7 +13,7 @@
   <a href="{{ url_for('receiving_reports.list_rr') }}" class="btn btn-secondary btn-sm">Back to list</a>
 </div>
 
-<form method="POST" id="rrForm"
+<form method="POST" enctype="multipart/form-data" id="rrForm"
       action="{{ url_for('receiving_reports.edit', id=rr.id) if rr else url_for('receiving_reports.create') }}">
   {{ form.hidden_tag() }}
   <input type="hidden" name="lines" id="rrLinesJson" value="[]">
@@ -187,11 +187,22 @@
     </div>
   </div></div>
 
+  {% if not rr %}{% include 'attachments/_create_queue.html' %}{% endif %}
+
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">{{ 'Update' if rr else 'Save' }}</button>
     <a href="{{ url_for('receiving_reports.list_rr') }}" class="btn btn-secondary">Cancel</a>
   </div>
 </form>
+
+{% if rr %}
+{# Attachments live OUTSIDE the main form: the panel carries its own upload
+   form and nested forms are not HTML. next_url brings the user back here. #}
+{% set att = attachment_panel('receiving_reports', rr, next_url=request.path) %}
+{% include 'attachments/_panel.html' %}
+{% else %}
+<script src="{{ url_for('static', filename='js/attachment_queue.js') }}?v=1"></script>
+{% endif %}
 
 {# Choices + search-select must load BEFORE the inline scripts: the vendor picker
    is enhanced during them, and an unenhanced select is what you get if

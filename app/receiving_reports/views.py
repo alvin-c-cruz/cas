@@ -30,6 +30,8 @@ from app.products.models import Product
 from app.units_of_measure.models import UnitOfMeasure
 from app.settings import AppSettings
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
+from app.attachments.registry import get_target
+from app.attachments.service import save_queued_attachments
 from app.utils import ph_now
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
 
@@ -804,6 +806,11 @@ def create():
                        record_identifier=f'{rr.rr_number} - {rr.vendor_name}',
                        new_values=model_to_dict(rr, ['rr_number', 'status', 'receipt_date']),
                        notes=_no_po_note(rr))
+            skipped = save_queued_attachments(get_target('receiving_reports'), rr,
+                                              request.files.getlist('attachments'), current_user)
+            if skipped:
+                flash('Some files were not attached and were skipped: '
+                      + ', '.join(skipped), 'warning')
             flash(f'Receiving Report "{rr.rr_number}" created.', 'success')
             return redirect(url_for('receiving_reports.view', id=rr.id))
 

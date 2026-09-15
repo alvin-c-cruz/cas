@@ -34,7 +34,7 @@
    depends on it, are unreachable in a real browser. Scoped rather than hoisted
    because this template is shared with create and draft edit, two shipped paths
    that keep their native validation. #}
-<form method="POST" id="prForm"{% if amend_mode or request_mode %} novalidate{% endif %}
+<form method="POST" id="prForm" enctype="multipart/form-data"{% if amend_mode or request_mode %} novalidate{% endif %}
       action="{% if request_mode %}{{ url_for('purchase_requests.request_amendment', id=pr.id) }}{% elif amend_mode %}{{ url_for('purchase_requests.amend', id=pr.id) }}{% elif pr %}{{ url_for('purchase_requests.edit', id=pr.id) }}{% else %}{{ url_for('purchase_requests.create') }}{% endif %}">
   {{ form.hidden_tag() }}
   <input type="hidden" name="line_items" id="prLinesJson" value="[]">
@@ -177,11 +177,22 @@
   </div></div>
   {% endif %}
 
+  {% if not pr %}{% include 'attachments/_create_queue.html' %}{% endif %}
+
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">{{ 'Submit Request' if request_mode else ('Update' if pr else 'Save') }}</button>
     <a href="{{ url_for('purchase_requests.list_pr') }}" class="btn btn-secondary">Cancel</a>
   </div>
 </form>
+
+{% if pr %}
+{# Attachments live OUTSIDE the main form: the panel carries its own upload
+   form and nested forms are not HTML. next_url brings the user back here. #}
+{% set att = attachment_panel('purchase_requests', pr, next_url=request.path) %}
+{% include 'attachments/_panel.html' %}
+{% else %}
+<script src="{{ url_for('static', filename='js/attachment_queue.js') }}?v=1"></script>
+{% endif %}
 
 {# Quick-add modals, exactly as AP/SI/CDV/CRV include them. Each partial is
    self-contained (its own overlay, form and error box) and posts by XHR to

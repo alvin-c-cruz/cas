@@ -97,6 +97,12 @@
   </div>
 </div></div>
 
+{# Attachments: the signed order, vendor quotations, other supporting scans.
+   Shown for every status; upload open while unapproved (edit roles) and, once
+   approved, to approvers through the amend path. #}
+{% set att = attachment_panel('purchase_orders', po) %}
+{% include 'attachments/_panel.html' %}
+
 {% if revisions %}
 {# Revision history. Mirrors the Sales Order panel, and deliberately REUSES its
    .so-rev* rules from style.css rather than adding new ones: those rules are

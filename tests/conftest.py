@@ -54,9 +54,21 @@ def app():
     # Create app with testing config
     app = create_app('testing')
 
+    # Uploads go to a throwaway folder. Config reads UPLOAD_FOLDER at import time,
+    # so overriding the env var here is too late; the views read
+    # current_app.config at request time, so overriding the config is not.
+    # Without this, every attachment test writes into the REAL instance/uploads/
+    # tree, under document ids that collide with the live database's.
+    import shutil
+    import tempfile
+    upload_tmp = tempfile.mkdtemp(prefix='cas-test-uploads-')
+    app.config['UPLOAD_FOLDER'] = upload_tmp
+
     # Establish application context
     with app.app_context():
         yield app
+
+    shutil.rmtree(upload_tmp, ignore_errors=True)
 
 
 @pytest.fixture(scope='function')

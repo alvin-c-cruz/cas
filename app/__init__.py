@@ -220,6 +220,8 @@ def create_app(config_name=None):
     import os as _os
     _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'accounts_payable'), exist_ok=True)
     _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'company'), exist_ok=True)
+    for _doc_type in ('purchase_requests', 'purchase_orders', 'receiving_reports', 'cash_disbursements'):
+        _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], _doc_type), exist_ok=True)
 
     # Initialize caching
     cache.init_app(app, config={
@@ -265,6 +267,7 @@ def create_app(config_name=None):
     from app.vat_settlement.models import VatSettlement
     from app.units_of_measure.models import UnitOfMeasure
     from app.amendments.models import DocumentRevision  # noqa: F401
+    from app.attachments.models import DocumentAttachment  # noqa: F401
     from app.product_categories.models import ProductCategory
     from app.products.models import Product
     from app.expense_allocation_rules.models import ExpenseAllocationRule
@@ -319,6 +322,7 @@ def create_app(config_name=None):
     from app.audit.views import audit_bp
     from app.sales_invoices.views import sales_invoices_bp
     from app.accounts_payable.views import accounts_payable_bp
+    from app.attachments import attachments_bp
     from app.journal_entries.views import journal_entries_bp
     from app.journals.views import journals_bp
     from app.reports.views import reports_bp
@@ -374,6 +378,7 @@ def create_app(config_name=None):
     app.register_blueprint(audit_bp)
     app.register_blueprint(sales_invoices_bp)
     app.register_blueprint(accounts_payable_bp)
+    app.register_blueprint(attachments_bp)
     app.register_blueprint(journal_entries_bp)
     app.register_blueprint(journals_bp)
     app.register_blueprint(reports_bp)
@@ -743,7 +748,11 @@ def create_app(config_name=None):
             "connect-src 'self'; "
             "frame-ancestors 'self'"
         )
-        response.headers['Content-Security-Policy'] = csp
+        # A view that set a STRICTER policy of its own keeps it. The three
+        # attachment preview routes (AP, SI, shared) serve user-uploaded
+        # images inline under "default-src 'none'; sandbox"; unconditional
+        # assignment here silently replaced that with the page policy.
+        response.headers.setdefault('Content-Security-Policy', csp)
 
         # Permissions Policy (formerly Feature-Policy)
         response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'

@@ -1,0 +1,16 @@
+{# Create-form attachment queue: files chosen here are held in the browser and
+   saved by the create route right after the document commits. Must sit INSIDE
+   the create <form>, which needs enctype="multipart/form-data". Pair with
+   <script src="{{ url_for('static', filename='js/attachment_queue.js') }}">. #}
+<div class="card" style="margin-top:16px;">
+  <div class="card-body">
+    <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:8px;">
+      Attachments
+      <span style="font-weight:400; color:var(--text-3);">(optional — saved when you click Save)</span>
+    </h3>
+    <input type="file" id="createAttachments" name="attachments" multiple
+           accept=".csv,.doc,.docx,.gif,.jpeg,.jpg,.pdf,.png,.txt,.webp,.xls,.xlsx"
+           style="display:block; margin-bottom:8px;">
+    <ul id="attachmentQueue" style="list-style:none; padding:0; margin:0; font-size:13px;"></ul>
+  </div>
+</div>

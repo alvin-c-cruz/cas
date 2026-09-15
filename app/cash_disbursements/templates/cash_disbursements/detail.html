@@ -304,6 +304,12 @@
   </div>
 </div>
 
+{# Attachments: the signed voucher, the check, and anything not already on the
+   AP voucher. Shown for every status; upload open only while draft -- posting
+   is the CDV's approval and there is no amendment path. #}
+{% set att = attachment_panel('cash_disbursements', cdv) %}
+{% include 'attachments/_panel.html' %}
+
 <style>
 .badge { padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase; }
 .badge-secondary { background:var(--text-3);color:white; }

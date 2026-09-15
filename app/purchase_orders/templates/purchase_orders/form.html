@@ -34,7 +34,7 @@
    and changing them is outside this task. See
    tests/integration/test_po_amend_ui.py::TestTheServerSideRefusalIsReachableInABrowser,
    whose control test pins that create/draft-edit are unchanged. #}
-<form method="POST" id="poForm"{% if amend_mode %} novalidate{% endif %}
+<form method="POST" id="poForm" enctype="multipart/form-data"{% if amend_mode %} novalidate{% endif %}
       action="{% if amend_mode %}{{ url_for('purchase_orders.amend', id=po.id) }}{% elif po %}{{ url_for('purchase_orders.edit', id=po.id) }}{% else %}{{ url_for('purchase_orders.create') }}{% endif %}">
   {{ form.hidden_tag() }}
   <input type="hidden" name="line_items" id="lineItemsJson" value="[]">
@@ -197,11 +197,22 @@
   </div></div>
   {% endif %}
 
+  {% if not po %}{% include 'attachments/_create_queue.html' %}{% endif %}
+
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">{{ 'Update' if po else 'Save' }}</button>
     <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary">Cancel</a>
   </div>
 </form>
+
+{% if po %}
+{# Attachments live OUTSIDE the main form: the panel carries its own upload
+   form and nested forms are not HTML. next_url brings the user back here. #}
+{% set att = attachment_panel('purchase_orders', po, next_url=request.path) %}
+{% include 'attachments/_panel.html' %}
+{% else %}
+<script src="{{ url_for('static', filename='js/attachment_queue.js') }}?v=1"></script>
+{% endif %}
 
 {# Quick-add modals, exactly as AP/SI/PR include them. Each partial is
    self-contained (its own overlay, form and error box) and posts by XHR. #}

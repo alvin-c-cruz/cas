@@ -76,6 +76,12 @@
    approver-only, so widening the route without widening this would have left
    Submit backend-complete with no reachable button -- the exact shape recorded
    for delete_approved_email. #}
+{# Attachments: the signed receipt and the vendor's DR / SR. Shown for every
+   status; upload open only while draft / submitted -- there is no amendment
+   path for a receiving report, so approval freezes the set. #}
+{% set att = attachment_panel('receiving_reports', rr) %}
+{% include 'attachments/_panel.html' %}
+
 {% if can_write or can_approve %}
 <div class="card"><div class="card-body">
   {# Submit is gated on can_write -- that is the point. The staff receiver who

@@ -219,6 +219,13 @@
 </div>
 {% endif %}
 
+{# Attachments: the signed requisition and any supporting scans. This is the
+   evidence an admin reads to judge whether the record is valid, so it sits on
+   the detail page for every status. Upload is open while unapproved (edit
+   roles) and, once approved, to approvers through the amend path. #}
+{% set att = attachment_panel('purchase_requests', pr) %}
+{% include 'attachments/_panel.html' %}
+
 {% if can_write or can_approve %}
 <div class="card"><div class="card-body">
   {% if pr.status == 'draft' and can_write %}

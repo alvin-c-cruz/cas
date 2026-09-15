@@ -27,6 +27,8 @@ from app.amendments.validation import validate_amendment
 from app.users.models import User
 from app.settings import AppSettings
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
+from app.attachments.registry import get_target
+from app.attachments.service import save_queued_attachments
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products
@@ -384,6 +386,11 @@ def create():
             log_create(module='purchase_requests', record_id=pr.id,
                        record_identifier=pr.pr_number,
                        new_values=model_to_dict(pr, ['pr_number', 'request_date', 'date_needed', 'date_needed_asap', 'status']))
+            skipped = save_queued_attachments(get_target('purchase_requests'), pr,
+                                              request.files.getlist('attachments'), current_user)
+            if skipped:
+                flash('Some files were not attached and were skipped: '
+                      + ', '.join(skipped), 'warning')
             flash(f'Purchase Requisition "{pr.pr_number}" created.', 'success')
             return redirect(url_for('purchase_requests.view', id=pr.id))
         except ValueError as e:

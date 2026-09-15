@@ -29,6 +29,8 @@ from app.amendments.models import DocumentRevision
 from app.amendments.service import write_revision
 from app.amendments.validation import validate_amendment
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
+from app.attachments.registry import get_target
+from app.attachments.service import save_queued_attachments
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products, get_vat_categories
@@ -602,6 +604,11 @@ def create():
                     'po_number', 'order_date', 'vendor_name',
                     'subtotal', 'vat_amount', 'total_amount', 'status']),
             )
+            skipped = save_queued_attachments(get_target('purchase_orders'), po,
+                                              request.files.getlist('attachments'), current_user)
+            if skipped:
+                flash('Some files were not attached and were skipped: '
+                      + ', '.join(skipped), 'warning')
             flash(f'Purchase Order "{po.po_number}" created successfully!', 'success')
             return redirect(url_for('purchase_orders.list_po'))
 

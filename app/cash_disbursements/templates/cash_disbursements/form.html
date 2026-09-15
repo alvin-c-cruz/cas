@@ -123,7 +123,7 @@
 
 <div class="card page-cash-disbursement">
   <div class="card-body">
-    <form method="POST" novalidate id="cdvForm" onsubmit="serializeData()">
+    <form method="POST" enctype="multipart/form-data" novalidate id="cdvForm" onsubmit="serializeData()">
       {{ form.hidden_tag() }}
 
       <!-- Header: scalar fields (1/3) + Vendor step card (2/3) + Notes -->
@@ -326,6 +326,8 @@
 
       </div><!-- end #cdvSections -->
 
+      {% if not cdv %}{% include 'attachments/_create_queue.html' %}{% endif %}
+
       <!-- Hidden serialized data -->
       <input type="hidden" name="ap_lines"      id="apLinesData">
       <input type="hidden" name="expense_lines" id="expenseLinesData">
@@ -336,6 +338,15 @@
     </form>
   </div>
 </div>
+
+{% if cdv %}
+{# Attachments live OUTSIDE the main form: the panel carries its own upload
+   form and nested forms are not HTML. next_url brings the user back here. #}
+{% set att = attachment_panel('cash_disbursements', cdv, next_url=request.path) %}
+{% include 'attachments/_panel.html' %}
+{% else %}
+<script src="{{ url_for('static', filename='js/attachment_queue.js') }}?v=1"></script>
+{% endif %}
 
 {% include "vendors/_quick_add_modal.html" %}
 {% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}
