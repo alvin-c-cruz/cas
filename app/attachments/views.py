@@ -57,9 +57,16 @@ def upload(document_type, document_id):
         flash('No file selected.', 'error')
         return _back(target, doc)
 
+    # Optional slot the files fill. Validate against this document's slots; an
+    # unknown/blank kind is stored as an unlabeled "Other" (None).
+    from app.attachments.registry import slots_for
+    kind = (request.form.get('kind') or '').strip() or None
+    if kind and kind not in {s.key for s in slots_for(document_type)}:
+        kind = None
+
     saved, skipped = [], []
     for f in files:
-        ok, err = save_attachment(target, doc, f, current_user)
+        ok, err = save_attachment(target, doc, f, current_user, kind=kind)
         if ok:
             saved.append(secure_filename(f.filename))
         else:

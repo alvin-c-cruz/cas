@@ -507,3 +507,35 @@ def test_cv_check_copy_only_required_when_paid_by_check(client, db_session, admi
     chk = make_doc(db_session, main_branch, 'cash_disbursements', number='CDV-CHK-1')
     chk.payment_method = 'check'; db_session.commit()
     assert [s.key for s in missing_required('cash_disbursements', chk)] == ['signed_cv', 'check_copy']
+
+
+# ── Per-slot checklist panel (task 5) ──────────────────────────────────────
+
+def test_slot_upload_tags_kind_and_checklist_shows_status(client, db_session, admin_user, main_branch):
+    doc = make_doc(db_session, main_branch, 'purchase_orders')
+    _login(client, 'admin', main_branch)
+
+    # Upload into the signed_po slot (kind carried on the form).
+    resp = client.post(f'/attachments/purchase_orders/{doc.id}/upload',
+                       data={'kind': 'signed_po',
+                             'attachments': (io.BytesIO(b'%PDF-1.4'), 'signed.pdf')},
+                       content_type='multipart/form-data')
+    assert resp.status_code == 302
+    row = _rows('purchase_orders', doc.id)[0]
+    assert row.original_filename == 'signed.pdf' and row.kind == 'signed_po'
+
+    body = client.get(f'/purchase-orders/{doc.id}').data.decode()
+    # signed_po now filled (check), vendor_quotation still required-missing.
+    assert 'signed.pdf' in body
+    assert '1 required file missing' in body       # only vendor_quotation left
+
+
+def test_unknown_kind_is_stored_as_other(client, db_session, admin_user, main_branch):
+    doc = make_doc(db_session, main_branch, 'purchase_orders')
+    _login(client, 'admin', main_branch)
+    client.post(f'/attachments/purchase_orders/{doc.id}/upload',
+                data={'kind': 'not_a_real_slot',
+                      'attachments': (io.BytesIO(b'%PDF-1.4'), 'x.pdf')},
+                content_type='multipart/form-data')
+    row = _rows('purchase_orders', doc.id)[0]
+    assert row.kind is None                        # normalised to Other

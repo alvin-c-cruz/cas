@@ -63,68 +63,74 @@
 </div>
 {% endif %}{% endfor %}
 
+{# Per-file action buttons (preview / download / delete), reused for slot files
+   and Other files. #}
+{% macro file_actions(a) %}
+  {% if a.is_previewable %}
+  <button type="button" class="btn btn-secondary" style="font-size:12px; padding:3px 9px; margin-right:4px;"
+          onclick="document.getElementById('attPreview-{{ a.id }}').style.display='flex'">Preview</button>
+  {% endif %}
+  <a href="{{ url_for('attachments.download', attachment_id=a.id) }}"
+     class="btn btn-secondary" style="font-size:12px; padding:3px 9px;">Download</a>
+  {% if a.id in att.deletable_ids %}
+  <button type="button" class="btn btn-danger" style="font-size:12px; padding:3px 9px; margin-left:4px;"
+          onclick="document.getElementById('attDelete-{{ a.id }}').style.display='flex'">Delete</button>
+  {% endif %}
+{% endmacro %}
+
 <div class="card attachments-panel" data-document-type="{{ att.document_type }}" style="margin-top:16px;">
   <div class="card-body">
-    <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:16px;">
+    <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:4px;">
       Attachments
-      <span style="font-weight:400; color:var(--text-3);">({{ att.attachments|length }} file{{ 's' if att.attachments|length != 1 else '' }})</span>
+      {% if att.missing_required_count %}
+      <span class="att-incomplete" style="margin-left:6px; background:var(--alert-warning-bg, #fff3cd); color:var(--alert-warning-text, #856404); padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600;">
+        {{ att.missing_required_count }} required file{{ 's' if att.missing_required_count != 1 else '' }} missing
+      </span>
+      {% endif %}
     </h3>
-
-    {% if att.can_upload %}
-    <form method="POST" enctype="multipart/form-data"
-          action="{{ url_for('attachments.upload', document_type=att.document_type, document_id=att.document.id) }}"
-          style="display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-      {% if att.next_url %}<input type="hidden" name="next" value="{{ att.next_url }}">{% endif %}
-      <input type="file" name="attachments" multiple style="flex:1; min-width:200px;"
-             accept="{{ att.accept }}">
-      <button type="submit" class="btn btn-secondary" style="white-space:nowrap;">Upload Files</button>
-    </form>
-    {% else %}
-    <p class="attachments-closed" style="color:var(--text-2); font-size:13px; margin-bottom:16px;">{{ att.closed_note }}</p>
+    {% if not att.can_upload %}
+    <p class="attachments-closed" style="color:var(--text-2); font-size:13px; margin:8px 0 12px;">{{ att.closed_note }}</p>
     {% endif %}
 
-    {% if att.attachments %}
+    {% if att.slot_rows %}
     <div style="overflow-x:auto;">
-      <table style="width:100%; border-collapse:collapse; font-size:13px;">
-        <thead>
-          <tr style="border-bottom:2px solid var(--border);">
-            <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Filename</th>
-            <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Type</th>
-            <th style="text-align:right; padding:8px 12px; color:var(--text-2); font-weight:600;">Size</th>
-            <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Uploaded By</th>
-            <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Date</th>
-            <th style="padding:8px 12px;"></th>
-          </tr>
-        </thead>
+      <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:12px;">
         <tbody>
-          {% for a in att.attachments %}
-          <tr style="border-bottom:1px solid var(--border);" data-attachment-id="{{ a.id }}">
-            <td style="padding:8px 12px;">{{ a.original_filename }}</td>
-            <td style="padding:8px 12px;">
-              {% if a.is_image %}
-              <span style="background:var(--alert-info-bg); color:var(--alert-info-text); padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600;">IMAGE</span>
+          {% for row in att.slot_rows %}
+          <tr style="border-bottom:1px solid var(--border);" data-slot="{{ row.key }}">
+            <td style="padding:8px 12px; white-space:nowrap; vertical-align:top; width:1%;">
+              {% if row.filled %}
+                <span title="attached" style="color:var(--success, #1a7f37); font-weight:700;">&#10003;</span>
+              {% elif row.required %}
+                <span title="required, missing" style="color:var(--danger, #c0392b); font-weight:700;">&#10007;</span>
               {% else %}
-              <span style="background:var(--surface); color:var(--text-2); padding:2px 8px; border-radius:4px; font-size:12px;">{{ a.mime_type.split('/')[-1]|upper }}</span>
+                <span title="optional" style="color:var(--text-3);">&ndash;</span>
               {% endif %}
             </td>
-            <td style="padding:8px 12px; text-align:right;">{{ a.file_size_human }}</td>
-            <td style="padding:8px 12px;">{{ a.uploaded_by.username }}</td>
-            <td style="padding:8px 12px;">{{ a.uploaded_at.strftime('%b %d, %Y %H:%M') }}</td>
-            <td style="padding:8px 12px; text-align:right; white-space:nowrap;">
-              {% if a.is_previewable %}
-              <button type="button" class="btn btn-secondary" style="font-size:12px; padding:4px 10px; margin-right:4px;"
-                      onclick="document.getElementById('attPreview-{{ a.id }}').style.display='flex'">
-                Preview
-              </button>
-              {% endif %}
-              <a href="{{ url_for('attachments.download', attachment_id=a.id) }}"
-                 class="btn btn-secondary" style="font-size:12px; padding:4px 10px;">Download</a>
-              {% if a.id in att.deletable_ids %}
-              <button type="button" class="btn btn-danger" style="font-size:12px; padding:4px 10px; margin-left:4px;"
-                      onclick="document.getElementById('attDelete-{{ a.id }}').style.display='flex'">
-                Delete
-              </button>
+            <td style="padding:8px 12px; vertical-align:top;">
+              <strong>{{ row.label }}</strong>
+              {% if row.required %}<span style="color:var(--danger,#c0392b); font-size:12px;"> *required</span>{% endif %}
+              {% for a in row.files %}
+              <div style="margin-top:4px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span>{{ a.original_filename }}</span>
+                <span style="color:var(--text-3); font-size:12px;">{{ a.file_size_human }} · {{ a.uploaded_by.username }} · {{ a.uploaded_at.strftime('%b %d, %Y %H:%M') }}</span>
+                <span>{{ file_actions(a) }}</span>
+              </div>
+              {% endfor %}
+            </td>
+            <td style="padding:8px 12px; text-align:right; vertical-align:top; white-space:nowrap;">
+              {% if att.can_upload %}
+              <form method="POST" enctype="multipart/form-data"
+                    action="{{ url_for('attachments.upload', document_type=att.document_type, document_id=att.document.id) }}"
+                    style="display:flex; gap:6px; align-items:center; justify-content:flex-end; flex-wrap:wrap;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="kind" value="{{ row.key }}"/>
+                {% if att.next_url %}<input type="hidden" name="next" value="{{ att.next_url }}">{% endif %}
+                <input type="file" name="attachments" accept="{{ att.accept }}" style="max-width:190px;">
+                <button type="submit" class="btn btn-secondary" style="font-size:12px; padding:3px 9px; white-space:nowrap;">
+                  {{ 'Replace' if row.filled else 'Upload' }}
+                </button>
+              </form>
               {% endif %}
             </td>
           </tr>
@@ -132,8 +138,35 @@
         </tbody>
       </table>
     </div>
-    {% else %}
-    <p style="color:var(--text-2); font-size:13px; font-style:italic;">No attachments.</p>
+    {% endif %}
+
+    {# Other files: unlabeled uploads. #}
+    <h4 style="font-size:13px; font-weight:600; color:var(--text-2); margin:8px 0;">
+      Other files
+      <span style="font-weight:400; color:var(--text-3);">({{ att.other_files|length }})</span>
+    </h4>
+    {% if att.can_upload %}
+    <form method="POST" enctype="multipart/form-data"
+          action="{{ url_for('attachments.upload', document_type=att.document_type, document_id=att.document.id) }}"
+          style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      {% if att.next_url %}<input type="hidden" name="next" value="{{ att.next_url }}">{% endif %}
+      <input type="file" name="attachments" multiple style="flex:1; min-width:200px;" accept="{{ att.accept }}">
+      <button type="submit" class="btn btn-secondary" style="white-space:nowrap;">Upload Files</button>
+    </form>
+    {% endif %}
+    {% if att.other_files %}
+    <ul style="list-style:none; padding:0; margin:0; font-size:13px;">
+      {% for a in att.other_files %}
+      <li style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:4px 0; border-bottom:1px solid var(--border);" data-attachment-id="{{ a.id }}">
+        <span>{{ a.original_filename }}</span>
+        <span style="color:var(--text-3); font-size:12px;">{{ a.file_size_human }} · {{ a.uploaded_by.username }} · {{ a.uploaded_at.strftime('%b %d, %Y %H:%M') }}</span>
+        <span style="margin-left:auto;">{{ file_actions(a) }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% elif not att.can_upload %}
+    <p style="color:var(--text-2); font-size:13px; font-style:italic;">No other files.</p>
     {% endif %}
   </div>
 </div>

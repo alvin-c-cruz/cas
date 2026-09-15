@@ -58,10 +58,15 @@ def attachments_for(document_type, document_id):
             .all())
 
 
-def save_attachment(target, doc, file_storage, user):
+def save_attachment(target, doc, file_storage, user, kind=None):
     """Validate and persist ONE uploaded file. Returns (True, None) or
     (False, message). Never raises for a bad file: rolls back and removes any
     written file, so the caller can skip it and go on.
+
+    *kind* is the named slot the file fills (e.g. 'signed_pr'); None for an
+    unlabeled "Other" file. The caller validates it against the target's slots;
+    an unknown kind is stored as-is only if the caller passes it, so views
+    normalise unknown kinds to None first.
 
     Does NOT check the status/role gate -- the route does that once for the
     whole request, and the create-form hook runs on a document that was just
@@ -92,6 +97,7 @@ def save_attachment(target, doc, file_storage, user):
             mime_type=mime_type,
             file_size=file_size,
             uploaded_by_id=user.id,
+            kind=kind or None,
         )
         db.session.add(attachment)
         db.session.commit()
@@ -107,6 +113,7 @@ def save_attachment(target, doc, file_storage, user):
                 'stored_filename': stored_name,
                 'mime_type': mime_type,
                 'file_size': file_size,
+                'kind': kind or None,
             },
         )
         return True, None
@@ -170,10 +177,39 @@ def delete_attachment(target, doc, attachment, user):
 
 
 def panel_context(target, doc, user, next_url=None):
-    """Everything attachments/_panel.html needs, computed once per render."""
+    """Everything attachments/_panel.html needs, computed once per render.
+
+    Builds a per-slot checklist: each visible slot with the files in it and
+    whether it is filled, plus an "Other" bucket for unlabeled files and any
+    file whose kind is no longer a visible slot (e.g. a slot later hidden).
+    """
+    from app.attachments.completeness import visible_slots, required_slots
+
     atts = attachments_for(target.document_type, doc.id)
     upload_ok = can_upload(target, doc, user)
     deletable = {a.id for a in atts if can_delete(target, doc, user, a)}
+
+    slots = visible_slots(target.document_type, doc)
+    required_keys = {s.key for s in required_slots(target.document_type, doc)}
+    slot_keys = {s.key for s in slots}
+
+    by_kind = {}
+    for a in atts:
+        by_kind.setdefault(a.kind, []).append(a)
+
+    slot_rows = []
+    for slot in slots:
+        files = by_kind.get(slot.key, [])
+        slot_rows.append({
+            'key': slot.key,
+            'label': slot.label,
+            'required': slot.key in required_keys,
+            'files': files,
+            'filled': bool(files),
+        })
+    # "Other": kind is None, or kind not among the currently visible slots.
+    other_files = [a for a in atts if not a.kind or a.kind not in slot_keys]
+
     if upload_ok:
         closed_note = None
     elif target.amend_statuses and doc.status in target.amend_statuses:
@@ -181,10 +217,14 @@ def panel_context(target, doc, user, next_url=None):
                        'add further files through Amend.')
     else:
         closed_note = 'Uploads are closed: this document has been approved.'
+
     return {
         'document_type': target.document_type,
         'document': doc,
         'attachments': atts,
+        'slot_rows': slot_rows,
+        'other_files': other_files,
+        'missing_required_count': sum(1 for r in slot_rows if r['required'] and not r['filled']),
         'can_upload': upload_ok,
         'deletable_ids': deletable,
         'closed_note': closed_note,
