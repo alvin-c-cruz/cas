@@ -1040,12 +1040,19 @@ def view(id):
     }
     fixed_asset_tags = {k: v for k, v in fixed_asset_tags.items() if v is not None}
 
+    from app.accounts_payable.amendment_service import pending_request_for
+    from app.attachments.completeness import missing_required
+    _ap_missing = [s.label for s in missing_required('accounts_payable', ap)]
+    _ap_amend_pending = pending_request_for(ap.id)
+
     return render_template('accounts_payable/detail.html', ap=ap,
                            je_entries=je_entries,
                            apv_print_access=apv_print_access,
                            apv_print_form=apv_print_form,
                            payments=payments,
-                           fixed_asset_tags=fixed_asset_tags)
+                           fixed_asset_tags=fixed_asset_tags,
+                           ap_missing_labels=_ap_missing,
+                           ap_amend_pending=_ap_amend_pending)
 
 
 @accounts_payable_bp.route('/accounts-payable/<int:id>/print')

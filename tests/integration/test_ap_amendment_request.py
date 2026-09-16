@@ -9,6 +9,7 @@ def _posted_incomplete_ap(db_session, main_branch):
     from app.accounts_payable.models import AccountsPayable
     from app.customers.models import Customer  # noqa: not needed; AP uses vendor
     from app.vendors.models import Vendor
+    from app.attachments.service import record_approval_completeness
     v = Vendor(code='APV9', name='Amend Vendor', check_payee_name='Amend Vendor',
                is_active=True, payment_terms='Net 30')
     db_session.add(v); db_session.commit()
@@ -17,6 +18,11 @@ def _posted_incomplete_ap(db_session, main_branch):
                          vendor_id=v.id, vendor_name=v.name, status='posted',
                          total_amount=Decimal('100'), notes='')
     db_session.add(ap); db_session.commit()
+    # Mirror the real posting workflow: snapshot the required slots that were
+    # empty at approval/post time onto approved_incomplete_slots, which is what
+    # attachment_incomplete_count() (the detail-page badge/UI gate) reads.
+    record_approval_completeness('accounts_payable', ap)
+    db_session.commit()
     return ap
 
 def _fs(name='signed.pdf', data=b'%PDF-1.4'):
@@ -151,3 +157,18 @@ def test_route_reject_leaves_ap_untouched(client, db_session, admin_user, main_b
     db_session.refresh(req)
     assert req.status == 'rejected'
     assert AccountsPayableAttachment.query.filter_by(ap_id=ap.id).count() == 0
+
+def test_detail_shows_request_control_when_posted_incomplete(client, db_session, admin_user, main_branch):
+    ap = _posted_incomplete_ap(db_session, main_branch)
+    _login(client, branch=main_branch)
+    body = client.get(f'/accounts-payable/{ap.id}').get_data(as_text=True)
+    assert 'request-amendment' in body        # the request form action is present
+    assert 'Signed AP' in body                # names the missing required file
+
+def test_detail_shows_pending_then_approve_control(client, db_session, admin_user, main_branch):
+    from app.accounts_payable.amendment_service import create_request
+    ap = _posted_incomplete_ap(db_session, main_branch)
+    create_request(ap, admin_user, 'signed copy arrived late', _fs()); db.session.commit()
+    _login(client, branch=main_branch)
+    body = client.get(f'/accounts-payable/{ap.id}').get_data(as_text=True)
+    assert '/approve' in body and '/reject' in body    # approver review controls

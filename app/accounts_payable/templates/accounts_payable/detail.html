@@ -432,6 +432,53 @@
             {% else %}
             <p style="color:var(--text-2); font-size:13px; font-style:italic;">No attachments.</p>
             {% endif %}
+
+            {# --- Attachment amendment (posted + required file missing) --- #}
+            {% if ap.status in ['posted','partially_paid','paid'] and attachment_incomplete_count('accounts_payable', ap) %}
+              <div class="card" style="margin-top:12px; border:1px solid var(--alert-warning-bg,#f0d9a0);">
+                <div class="card-body">
+                  <div style="font-weight:600; margin-bottom:6px;">
+                    Missing required file: {{ ap_missing_labels|join(', ') }}
+                  </div>
+                  {% if ap_amend_pending %}
+                    <p style="color:var(--text-2); font-size:13px;">
+                      Amendment requested by {{ ap_amend_pending.requested_by.full_name }}
+                      — {{ ap_amend_pending.staged_original_filename }}. Awaiting approval.
+                    </p>
+                    {% if current_user.has_full_access or current_user.role == 'accountant' %}
+                      <div style="display:flex; gap:8px;">
+                        <form method="POST" action="{{ url_for('accounts_payable.approve_amendment', req_id=ap_amend_pending.id) }}">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                          <button class="btn btn-primary" type="submit">Approve &amp; attach</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('accounts_payable.reject_amendment', req_id=ap_amend_pending.id) }}">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                          <input type="text" name="note" placeholder="Reason (optional)" style="font-size:12px;"/>
+                          <button class="btn btn-secondary" type="submit">Reject</button>
+                        </form>
+                      </div>
+                    {% endif %}
+                    {% if ap_amend_pending.requested_by_id == current_user.id %}
+                      <form method="POST" action="{{ url_for('accounts_payable.withdraw_amendment', req_id=ap_amend_pending.id) }}" style="margin-top:6px;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button class="btn btn-secondary" type="submit">Withdraw request</button>
+                      </form>
+                    {% endif %}
+                  {% else %}
+                    {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
+                    <form method="POST" enctype="multipart/form-data"
+                          action="{{ url_for('accounts_payable.request_amendment', id=ap.id) }}"
+                          style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                      <input type="file" name="attachment" required>
+                      <input type="text" name="reason" placeholder="Reason (required, 10+ chars)" required style="min-width:220px;">
+                      <button class="btn btn-primary" type="submit">Request amendment to attach</button>
+                    </form>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
         </div>
 
         <!-- ── Audit Trail ─────────────────────────────────────────────────── -->
