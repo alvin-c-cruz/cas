@@ -103,20 +103,45 @@ def _draft_query(Model, user, branch_id):
     return q
 
 
+# Model name -> attachments registry document_type, for draft-stage required-file
+# annotation. Only the five documents with required slots appear here; other draft
+# sources (CRV, SI) are absent and get the plain draft description.
+_DRAFT_ATTACHMENT_DOCTYPE = {
+    'PurchaseRequest': 'purchase_requests',
+    'PurchaseOrder': 'purchase_orders',
+    'ReceivingReport': 'receiving_reports',
+    'AccountsPayable': 'accounts_payable',
+    'CashDisbursementVoucher': 'cash_disbursements',
+}
+
+
 def gather_draft_items(user, branch_id):
     """Draft documents the user should finish. Empty for viewers or when no
-    branch is selected."""
+    branch is selected. A draft that still lacks a required attachment names it
+    in-line (one row, no duplicate with the submitted-only missing category)."""
     if not user or user.role == 'viewer' or not branch_id:
         return []
+    from app.attachments.completeness import incomplete_map
+    from app.attachments.registry import slots_for
     items = []
     for label, icon, Model, num_attr, edit_tmpl, _key in _visible_draft_sources(user):
-        for doc in _draft_query(Model, user, branch_id).order_by(Model.id.desc()).all():
+        docs = _draft_query(Model, user, branch_id).order_by(Model.id.desc()).all()
+        doctype = _DRAFT_ATTACHMENT_DOCTYPE.get(Model.__name__)
+        missing = incomplete_map(doctype, docs) if doctype else {}
+        slot_labels = {s.key: s.label for s in slots_for(doctype)} if doctype else {}
+        for doc in docs:
             created = getattr(doc, 'created_at', None)
+            miss = missing.get(doc.id)
+            if miss:
+                names = ', '.join(slot_labels.get(s.key, s.key) for s in miss)
+                desc = f'Draft — attach {names} to complete it.'
+            else:
+                desc = 'Draft — continue editing to complete it.'
             items.append({
                 'type': label,
                 'icon': icon,
                 'id': getattr(doc, num_attr, None) or '#{}'.format(doc.id),
-                'desc': 'Unposted draft — continue editing to post it.',
+                'desc': desc,
                 'by': _creator_name(doc),
                 'when': created.strftime('%Y-%m-%d %H:%M') if created else '—',
                 'state': 'Draft',
@@ -193,7 +218,7 @@ def gather_missing_attachment_items(user, branch_id):
             'type': label,
             'icon': '📎',
             'id': getattr(doc, num_attr, None) or '#{}'.format(doc.id),
-            'desc': 'Missing required file(s): ' + ', '.join(names),
+            'desc': ('Attach required file%s: ' % ('s' if len(names) != 1 else '')) + ', '.join(names),
             'by': _creator_name(doc),
             'when': '—',
             'state': getattr(doc, 'status', '').replace('_', ' ').title() or '—',
@@ -256,7 +281,7 @@ def gather_document_approval_items(user, branch_id):
                 'type': label,
                 'icon': icon,
                 'id': getattr(doc, num_attr, None) or '#{}'.format(doc.id),
-                'desc': 'Submitted for approval.',
+                'desc': 'Review and approve.',
                 'by': _user_display(getattr(doc, 'submitted_by_id', None)),
                 'when': submitted_at.strftime('%Y-%m-%d %H:%M') if submitted_at else '—',
                 'state': 'Submitted',

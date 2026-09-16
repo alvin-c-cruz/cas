@@ -67,3 +67,34 @@ def test_complete_submitted_not_listed(db_session, admin_user, main_branch, vl_v
     db.session.commit()
     items = gather_missing_attachment_items(admin_user, main_branch.id)
     assert 'PO-AI-COMPLETE' not in [i['id'] for i in items]
+
+
+# ── Draft-stage annotation (guide-what's-needed) ───────────────────────────
+
+def test_draft_missing_required_is_annotated_in_the_draft_row(db_session, admin_user, main_branch, vl_vendor):
+    from app.dashboard.action_items_service import gather_draft_items, gather_missing_attachment_items
+    po = _po(db_session, main_branch, vl_vendor, status='draft', number='PO-DRAFT-MISS')
+    drafts = gather_draft_items(admin_user, main_branch.id)
+    row = next(i for i in drafts if i['id'] == 'PO-DRAFT-MISS')
+    # The draft row itself names the missing files.
+    assert 'attach' in row['desc'].lower()
+    assert 'Signed PO' in row['desc'] and 'Vendor Quotation' in row['desc']
+    # No duplicate: a DRAFT is not also in the submitted-only missing category.
+    assert 'PO-DRAFT-MISS' not in [i['id'] for i in gather_missing_attachment_items(admin_user, main_branch.id)]
+
+
+def test_complete_draft_has_generic_desc(db_session, admin_user, main_branch, vl_vendor):
+    from app.dashboard.action_items_service import gather_draft_items
+    from app.attachments.models import DocumentAttachment
+    from app.utils import ph_now
+    po = _po(db_session, main_branch, vl_vendor, status='draft', number='PO-DRAFT-OK')
+    for kind in ('signed_po', 'vendor_quotation'):
+        db.session.add(DocumentAttachment(
+            document_type='purchase_orders', document_id=po.id, kind=kind,
+            original_filename=f'{kind}.pdf', stored_filename=f'{kind}-dok.pdf',
+            mime_type='application/pdf', file_size=10, uploaded_by_id=admin_user.id,
+            uploaded_at=ph_now()))
+    db.session.commit()
+    row = next(i for i in gather_draft_items(admin_user, main_branch.id) if i['id'] == 'PO-DRAFT-OK')
+    assert 'attach' not in row['desc'].lower()
+    assert 'Signed PO' not in row['desc']
