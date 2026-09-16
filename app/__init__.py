@@ -258,6 +258,7 @@ def create_app(config_name=None):
     from app.settings import AppSettings
     from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem, SalesInvoiceAttachment
     from app.accounts_payable.models import AccountsPayable, AccountsPayableItem, AccountsPayableAttachment
+    from app.accounts_payable import amendment_models  # noqa: F401
     from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
     from app.cash_receipts.models import CashReceiptVoucher, CRVArLine, CRVRevenueLine
     from app.journal_entries.models import JournalEntry, JournalEntryLine
