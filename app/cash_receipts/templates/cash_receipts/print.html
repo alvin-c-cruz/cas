@@ -134,7 +134,6 @@
     <thead>
       <tr>
         <th style="width:4%">#</th>
-        {% if module_enabled('products') %}<th>Product</th>{% endif %}
         <th>Description</th>
         {% if module_enabled('units_of_measure') %}
         <th style="text-align:right">Qty</th>
@@ -153,10 +152,9 @@
       {% for rev in crv.revenue_lines %}
       <tr>
         <td>{{ rev.line_number }}</td>
-        {% if module_enabled('products') %}
-        <td>{% if rev.product %}{{ rev.product.code }} — {{ rev.product.name }}{% else %}—{% endif %}</td>
-        {% endif %}
-        <td>{{ rev.description or '—' }}</td>
+        {# Single Description column: the product (code — name) when the line has
+           one, otherwise the description field, otherwise empty. #}
+        <td>{% if module_enabled('products') and rev.product %}{{ rev.product.code }} — {{ rev.product.name }}{% else %}{{ rev.description or '—' }}{% endif %}</td>
         {% if module_enabled('units_of_measure') %}
         <td class="amount">{{ '{:.4f}'.format(rev.quantity) if rev.quantity is not none else '—' }}</td>
         <td>{{ rev.unit_of_measure.code if rev.unit_of_measure else (rev.uom_text or '—') }}</td>
