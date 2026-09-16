@@ -73,3 +73,42 @@ def test_request_refused_when_not_incomplete(client, db_session, admin_user, mai
     approve_request(req, admin_user); db.session.commit()   # slot now filled
     with pytest.raises(APAmendmentError):
         create_request(ap, admin_user, 'another signed copy', _fs())
+
+def test_withdraw_discards_staged_file_and_marks_withdrawn(client, db_session, admin_user, main_branch):
+    from app.accounts_payable.amendment_service import create_request, withdraw_request, _staged_dir
+    import os
+    ap = _posted_incomplete_ap(db_session, main_branch)
+    req = create_request(ap, admin_user, 'signed copy arrived late', _fs()); db.session.commit()
+    staged = os.path.join(_staged_dir(req.id), req.staged_stored_filename)
+    assert os.path.exists(staged)
+    withdraw_request(req, admin_user); db.session.commit()
+    assert req.status == 'withdrawn'
+    assert not os.path.exists(staged)
+
+def test_withdraw_refused_for_other_staff(client, db_session, admin_user, staff_user, main_branch):
+    from app.accounts_payable.amendment_service import create_request, withdraw_request, APAmendmentError
+    ap = _posted_incomplete_ap(db_session, main_branch)
+    req = create_request(ap, admin_user, 'signed copy arrived late', _fs()); db.session.commit()
+    with pytest.raises(APAmendmentError):
+        withdraw_request(req, staff_user)   # not the requester, not approver-level
+
+def test_approve_autorejects_when_slot_already_filled(client, db_session, admin_user, main_branch):
+    from app.accounts_payable.amendment_service import create_request, approve_request, APAmendmentError, _staged_dir
+    from app.accounts_payable.models import AccountsPayableAttachment
+    from app.utils import ph_now
+    import os
+    ap = _posted_incomplete_ap(db_session, main_branch)
+    req = create_request(ap, admin_user, 'signed copy arrived late', _fs()); db.session.commit()
+    staged = os.path.join(_staged_dir(req.id), req.staged_stored_filename)
+    # Fill the required slot through another path before approval:
+    db.session.add(AccountsPayableAttachment(
+        ap_id=ap.id, original_filename='other.pdf', stored_filename='other-x.pdf',
+        mime_type='application/pdf', file_size=5, uploaded_by_id=admin_user.id,
+        kind='signed_ap', uploaded_at=ph_now()))
+    db.session.commit()
+    with pytest.raises(APAmendmentError):
+        approve_request(req, admin_user)
+    db.session.refresh(req)
+    assert req.status == 'rejected'
+    assert not os.path.exists(staged)
+    assert AccountsPayableAttachment.query.filter_by(ap_id=ap.id, kind='signed_ap').count() == 1
