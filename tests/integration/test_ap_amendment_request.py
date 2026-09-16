@@ -112,3 +112,42 @@ def test_approve_autorejects_when_slot_already_filled(client, db_session, admin_
     assert req.status == 'rejected'
     assert not os.path.exists(staged)
     assert AccountsPayableAttachment.query.filter_by(ap_id=ap.id, kind='signed_ap').count() == 1
+
+def _login(client, username='admin', password='admin123', branch=None):
+    client.post('/login', data={'username': username, 'password': password}, follow_redirects=True)
+    if branch is not None:
+        with client.session_transaction() as s:
+            s['selected_branch_id'] = branch.id
+
+def test_route_request_then_approve_commits(client, db_session, admin_user, main_branch):
+    from app.accounts_payable.models import AccountsPayableAttachment
+    ap = _posted_incomplete_ap(db_session, main_branch)
+    _login(client, branch=main_branch)
+    r = client.post(f'/accounts-payable/{ap.id}/request-amendment',
+                    data={'reason': 'signed copy arrived late',
+                          'attachment': (io.BytesIO(b'%PDF-1.4'), 'signed.pdf')},
+                    content_type='multipart/form-data')
+    assert r.status_code in (302, 200)
+    from app.accounts_payable.amendment_models import AccountsPayableAmendmentRequest as Req
+    req = Req.query.filter_by(ap_id=ap.id).first()
+    assert req is not None and req.is_pending
+    r = client.post(f'/accounts-payable/amendment-requests/{req.id}/approve', follow_redirects=True)
+    assert r.status_code == 200
+    db_session.refresh(req)
+    assert req.status == 'approved'
+    assert AccountsPayableAttachment.query.filter_by(ap_id=ap.id, kind='signed_ap').count() == 1
+
+def test_route_reject_leaves_ap_untouched(client, db_session, admin_user, main_branch):
+    from app.accounts_payable.models import AccountsPayableAttachment
+    from app.accounts_payable.amendment_models import AccountsPayableAmendmentRequest as Req
+    ap = _posted_incomplete_ap(db_session, main_branch)
+    _login(client, branch=main_branch)
+    client.post(f'/accounts-payable/{ap.id}/request-amendment',
+                data={'reason': 'wrong file here', 'attachment': (io.BytesIO(b'%PDF-1.4'), 'x.pdf')},
+                content_type='multipart/form-data')
+    req = Req.query.filter_by(ap_id=ap.id).first()
+    client.post(f'/accounts-payable/amendment-requests/{req.id}/reject',
+                data={'note': 'not the signed AP'}, follow_redirects=True)
+    db_session.refresh(req)
+    assert req.status == 'rejected'
+    assert AccountsPayableAttachment.query.filter_by(ap_id=ap.id).count() == 0

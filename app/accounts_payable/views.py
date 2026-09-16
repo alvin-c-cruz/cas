@@ -1950,6 +1950,101 @@ def delete_attachment(attachment_id):
     return redirect(url_for('accounts_payable.edit', id=ap.id))
 
 
+@accounts_payable_bp.route('/accounts-payable/<int:id>/request-amendment', methods=['POST'])
+@login_required
+@staff_or_above_required
+def request_amendment(id):
+    """Request an amendment (staged file) to complete a posted AP's missing
+    required attachment. Edit-level: same gate as create/upload."""
+    from app.accounts_payable.amendment_service import APAmendmentError, create_request
+
+    ap = _get_ap_or_404(id)
+    f = request.files.get('attachment')
+    if not f or not f.filename:
+        flash('Attach the required file to request an amendment.', 'error')
+        return redirect(url_for('accounts_payable.view', id=id))
+    try:
+        create_request(ap, current_user, request.form.get('reason'), f)
+        db.session.commit()
+        flash('Amendment request submitted for approval.', 'success')
+    except APAmendmentError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return redirect(url_for('accounts_payable.view', id=id))
+
+
+def _get_ap_amend_req_or_404(req_id):
+    """Fetch an amendment request, branch-scoped to the current user's
+    accessible branches (not just the single selected branch, since the
+    approver may be reviewing across branches they can access)."""
+    from app.accounts_payable.amendment_models import AccountsPayableAmendmentRequest
+    from app.users.utils import get_accessible_branches
+
+    req = db.session.get(AccountsPayableAmendmentRequest, req_id)
+    if req is None:
+        abort(404)
+    if req.branch_id not in {b.id for b in get_accessible_branches(current_user)}:
+        abort(404)
+    return req
+
+
+@accounts_payable_bp.route('/accounts-payable/amendment-requests/<int:req_id>/withdraw', methods=['POST'])
+@login_required
+@staff_or_above_required
+def withdraw_amendment(req_id):
+    """Withdraw a pending amendment request. Service enforces requester-or-approver."""
+    from app.accounts_payable.amendment_service import APAmendmentError, withdraw_request
+
+    req = _get_ap_amend_req_or_404(req_id)
+    ap_id = req.ap_id
+    try:
+        withdraw_request(req, current_user)
+        db.session.commit()
+        flash('Amendment request withdrawn.', 'success')
+    except APAmendmentError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return redirect(url_for('accounts_payable.view', id=ap_id))
+
+
+@accounts_payable_bp.route('/accounts-payable/amendment-requests/<int:req_id>/approve', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def approve_amendment(req_id):
+    """Approve a pending amendment request, committing the staged file onto the
+    AP as an attachment. approve_request() commits internally -- do not commit again."""
+    from app.accounts_payable.amendment_service import APAmendmentError, approve_request
+
+    req = _get_ap_amend_req_or_404(req_id)
+    ap_id = req.ap_id
+    try:
+        approve_request(req, current_user)
+        flash('Amendment approved; the required file is now on the AP.', 'success')
+    except APAmendmentError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return redirect(url_for('accounts_payable.view', id=ap_id))
+
+
+@accounts_payable_bp.route('/accounts-payable/amendment-requests/<int:req_id>/reject', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def reject_amendment(req_id):
+    """Reject a pending amendment request; discards the staged file."""
+    from app.accounts_payable.amendment_service import APAmendmentError, reject_request
+
+    req = _get_ap_amend_req_or_404(req_id)
+    ap_id = req.ap_id
+    try:
+        reject_request(req, current_user, request.form.get('note'))
+        db.session.commit()
+        flash('Amendment request rejected.', 'info')
+    except APAmendmentError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return redirect(url_for('accounts_payable.view', id=ap_id))
+
+
 #: A bill number: leading digits, then an optional non-digit PAD MARKER.
 #: PhilGen's EXTRA branch runs 0001E..0005E against CORP's plain 0001..0009 --
 #: the same convention the purchase-order pads use (_PO_NUMBER_RE), and what
