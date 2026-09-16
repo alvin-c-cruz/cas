@@ -172,3 +172,16 @@ def test_detail_shows_pending_then_approve_control(client, db_session, admin_use
     _login(client, branch=main_branch)
     body = client.get(f'/accounts-payable/{ap.id}').get_data(as_text=True)
     assert '/approve' in body and '/reject' in body    # approver review controls
+
+def test_pending_request_appears_in_approval_items_and_count(client, db_session, admin_user, main_branch):
+    from app.accounts_payable.amendment_service import create_request
+    from app.dashboard.action_items_service import gather_approval_items, count_action_items
+    ap = _posted_incomplete_ap(db_session, main_branch)
+    create_request(ap, admin_user, 'signed copy arrived late', _fs()); db.session.commit()
+    items = gather_approval_items(admin_user)
+    assert any('AP-AMEND-1' in (i.get('id') or '') and 'Signed AP' in (i.get('desc') or '')
+               for i in items)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    # count is branch-scoped; call the same way the sidebar does
+    assert count_action_items(admin_user, main_branch.id) >= 1

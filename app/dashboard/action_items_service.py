@@ -326,6 +326,26 @@ def gather_approval_items(user):
                 'reviewUrl': '/purchase-requests/amendment-requests/%d' % req.id,
             })
 
+    # AP attachment amendment requests — branch-scoped, approve-level only
+    # (the same audience as the PR block above; no module gate, since
+    # accounts_payable is a CORE module every instance has).
+    from flask import url_for
+    from app.accounts_payable.amendment_service import pending_requests_for_branches as _ap_pending
+    from app.attachments.registry import slots_for as _ap_slots_for
+    _ap_slot_labels = {s.key: s.label for s in _ap_slots_for('accounts_payable')}
+    for req in _ap_pending({b.id for b in get_accessible_branches(user)}):
+        ap = req.ap
+        label = _ap_slot_labels.get(req.kind, req.kind)
+        items.append({
+            'type': 'AP Amendment', 'icon': '📎',
+            'id': ap.ap_number if ap else '#%s' % req.ap_id,
+            'desc': 'AP amendment: attach %s (%s)' % (label, req.staged_original_filename),
+            'by': req.requested_by.full_name if req.requested_by else '—',
+            'when': req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '—',
+            'state': 'Pending',
+            'reviewUrl': url_for('accounts_payable.view', id=req.ap_id),
+        })
+
     for req in AccountChangeRequest.query.filter_by(status='pending').all():
         cd = req.get_change_data()
         desc = cd.get('name', 'Account') if req.change_type == 'create' \
@@ -476,6 +496,8 @@ def count_action_items(user, branch_id):
         if module_enabled('purchase_requests') and can_access_module(user, 'purchase_requests'):
             n += len(pending_requests_for_branches(
                 {b.id for b in get_accessible_branches(user)}))
+        from app.accounts_payable.amendment_service import pending_requests_for_branches as _ap_pending
+        n += len(_ap_pending({b.id for b in get_accessible_branches(user)}))
         n += AccountChangeRequest.query.filter_by(status='pending').count()
         n += VATCategoryChangeRequest.query.filter_by(status='pending').count()
         n += SalesVATCategoryChangeRequest.query.filter_by(status='pending').count()
