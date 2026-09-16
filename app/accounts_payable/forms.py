@@ -28,8 +28,15 @@ class AccountsPayableForm(RowVersionFormMixin, FlaskForm):
     ], format='%Y-%m-%d')
 
     def validate_due_date(self, field):
-        if self.ap_date.data and field.data and field.data < self.ap_date.data:
-            raise ValidationError('Due date cannot be earlier than the voucher date.')
+        # Due date is derived from and floored at the Vendor Invoice Date (the
+        # vendor's receipt date), so a bill entered late can legitimately fall
+        # due before the voucher date. When no Vendor Invoice Date is given, the
+        # floor falls back to the Voucher Date.
+        floor = self.vendor_invoice_date.data or self.ap_date.data
+        if floor and field.data and field.data < floor:
+            label = ('the vendor invoice date' if self.vendor_invoice_date.data
+                     else 'the voucher date')
+            raise ValidationError('Due date cannot be earlier than %s.' % label)
 
     # Combined payee: "vendor:<id>" or "employee:<id>" (parsed in the view).
     # The new AP form submits this instead of vendor_id.

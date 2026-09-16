@@ -482,19 +482,21 @@ function addFirstLineItem() {
     });
 }
 
-// Recompute Due Date = AP Date + Net N days from the CURRENT terms (or an
-// explicit override). Fired on terms change AND on ap_date blur, so a later
-// date edit re-derives the due date instead of leaving a stale value computed
-// off the default date.
+// Recompute Due Date = Vendor Invoice Date + Net N days from the CURRENT terms
+// (the vendor's receipt date drives the due date). When no Vendor Invoice Date
+// is entered yet, fall back to the Voucher Date so the required Due Date still
+// auto-fills. Fired on terms change, on vendor_invoice_date change, and on
+// ap_date change (the fallback base), so a later edit re-derives the due date.
 function recomputeDueDate(termsOverride) {
     const termsEl = document.getElementById('payment_terms');
     const terms = termsOverride || (termsEl ? termsEl.value : '');
     const match = (terms || '').match(/Net (\d+)/);
     if (!match) return;
     const days = parseInt(match[1]);
-    const apDateVal = document.getElementById('ap_date')?.value;
-    if (!apDateVal) return;
-    const due = new Date(apDateVal);
+    const invDateVal = document.getElementById('vendor_invoice_date')?.value;
+    const baseVal = invDateVal || document.getElementById('ap_date')?.value;
+    if (!baseVal) return;
+    const due = new Date(baseVal);
     if (isNaN(due.getTime())) return;
     due.setDate(due.getDate() + days);
     const dueDateField = document.getElementById('due_date');
@@ -922,9 +924,12 @@ function validateForm() {
     function allow()     { btn.disabled = false; hint.textContent = ''; }
 
     const apDateVal = document.getElementById('ap_date')?.value;
+    const invDateVal = document.getElementById('vendor_invoice_date')?.value;
+    const floorVal = invDateVal || apDateVal;   // due date is floored at the vendor invoice (receipt) date
     const dueDateVal = document.getElementById('due_date')?.value;
-    if (apDateVal && dueDateVal && dueDateVal < apDateVal) {
-        block('Due date cannot be earlier than the voucher date.'); return;
+    if (floorVal && dueDateVal && dueDateVal < floorVal) {
+        block(invDateVal ? 'Due date cannot be earlier than the vendor invoice date.'
+                         : 'Due date cannot be earlier than the voucher date.'); return;
     }
 
     // Vendor invoice # / date are intentionally NOT required to SAVE a draft —
@@ -1350,7 +1355,7 @@ document.getElementById('ap_date')?.addEventListener('change', () => recomputeDu
 const _invInput = document.getElementById('vendor_invoice_number');
 if (_invInput) _invInput.addEventListener('input', validateForm);
 const _invDate = document.getElementById('vendor_invoice_date');
-if (_invDate) _invDate.addEventListener('change', validateForm);
+if (_invDate) _invDate.addEventListener('change', () => { recomputeDueDate(); validateForm(); });
 const _notesInput = document.querySelector('textarea[name="notes"]');
 if (_notesInput) _notesInput.addEventListener('input', validateForm);
 
