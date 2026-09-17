@@ -183,6 +183,34 @@ def test_staff_cannot_edit_product(client, db_session, staff_user, main_branch,
     assert 'do not have access to this module' in text.lower()
 
 
+def test_staff_sees_create_button_on_list(client, db_session, staff_user, main_branch,
+                                          products_module_enabled):
+    """Staff with Products access see the '+ Create Product' button, so the UI matches
+    who products.create actually admits (staff-or-above). Owner request: make Create
+    available to staff."""
+    perms = staff_user.get_book_permissions()
+    perms['products'] = True
+    staff_user.set_book_permissions(perms)
+    staff_user.set_branches([main_branch])
+    db_session.commit()
+    _login(client, staff_user, main_branch)
+    resp = client.get('/products')
+    assert resp.status_code == 200
+    assert b'+ Create Product' in resp.data
+
+
+def test_viewer_does_not_see_create_button_on_list(client, db_session, viewer_user, main_branch,
+                                                   products_module_enabled):
+    """The button stays hidden from viewer — opening Create to staff must not reach viewer,
+    matching the route guard that still blocks them (see test_viewer_cannot_create_product)."""
+    viewer_user.set_branches([main_branch])
+    db_session.commit()
+    _login(client, viewer_user, main_branch)
+    resp = client.get('/products')
+    assert resp.status_code == 200
+    assert b'+ Create Product' not in resp.data
+
+
 def test_ajax_create_product_returns_json(client, db_session, admin_user, main_branch,
                                           products_module_enabled):
     """AJAX POST to /products/create returns JSON with ok=True and product data."""

@@ -49,7 +49,12 @@
         <p class="page-subheading">Manage product and item master records</p>
     </div>
     <div class="page-actions">
-        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
+        {# Create is open to staff-or-above, mirroring the products.create route guard
+           (staff, accountant, chief_accountant, admin; viewer stays blocked). This keeps
+           the button in step with who the route actually admits — the quotation-delegate
+           add-product directive (BUG-QUOTE-DELEGATE-ADD-PRODUCT, 2026-07-11). Edit stays
+           accountant-or-above (see the row action gate above). #}
+        {% if (current_user.has_full_access or current_user.role in ('accountant', 'staff')) %}
         <a href="{{ url_for('products.create') }}" class="btn btn-primary">+ Create Product</a>
         {% endif %}
     </div>
