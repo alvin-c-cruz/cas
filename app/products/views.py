@@ -5,6 +5,7 @@ from wtforms.validators import DataRequired, Optional
 from app import db
 from app.products.models import Product
 from app.products.forms import ProductForm
+from app.units_of_measure.models import UnitOfMeasure
 from app.utils.cache_helpers import (get_active_units, get_active_accounts, clear_product_cache,
                                      get_active_product_categories)
 from app.audit.utils import log_create, log_update
@@ -22,6 +23,7 @@ def _populate_choices(form):
     form.default_unit_of_measure_id.choices = (
         [('', '— None —')] + [(str(u.id), f'{u.code} — {u.name}') for u in units]
     )
+    form.allowed_unit_ids.choices = [(u.id, f'{u.code} — {u.name}') for u in units]
     form.default_account_id.choices = (
         [('', '— None —')] + [(str(a.id), f'{a.code} — {a.name}') for a in accounts]
     )
@@ -79,6 +81,10 @@ def create():
             created_by_id=current_user.id,
         )
         db.session.add(p)
+        if form.allowed_unit_ids.data:
+            p.allowed_units = (UnitOfMeasure.query
+                               .filter(UnitOfMeasure.id.in_(form.allowed_unit_ids.data))
+                               .all())
         db.session.commit()
         clear_product_cache()
         log_create('products', p.id, p.name, p.to_dict())
@@ -114,6 +120,7 @@ def edit(id):
         form.default_account_id.data = str(p.default_account_id or '')
         form.category_id.data = str(p.category_id or '')
         form.costing_method.data = p.costing_method or ''
+        form.allowed_unit_ids.data = sorted(p.allowed_unit_ids())
     if form.validate_on_submit():
         old = p.to_dict()
         p.customer_code = (form.customer_code.data or '').strip() or None
@@ -129,6 +136,9 @@ def edit(id):
         p.costing_method = (form.costing_method.data or None)
         p.reorder_level = form.reorder_level.data
         p.is_active = (form.is_active.data == '1')
+        p.allowed_units = (UnitOfMeasure.query
+                           .filter(UnitOfMeasure.id.in_(form.allowed_unit_ids.data)).all()
+                           if form.allowed_unit_ids.data else [])
         db.session.commit()
         clear_product_cache()
         log_update('products', p.id, p.name, old, p.to_dict())

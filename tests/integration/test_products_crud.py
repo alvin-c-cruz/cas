@@ -1,5 +1,6 @@
 """Integration tests for Products master CRUD blueprint (Task 8)."""
 import html as html_mod
+import json
 import pytest
 from decimal import Decimal
 from app import db
@@ -281,3 +282,69 @@ def test_edit_product_updates_job_order_name(client, db_session, admin_user, mai
         AuditLog.id.desc()).first()
     assert audit is not None
     assert 'WGT-D-PROD' in (audit.new_values or '')
+
+
+def test_create_persists_allowed_units(client, db_session, admin_user, main_branch,
+                                       products_module_enabled):
+    box = UnitOfMeasure(code='BOX', name='Box', is_active=True)
+    kg = UnitOfMeasure(code='KG', name='Kilogram', is_active=True)
+    db.session.add_all([box, kg]); db.session.commit()
+    _login(client, admin_user, main_branch)
+    client.post('/products/create', data={
+        'name': 'Constrained', 'description': '',
+        'default_unit_of_measure_id': '', 'default_unit_price': '',
+        'default_account_id': '', 'category_id': '', 'standard_cost': '',
+        'is_active': '1',
+        'allowed_unit_ids': [str(box.id), str(kg.id)],
+    }, follow_redirects=True)
+    p = Product.query.filter_by(name='Constrained').first()
+    assert p is not None
+    assert p.allowed_unit_ids() == {box.id, kg.id}
+
+
+def test_edit_replaces_then_clears_allowed_units(client, db_session, admin_user,
+                                                 main_branch, products_module_enabled):
+    box = UnitOfMeasure(code='BOX', name='Box', is_active=True)
+    kg = UnitOfMeasure(code='KG', name='Kilogram', is_active=True)
+    db.session.add_all([box, kg]); db.session.commit()
+    p = Product(name='EditSet', is_active=True)
+    p.allowed_units = [box, kg]
+    db.session.add(p); db.session.commit()
+    _login(client, admin_user, main_branch)
+    # Narrow to just BOX
+    client.post(f'/products/{p.id}/edit', data={
+        'name': 'EditSet', 'description': '',
+        'default_unit_of_measure_id': '', 'default_unit_price': '',
+        'default_account_id': '', 'category_id': '', 'standard_cost': '',
+        'is_active': '1', 'allowed_unit_ids': [str(box.id)],
+    }, follow_redirects=True)
+    db.session.refresh(p)
+    assert p.allowed_unit_ids() == {box.id}
+    # Clear entirely (omit the field)
+    client.post(f'/products/{p.id}/edit', data={
+        'name': 'EditSet', 'description': '',
+        'default_unit_of_measure_id': '', 'default_unit_price': '',
+        'default_account_id': '', 'category_id': '', 'standard_cost': '',
+        'is_active': '1',
+    }, follow_redirects=True)
+    db.session.refresh(p)
+    assert p.allowed_unit_ids() == set()
+
+
+def test_allowed_units_recorded_in_create_audit(client, db_session, admin_user,
+                                                main_branch, products_module_enabled):
+    from app.audit.models import AuditLog
+    box = UnitOfMeasure(code='BOX', name='Box', is_active=True)
+    db.session.add(box); db.session.commit()
+    _login(client, admin_user, main_branch)
+    client.post('/products/create', data={
+        'name': 'AuditedSet', 'description': '',
+        'default_unit_of_measure_id': '', 'default_unit_price': '',
+        'default_account_id': '', 'category_id': '', 'standard_cost': '',
+        'is_active': '1', 'allowed_unit_ids': [str(box.id)],
+    }, follow_redirects=True)
+    p = Product.query.filter_by(name='AuditedSet').first()
+    log = (AuditLog.query.filter_by(module='products', action='create', record_id=p.id)
+           .order_by(AuditLog.id.desc()).first())
+    assert log is not None
+    assert json.loads(log.new_values)['allowed_unit_ids'] == [box.id]
