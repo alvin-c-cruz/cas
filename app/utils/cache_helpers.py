@@ -172,17 +172,21 @@ def clear_asset_category_cache():
 def get_active_products():
     """Get all active products (cached 1 hour).
 
-    Eager-load default_unit_of_measure: Product.to_dict() reads
-    default_unit_of_measure.code, a relationship. Cached ORM objects outlive the
-    request/session that created them, so a lazy load on a later (detached) access
-    raises DetachedInstanceError (HTTP 500). joinedload populates the attribute at
-    query time, so reading it detached is safe — matching the column-only helpers
-    above that are already detach-safe.
+    Eager-load default_unit_of_measure and allowed_units: Product.to_dict() reads
+    default_unit_of_measure.code and allowed_unit_ids() (which walks the
+    allowed_units relationship). Cached ORM objects outlive the request/session
+    that created them, so a lazy load on a later (detached) access raises
+    DetachedInstanceError (HTTP 500). Eager-loading populates both attributes at
+    query time, so reading them detached is safe — matching the column-only
+    helpers above that are already detach-safe. selectinload (not joinedload) for
+    allowed_units: it's a to-many relationship, and joinedload would fan out the
+    row for every allowed unit.
     """
-    from sqlalchemy.orm import joinedload
+    from sqlalchemy.orm import joinedload, selectinload
     from app.products.models import Product
     return (Product.query
-            .options(joinedload(Product.default_unit_of_measure))
+            .options(joinedload(Product.default_unit_of_measure),
+                    selectinload(Product.allowed_units))
             .filter_by(is_active=True)
             .order_by(Product.code)
             .all())
