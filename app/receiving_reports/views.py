@@ -346,7 +346,8 @@ def _direct_products_payload():
             .order_by(Product.name).all())
     return [{'product_id': p.id, 'product_name': p.name,
              'uom': (p.default_unit_of_measure.code if p.default_unit_of_measure else ''),
-             'tracked': bool(p.track_inventory)}
+             'tracked': bool(p.track_inventory),
+             'allowed_unit_ids': sorted(p.allowed_unit_ids())}
             for p in rows]
 
 
@@ -544,6 +545,14 @@ def _parse_rr_lines(rr, lines_json):
                     raise ValueError(
                         f'Line {position}: that unit of measure does not exist or is no '
                         f'longer active.')
+                if not product.unit_allowed(uom_id):
+                    allowed = sorted(
+                        {u.code for u in product.allowed_units}
+                        | ({product.default_unit_of_measure.code}
+                           if product.default_unit_of_measure else set()))
+                    raise ValueError(
+                        f'Line {position}: {uom.code} is not an allowed unit for '
+                        f'{product.name}. Choose one of: {", ".join(allowed)}.')
             else:
                 uom_id = None
             # Capped rather than refused: a raw POST can send any length, and losing a
