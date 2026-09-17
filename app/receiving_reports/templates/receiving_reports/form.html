@@ -677,6 +677,36 @@
     }
     sel.addEventListener('change', refreshWarning);
 
+    // Limit the unit picker to the product's curated allowed set (+ its default).
+    // Empty set => show all active units (today's behavior). Defensive: any error
+    // falls back to the full list, since the server is the real guard.
+    function filterUomForProduct() {
+      try {
+        const prod = DIRECT_INDEX[parseInt(sel.value, 10)];
+        const allowed = (prod && prod.allowed_unit_ids) ? prod.allowed_unit_ids : [];
+        let units = UNITS || [];
+        if (allowed.length) {
+          const ok = new Set(allowed);
+          units = units.filter(function (u) { return ok.has(u.id); });
+        }
+        const opts = units.map(function (u) {
+          return { value: String(u.id), label: u.code + ' — ' + u.name };
+        });
+        opts.unshift({ value: '', label: '— Use product default —' });
+        if (uomChoices) {
+          uomChoices.clearChoices();
+          uomChoices.setChoices(opts, 'value', 'label', true);
+          uomChoices.setChoiceByValue('');
+        } else {
+          uomSel.innerHTML = opts.map(function (o) {
+            return '<option value="' + o.value + '">' + o.label + '</option>';
+          }).join('');
+          uomSel.value = '';
+        }
+      } catch (e) { /* fall back to the full list already in the DOM */ }
+    }
+    sel.addEventListener('change', filterUomForProduct);
+
     // Switch to the ordered line: adds it through the SAME path the Pull picker uses,
     // so the ceiling and the vendor/branch/status guards apply unchanged. No direct
     // line is created at all. Delegated on the container (rather than one listener per
@@ -708,6 +738,7 @@
       // when the select is enhanced -- assigning .value directly leaves the wrapped
       // widget showing the stale label.
       if (uomChoices) { uomChoices.setChoiceByValue(''); } else { uomSel.value = ''; }
+      filterUomForProduct();
       reasonInput.value = '';
       err.style.display = 'none';
       modal.style.display = 'block';
