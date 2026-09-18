@@ -24,6 +24,7 @@
 - `doc_type` for this build is exactly `'purchase_orders'` (matches the audit module name).
 - **Werkzeug is 3.1.3, Flask 3.1.0.** The test client's cookie API is `client.set_cookie(key, value)` and `client.get_cookie(key) -> Cookie | None`. `client.cookie_jar` does NOT exist (removed in Werkzeug 2.3) and `set_cookie` no longer takes a positional domain. Verified in this worktree, not assumed.
 - `AppSettings` lives at `app/settings.py` — `from app.settings import AppSettings`. There is no `app/settings/models.py`.
+- **SQLite foreign-key enforcement is OFF.** There is no `PRAGMA foreign_keys=ON` hook anywhere in `app/`, `config.py` or `tests/conftest.py`, and SQLite defaults the pragma to 0 — verified in this worktree. A declared `ON DELETE SET NULL` therefore does NOT fire. Any task relying on referential action must perform it explicitly in the same transaction; the DDL stays as documentation and as defence if the pragma is ever enabled globally.
 
 ---
 
@@ -797,7 +798,11 @@ def test_renaming_does_not_move_any_selection(db_session):
 
 
 def test_deleting_a_selected_layout_leaves_printing_working(db_session):
-    """AC 4: the workstation falls back to the default, and the pref row survives."""
+    """AC 4: the workstation falls back to the default, and the pref row survives.
+
+    This also pins that delete_layout nulls the pref ITSELF. The FK says ON DELETE SET
+    NULL, but SQLite's foreign_keys pragma is off in this app, so the database will not
+    do it. Remove the explicit update and this test fails."""
     default = _mk('Default', is_default=True, marker='default')
     other = _mk('Other', marker='other')
     service.set_device_layout('dev1', DOC, SCOPE, other.id)
@@ -917,6 +922,12 @@ def delete_layout(layout_id):
     if row.is_default:
         raise ValueError('The default layout cannot be deleted. '
                          'Make another layout the default first.')
+    # The FK declares ON DELETE SET NULL, but this app never enables SQLite's
+    # foreign_keys pragma, so nothing would fire it and every workstation pointing
+    # here would keep a layout_id aimed at a row that no longer exists. Do it
+    # explicitly, in the same transaction as the delete.
+    PrintLayoutDevicePref.query.filter_by(layout_id=row.id).update(
+        {'layout_id': None}, synchronize_session=False)
     db.session.delete(row); db.session.commit()
     return row
 
