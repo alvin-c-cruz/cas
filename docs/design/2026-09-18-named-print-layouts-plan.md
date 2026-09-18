@@ -4,7 +4,7 @@
 
 **Goal:** Let Purchase Orders have many named pre-printed layouts, with each workstation choosing which one it prints with, so two purchasers on different printers stop overwriting each other's alignment.
 
-**Architecture:** Two new tables (`print_layouts`, `print_layout_device_prefs`) behind the existing `get_layout()` / `save_layout()` signatures in `app/common/preprinted_base.py`. Resolution falls through device pref → default row → legacy `app_settings` key → hardcoded defaults, so the feature is inert until rows exist. A `cas_device_id` cookie identifies the workstation; the selection itself lives server-side.
+**Architecture:** Two new tables (`named_print_layouts`, `named_print_layout_device_prefs`) behind the existing `get_layout()` / `save_layout()` signatures in `app/common/preprinted_base.py`. Resolution falls through device pref → default row → legacy `app_settings` key → hardcoded defaults, so the feature is inert until rows exist. A `cas_device_id` cookie identifies the workstation; the selection itself lives server-side.
 
 **Tech Stack:** Flask 3.1, SQLAlchemy 2.0, SQLite, Alembic (hand-written migrations), pytest, Playwright for designer e2e.
 
@@ -114,13 +114,13 @@ from app.utils import ph_now
 
 
 class PrintLayout(db.Model):
-    __tablename__ = 'print_layouts'
+    __tablename__ = 'named_print_layouts'
     __table_args__ = (
-        db.UniqueConstraint('doc_type', 'scope_id', 'name', name='uq_print_layouts_name'),
+        db.UniqueConstraint('doc_type', 'scope_id', 'name', name='uq_named_print_layouts_name'),
         # Partial unique index: at most one default per scope. Enforced by the
         # database because resolution asks for "the default row" and two of them
         # would resolve by row order.
-        db.Index('uq_print_layouts_one_default', 'doc_type', 'scope_id',
+        db.Index('uq_named_print_layouts_one_default', 'doc_type', 'scope_id',
                  unique=True, sqlite_where=db.text('is_default = 1')),
     )
 
@@ -144,10 +144,10 @@ class PrintLayoutDevicePref(db.Model):
     """Which layout ONE WORKSTATION prints with. Deliberately no user_id: a layout
     belongs to a printer, and a workstation prints to one printer, so the machine's
     choice is the right answer for whoever sits at it."""
-    __tablename__ = 'print_layout_device_prefs'
+    __tablename__ = 'named_print_layout_device_prefs'
     __table_args__ = (
         db.UniqueConstraint('device_id', 'doc_type', 'scope_id',
-                            name='uq_print_layout_device_prefs'),
+                            name='uq_named_print_layout_device_prefs'),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -156,7 +156,7 @@ class PrintLayoutDevicePref(db.Model):
     scope_id = db.Column(db.Integer, nullable=False, default=0)
     # SET NULL, never CASCADE: deleting a layout must strand the workstation on the
     # default, not delete the workstation's row.
-    layout_id = db.Column(db.Integer, db.ForeignKey('print_layouts.id', ondelete='SET NULL'),
+    layout_id = db.Column(db.Integer, db.ForeignKey('named_print_layouts.id', ondelete='SET NULL'),
                           nullable=True)
     label = db.Column(db.String(100), nullable=True)
     updated_at = db.Column(db.DateTime, nullable=False, default=ph_now, onupdate=ph_now)
@@ -190,7 +190,7 @@ depends_on = None
 
 def upgrade():
     op.create_table(
-        'print_layouts',
+        'named_print_layouts',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('doc_type', sa.String(length=40), nullable=False),
         sa.Column('scope_id', sa.Integer(), nullable=False, server_default='0'),
@@ -201,19 +201,19 @@ def upgrade():
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_by_id', sa.Integer(), nullable=True),
         sa.Column('updated_at', sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint('id', name='pk_print_layouts'),
-        sa.ForeignKeyConstraint(['created_by_id'], ['users.id'], name='fk_print_layouts_created_by'),
-        sa.ForeignKeyConstraint(['updated_by_id'], ['users.id'], name='fk_print_layouts_updated_by'),
-        sa.UniqueConstraint('doc_type', 'scope_id', 'name', name='uq_print_layouts_name'),
+        sa.PrimaryKeyConstraint('id', name='pk_named_print_layouts'),
+        sa.ForeignKeyConstraint(['created_by_id'], ['users.id'], name='fk_named_print_layouts_created_by'),
+        sa.ForeignKeyConstraint(['updated_by_id'], ['users.id'], name='fk_named_print_layouts_updated_by'),
+        sa.UniqueConstraint('doc_type', 'scope_id', 'name', name='uq_named_print_layouts_name'),
     )
-    op.create_index('ix_print_layouts_doc_type', 'print_layouts', ['doc_type'])
+    op.create_index('ix_named_print_layouts_doc_type', 'named_print_layouts', ['doc_type'])
     # Partial unique index -- raw DDL because Alembic's create_index has no
     # cross-dialect partial-index argument and this is SQLite only.
-    op.execute('CREATE UNIQUE INDEX uq_print_layouts_one_default '
-               'ON print_layouts (doc_type, scope_id) WHERE is_default = 1')
+    op.execute('CREATE UNIQUE INDEX uq_named_print_layouts_one_default '
+               'ON named_print_layouts (doc_type, scope_id) WHERE is_default = 1')
 
     op.create_table(
-        'print_layout_device_prefs',
+        'named_print_layout_device_prefs',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('device_id', sa.String(length=64), nullable=False),
         sa.Column('doc_type', sa.String(length=40), nullable=False),
@@ -221,24 +221,24 @@ def upgrade():
         sa.Column('layout_id', sa.Integer(), nullable=True),
         sa.Column('label', sa.String(length=100), nullable=True),
         sa.Column('updated_at', sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint('id', name='pk_print_layout_device_prefs'),
-        sa.ForeignKeyConstraint(['layout_id'], ['print_layouts.id'],
-                                name='fk_print_layout_device_prefs_layout',
+        sa.PrimaryKeyConstraint('id', name='pk_named_print_layout_device_prefs'),
+        sa.ForeignKeyConstraint(['layout_id'], ['named_print_layouts.id'],
+                                name='fk_named_print_layout_device_prefs_layout',
                                 ondelete='SET NULL'),
         sa.UniqueConstraint('device_id', 'doc_type', 'scope_id',
-                            name='uq_print_layout_device_prefs'),
+                            name='uq_named_print_layout_device_prefs'),
     )
-    op.create_index('ix_print_layout_device_prefs_device', 'print_layout_device_prefs',
+    op.create_index('ix_named_print_layout_device_prefs_device', 'named_print_layout_device_prefs',
                     ['device_id'])
 
 
 def downgrade():
-    op.drop_index('ix_print_layout_device_prefs_device',
-                  table_name='print_layout_device_prefs')
-    op.drop_table('print_layout_device_prefs')
-    op.execute('DROP INDEX IF EXISTS uq_print_layouts_one_default')
-    op.drop_index('ix_print_layouts_doc_type', table_name='print_layouts')
-    op.drop_table('print_layouts')
+    op.drop_index('ix_named_print_layout_device_prefs_device',
+                  table_name='named_print_layout_device_prefs')
+    op.drop_table('named_print_layout_device_prefs')
+    op.execute('DROP INDEX IF EXISTS uq_named_print_layouts_one_default')
+    op.drop_index('ix_named_print_layouts_doc_type', table_name='named_print_layouts')
+    op.drop_table('named_print_layouts')
 ```
 
 - [ ] **Step 5: Run the tests**
@@ -257,7 +257,7 @@ SQLALCHEMY_DATABASE_URI="sqlite:////tmp/verify-prnlay.db" flask db current   # e
 python -c "
 import sqlite3; c = sqlite3.connect('/tmp/verify-prnlay.db')
 print(c.execute(\"select name from sqlite_master where name like 'print_layout%'\").fetchall())
-print(c.execute(\"select sql from sqlite_master where name='uq_print_layouts_one_default'\").fetchone())
+print(c.execute(\"select sql from sqlite_master where name='uq_named_print_layouts_one_default'\").fetchone())
 "
 ```
 Expected: both tables plus both indexes present; the partial index SQL contains `WHERE is_default = 1`. Then `flask db downgrade` and confirm both tables are gone.
@@ -667,7 +667,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.print_layouts.migr
 `app/print_layouts/migrate.py`:
 
 ```python
-"""Copy existing app_settings layouts into print_layouts rows.
+"""Copy existing app_settings layouts into named_print_layouts rows.
 
 Lives in app/ rather than inside the migration file so it is importable and
 testable. The migration calls it; so does the verification tool.
@@ -717,7 +717,7 @@ Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Write the data migration**
 
-`migrations/versions/prnlay_0002_seed_po_layouts.py` — revision `prnlay_0002`, down_revision `prnlay_0001`. In `upgrade()`, call the helper through a Flask app context; in `downgrade()`, `DELETE FROM print_layouts WHERE doc_type = 'purchase_orders'`. The legacy `app_settings` keys are **not** touched in either direction.
+`migrations/versions/prnlay_0002_seed_po_layouts.py` — revision `prnlay_0002`, down_revision `prnlay_0001`. In `upgrade()`, call the helper through a Flask app context; in `downgrade()`, `DELETE FROM named_print_layouts WHERE doc_type = 'purchase_orders'`. The legacy `app_settings` keys are **not** touched in either direction.
 
 - [ ] **Step 6: Verify against a copy of the REAL database**
 
@@ -937,7 +937,7 @@ def set_device_layout(device_id, doc_type, scope_id, layout_id):
 
 - [ ] **Step 5: Dual-write in `save_layout`**
 
-In `app/common/preprinted_base.py`, `save_layout` gains `layout_id=None`. When `layout_id` is None it targets the scope's default row. It always writes the `print_layouts` row, and writes the legacy `app_settings` key **only when the target row is the default**, with a comment marking the dual-write as transitional and naming the release that removes it.
+In `app/common/preprinted_base.py`, `save_layout` gains `layout_id=None`. When `layout_id` is None it targets the scope's default row. It always writes the `named_print_layouts` row, and writes the legacy `app_settings` key **only when the target row is the default**, with a comment marking the dual-write as transitional and naming the release that removes it.
 
 - [ ] **Step 6: Run the tests**
 

@@ -104,7 +104,7 @@ PO resolves its layout at exactly one call site:
 ## 1. Data model
 
 ```
-print_layouts
+named_print_layouts
   id            INTEGER PK
   doc_type      VARCHAR(40)  NOT NULL   'purchase_orders' (the audit module name)
   scope_id      INTEGER      NOT NULL   branch_id today; cash_account_id when
@@ -119,12 +119,12 @@ print_layouts
   UNIQUE (doc_type, scope_id, name)
   UNIQUE INDEX (doc_type, scope_id) WHERE is_default = 1
 
-print_layout_device_prefs
+named_print_layout_device_prefs
   id            INTEGER PK
   device_id     VARCHAR(64)  NOT NULL   opaque uuid4 from the cas_device_id cookie
   doc_type      VARCHAR(40)  NOT NULL
   scope_id      INTEGER      NOT NULL   0 = unscoped, as above
-  layout_id     INTEGER      FK print_layouts.id  ON DELETE SET NULL
+  layout_id     INTEGER      FK named_print_layouts.id  ON DELETE SET NULL
   label         VARCHAR(100) NULL       optional human name for the workstation
   updated_at    DATETIME     NOT NULL
   UNIQUE (device_id, doc_type, scope_id)
@@ -189,7 +189,7 @@ raise there would leave a branch with no UI to fix itself with.
 
 ### Migration
 
-1. For each existing `po_preprinted_layout*` key, insert one `print_layouts` row:
+1. For each existing `po_preprinted_layout*` key, insert one `named_print_layouts` row:
    - `name` = "Default - CORP" / "Default - EXTRA" from the branch name; the
      unscoped key becomes "Default".
    - `payload` = the stored string **copied raw**.
@@ -315,7 +315,7 @@ synthetic layout.
 ## Files touched
 
 - `app/print_layouts/models.py` — new; both tables.
-- `migrations/versions/<rev>_print_layouts.py` — new; hand-written.
+- `migrations/versions/<rev>_named_print_layouts.py` — new; hand-written.
 - `app/common/preprinted_base.py` — `get_layout`/`save_layout` gain the resolution
   chain and dual-write; signature extended, not changed.
 - `app/purchase_orders/views.py` — pass `device_id` at the print call site; new
@@ -327,7 +327,7 @@ synthetic layout.
 
 ## Rollout
 
-1. Deploy behind the read-through: with no `print_layouts` rows, resolution falls
+1. Deploy behind the read-through: with no `named_print_layouts` rows, resolution falls
    to step 4 and behaviour is exactly as today.
 2. Run the migration. Every workstation still resolves to `is_default`.
 3. **Print one PO and compare it against a sheet printed before the migration.**
