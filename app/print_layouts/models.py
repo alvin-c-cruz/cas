@@ -47,10 +47,17 @@ class PrintLayoutDevicePref(db.Model):
     __table_args__ = (
         db.UniqueConstraint('device_id', 'doc_type', 'scope_id',
                             name='uq_named_print_layout_device_prefs'),
+        # Named explicitly, matching the migration's op.create_index() exactly --
+        # SQLAlchemy's index=True auto-naming would produce
+        # ix_named_print_layout_device_prefs_device_id (note the _id), not the
+        # ix_named_print_layout_device_prefs_device the migration declares. Two
+        # differently-named index objects for the same column would make a later
+        # autogenerate propose dropping one and creating the other as pure churn.
+        db.Index('ix_named_print_layout_device_prefs_device', 'device_id'),
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    device_id = db.Column(db.String(64), nullable=False, index=True)
+    device_id = db.Column(db.String(64), nullable=False)
     doc_type = db.Column(db.String(40), nullable=False)
     scope_id = db.Column(db.Integer, nullable=False, default=0)
     # SET NULL, never CASCADE: deleting a layout must strand the workstation on the

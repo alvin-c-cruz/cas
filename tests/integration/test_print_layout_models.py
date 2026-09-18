@@ -1,5 +1,6 @@
 """The two constraints that carry the design: one name per scope, one default per scope."""
 import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from app import db
 from app.print_layouts.models import PrintLayout
@@ -43,3 +44,24 @@ def test_many_non_defaults_are_fine(db_session):
     db_session.add(_layout('C'))
     db_session.commit()
     assert PrintLayout.query.count() == 3
+
+
+def test_device_id_index_name_matches_the_migration(db_session):
+    """The model must not rely on SQLAlchemy's index=True auto-naming for
+    device_id: that would produce ix_named_print_layout_device_prefs_device_id
+    (note the _id), while the migration's op.create_index() names it
+    ix_named_print_layout_device_prefs_device (no _id). Two differently-named
+    index objects for the same column would make a later `flask db migrate`
+    propose dropping one and creating the other as pure churn.
+
+    This asserts against the actual built schema (sqlite_master), not the
+    model's metadata, because a metadata-only assertion would just restate
+    __table_args__ and could never catch a create_all/migration name mismatch.
+    """
+    rows = db_session.execute(text(
+        "select name from sqlite_master where type = 'index' "
+        "and tbl_name = 'named_print_layout_device_prefs'"
+    )).fetchall()
+    index_names = {row[0] for row in rows}
+    assert 'ix_named_print_layout_device_prefs_device' in index_names
+    assert 'ix_named_print_layout_device_prefs_device_id' not in index_names
