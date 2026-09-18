@@ -177,9 +177,16 @@ every existing caller keeps working and simply gets the default.
 1. this device's pref → that layout row
 2. else the `is_default` row for (doc_type, scope_id)
 3. else the first row for that scope, by id
-4. else legacy `app_settings['po_preprinted_layout:<branch_id>']`
-5. else legacy unscoped `app_settings['po_preprinted_layout']`
-6. else the hardcoded `default_layout`
+4. else the legacy `app_settings` key — `po_preprinted_layout:<branch_id>` when a branch
+   is given, otherwise the unscoped `po_preprinted_layout`
+5. else the hardcoded `default_layout`
+
+Step 4 is **one lookup, not a cascade**: a branch with no key of its own does NOT fall back
+to the unscoped value, it falls straight to the defaults. That is pre-existing behaviour
+(`_layout_key` in `preprinted_base.py`) and this feature preserves it deliberately. An
+earlier draft of this document described a branch-then-unscoped cascade; that was wrong, and
+building it would have silently changed what some branch prints — the one thing this feature
+must not do.
 
 Never a hard failure, at any step. Steps 4–5 are the read-through that keeps the
 migration reversible. The result is passed through the existing
