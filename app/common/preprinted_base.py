@@ -557,12 +557,59 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
             # the reason given above.
             return sanitize_layout(copy.deepcopy(default_layout))
 
-    def save_layout(raw, username, branch_id=None):
-        """Sanitize, persist (per branch), audit, and return the clean layout."""
+    def save_layout(raw, username, branch_id=None, layout_id=None):
+        """Sanitize, persist (per branch), audit, and return the clean layout.
+
+        `layout_id`, when given, is the specific `named_print_layouts` row this
+        save targets (Task 5's save-as/rename write path -- PO/PR/RR only, the
+        three modules resolved through `app.print_layouts.service`). Omitted (the
+        shape every pre-existing caller across all eleven pre-printed modules
+        still uses), the save targets the scope's DEFAULT named layout, matching
+        the order `get_layout` already resolves in.
+
+        TRANSITIONAL dual-write: the legacy `app_settings` key
+        (`<setting_key>[:branch_id]`) is the only store older code, and any
+        pre-Task-5 print request, still reads -- `get_layout` falls back to it,
+        and it is what a rollback would read from. It is kept in lock-step ONLY
+        when the row being saved IS the scope's default; a non-default named
+        layout has no legacy representation to write into, and writing one would
+        make the legacy key disagree with whichever layout the workstation
+        actually resolves to. Remove this block -- and the `_layout_key`/
+        `AppSettings` read+write in this function entirely -- in the release that
+        drops the legacy `<key>[:branch_id]` settings rows (the same release
+        `app.print_layouts.migrate.seed_from_app_settings` stops being needed).
+        """
+        from app import db
+        from app.print_layouts.models import PrintLayout
+        from app.print_layouts import service as layout_service
+
         clean = sanitize_layout(raw)
         key = _layout_key(branch_id)
+        scope_id = branch_id or 0
+
+        target_row = None
+        try:
+            if layout_id is not None:
+                target_row = db.session.get(PrintLayout, layout_id)
+            else:
+                target_row = layout_service.default_layout_row(doc_type, scope_id)
+            if target_row is not None:
+                target_row.payload = json.dumps(clean)
+                db.session.commit()
+        except Exception:  # noqa: BLE001 -- named_print_layouts table may not
+            # exist yet (pre-migration DB), matching get_layout's own guard above.
+            db.session.rollback()
+            target_row = None
+
+        # layout_id is None -> the implicit target IS the scope default, even when
+        # no named_print_layouts row exists for it yet (e.g. PR/RR, not yet
+        # migrated to named layouts in this database) -- that is the pre-Task-5
+        # behaviour this branch preserves untouched.
+        is_default_target = layout_id is None or (target_row is not None and target_row.is_default)
         old = AppSettings.get_setting(key)
-        AppSettings.set_setting(key, json.dumps(clean), updated_by=username)
+        if is_default_target:
+            AppSettings.set_setting(key, json.dumps(clean), updated_by=username)
+
         log_audit(module=audit_module, action='update', record_id=None,
                   record_identifier=audit_identifier,
                   old_values={'layout': old, 'branch_id': branch_id},

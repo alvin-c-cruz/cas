@@ -152,6 +152,22 @@ class User(UserMixin, db.Model):
         """
         return self.role in ('admin', 'chief_accountant', 'accountant', 'staff')
 
+    @property
+    def can_delete_print_layout(self):
+        """Who may DELETE a named print layout. Narrower than editing one.
+
+        Editing a layout changes one printer's alignment; deleting one strands
+        every workstation pointing at it, which is why this is the only layout
+        action restricted beyond `can_edit_print_layout`. The fallback is safe --
+        a stranded workstation resolves to the scope default -- but it is silent,
+        and a purchaser discovers it on paper.
+
+        A WHITELIST, for the same reason as can_edit_print_layout: an
+        unrecognised, new or blank role must fail closed rather than inherit the
+        ability by not being named.
+        """
+        return self.role in ('admin', 'chief_accountant')
+
     def has_book_access(self, book_name):
         """Check if user has access to a specific book."""
         # Admins and Chief Accountants have access to all books
