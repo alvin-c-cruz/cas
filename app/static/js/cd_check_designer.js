@@ -175,6 +175,30 @@
       d.style.width = pitch + 'px';
     });
   }
+  // A boxed run's digits cover its entire box, and being absolutely positioned they
+  // leave the container 0px tall -- so there is nowhere left to grab the FIELD. Give
+  // the run a grip bar above the digits and let that be the one gesture that moves the
+  // whole thing. Injected here, never server-rendered: it is edit chrome and must not
+  // print on a cheque, nor exist for staff, who never load this file.
+  function ensureRunGrips() {
+    canvas.querySelectorAll('.pp-boxed').forEach((el) => {
+      if (el.querySelector('.pp-boxed-grip')) return;
+      const g = document.createElement('div');
+      g.className = 'pp-boxed-grip screen-only';
+      g.title = 'Move the whole date';
+      el.appendChild(g);
+    });
+    placeRunGrips();
+  }
+  // The grip rides above the digits, which leaves nothing to grab once the run is
+  // within its own height of the canvas top -- one drag is enough to get there. Flip
+  // it underneath in that band.
+  const GRIP_ROOM = 12;
+  function placeRunGrips() {
+    canvas.querySelectorAll('.pp-boxed').forEach((el) => {
+      el.classList.toggle('pp-grip-below', (parseInt(el.style.top) || 0) < GRIP_ROOM);
+    });
+  }
   function buildFieldControls() {
     if (!fieldStrip || fieldStrip.dataset.built) return;
     fieldStrip.appendChild(stripHeading('Fields:'));
@@ -254,6 +278,7 @@
   function setEditing(on) {
     editing = on;
     canvas.classList.toggle('pp-editing', editing);
+    if (editing) ensureRunGrips();
     saveBtn.style.display = editing ? '' : 'none';
     addTextBtn.style.display = editing ? '' : 'none';
     if (fontSel) fontSel.style.display = editing ? '' : 'none';
@@ -296,6 +321,18 @@
       e.preventDefault();
       return;
     }
+    // The run's grip: reuses the ordinary field drag, so the whole run moves in BOTH
+    // axes under the same clamps as any other field.
+    const grip = e.target.closest('.pp-boxed-grip');
+    if (grip) {
+      const host = grip.closest('.pp-el');
+      selectEl(host);
+      const hr = host.getBoundingClientRect();
+      drag = { el: host, dx: e.clientX - hr.left, dy: e.clientY - hr.top, c };
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
     // A boxed date's digit: grabbed BEFORE its parent .pp-el, so a digit drag never
     // falls through to dragging the whole run.
     const digit = e.target.closest('.pp-digit');
@@ -303,8 +340,7 @@
       const host = digit.closest('.pp-el');
       selectEl(host);                             // the toolbar still acts on the field
       const r = digit.getBoundingClientRect();
-      digitDrag = { digit, host, dx: e.clientX - r.left,
-                    hostTop: parseInt(host.style.top) || 0, startY: e.clientY };
+      digitDrag = { digit, host, dx: e.clientX - r.left };
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -332,9 +368,9 @@
       return;
     }
     if (digitDrag) {
-      // Same split as a .pp-col: the HORIZONTAL component moves this digit on its own
-      // x, the VERTICAL component moves the whole date field, so every digit keeps its
-      // x AND its baseline. A digit never gets a `top` of its own.
+      // HORIZONTAL ONLY. The vertical component is ignored: the grip moves the field,
+      // so one gesture does one job and a diagonal drag can no longer shift two things
+      // at once. A digit never gets a `top`, so the run stays on its baseline.
       const d = digitDrag;
       const hostRect = d.host.getBoundingClientRect();
       const pitch = parseInt(d.host.dataset.pitch) || 24;
@@ -344,9 +380,6 @@
       const maxLeft = Math.max(0, canvas.clientWidth - (parseInt(d.host.style.left) || 0) - pitch);
       const x = Math.max(0, Math.min(maxLeft, Math.round(e.clientX - hostRect.left - d.dx)));
       d.digit.style.left = x + 'px';
-      const y = Math.max(0, Math.min(canvas.clientHeight,
-                                     Math.round(d.hostTop + (e.clientY - d.startY))));
-      d.host.style.top = y + 'px';
       return;
     }
     if (!drag) {
@@ -364,7 +397,7 @@
     drag.el.style.top = y + 'px';
   });
 
-  function endDrag() { drag = null; colDrag = null; colResize = null; digitDrag = null; positionBar(); }
+  function endDrag() { drag = null; colDrag = null; colResize = null; digitDrag = null; placeRunGrips(); positionBar(); }
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
 

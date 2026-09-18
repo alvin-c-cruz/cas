@@ -5,10 +5,10 @@ Drives the real app/static/js/cd_check_designer.js against a static stand-in pag
 test_preprinted_designer_shared.py drives the shared designer. HTTP rather than file://
 so the save POST is same-origin and can be intercepted with `page.route`.
 
-The behaviour under test, which mirrors the .pp-col idiom already in that file: a
-HORIZONTAL drag on a digit moves that digit alone, a VERTICAL drag moves the whole date
-field with every digit keeping its x. Digits never carry their own y -- the run cannot
-leave its baseline -- so there is no modifier key to learn.
+The gestures under test, one job each and no modifier key to learn: dragging a DIGIT
+moves that digit alone and horizontally only, and dragging the run's GRIP -- edit-mode
+chrome above the digits -- moves the whole field in both axes with every digit keeping
+its offset. Digits never carry their own y, so the run cannot leave its baseline.
 """
 import functools
 import http.server
@@ -145,24 +145,6 @@ def test_digit_clamps_so_its_cell_stays_on_the_canvas(designer):
     assert _lefts(designer)[6] == CANVAS_W - DATE_X - PITCH
 
 
-# --- vertical drag moves the WHOLE run ------------------------------------------
-
-def test_vertical_drag_on_a_digit_moves_the_whole_field(designer):
-    lefts_before = _lefts(designer)
-    _drag(designer, _digit(designer, 4), 0, 60)
-    x, y = _field_left_top(designer)
-    assert x == DATE_X and y == DATE_Y + 60
-    assert _lefts(designer) == lefts_before, 'a vertical drag must not shuffle the digits'
-
-
-def test_a_diagonal_drag_splits_the_two_axes(designer):
-    """The .pp-col idiom, and the whole reason no modifier key is needed: one gesture,
-    the horizontal part moves the digit, the vertical part moves the run it belongs to."""
-    _drag(designer, _digit(designer, 4), 40, 60)
-    assert _field_left_top(designer) == [DATE_X, DATE_Y + 60]   # field: y only
-    assert _lefts(designer) == [0, 24, 48, 72, 136, 120, 144, 168]   # digit 4: x only
-
-
 # --- pitch re-spreads -------------------------------------------------------------
 
 def test_editing_pitch_respreads_every_digit_evenly(designer):
@@ -207,3 +189,94 @@ def test_digits_do_not_move_outside_edit_mode(page, static_server):
     before = _lefts(page)
     _drag(page, _digit(page, 2), 40, 0)
     assert _lefts(page) == before
+
+
+# --- the whole run moves by its grip ---------------------------------------------
+
+def _grip(page):
+    return page.locator('[data-el="check_date"] .pp-boxed-grip')
+
+
+def test_the_boxed_container_is_a_real_hit_box(designer):
+    """REGRESSION. Absolutely positioning the digits collapsed the container to 200x0:
+    it kept its width but lost all height, so the date field had no grabbable area at
+    all and could only be moved by the vertical-drag-on-a-digit gesture. Shipped to
+    production 2026-09-18. An explicit width alone is not a hit box -- assert the box."""
+    box = designer.locator('[data-el="check_date"]').bounding_box()
+    assert box['width'] == FIELD_W
+    assert box['height'] > 0, 'container collapsed to zero height -- nothing to grab'
+
+
+def test_the_grip_exists_only_in_edit_mode(page, static_server):
+    page.set_viewport_size({'width': 1280, 'height': 1200})
+    page.goto(static_server + '/tests/e2e/_cd_check_designer_harness.html')
+    assert not _grip(page).is_visible(), 'the grip is edit chrome; it must not show otherwise'
+    page.click('#editLayoutBtn')
+    assert _grip(page).is_visible()
+    page.click('#editLayoutBtn')                      # Exit Edit
+    assert not _grip(page).is_visible()
+
+
+def test_dragging_the_grip_moves_the_whole_run_horizontally(designer):
+    lefts_before = _lefts(designer)
+    _drag(designer, _grip(designer), 70, 0)
+    x, y = _field_left_top(designer)
+    assert x == DATE_X + 70 and y == DATE_Y
+    assert _lefts(designer) == lefts_before, 'digits keep their offsets when the run moves'
+
+
+def test_dragging_the_grip_moves_the_run_in_both_axes(designer):
+    """The grip is the ONE gesture that moves the field, so it must carry y as well --
+    otherwise nothing can move the run vertically once the digit coupling is gone."""
+    _drag(designer, _grip(designer), 40, 50)
+    assert _field_left_top(designer) == [DATE_X + 40, DATE_Y + 50]
+
+
+def test_a_hand_nudged_run_keeps_its_shape_when_moved(designer):
+    """Registration workflow: nudge the groups to match the pre-printed boxes, then
+    slide the whole run onto them. The second step must not undo the first."""
+    _drag(designer, _digit(designer, 2), 22, 0)       # open a gap before DD
+    _drag(designer, _digit(designer, 3), 22, 0)
+    shaped = _lefts(designer)
+    assert shaped[2] == 70 and shaped[3] == 94
+    _drag(designer, _grip(designer), -60, 0)
+    assert _lefts(designer) == shaped
+    assert _field_left_top(designer)[0] == DATE_X - 60
+
+
+def test_the_grip_is_not_serialized_as_a_digit(designer):
+    captured = _intercept_save(designer)
+    _drag(designer, _grip(designer), 30, 0)
+    designer.click('#saveLayoutBtn')
+    designer.wait_for_function("() => document.getElementById('layoutSavedFlag') !== null")
+    sent = json.loads(captured['body'])['fields']['check_date']
+    assert sent['digitOffsets'] == [0, 24, 48, 72, 96, 120, 144, 168]   # 8, not 9
+    assert sent['x'] == DATE_X + 30
+
+
+# --- the digit gesture is now purely horizontal ------------------------------------
+
+def test_a_vertical_drag_on_a_digit_no_longer_moves_the_run(designer):
+    """Superseded by the grip. With one gesture per job, a diagonal drag on a digit can
+    no longer silently move two things at once."""
+    _drag(designer, _digit(designer, 4), 0, 60)
+    assert _field_left_top(designer) == [DATE_X, DATE_Y]
+
+
+def test_a_diagonal_drag_on_a_digit_moves_only_that_digit_sideways(designer):
+    _drag(designer, _digit(designer, 4), 40, 60)
+    assert _field_left_top(designer) == [DATE_X, DATE_Y]
+    assert _lefts(designer) == [0, 24, 48, 72, 136, 120, 144, 168]
+    assert _tops(designer) == [''] * 8
+
+def test_the_grip_stays_reachable_when_the_run_is_at_the_canvas_top(designer):
+    """The grip sits ABOVE the digits, so slamming the run to y=0 would push the grip off
+    the canvas and strand the field with nothing to grab -- the same trap the zero-height
+    container created, reachable with one drag. It must flip below the run instead."""
+    _drag(designer, _grip(designer), 0, -DATE_Y - 40)          # slam it to the top
+    assert _field_left_top(designer)[1] == 0
+    grip_box = _grip(designer).bounding_box()
+    canvas_box = designer.locator('#ppCanvas').bounding_box()
+    assert grip_box['y'] >= canvas_box['y'], 'the grip escaped above the canvas'
+    _drag(designer, _grip(designer), 35, 0)                    # and still drags the run
+    assert _field_left_top(designer)[0] == DATE_X + 35

@@ -383,3 +383,18 @@ class TestDateDigitOffsets:
         date_div = body[body.index('data-el="check_date"'):]
         date_div = date_div[:date_div.index('>')]
         assert 'width:180px' in date_div
+
+    def test_the_run_grip_is_never_served_in_the_page(self, client, db_session, admin_user, main_branch):
+        """The grip that moves the whole run is edit-mode chrome INJECTED BY THE DESIGNER,
+        never rendered server-side. A grip in the markup would print onto the physical
+        check -- and would print for staff, who never load the designer at all."""
+        from app.cash_disbursements.check_layout import save_layout
+        cdv = _check_cdv(db_session, main_branch)
+        save_layout({'fields': {'check_date': {'boxed': True}}}, 'admin', account_id=cdv._cash_acct_id)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        assert 'class="pp-digit"' in body              # the run itself IS rendered
+        # Scoped to the APPLIED attribute, never the bare class name: the page's inline
+        # <style> block styles .pp-boxed-grip, so `'pp-boxed-grip' not in body` can never
+        # fail and would be a test that only looks like one.
+        assert 'class="pp-boxed-grip' not in body      # its grip is not
