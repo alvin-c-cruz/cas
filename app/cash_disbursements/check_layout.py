@@ -13,7 +13,9 @@ Two things diverge from the voucher clones (see plans/2026-07-07-cdv-check-write
   (The voucher clones' fields have no width.)
 - **Per-field print options.** `stars` (none/left/right/both) brackets an amount field with
   protective asterisks (anti-alteration); `boxed`+`pitch` lay the date out one digit per
-  cell so each lands in a pre-printed date box. Both default OFF.
+  cell so each lands in a pre-printed date box, and `digitOffsets` then places those
+  cells individually (horizontally) for stock whose boxes are grouped rather than evenly
+  spaced. All default OFF/empty.
 
 The check prints via HTML @page + window.print() on the per-CDV page (same mechanics as the
 pre-printed vouchers); this module is only the layout schema/persistence.
@@ -34,6 +36,9 @@ FONT_MIN, FONT_MAX = 6, 72
 WIDTH_MIN, WIDTH_MAX = 10, 912
 PITCH_MIN, PITCH_MAX = 6, 120          # per-digit cell pitch (px) for a boxed date
 STARS_MODES = ('none', 'left', 'right', 'both')
+# Longest digit run any DATE_FORMATS pattern can produce (mdy_dash/us/iso all give 8);
+# caps the per-digit offset list so a crafted layout can't carry an unbounded array.
+MAX_DATE_DIGITS = 8
 STAR_RUN = '***'                        # protective asterisk run bracketing an amount
 
 FONT_GROUPS = [
@@ -102,7 +107,7 @@ DEFAULT_CHECK_LAYOUT = {
     'fields': {
         'payee':           {'x': 120, 'y': 180, 'fontSize': 11, 'bold': False, 'width': 380},
         'check_date':      {'x': 640, 'y': 90,  'fontSize': 11, 'bold': False, 'width': 160,
-                            'boxed': False, 'pitch': 24},
+                            'boxed': False, 'pitch': 24, 'digitOffsets': []},
         'amount_figures':  {'x': 680, 'y': 180, 'fontSize': 12, 'bold': True,  'width': 160,
                             'stars': 'none'},
         'amount_in_words': {'x': 80,  'y': 232, 'fontSize': 11, 'bold': False, 'width': 740,
@@ -122,9 +127,29 @@ def _clamp(value, lo, hi, fallback):
     return max(lo, min(hi, n))
 
 
+def _clean_digit_offsets(raw, pitch):
+    """Per-digit x offsets for a boxed date, measured from the date field's own x.
+
+    `[]` means "space the digits evenly at `pitch`" -- the behaviour before per-digit
+    placement, and what every layout saved before it still carries, so an empty list is
+    never an error. Anything that is not a list degrades to that.
+
+    An unparseable ENTRY falls back to its own even-pitch position rather than to 0, so a
+    single bad value can never stack two digits in the same cell. The fallback is inside
+    the clamp range by construction: (MAX_DATE_DIGITS - 1) * PITCH_MAX < CANVAS_W - SAFE_MARGIN.
+    """
+    if not isinstance(raw, list):
+        return []
+    return [_clamp(v, 0, CANVAS_W - SAFE_MARGIN, i * pitch)
+            for i, v in enumerate(raw[:MAX_DATE_DIGITS])]
+
+
 def _clean_box(raw, default):
     raw = raw if isinstance(raw, dict) else {}
     stars = raw.get('stars', default.get('stars', 'none'))
+    # Resolved before the dict literal: a bad digit offset falls back to its even-pitch
+    # position, which needs the CLEAN pitch, not the raw one.
+    pitch = _clamp(raw.get('pitch'), PITCH_MIN, PITCH_MAX, default.get('pitch', 24))
     return {
         'x': _clamp(raw.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, default['x']),
         'y': _clamp(raw.get('y'), 0, CANVAS_H, default['y']),
@@ -136,7 +161,10 @@ def _clean_box(raw, default):
         'stars': stars if stars in STARS_MODES else 'none',
         # Boxed date: one digit per cell at `pitch` px (only honored for check_date).
         'boxed': bool(raw.get('boxed', default.get('boxed', False))),
-        'pitch': _clamp(raw.get('pitch'), PITCH_MIN, PITCH_MAX, default.get('pitch', 24)),
+        'pitch': pitch,
+        # Per-digit horizontal placement inside that boxed run (only honored for check_date).
+        'digitOffsets': _clean_digit_offsets(
+            raw.get('digitOffsets', default.get('digitOffsets', [])), pitch),
     }
 
 

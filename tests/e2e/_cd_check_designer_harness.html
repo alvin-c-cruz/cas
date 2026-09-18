@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="csrf-token" content="harness-csrf-token">
+<title>CDV check designer harness</title>
+<!--
+  NOT a product page. A standalone stand-in for
+  app/cash_disbursements/templates/cash_disbursements/print_check.html, used by
+  tests/e2e/test_cd_check_designer_digits.py to drive app/static/js/cd_check_designer.js
+  against a real browser without booting Flask.
+
+  cd_check_designer.js is an IIFE with no init function -- it wires itself on load and
+  bails unless #ppCanvas and #editLayoutBtn both exist -- so the script tag sits at the
+  end of <body>, exactly where the real template puts it.
+
+  The markup mirrors what print_check.html renders for a BOXED date: a .pp-boxed field
+  with an explicit width, carrying data-boxed/data-pitch, whose digits are absolutely
+  positioned .pp-digit spans on their own left. The save endpoint is a made-up path on
+  the canvas's data-save-url so the POST can be intercepted.
+
+  The .pp-el / .pp-digit rules below are copied from print_check.html's <style> block;
+  edit-mode chrome comes from the real stylesheet.
+-->
+<link rel="stylesheet" href="/app/static/css/cd_check_designer.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Courier New", Courier, monospace; color: #111; background: #eee; }
+  .pp-canvas { position: relative; margin: 8px auto; background: #fff; }
+  .pp-el { position: absolute; white-space: nowrap; }
+  .pp-canvas.pp-editing .pp-el { outline: 1px dashed #2e7d32; cursor: move; }
+  .pp-canvas.pp-editing .pp-digit { outline: 1px dotted #2e7d32; cursor: ew-resize; }
+  .pp-field-hidden { display: none; }
+  .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
+  .pp-col-controls { max-width: 912px; margin: 8px auto 0; display: none; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+  .pp-col-controls.pp-show { display: flex; }
+  .pp-col-controls label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+  .pp-toolbar { max-width: 912px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 4px 10px; font-size: 13px; cursor: pointer; }
+</style>
+<style id="ppPageStyle">@page { size: 9.5in 10.5in; margin: 0; }</style>
+</head>
+<body data-can-edit="true" data-paper="continuous">
+
+<div class="pp-toolbar screen-only">
+  <button type="button" class="btn btn-print">Print</button>
+  <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
+  <select id="ppPaper" class="screen-only" style="display:none;">
+    <option value="continuous" data-w="912" data-h="1008" data-css="9.5in 10.5in" selected>9.5 x 10.5 continuous paper</option>
+    <option value="letter" data-w="816" data-h="1056" data-css="8.5in 11in">Letter 8.5 x 11</option>
+  </select>
+  <select id="ppFontFamily" class="screen-only" style="display:none;">
+    <option value="&quot;Courier New&quot;, Courier, monospace" selected>Courier New</option>
+    <option value="Arial, sans-serif">Arial</option>
+  </select>
+  <select id="ppDateFormat" class="screen-only" style="display:none;" title="Date format">
+    <option value="mdy_dash" selected>06-17-2026</option>
+    <option value="full">June 17, 2026</option>
+  </select>
+</div>
+
+<div id="ppFieldControls" class="pp-col-controls screen-only"></div>
+
+<div class="pp-canvas" id="ppCanvas"
+     data-save-url="/cd-check-test-save"
+     style="width:912px;height:1008px;">
+
+  <div class="pp-el" data-el="payee" data-label="Payee" data-stars="none" data-boxed="" data-pitch="24"
+       style="left:120px;top:180px;width:380px;font-size:11px;font-weight:normal;">Meralco</div>
+
+  <!-- The boxed date: 8 cells for 06-17-2026, evenly spaced at pitch 24 to start. -->
+  <div class="pp-el pp-boxed" data-el="check_date" data-label="Date" data-stars="none" data-boxed="1" data-pitch="24"
+       style="left:640px;top:90px;width:200px;font-size:11px;font-weight:normal;"><span class="pp-digit" style="position:absolute;left:0px;width:24px;text-align:center;">0</span><span class="pp-digit" style="position:absolute;left:24px;width:24px;text-align:center;">6</span><span class="pp-digit" style="position:absolute;left:48px;width:24px;text-align:center;">1</span><span class="pp-digit" style="position:absolute;left:72px;width:24px;text-align:center;">7</span><span class="pp-digit" style="position:absolute;left:96px;width:24px;text-align:center;">2</span><span class="pp-digit" style="position:absolute;left:120px;width:24px;text-align:center;">0</span><span class="pp-digit" style="position:absolute;left:144px;width:24px;text-align:center;">2</span><span class="pp-digit" style="position:absolute;left:168px;width:24px;text-align:center;">6</span></div>
+
+  <div class="pp-el" data-el="amount_figures" data-label="Amount (Figures)" data-stars="none" data-boxed="" data-pitch="24"
+       style="left:680px;top:180px;width:160px;font-size:12px;font-weight:bold;">5,550.00</div>
+
+  <div class="pp-el" data-el="amount_in_words" data-label="Amount in Words" data-stars="none" data-boxed="" data-pitch="24"
+       style="left:80px;top:232px;width:740px;font-size:11px;font-weight:normal;">FIVE THOUSAND FIVE HUNDRED FIFTY PESOS ONLY</div>
+
+  <div class="pp-el" data-el="memo" data-label="Memo" data-stars="none" data-boxed="" data-pitch="24"
+       style="left:120px;top:320px;width:300px;font-size:9px;font-weight:normal;">July billing</div>
+</div>
+
+<script src="/app/static/js/cd_check_designer.js"></script>
+</body>
+</html>
