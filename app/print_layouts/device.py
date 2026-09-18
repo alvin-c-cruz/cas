@@ -29,7 +29,17 @@ def new_device_id():
 
 
 def attach_device_cookie(response):
-    """Issue an id to a workstation that has none. Registered as an after_request."""
+    """Issue an id to a workstation that has none. Registered as an after_request.
+
+    Only on HTML responses. A page load produces exactly one HTML response but many
+    concurrent static-asset/XHR requests; proposing an id from each of those races the
+    browser's cookie round-trip and can hand a fresh device a different id than the one
+    the page itself gets, which would orphan Task 5's per-device preference row against
+    an id nobody ever sees again. Restricting to text/html means at most one response per
+    page load can ever propose an id.
+    """
+    if response.mimetype != 'text/html':
+        return response
     if current_device_id() is not None:
         return response
     if request.cookies.get(DEVICE_COOKIE) is not None:
