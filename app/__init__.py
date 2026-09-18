@@ -269,6 +269,7 @@ def create_app(config_name=None):
     from app.units_of_measure.models import UnitOfMeasure
     from app.amendments.models import DocumentRevision  # noqa: F401
     from app.attachments.models import DocumentAttachment  # noqa: F401
+    from app.print_layouts.models import PrintLayout, PrintLayoutDevicePref  # noqa: F401
     from app.product_categories.models import ProductCategory
     from app.products.models import Product
     from app.expense_allocation_rules.models import ExpenseAllocationRule
