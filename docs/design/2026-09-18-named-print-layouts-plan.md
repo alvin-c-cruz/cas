@@ -22,6 +22,8 @@
 - **Test markers must be registered** in `pytest.ini`. Use the existing `purchase_orders` marker; do not invent one.
 - `scope_id` is `NOT NULL`, `0` meaning unscoped. Never nullable — SQLite treats NULLs as distinct in UNIQUE.
 - `doc_type` for this build is exactly `'purchase_orders'` (matches the audit module name).
+- **Werkzeug is 3.1.3, Flask 3.1.0.** The test client's cookie API is `client.set_cookie(key, value)` and `client.get_cookie(key) -> Cookie | None`. `client.cookie_jar` does NOT exist (removed in Werkzeug 2.3) and `set_cookie` no longer takes a positional domain. Verified in this worktree, not assumed.
+- `AppSettings` lives at `app/settings.py` — `from app.settings import AppSettings`. There is no `app/settings/models.py`.
 
 ---
 
@@ -294,14 +296,14 @@ pytestmark = [pytest.mark.integration, pytest.mark.purchase_orders]
 def test_a_first_visit_is_issued_a_device_id(client):
     resp = client.get('/login')
     assert resp.status_code == 200
-    assert any(c.key == DEVICE_COOKIE for c in client.cookie_jar), 'no device cookie set'
+    assert client.get_cookie(DEVICE_COOKIE) is not None, 'no device cookie set'
 
 
 def test_the_device_id_is_stable_across_requests(client):
     client.get('/login')
-    first = next(c.value for c in client.cookie_jar if c.key == DEVICE_COOKIE)
+    first = client.get_cookie(DEVICE_COOKIE).value
     client.get('/login')
-    second = next(c.value for c in client.cookie_jar if c.key == DEVICE_COOKIE)
+    second = client.get_cookie(DEVICE_COOKIE).value
     assert first == second, 'a new id per request would make the pref unfindable'
 
 
@@ -1027,7 +1029,7 @@ def test_the_selection_survives_logout(client, db_session, main_branch):
     _mk('Default', is_default=True)
     other = _mk('Other', marker='other')
     user = _user(db_session, main_branch, 'p1', 'staff')
-    client.set_cookie('localhost', DEVICE_COOKIE, 'workstation-A')
+    client.set_cookie(DEVICE_COOKIE, 'workstation-A')
     _login(client, user, main_branch)
     client.post('/purchase-orders/print-layout/select',
                 json={'layout_id': other.id, 'branch_id': SCOPE})
@@ -1046,7 +1048,7 @@ def test_the_selection_belongs_to_the_desk_not_the_person(client, db_session, ma
     angilyn = _user(db_session, main_branch, 'angilyn', 'staff')
     newhire = _user(db_session, main_branch, 'newhire', 'staff')
 
-    client.set_cookie('localhost', DEVICE_COOKIE, 'workstation-A')
+    client.set_cookie(DEVICE_COOKIE, 'workstation-A')
     _login(client, angilyn, main_branch)
     client.post('/purchase-orders/print-layout/select',
                 json={'layout_id': other.id, 'branch_id': SCOPE})

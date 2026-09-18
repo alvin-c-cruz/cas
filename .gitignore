@@ -106,3 +106,6 @@ nul
 # leave these outside the intended sdd/ dir, so keep both patterns)
 *task-*-report.md
 sdd/
+
+# SDD scratch workspace (ledger, briefs, review packages)
+.superpowers/
