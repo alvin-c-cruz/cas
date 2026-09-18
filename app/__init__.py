@@ -761,6 +761,9 @@ def create_app(config_name=None):
 
         return response
 
+    from app.print_layouts.device import attach_device_cookie
+    app.after_request(attach_device_cookie)
+
     # 429 (rate limit) handler — friendly page + audit trail. This is a specific,
     # benign handler and is intentionally kept while the generic error handlers
     # below remain disabled for traceback visibility.
