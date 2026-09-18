@@ -5,7 +5,7 @@ import pytest
 from app import db
 from app.settings import AppSettings
 from app.print_layouts.models import PrintLayout, PrintLayoutDevicePref
-from app.print_layouts.service import resolve_payload
+from app.print_layouts.service import resolve_payload, list_layouts
 from app.purchase_orders.preprinted_layout import get_layout
 
 pytestmark = [pytest.mark.integration, pytest.mark.purchase_orders]
@@ -41,6 +41,16 @@ def test_the_device_pref_beats_the_default(db_session):
     assert json.loads(resolve_payload(DOC, SCOPE, 'dev2'))['marker'] == 'default'
 
 
+def test_is_default_wins_even_when_it_is_not_the_oldest_row(db_session):
+    """Distinguishes 'is_default wins' from 'the oldest row happened to be the
+    default' -- the non-default row is created FIRST (lowest id), the default row
+    SECOND (highest id), so a fall-through straight to id-ascending would return
+    the wrong marker here."""
+    _row('Other', {'marker': 'other'})
+    _row('Default', {'marker': 'default'}, is_default=True)
+    assert json.loads(resolve_payload(DOC, SCOPE, 'dev1'))['marker'] == 'default'
+
+
 def test_a_pref_pointing_at_a_deleted_layout_falls_back(db_session):
     """AC 4. ON DELETE SET NULL leaves the pref row; resolution must not blow up."""
     _row('Default', {'marker': 'default'}, is_default=True)
@@ -67,3 +77,17 @@ def test_a_row_beats_the_legacy_key(db_session):
     row = dict(legacy); row['page'] = {'fontFamily': 'Georgia, serif'}
     _row('Default', row, is_default=True)
     assert get_layout(branch_id=SCOPE)['page']['fontFamily'] == 'Georgia, serif'
+
+
+def test_list_layouts_orders_default_first_then_name_ascending(db_session):
+    """The dropdown order is user-visible (Task 7 renders it straight into the
+    layout picker), so the ordering contract -- is_default first, then name
+    ascending -- must hold for the WHOLE list, not just its first element. Rows
+    are created out of alphabetical order and the default is deliberately NOT
+    alphabetically first, so a mis-sorted tail or a wrong primary sort key would
+    both be caught."""
+    _row('Zebra', {'marker': 'zebra'})
+    _row('Mango', {'marker': 'mango'}, is_default=True)
+    _row('Apple', {'marker': 'apple'})
+    names = [row.name for row in list_layouts(DOC, SCOPE)]
+    assert names == ['Mango', 'Apple', 'Zebra']
