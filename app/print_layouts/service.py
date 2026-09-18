@@ -54,8 +54,15 @@ def create_layout(doc_type, scope_id, name, payload, user):
 
 
 def rename_layout(layout_id, name):
+    """Raises ValueError, same as delete_layout, when layout_id names no row --
+    e.g. deleted by someone else between page load and submit. This function does
+    not audit on its own, so there is no audit row to avoid writing on that path;
+    Task 6's route wiring this up should follow the same rule save_layout does if
+    it later adds one: nothing persisted means nothing recorded."""
     from app import db
     row = db.session.get(PrintLayout, layout_id)
+    if row is None:
+        raise ValueError('That layout no longer exists. Refresh and try again.')
     row.name = name.strip()
     db.session.commit()
     return row

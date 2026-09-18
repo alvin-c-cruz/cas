@@ -562,10 +562,25 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
 
         `layout_id`, when given, is the specific `named_print_layouts` row this
         save targets (Task 5's save-as/rename write path -- PO/PR/RR only, the
-        three modules resolved through `app.print_layouts.service`). Omitted (the
-        shape every pre-existing caller across all eleven pre-printed modules
-        still uses), the save targets the scope's DEFAULT named layout, matching
-        the order `get_layout` already resolves in.
+        three modules resolved through `app.print_layouts.service`). It must name
+        a row in THIS doc_type/scope or the save is refused -- see below. Omitted
+        (the shape every pre-existing caller across all eleven pre-printed
+        modules still uses), the save targets the scope's DEFAULT named layout,
+        matching the order `get_layout` already resolves in, and never raises for
+        a missing row (a scope that has not been migrated to named layouts yet
+        simply has no row to write into -- see the `else` branch below).
+
+        An explicit `layout_id` that names no row (deleted by someone else
+        between page load and submit, or from a different doc_type/scope) raises
+        `ValueError` BEFORE anything is persisted or audited -- deliberately, not
+        the read path's fail-safe-to-defaults behaviour. `get_layout` degrades
+        silently because the print page hosts the designer that would fix a bad
+        layout, so a raise there stops a branch printing at all; a rejected SAVE
+        strands no one, it just declines one submit. And unlike a bare "do
+        nothing", `log_audit` below runs unconditionally on every code path that
+        reaches it -- letting an unknown `layout_id` fall through as a no-op
+        would still write an audit row asserting the save happened, which is a
+        lying audit entry, not a harmless no-op.
 
         TRANSITIONAL dual-write: the legacy `app_settings` key
         (`<setting_key>[:branch_id]`) is the only store older code, and any
@@ -587,25 +602,36 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
         key = _layout_key(branch_id)
         scope_id = branch_id or 0
 
-        target_row = None
-        try:
-            if layout_id is not None:
-                target_row = db.session.get(PrintLayout, layout_id)
-            else:
-                target_row = layout_service.default_layout_row(doc_type, scope_id)
-            if target_row is not None:
-                target_row.payload = json.dumps(clean)
-                db.session.commit()
-        except Exception:  # noqa: BLE001 -- named_print_layouts table may not
-            # exist yet (pre-migration DB), matching get_layout's own guard above.
-            db.session.rollback()
+        if layout_id is not None:
+            # Explicit target: must resolve, in THIS doc_type/scope, or the save
+            # is refused outright -- see the docstring. Nothing has been written
+            # yet at this point (sanitizing is pure), so raising here leaves
+            # storage and the audit log untouched.
+            target_row = db.session.get(PrintLayout, layout_id)
+            if target_row is None or target_row.doc_type != doc_type \
+                    or target_row.scope_id != scope_id:
+                raise ValueError('That layout no longer exists. Refresh and try again.')
+            target_row.payload = json.dumps(clean)
+            db.session.commit()
+        else:
+            # Implicit target: the scope's default. Deliberately fail-safe, NOT
+            # the explicit-id branch's raise -- a scope that has never been
+            # migrated into named_print_layouts (e.g. PR/RR pre-Task-4, or the
+            # table not existing yet on an old DB) has no default row to write
+            # into, and that must remain a legacy-only save exactly as it always
+            # was, not a new error for every pre-existing caller.
             target_row = None
+            try:
+                target_row = layout_service.default_layout_row(doc_type, scope_id)
+                if target_row is not None:
+                    target_row.payload = json.dumps(clean)
+                    db.session.commit()
+            except Exception:  # noqa: BLE001 -- named_print_layouts table may not
+                # exist yet (pre-migration DB), matching get_layout's own guard above.
+                db.session.rollback()
+                target_row = None
 
-        # layout_id is None -> the implicit target IS the scope default, even when
-        # no named_print_layouts row exists for it yet (e.g. PR/RR, not yet
-        # migrated to named layouts in this database) -- that is the pre-Task-5
-        # behaviour this branch preserves untouched.
-        is_default_target = layout_id is None or (target_row is not None and target_row.is_default)
+        is_default_target = layout_id is None or target_row.is_default
         old = AppSettings.get_setting(key)
         if is_default_target:
             AppSettings.set_setting(key, json.dumps(clean), updated_by=username)
