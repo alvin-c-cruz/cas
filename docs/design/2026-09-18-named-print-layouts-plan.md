@@ -354,7 +354,18 @@ def new_device_id():
 
 
 def attach_device_cookie(response):
-    """Issue an id to a workstation that has none. Registered as an after_request."""
+    """Issue an id to a workstation that has none. Registered as an after_request.
+
+    HTML responses only. A page load fires many concurrent requests, and a fresh
+    workstation has no cookie on any of them, so issuing on every response lets each
+    one propose a DIFFERENT uuid -- the browser keeps whichever lands last. Once a
+    layout choice is stored against the id, a churning id orphans that row and the
+    workstation silently reverts to the default, which is the exact failure this
+    feature exists to prevent. One page load is one HTML response, so this makes the
+    id deterministic. It also stops a pointless Set-Cookie on every JSON reply.
+    """
+    if response.mimetype != 'text/html':
+        return response
     if current_device_id() is not None:
         return response
     if request.cookies.get(DEVICE_COOKIE) is not None:
