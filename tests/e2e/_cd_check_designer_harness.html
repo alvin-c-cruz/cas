@@ -30,6 +30,14 @@
   .pp-el { position: absolute; white-space: nowrap; }
   .pp-canvas.pp-editing .pp-el { outline: 1px dashed #2e7d32; cursor: move; }
   .pp-canvas.pp-editing .pp-digit { outline: 1px dotted #2e7d32; cursor: ew-resize; }
+  .pp-boxed { height: 1.3em; }
+  .pp-boxed-grip { display: none; }
+  .pp-canvas.pp-editing .pp-boxed-grip { display: block; position: absolute; left: 0; top: -10px;
+    width: 100%; height: 8px; background: rgba(46,125,50,.35); border: 1px solid #2e7d32;
+    border-radius: 2px; cursor: move; }
+  /* Near the canvas top there is no room above: flip the grip under the run so a
+     field dragged to y=0 never strands itself with nothing to grab. */
+  .pp-canvas.pp-editing .pp-boxed.pp-grip-below .pp-boxed-grip { top: auto; bottom: -10px; }
   .pp-field-hidden { display: none; }
   .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
   .pp-col-controls { max-width: 912px; margin: 8px auto 0; display: none; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
