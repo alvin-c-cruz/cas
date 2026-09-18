@@ -267,3 +267,119 @@ class TestButton:
         _open(client, main_branch)
         body = client.get(f'/cash-disbursements/{cdv.id}').data.decode()
         assert '/print-check' not in body
+
+
+class TestDateDigitOffsets:
+    """Per-digit horizontal placement for the boxed date.
+
+    `pitch` spaces the digits evenly, which only fits stock whose date cells are
+    themselves evenly spaced. Real PCHC stock groups them (MM DD YYYY) with wider gaps
+    between the groups, so each digit carries its own x offset from the date field's
+    origin. Offsets are horizontal ONLY -- every digit shares the field's y, so the run
+    can never be knocked off its baseline. An empty list means "space evenly at pitch",
+    which is the pre-existing behaviour, so no already-saved layout changes.
+    """
+
+    def test_default_is_empty_list(self):
+        from app.cash_disbursements.check_layout import DEFAULT_CHECK_LAYOUT as D, sanitize_layout
+        assert D['fields']['check_date'].get('digitOffsets', []) == []
+        assert sanitize_layout({})['fields']['check_date']['digitOffsets'] == []
+
+    def test_offsets_kept_and_clamped_into_the_canvas(self):
+        from app.cash_disbursements.check_layout import sanitize_layout, CANVAS_W, SAFE_MARGIN
+        out = sanitize_layout({'fields': {'check_date': {'digitOffsets': [0, 30, 9999, -50]}}})
+        off = out['fields']['check_date']['digitOffsets']
+        assert off[:2] == [0, 30]
+        assert off[2] == CANVAS_W - SAFE_MARGIN     # clamped down
+        assert off[3] == 0                          # clamped up; an offset is never negative
+
+    def test_offsets_truncated_to_the_longest_possible_digit_run(self):
+        from datetime import date
+        from app.cash_disbursements.check_layout import (
+            sanitize_layout, MAX_DATE_DIGITS, DATE_FORMATS)
+        longest = max(sum(c.isdigit() for c in date(2026, 7, 8).strftime(f))
+                      for f in DATE_FORMATS.values())
+        assert MAX_DATE_DIGITS == longest == 8
+        out = sanitize_layout({'fields': {'check_date': {'digitOffsets': list(range(0, 400, 20))}}})
+        assert len(out['fields']['check_date']['digitOffsets']) == MAX_DATE_DIGITS
+
+    def test_garbage_offsets_fall_back(self):
+        from app.cash_disbursements.check_layout import sanitize_layout
+        # Not a list at all -> no per-digit placement, back to even pitch.
+        for junk in ('24,48', {'0': 24}, None, 7):
+            out = sanitize_layout({'fields': {'check_date': {'digitOffsets': junk}}})
+            assert out['fields']['check_date']['digitOffsets'] == []
+        # A single unparseable entry falls back to that index's even-pitch position, so
+        # one bad value can never stack two digits on top of each other.
+        out = sanitize_layout({'fields': {'check_date': {'pitch': 30,
+                                                         'digitOffsets': [0, 'x', 80]}}})
+        assert out['fields']['check_date']['digitOffsets'] == [0, 30, 80]
+
+    def test_offsets_survive_a_save_round_trip(self, db_session, admin_user):
+        from app.cash_disbursements.check_layout import save_layout, get_layout
+        save_layout({'fields': {'check_date': {'boxed': True, 'digitOffsets': [0, 26, 70, 96]}}},
+                    admin_user.username, account_id=7)
+        assert get_layout(account_id=7)['fields']['check_date']['digitOffsets'] == [0, 26, 70, 96]
+
+    @staticmethod
+    def _digit_spans(body):
+        """[(style, digit), ...] for the boxed date's cells, in document order."""
+        import re
+        date_div = body[body.index('data-el="check_date"'):]
+        date_div = date_div[:date_div.index('</div>')]
+        return re.findall(r'<span class="pp-digit" style="([^"]*)">(\d)</span>', date_div)
+
+    def test_digits_render_at_their_saved_offsets(self, client, db_session, admin_user, main_branch):
+        from app.cash_disbursements.check_layout import save_layout
+        cdv = _check_cdv(db_session, main_branch)
+        # 07-08-2026 -> 8 digits, grouped MM  DD  YYYY with wider gaps between groups.
+        save_layout({'fields': {'check_date': {'boxed': True, 'pitch': 24,
+                                               'digitOffsets': [0, 24, 70, 94, 140, 164, 188, 212]}}},
+                    'admin', account_id=cdv._cash_acct_id)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        spans = self._digit_spans(body)
+        assert [d for _s, d in spans] == list('07082026')
+        assert [s for s, _d in spans] == [
+            f'position:absolute;left:{x}px;width:24px;text-align:center;'
+            for x in (0, 24, 70, 94, 140, 164, 188, 212)]
+
+    def test_digits_without_offsets_still_space_evenly_at_pitch(self, client, db_session, admin_user, main_branch):
+        from app.cash_disbursements.check_layout import save_layout
+        cdv = _check_cdv(db_session, main_branch)
+        save_layout({'fields': {'check_date': {'boxed': True, 'pitch': 26}}},
+                    'admin', account_id=cdv._cash_acct_id)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        lefts = [s for s, _d in self._digit_spans(body)]
+        assert 'left:0px;' in lefts[0]
+        assert 'left:26px;' in lefts[1] and 'left:52px;' in lefts[2]
+
+    def test_digits_past_the_saved_offsets_fall_back_to_pitch(self, client, db_session, admin_user, main_branch):
+        """A short offset list -- saved under a 6-digit format, then switched to an
+        8-digit one -- must not drop the extra digits or stack them at 0."""
+        from app.cash_disbursements.check_layout import save_layout
+        cdv = _check_cdv(db_session, main_branch)
+        save_layout({'fields': {'check_date': {'boxed': True, 'pitch': 20,
+                                               'digitOffsets': [5, 35, 65]}}},
+                    'admin', account_id=cdv._cash_acct_id)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        lefts = [s for s, _d in self._digit_spans(body)]
+        assert len(lefts) == 8
+        assert 'left:5px;' in lefts[0] and 'left:35px;' in lefts[1] and 'left:65px;' in lefts[2]
+        assert 'left:60px;' in lefts[3] and 'left:140px;' in lefts[7]   # i * pitch
+
+    def test_boxed_container_keeps_an_explicit_width(self, client, db_session, admin_user, main_branch):
+        """The digits are absolutely positioned now, so they no longer size their parent.
+        Without an explicit width the date div collapses to 0px wide and the designer
+        loses the hit-box you grab to move the whole run."""
+        from app.cash_disbursements.check_layout import save_layout
+        cdv = _check_cdv(db_session, main_branch)
+        save_layout({'fields': {'check_date': {'boxed': True, 'width': 180}}},
+                    'admin', account_id=cdv._cash_acct_id)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        date_div = body[body.index('data-el="check_date"'):]
+        date_div = date_div[:date_div.index('>')]
+        assert 'width:180px' in date_div

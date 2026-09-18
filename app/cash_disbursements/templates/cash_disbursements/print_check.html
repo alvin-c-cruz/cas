@@ -17,6 +17,9 @@
   .pp-canvas.pp-editing .pp-el { outline: 1px dashed #2e7d32; cursor: move; }
   .pp-canvas.pp-editing .pp-el:hover { outline: 2px solid #2e7d32; background: rgba(46,125,50,.06); }
   .pp-canvas.pp-editing .pp-el:empty::before { content: attr(data-el); color: #bbb; font-style: italic; }
+  /* A boxed date's digits move horizontally on their own x; ew-resize says so. */
+  .pp-canvas.pp-editing .pp-digit { outline: 1px dotted #2e7d32; cursor: ew-resize; }
+  .pp-canvas.pp-editing .pp-digit:hover { background: rgba(46,125,50,.14); }
   .pp-field-hidden { display: none; }
   .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
   .pp-canvas.pp-editing .pp-text { outline: 1px dotted #1565c0; }
@@ -92,8 +95,15 @@
       wrote that back -- both options wiped. Found on production 2026-09-12. Same class
       of bug as the body font-family; see test_preprinted_font_family_renders. -#}
   {% if key == 'check_date' and f.boxed %}
+  {#- Each digit is absolutely positioned on its OWN x, so a run can straddle the wider
+      gaps between a check's MM / DD / YYYY box groups. `digitOffsets[i]` when saved, else
+      the even `i * pitch` -- which also covers a saved run shorter than today's format,
+      so switching to a longer format never drops or stacks the extra digits. y is NOT
+      per-digit: they all ride the field's top, so the run cannot leave its baseline.
+      The container needs its explicit width here: absolutely-positioned children no
+      longer size it, and a 0px-wide div is a drag hit-box the designer cannot grab. -#}
   <div class="pp-el pp-boxed{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" data-stars="{{ f.stars }}" data-boxed="{{ '1' if f.boxed else '' }}" data-pitch="{{ f.pitch }}"
-       style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{% for ch in date_digits %}<span class="pp-digit" style="display:inline-block;width:{{ f.pitch }}px;text-align:center;">{{ ch }}</span>{% endfor %}</div>
+       style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{% for ch in date_digits %}{% set off = f.digitOffsets[loop.index0] if loop.index0 < f.digitOffsets | length else loop.index0 * f.pitch %}<span class="pp-digit" style="position:absolute;left:{{ off }}px;width:{{ f.pitch }}px;text-align:center;">{{ ch }}</span>{% endfor %}</div>
   {% else %}
   {%- set raw = values[key] -%}
   {%- set lead = star_run if f.stars in ('left', 'both') else '' -%}
@@ -110,7 +120,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=4"></script>
 {% endif %}
 </body>
 </html>

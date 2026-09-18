@@ -165,6 +165,16 @@
     const trail = (m === 'right' || m === 'both') ? STAR_RUN : '';
     el.textContent = lead + el.dataset.base + trail;
   }
+  // Lay a boxed date's digits out evenly at the field's current pitch, clearing every
+  // hand-nudged offset. Wired to the pitch input, which therefore doubles as the reset:
+  // there is no way to end up stuck with a run you have mangled beyond repair.
+  function respreadDigits(el) {
+    const pitch = parseInt(el.dataset.pitch) || 24;
+    el.querySelectorAll('.pp-digit').forEach((d, i) => {
+      d.style.left = (i * pitch) + 'px';
+      d.style.width = pitch + 'px';
+    });
+  }
   function buildFieldControls() {
     if (!fieldStrip || fieldStrip.dataset.built) return;
     fieldStrip.appendChild(stripHeading('Fields:'));
@@ -205,7 +215,10 @@
         pitch.value = parseInt(el.dataset.pitch) || 24;
         pitch.disabled = !bx.checked;
         bx.addEventListener('change', () => { el.dataset.boxed = bx.checked ? '1' : ''; pitch.disabled = !bx.checked; });
-        pitch.addEventListener('input', () => { el.dataset.pitch = String(parseInt(pitch.value) || 24); });
+        pitch.addEventListener('input', () => {
+          el.dataset.pitch = String(parseInt(pitch.value) || 24);
+          respreadDigits(el);
+        });
         label.appendChild(document.createTextNode(' boxed'));
         label.appendChild(bx);
         label.appendChild(pitch);
@@ -262,6 +275,7 @@
   let drag = null;       // moving a .pp-el
   let colDrag = null;    // moving a .pp-col
   let colResize = null;  // resizing a .pp-col width
+  let digitDrag = null;  // moving one .pp-digit of a boxed date
   const EDGE = 8;        // px hot-zone at a column's right edge = resize handle
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -278,6 +292,19 @@
       } else {
         colDrag = { col, dx: e.clientX - r.left, dy: e.clientY - r.top, c };
       }
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+    // A boxed date's digit: grabbed BEFORE its parent .pp-el, so a digit drag never
+    // falls through to dragging the whole run.
+    const digit = e.target.closest('.pp-digit');
+    if (digit) {
+      const host = digit.closest('.pp-el');
+      selectEl(host);                             // the toolbar still acts on the field
+      const r = digit.getBoundingClientRect();
+      digitDrag = { digit, host, dx: e.clientX - r.left,
+                    hostTop: parseInt(host.style.top) || 0, startY: e.clientY };
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -304,6 +331,24 @@
       cols().forEach((c) => { c.style.top = y + 'px'; });    // shared band top -> rows aligned
       return;
     }
+    if (digitDrag) {
+      // Same split as a .pp-col: the HORIZONTAL component moves this digit on its own
+      // x, the VERTICAL component moves the whole date field, so every digit keeps its
+      // x AND its baseline. A digit never gets a `top` of its own.
+      const d = digitDrag;
+      const hostRect = d.host.getBoundingClientRect();
+      const pitch = parseInt(d.host.dataset.pitch) || 24;
+      // Clamped to the CANVAS, not to the field box: the default date field is 160px
+      // wide while eight cells at pitch 24 need 192, so a field-width clamp would pile
+      // the last digits onto the limit with no way to separate them.
+      const maxLeft = Math.max(0, canvas.clientWidth - (parseInt(d.host.style.left) || 0) - pitch);
+      const x = Math.max(0, Math.min(maxLeft, Math.round(e.clientX - hostRect.left - d.dx)));
+      d.digit.style.left = x + 'px';
+      const y = Math.max(0, Math.min(canvas.clientHeight,
+                                     Math.round(d.hostTop + (e.clientY - d.startY))));
+      d.host.style.top = y + 'px';
+      return;
+    }
     if (!drag) {
       // hover cursor hint: resize near the right edge, move elsewhere
       const hov = e.target.closest && e.target.closest('.pp-col');
@@ -319,7 +364,7 @@
     drag.el.style.top = y + 'px';
   });
 
-  function endDrag() { drag = null; colDrag = null; colResize = null; positionBar(); }
+  function endDrag() { drag = null; colDrag = null; colResize = null; digitDrag = null; positionBar(); }
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
 
@@ -339,6 +384,12 @@
         stars: el.dataset.stars || 'none',
         boxed: el.dataset.boxed === '1',
         pitch: parseInt(el.dataset.pitch) || 24,
+        // Per-digit x offsets, read off the cells themselves rather than a shadow copy
+        // in a data-* attribute, so what is saved is always where the digits sit. Only
+        // a boxed field HAS cells; every other field posts [] (= space evenly).
+        digitOffsets: el.dataset.boxed === '1'
+          ? [...el.querySelectorAll('.pp-digit')].map((d) => parseInt(d.style.left) || 0)
+          : [],
       };
     });
     const extras = [...canvas.querySelectorAll('.pp-el[data-extra]')].map((el) => {
