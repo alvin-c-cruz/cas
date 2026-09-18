@@ -433,7 +433,8 @@ def _validate_default_layout(field_keys, d):
     _validate_default_texts(d)
 
 
-def build_layout_api(setting_key, field_keys, default_layout, audit_module, audit_identifier):
+def build_layout_api(setting_key, field_keys, default_layout, audit_module, audit_identifier,
+                      doc_type=None):
     """Return (sanitize_layout, get_layout, save_layout) bound to one document type.
 
     Everything these three do is identical across documents EXCEPT the setting
@@ -483,6 +484,11 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
     Raises ValueError, naming the offending key, if any of that is wrong.
     """
     _validate_default_layout(field_keys, default_layout)
+    # Defaults to audit_module so the eight existing declarations (and the three
+    # new ones that don't pass it) need no edit: doc_type only needs to differ
+    # from audit_module when a module wants a resolution scope distinct from its
+    # audit log name, which none currently do.
+    doc_type = doc_type or audit_module
 
     def sanitize_layout(raw):
         """Return a fully-populated, validated layout built from `raw` over the defaults."""
@@ -517,9 +523,22 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
         """Per-branch setting key; None -> the legacy un-scoped key (back-compat)."""
         return f'{setting_key}:{branch_id}' if branch_id is not None else setting_key
 
-    def get_layout(branch_id=None):
-        """Current sanitized layout for a branch (defaults if unset or corrupt)."""
-        stored = AppSettings.get_setting(_layout_key(branch_id))
+    def get_layout(branch_id=None, device_id=None):
+        """Current sanitized layout (defaults if unset or corrupt).
+
+        Order: this workstation's chosen layout, then the scope's default layout,
+        then the legacy app_settings key, then the declared defaults. Every step is
+        fail-safe: the print page HOSTS the designer, so a raise here would leave a
+        branch with no UI to fix its own layout with.
+        """
+        from app.print_layouts.service import resolve_payload
+        stored = None
+        try:
+            stored = resolve_payload(doc_type, branch_id or 0, device_id)
+        except Exception:  # noqa: BLE001 -- table may not exist pre-migration
+            stored = None
+        if stored is None:
+            stored = AppSettings.get_setting(_layout_key(branch_id))
         if not stored:
             # NOTE this branch sits OUTSIDE the try below on purpose, and is only
             # safe because `_validate_default_layout` has already proven that
