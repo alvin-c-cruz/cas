@@ -42,8 +42,9 @@ def attach_device_cookie(response):
         return response
     if current_device_id() is not None:
         return response
-    if request.cookies.get(DEVICE_COOKIE) is not None:
-        pass   # present but malformed -- reissue
+    # A present-but-malformed cookie (oversized, empty, whitespace-only) is reissued
+    # exactly like an absent one -- current_device_id() already collapsed both cases
+    # to None above, so there's nothing left to branch on here.
     response.set_cookie(
         DEVICE_COOKIE, new_device_id(),
         max_age=DEVICE_COOKIE_MAX_AGE, httponly=True, samesite='Lax',

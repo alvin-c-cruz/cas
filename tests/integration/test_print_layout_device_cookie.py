@@ -1,4 +1,6 @@
 """The workstation is a cookie. Absent or cleared must degrade, never fail."""
+import uuid
+
 import pytest
 from app.print_layouts.device import DEVICE_COOKIE, current_device_id
 
@@ -39,3 +41,44 @@ def test_a_non_html_response_does_not_carry_the_device_cookie(client):
     assert html_resp.mimetype == 'text/html'
     assert client.get_cookie(DEVICE_COOKIE) is not None, \
         'the guard disabled the feature outright -- HTML responses must still get one'
+
+
+def test_an_oversized_cookie_value_is_rejected(app):
+    with app.test_request_context('/', headers={'Cookie': f'{DEVICE_COOKIE}=' + 'x' * 65}):
+        assert current_device_id() is None
+
+
+def test_an_oversized_cookie_is_healed_on_the_next_html_response(client):
+    """A junk cookie must not leave the workstation broken forever -- the next HTML
+    response reissues a fresh, valid id."""
+    junk = 'x' * 65
+    client.set_cookie(DEVICE_COOKIE, junk)
+    resp = client.get('/login')
+    assert resp.status_code == 200
+    healed = client.get_cookie(DEVICE_COOKIE)
+    assert healed is not None
+    assert healed.value != junk
+    assert len(healed.value) <= 64
+
+
+def test_a_whitespace_only_cookie_value_is_rejected(app):
+    with app.test_request_context('/', headers={'Cookie': f'{DEVICE_COOKIE}="   "'}):
+        assert current_device_id() is None
+
+
+def test_a_whitespace_only_cookie_is_healed_on_the_next_html_response(client):
+    client.set_cookie(DEVICE_COOKIE, '   ')
+    resp = client.get('/login')
+    assert resp.status_code == 200
+    healed = client.get_cookie(DEVICE_COOKIE)
+    assert healed is not None
+    assert healed.value.strip() != ''
+    assert len(healed.value) <= 64
+
+
+def test_a_well_formed_device_id_is_accepted_unchanged(app):
+    """Contrast for the two rejection tests above -- a validator that rejected
+    everything would also pass them."""
+    valid = uuid.uuid4().hex
+    with app.test_request_context('/', headers={'Cookie': f'{DEVICE_COOKIE}={valid}'}):
+        assert current_device_id() == valid
