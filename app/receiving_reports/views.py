@@ -1,4 +1,5 @@
-"""Receiving Report views -- goods received against an approved Purchase Order.
+"""Receiving Report views -- goods received against a receivable Purchase Order
+(submitted, approved or partially received -- see RECEIVABLE_PO_STATUSES).
 Buy-side mirror of app/delivery_receipts/views.py. Approving a RR posts a GRNI accrual
 JE (Dr Inventory / Cr GRNI, net of VAT) for tracked-inventory lines via
 app.receiving_reports.stock_posting.post_rr_receipt -- a no-op for untracked lines.
@@ -39,8 +40,19 @@ receiving_reports_bp = Blueprint('receiving_reports', __name__, template_folder=
 
 VALID_RR_STATUSES = {'draft', 'approved', 'billed', 'cancelled'}
 
-# Approved POs are receivable; 'partially_received' too once that transition ships.
-RECEIVABLE_PO_STATUSES = ('approved', 'partially_received')
+# Which orders a receipt may draw on. 'submitted' is here by owner decision
+# (2026-09-21): goods turn up before the approver gets to the order, and the
+# receiving bay cannot hold a delivery hostage to an approval queue. 'draft' is
+# NOT here -- a draft has been handed to no one, so goods against it answer to
+# no commitment at all.
+#
+# DELIBERATELY WIDER than purchase_billing._RECEIVABLE_PO, which keeps
+# ('approved', 'partially_received'). Receiving moves goods; billing books a
+# liability, and a liability against an order no one approved is a different
+# question that was not asked. The two used to be pinned equal by
+# tests/unit/test_lifecycle_tuples_are_classified.py; that pin now asserts the
+# divergence instead. Widen billing only on purpose, never to make a test agree.
+RECEIVABLE_PO_STATUSES = ('submitted', 'approved', 'partially_received')
 
 
 # -- gates ---------------------------------------------------------------------
@@ -95,8 +107,9 @@ def _active_vendors():
 
 
 def _eligible_purchase_orders(branch_id, vendor_id):
-    """Approved (or partially-received) POs of *vendor_id*, in this branch, that
-    still have at least one line with open qty.
+    """Receivable POs (RECEIVABLE_PO_STATUSES -- submitted, approved or
+    partially-received) of *vendor_id*, in this branch, that still have at least
+    one line with open qty.
 
     Returns [] when vendor_id is falsy (None or the picker's 0 "-- Select vendor
     --" sentinel): the create view has no vendor chosen on first load, and there

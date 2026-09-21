@@ -203,9 +203,6 @@ REGISTRY = [
             'draft':
                 'not yet released -- goods received against it would have no '
                 'commitment behind them',
-            'submitted':
-                'not yet authorised. The submit step hands the order to an '
-                'approver; receiving is downstream of that decision',
             'cancelled':
                 'the order was withdrawn, so there is nothing left to receive',
             'closed':
@@ -542,15 +539,26 @@ def test_no_registry_name_is_ambiguous():
         'each tuple is checked on its own.' % ambiguous)
 
 
-def test_the_two_receivable_spellings_have_not_drifted():
-    """`RECEIVABLE_PO_STATUSES` and `_RECEIVABLE_PO` are ONE rule -- which
-    orders may still be received or billed against -- written twice, in two
-    modules, with no import between them. Classified separately above because
-    each must justify itself; pinned equal here because the day they disagree,
-    a receipt and a bill will accept different orders and nothing else will
-    say so."""
-    assert tuple(RECEIVABLE_PO_STATUSES) == tuple(_RECEIVABLE_PO), (
-        'receiving_reports.views.RECEIVABLE_PO_STATUSES is %r but '
-        'purchase_billing._RECEIVABLE_PO is %r. These are two spellings of one '
-        'rule; if the divergence is deliberate, delete this test and say why '
-        'in both modules.' % (RECEIVABLE_PO_STATUSES, _RECEIVABLE_PO))
+def test_receiving_is_wider_than_billing_by_exactly_submitted():
+    """These two were ONE rule until 2026-09-21, pinned equal here. The owner
+    then ruled that a SUBMITTED order is receivable -- goods turn up before the
+    approver gets to the order, and the receiving bay cannot hold a delivery
+    hostage to an approval queue -- while billing was deliberately left alone,
+    because booking a liability against an order nobody authorised is a stronger
+    control and was not part of that decision. Both modules say so at the tuple.
+
+    So the pin is no longer equality; it is the SHAPE of the divergence. Receiving
+    must stay a superset of billing, and 'submitted' must stay the only extra:
+    anything else means one of the two moved without the other being considered,
+    which is the drift the original pin existed to catch."""
+    receiving, billing = set(RECEIVABLE_PO_STATUSES), set(_RECEIVABLE_PO)
+    assert billing < receiving, (
+        'purchase_billing._RECEIVABLE_PO (%r) must stay a strict subset of '
+        'receiving_reports.views.RECEIVABLE_PO_STATUSES (%r) -- an order that '
+        'may be billed must certainly be receivable.'
+        % (_RECEIVABLE_PO, RECEIVABLE_PO_STATUSES))
+    assert receiving - billing == {'submitted'}, (
+        "Receiving accepts %r beyond what billing accepts; only 'submitted' "
+        'was ruled in (2026-09-21). Widening either tuple is an owner decision, '
+        'not a test fix -- see the comments at both tuples.'
+        % (receiving - billing))

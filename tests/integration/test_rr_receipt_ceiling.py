@@ -456,6 +456,29 @@ class TestOnlyAReceivablePOMayBeReceived:
         assert rr.status == 'draft'
 
 
+    def test_a_line_from_a_submitted_po_is_accepted(
+            self, client, db_session, admin_user, main_branch, vl_vendor, po_open_10):
+        """Owner decision 2026-09-21: goods turn up before the approver gets to the
+        order, and the receiving bay cannot hold a delivery hostage to an approval
+        queue. 'submitted' is therefore receivable, the same as 'approved'.
+
+        Deliberately NOT extended to billing -- see
+        tests/unit/test_lifecycle_tuples_are_classified.py.
+        """
+        from app.receiving_reports.models import ReceivingReport
+        _login(client, admin_user, main_branch)
+        awaiting = _approved_po(db_session, main_branch, vl_vendor, 'PO-CEIL-SUBM',
+                                quantities=(10,))
+        awaiting.status = 'submitted'; db_session.commit()
+
+        _post_rr(client, po_open_10,
+                 [(po_open_10.line_items[0], 5), (awaiting.line_items[0], 5)])
+
+        assert ReceivingReport.query.count() == 1
+        rr = ReceivingReport.query.one()
+        assert [po.po_number for po in rr.purchase_orders] == ['PO-CEIL-A', 'PO-CEIL-SUBM']
+
+
 class TestARefusedSaveKeepsWhatWasTyped:
     """A refusal must hand the receiver's own numbers back.
 
