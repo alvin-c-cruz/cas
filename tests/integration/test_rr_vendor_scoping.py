@@ -249,3 +249,24 @@ class TestABouncedEditIgnoresAPostedVendor:
         keys = _po_lines_keys(resp.data.decode())
         assert theirs.id not in keys
         assert {own_po.id, also_mine.id} <= keys
+
+
+class TestASubmittedOrderIsOffered:
+    """Owner decision 2026-09-21: a PO awaiting approval is receivable, so the
+    picker must show it -- a rule the save guard enforces is useless if the
+    receiving clerk can never see the order to pick it."""
+
+    def test_a_submitted_po_is_offered(self, db_session, main_branch, vl_vendor):
+        from app.receiving_reports.views import _eligible_purchase_orders
+        po = _po(db_session, main_branch, vl_vendor, 'PO-VS-SUBM', status='submitted')
+
+        assert po in _eligible_purchase_orders(main_branch.id, vl_vendor.id)
+
+    def test_a_draft_po_is_still_not_offered(self, db_session, main_branch, vl_vendor):
+        """CONTROL. Widening to 'submitted' must not widen to 'draft' as well:
+        a draft has not been handed to anyone, so goods against it answer to no
+        commitment at all."""
+        from app.receiving_reports.views import _eligible_purchase_orders
+        po = _po(db_session, main_branch, vl_vendor, 'PO-VS-DRAFT', status='draft')
+
+        assert po not in _eligible_purchase_orders(main_branch.id, vl_vendor.id)

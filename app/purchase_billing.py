@@ -14,6 +14,12 @@ a client without the PO/RR modules (e.g. Zhiyuan) hits identical AP behavior.
 """
 from app import db
 
+# Which orders a BILL may draw on. Deliberately NARROWER than
+# receiving_reports.views.RECEIVABLE_PO_STATUSES, which also accepts 'submitted'
+# so a delivery is not held hostage to an approval queue (owner decision
+# 2026-09-21). Billing an unapproved order books a liability nobody authorised --
+# a stronger control than moving goods, and not part of that decision.
+# Do not re-align these two tuples just to make a test agree.
 _RECEIVABLE_PO = ('approved', 'partially_received')
 
 
