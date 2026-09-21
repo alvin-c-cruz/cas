@@ -82,8 +82,8 @@ New association table **`product_allowed_units`** (many-to-many between
 - Uses `op.create_table(...)` (no batch wrapper — batch mode is only for
   altering an existing table).
 - **Names every constraint explicitly** inside `create_table`
-  (`fk_product_allowed_units_product_id`,
-  `fk_product_allowed_units_unit_of_measure_id`,
+  (`fk_product_allowed_units_product`,
+  `fk_product_allowed_units_unit`,
   `uq_product_allowed_units_product_unit`), per the CAS migration rules — an
   unnamed FK cannot be reproduced by a later batch rebuild.
 - Verified against a **copy of a real database**, not a `create_all()` test DB.
