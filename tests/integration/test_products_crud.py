@@ -348,3 +348,32 @@ def test_allowed_units_recorded_in_create_audit(client, db_session, admin_user,
            .order_by(AuditLog.id.desc()).first())
     assert log is not None
     assert json.loads(log.new_values)['allowed_unit_ids'] == [box.id]
+
+
+def test_allowed_units_recorded_in_update_audit(client, db_session, admin_user,
+                                                main_branch, products_module_enabled):
+    """The EDIT path must show the before/after of the curated set, not just the after.
+
+    Widening a set is the change an owner is most likely to have to account for later
+    ('who let this product be received by the kilo?'), so old_values has to carry the
+    set as it stood.
+    """
+    from app.audit.models import AuditLog
+    box = UnitOfMeasure(code='BOX', name='Box', is_active=True)
+    kg = UnitOfMeasure(code='KG', name='Kilogram', is_active=True)
+    db.session.add_all([box, kg]); db.session.commit()
+    p = Product(name='AuditedEdit', is_active=True)
+    p.allowed_units = [box]
+    db.session.add(p); db.session.commit()
+    _login(client, admin_user, main_branch)
+    client.post(f'/products/{p.id}/edit', data={
+        'name': 'AuditedEdit', 'description': '',
+        'default_unit_of_measure_id': '', 'default_unit_price': '',
+        'default_account_id': '', 'category_id': '', 'standard_cost': '',
+        'is_active': '1', 'allowed_unit_ids': [str(box.id), str(kg.id)],
+    }, follow_redirects=True)
+    log = (AuditLog.query.filter_by(module='products', action='update', record_id=p.id)
+           .order_by(AuditLog.id.desc()).first())
+    assert log is not None
+    assert json.loads(log.old_values)['allowed_unit_ids'] == [box.id]
+    assert json.loads(log.new_values)['allowed_unit_ids'] == sorted([box.id, kg.id])

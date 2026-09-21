@@ -340,6 +340,11 @@ def _direct_products_payload():
     Ordered by code so the picker reads like the product list itself.
     """
     rows = (Product.query.filter_by(is_active=True)
+            # Eager-load both relationships the payload reads: without this the
+            # comprehension below fires one SELECT per product for the default
+            # unit and another for the allowed set.
+            .options(selectinload(Product.allowed_units),
+                     joinedload(Product.default_unit_of_measure))
             # By NAME (2026-09-10): the code is retired and now NULL for every
             # newly created product, and SQLite sorts NULLs FIRST -- so ordering
             # on it would clump all new products at the top in arbitrary order.
