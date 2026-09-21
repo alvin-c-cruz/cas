@@ -70,6 +70,28 @@ def _bill_purchase_sources(ap, po_ids, rr_ids):
         rr.accounts_payable_id = ap.id
 
 
+def billed_source_labels(ap):
+    """Human labels for every PO/RR this bill has billed, or [] -- e.g.
+    ['Purchase Order 01134'].
+
+    Public, unlike its neighbours, because the AP EDIT path needs to ask "does
+    anything hang off this bill?" before letting its payee change. Billing runs
+    only on AP create and unbilling only on cancel/void, so a payee change with a
+    source attached silently strands that source: philgen's PO 01134 spent ten
+    days 'closed' against a voucher that had been re-pointed at another vendor,
+    invisible to receiving and billing alike.
+    """
+    from app.purchase_orders.models import PurchaseOrder
+    from app.receiving_reports.models import ReceivingReport
+    labels = ['Purchase Order %s' % po.po_number for po in
+              PurchaseOrder.query.filter_by(accounts_payable_id=ap.id)
+              .order_by(PurchaseOrder.id).all()]
+    labels += ['Receiving Report %s' % rr.rr_number for rr in
+               ReceivingReport.query.filter_by(accounts_payable_id=ap.id)
+               .order_by(ReceivingReport.id).all()]
+    return labels
+
+
 def _unbill_purchase_sources(ap):
     """Revert every PO/RR billed by this AP bill back to 'approved' + unlink (AP cancel/void)."""
     from app.purchase_orders.models import PurchaseOrder

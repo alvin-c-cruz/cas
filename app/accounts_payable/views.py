@@ -1235,6 +1235,28 @@ def edit(id):
                 return _render_edit_form(request.form.get('line_items', ''))
             is_vendor = payee_type == 'vendor'
 
+            # A bill may not walk away from what it has already billed. Billing runs
+            # only on create (_bill_purchase_sources above) and unbilling only on
+            # cancel/void, so nothing here would release the source: it would stay
+            # 'closed' and linked to a voucher that is no longer its own, out of
+            # RECEIVABLE_PO_STATUSES and out of billable_pos_for, with nothing in its
+            # audit trail to say why. That is exactly how philgen's PO 01134 was
+            # stranded for ten days (voucher created for one vendor 2026-09-11 10:56,
+            # re-pointed at another at 11:40). Refuse rather than auto-unbill: the
+            # release belongs to whoever owns the document, not to a side effect of
+            # editing a field. `ap.payee_type` is NULL on rows predating the payee
+            # split, so fall back to vendor_id rather than reading every legacy row
+            # as a change.
+            current_payee_key = ('vendor' if not ap.payee_type else ap.payee_type,
+                                 ap.payee_id if ap.payee_id is not None else ap.vendor_id)
+            if (payee_type, payee_id) != current_payee_key:
+                from app.purchase_billing import billed_source_labels
+                billed = billed_source_labels(ap)
+                if billed:
+                    flash('This bill already bills %s. Change the payee back, or cancel '
+                          'this bill to release it first.' % ', '.join(billed), 'error')
+                    return _render_edit_form(request.form.get('line_items', ''))
+
             # B-09: block duplicate vendor invoice number per vendor (exclude self;
             # voided/cancelled excluded). Skip for employee payees.
             inv_num = form.vendor_invoice_number.data
