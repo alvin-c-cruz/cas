@@ -11,17 +11,28 @@
        <script src=".../preprinted_designer.js?v=1"></script>
        <script>initPreprintedDesigner({ saveUrl: "/purchase-orders/print-layout" });</script>
 
-   config: { saveUrl }  -- the POST endpoint, and nothing else. It is REQUIRED; the
-   designer refuses to initialise without it rather than quietly offering an Edit
-   button whose Save cannot work. Everything else the designer needs it reads from
-   the DOM the template already renders: labels come from each element's own
-   data-label, and edit permission is the template's decision (it renders
-   #editLayoutBtn only for an allowed user -- no #editLayoutBtn, no designer).
+   config: { saveUrl }  -- the POST endpoint, and nothing else besides `layoutPicker`
+   below is REQUIRED; the designer refuses to initialise without saveUrl rather than
+   quietly offering an Edit button whose Save cannot work. Everything else the
+   designer needs it reads from the DOM the template already renders: labels come
+   from each element's own data-label, and edit permission is the template's
+   decision (it renders #editLayoutBtn only for an allowed user -- no #editLayoutBtn,
+   no designer).
+
+   config.layoutPicker: { saveAsUrl, renameUrl, deleteUrl, selectUrl, branchId } --
+   OPTIONAL. Named print layouts (currently Purchase Orders only -- see
+   .superpowers/sdd/2026-09-18-named-print-layouts-plan/). Wiring is a no-op unless
+   BOTH this config key AND the template's #ppLayoutPicker <select> are present, so
+   PR/RR (which share this file but not named layouts yet) are unaffected. Decision 3
+   of that plan: picking a layout here only changes what is being EDITED on this
+   canvas -- it must NEVER repoint this workstation. Only #ppUseHereBtn does that.
 
    Element ids are the contract with the template and with every existing e2e
    selector: editLayoutBtn, layoutSavedFlag, ppCanvas, ppColControls, ppDateFormat,
    ppFieldControls, ppFontFamily, ppNotice, ppPageStyle, ppPaper, ppBoldBtn, ppDelBtn,
-   ppDupBtn, ppFontDec, ppFontInc, ppTextInput. Do not rename any of them. */
+   ppDupBtn, ppFontDec, ppFontInc, ppTextInput, ppLayoutPicker, ppDeviceLayout,
+   ppSaveAsBtn, ppRenameBtn, ppDeleteLayoutBtn, ppUseHereBtn. Do not rename any of
+   them. */
 (function (global) {
   'use strict';
 
@@ -33,6 +44,13 @@
   var CANVAS_H = 1008;           // preprinted_base.CANVAS_H -- the server's y ceiling
   var FONT_MIN = 6, FONT_MAX = 72;
   var COL_WIDTH_MIN = 20;        // narrowest a line-item column may be dragged
+  // preprinted_base.TEXT_KEYS -- shared across every document (unlike FIELD_KEYS,
+  // this one does NOT vary per document), so applyLayoutToCanvas (layoutPicker
+  // block below) can name these directly rather than reconstruct them from
+  // whatever the canvas happens to hold. Decides whether a recreated .pp-text
+  // keeps data-signatory, which is what makes selectEl's "Removed signatory
+  // line ..." warning still fire after a layout is picked.
+  var SIGNATORY_TEXT_IDS = ['preparer', 'checker', 'approver'];
 
   function initPreprintedDesigner(config) {
     const cfg = config || {};
@@ -444,10 +462,19 @@
       // copied from one of them still matches.
       saveBtn.textContent = 'Saving\u2026';
       try {
+        // When a named-layout picker exists (currently PO only -- see the
+        // layoutPicker banner comment above), Save targets whatever it is
+        // CURRENTLY EDITING, not silently the scope's default. `layoutPicker`
+        // is declared further down this same function; referencing it here is
+        // safe because this closure only runs on a later click, by which time
+        // initPreprintedDesigner has already finished assigning it (null where
+        // the template renders no #ppLayoutPicker, e.g. PR/RR).
+        const body = collect();
+        if (layoutPicker && layoutPicker.value) body.layout_id = layoutPicker.value;
         const resp = await fetch(saveUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-          body: JSON.stringify(collect()),
+          body: JSON.stringify(body),
         });
         if (resp.ok) {
           if (!document.getElementById('layoutSavedFlag')) {
@@ -532,6 +559,247 @@
         const ps = document.getElementById('ppPageStyle');
         if (ps) ps.textContent = '@page { size: ' + opt.dataset.css + '; margin: 0; }';
       });
+    }
+
+    // --- Named layout picker: see the config.layoutPicker banner comment above.
+    // A no-op wherever the template did not render #ppLayoutPicker or did not pass
+    // layoutPicker config (PR, RR today). ---
+    const layoutPicker = document.getElementById('ppLayoutPicker');
+    if (layoutPicker && cfg.layoutPicker) {
+      const lp = cfg.layoutPicker;
+      const deviceSpan = document.getElementById('ppDeviceLayout');
+      const saveAsBtn = document.getElementById('ppSaveAsBtn');
+      const renameBtn = document.getElementById('ppRenameBtn');
+      const deleteBtn = document.getElementById('ppDeleteLayoutBtn');
+      const useHereBtn = document.getElementById('ppUseHereBtn');
+
+      function selectedOption() { return layoutPicker.options[layoutPicker.selectedIndex] || null; }
+
+      function withBranch(body) {
+        if (lp.branchId !== undefined && lp.branchId !== null) body.branch_id = lp.branchId;
+        return body;
+      }
+
+      async function postJSON(url, body) {
+        let resp;
+        try {
+          resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+            body: JSON.stringify(body),
+          });
+        } catch (err) {
+          showNotice('That did not work. Please try again.');
+          return null;
+        }
+        let payload = null;
+        try { payload = await resp.json(); } catch (parseErr) { payload = null; }
+        if (!resp.ok || !payload || payload.ok === false) {
+          showNotice((payload && payload.error) || 'That did not work. Please try again.');
+          return null;
+        }
+        return payload;
+      }
+
+      function isOptionValue(sel, value) {
+        return [...sel.options].some((o) => o.value === value);
+      }
+
+      // Reverse of collect(): repaint the canvas from a stored layout's JSON so the
+      // picker can show what THIS layout looks like -- Decision 3, "changes what you
+      // are EDITING". Never touches ppDeviceLayout and never calls the network.
+      function applyLayoutToCanvas(data) {
+        if (!data || typeof data !== 'object') return;
+        if (paperSel && isOptionValue(paperSel, data.paper)) paperSel.value = data.paper;
+        if (dateSel && isOptionValue(dateSel, data.dateFormat)) dateSel.value = data.dateFormat;
+        if (fontSel && data.page && isOptionValue(fontSel, data.page.fontFamily)) {
+          fontSel.value = data.page.fontFamily;
+          document.body.style.fontFamily = fontSel.value;
+        }
+        // Same idiom as the dateSel dispatch below: re-run the existing change
+        // handler (line ~547) rather than reproducing its body here, so the
+        // canvas-resize/@page logic has exactly one copy.
+        if (paperSel) paperSel.dispatchEvent(new Event('change'));
+        if (dateSel) dateSel.dispatchEvent(new Event('change'));
+
+        Object.keys(data.fields || {}).forEach((key) => {
+          const el = canvas.querySelector('.pp-el[data-el="' + key + '"]:not([data-extra])');
+          if (!el) return;
+          const f = data.fields[key];
+          el.style.left = f.x + 'px';
+          el.style.top = f.y + 'px';
+          if (f.w !== undefined) el.style.width = f.w + 'px';
+          el.style.fontSize = f.fontSize + 'px';
+          el.style.fontWeight = f.bold ? 'bold' : 'normal';
+          el.classList.toggle('pp-field-hidden', !!f.hidden);
+          const cb = fieldStrip && fieldStrip.querySelector('[data-fieldtoggle="' + key + '"]');
+          if (cb) cb.checked = !f.hidden;
+        });
+
+        // Extras/texts vary in count per saved layout -- replace wholesale rather
+        // than trying to reconcile in place. But ONLY when the key is actually
+        // PRESENT: a partial or {} payload (e.g. a freshly-created row before its
+        // first real save) must leave the canvas's existing extras/texts alone,
+        // not wipe them. An explicit [] is still honoured as "this layout really
+        // has none" -- 'in' distinguishes the two; `data.extras || []` cannot,
+        // since a missing key and an empty array both fall to the same [].
+        // Wiping signatory lines here was a real data-loss path: a subsequent
+        // Save would then PERSIST texts: [] and the user loses signatory lines
+        // they never touched.
+        if ('extras' in data) {
+          canvas.querySelectorAll('.pp-el[data-extra]').forEach((el) => el.remove());
+          (data.extras || []).forEach((ex) => {
+            const base = canvas.querySelector('.pp-el[data-el="' + ex.key + '"]:not([data-extra])');
+            const el = document.createElement('div');
+            el.className = 'pp-el';
+            el.dataset.el = ex.key;
+            el.dataset.extra = '1';
+            el.dataset.label = (base && base.dataset.label) || ex.key;
+            el.textContent = base ? base.textContent : '';
+            el.style.left = ex.x + 'px';
+            el.style.top = ex.y + 'px';
+            el.style.fontSize = ex.fontSize + 'px';
+            el.style.fontWeight = ex.bold ? 'bold' : 'normal';
+            canvas.appendChild(el);
+          });
+        }
+
+        if ('texts' in data) {
+          canvas.querySelectorAll('.pp-text').forEach((el) => el.remove());
+          (data.texts || []).forEach((t) => {
+            const el = document.createElement('div');
+            el.className = 'pp-el pp-text' + (t.hidden ? ' pp-field-hidden' : '');
+            el.dataset.text = t.id;
+            el.dataset.label = t.text;
+            // Restored: without it, selectEl's "Removed signatory line ..."
+            // warning silently stops firing for every text recreated here.
+            if (SIGNATORY_TEXT_IDS.indexOf(t.id) !== -1) el.dataset.signatory = '1';
+            el.textContent = t.text;
+            el.style.left = t.x + 'px';
+            el.style.top = t.y + 'px';
+            el.style.fontSize = t.fontSize + 'px';
+            el.style.fontWeight = t.bold ? 'bold' : 'normal';
+            canvas.appendChild(el);
+          });
+        }
+
+        // Named lineItemsData, not li -- li is the module-level band-element
+        // helper (canvas.querySelector('.pp-lineitems'), declared above) and a
+        // same-named local here shadowed it, which is why the band element was
+        // awkward to reach from this function.
+        const lineItemsData = data.lineItems || {};
+        (lineItemsData.columns || []).forEach((c) => {
+          const col = canvas.querySelector('.pp-col[data-col="' + c.key + '"]');
+          if (!col) return;
+          col.style.left = c.x + 'px';
+          col.style.width = c.width + 'px';
+          col.classList.toggle('pp-col-hidden', !c.visible);
+          const cb = colStrip && colStrip.querySelector('[data-coltoggle="' + c.key + '"]');
+          if (cb) cb.checked = !!c.visible;
+        });
+        if (lineItemsData.y !== undefined) cols().forEach((c) => { c.style.top = lineItemsData.y + 'px'; });
+        // fontSize/bold are the BAND's font, shared across every column (see
+        // fontTargets() above) -- and rowHeight lives on .pp-lineitems' own
+        // dataset. All three are exactly what collect() reads back at Save
+        // time (fontSize/bold from the first .pp-col's computed style,
+        // rowHeight from .pp-lineitems[data-rowheight]), which is what made
+        // this a real bug: without applying them here, Save after a pick
+        // silently wrote the SERVER-RENDERED layout's font/rowHeight into the
+        // PICKED layout's stored payload -- the line-item block landing
+        // outside the pre-printed grid on the next print of that pad. Same
+        // 'key' in data discipline as extras/texts above: a missing key means
+        // leave the canvas alone.
+        if ('fontSize' in lineItemsData) {
+          cols().forEach((c) => { c.style.fontSize = lineItemsData.fontSize + 'px'; });
+        }
+        if ('bold' in lineItemsData) {
+          cols().forEach((c) => { c.style.fontWeight = lineItemsData.bold ? 'bold' : 'normal'; });
+        }
+        if ('rowHeight' in lineItemsData) {
+          const band = li();
+          if (band) band.dataset.rowheight = lineItemsData.rowHeight;
+        }
+
+        selectEl(null);
+      }
+
+      // Picking a layout ONLY changes what is being edited -- see Decision 3 in the
+      // banner comment. It must never POST anything and must never touch
+      // ppDeviceLayout.
+      layoutPicker.addEventListener('change', () => {
+        const opt = selectedOption();
+        if (!opt) return;
+        let data = null;
+        try { data = JSON.parse(opt.dataset.payload || '{}'); } catch (parseErr) { data = null; }
+        applyLayoutToCanvas(data);
+      });
+
+      if (saveAsBtn && lp.saveAsUrl) {
+        saveAsBtn.addEventListener('click', async () => {
+          const raw = global.prompt(
+            'Name it after the printer, not the person -- e.g. '
+            + '"Purchasing - LX-310 Malandag". Layouts are shared, so one name per '
+            + 'printer is enough.\n\nLayout name:');
+          if (!raw || !raw.trim()) return;
+          const name = raw.trim();
+          const result = await postJSON(lp.saveAsUrl, withBranch(Object.assign({ name: name }, collect())));
+          if (!result) return;
+          const opt = document.createElement('option');
+          opt.value = String(result.layout_id);
+          opt.textContent = result.name;
+          opt.dataset.payload = JSON.stringify(collect());
+          layoutPicker.appendChild(opt);
+          layoutPicker.value = opt.value;
+          showNotice('Saved as "' + result.name + '".');
+        });
+      }
+
+      if (renameBtn && lp.renameUrl) {
+        renameBtn.addEventListener('click', async () => {
+          const opt = selectedOption();
+          if (!opt) return;
+          const raw = global.prompt('Rename this layout:', opt.textContent);
+          if (!raw || !raw.trim()) return;
+          const name = raw.trim();
+          const result = await postJSON(lp.renameUrl, { layout_id: opt.value, name: name });
+          if (!result) return;
+          const renamedDevice = deviceSpan && deviceSpan.dataset.layoutId === opt.value;
+          opt.textContent = name;
+          if (renamedDevice) deviceSpan.textContent = name;
+        });
+      }
+
+      if (deleteBtn && lp.deleteUrl) {
+        deleteBtn.addEventListener('click', async () => {
+          const opt = selectedOption();
+          if (!opt) return;
+          if (!global.confirm('Delete layout "' + opt.textContent + '"?')) return;
+          const result = await postJSON(lp.deleteUrl, { layout_id: opt.value });
+          if (!result) return;
+          const next = opt.nextElementSibling || opt.previousElementSibling;
+          opt.remove();
+          if (next) {
+            layoutPicker.value = next.value;
+            let data = null;
+            try { data = JSON.parse(next.dataset.payload || '{}'); } catch (parseErr) { data = null; }
+            applyLayoutToCanvas(data);
+          }
+        });
+      }
+
+      if (useHereBtn && lp.selectUrl) {
+        useHereBtn.addEventListener('click', async () => {
+          const opt = selectedOption();
+          if (!opt) return;
+          const result = await postJSON(lp.selectUrl, withBranch({ layout_id: opt.value }));
+          if (!result) return;
+          if (deviceSpan) {
+            deviceSpan.textContent = opt.textContent;
+            deviceSpan.dataset.layoutId = opt.value;
+          }
+          showNotice('This workstation now prints "' + opt.textContent + '".');
+        });
+      }
     }
 
     canvas.dataset.ppInit = '1';   // see the double-init guard at the top

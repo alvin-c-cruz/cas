@@ -433,7 +433,8 @@ def _validate_default_layout(field_keys, d):
     _validate_default_texts(d)
 
 
-def build_layout_api(setting_key, field_keys, default_layout, audit_module, audit_identifier):
+def build_layout_api(setting_key, field_keys, default_layout, audit_module, audit_identifier,
+                      doc_type=None):
     """Return (sanitize_layout, get_layout, save_layout) bound to one document type.
 
     Everything these three do is identical across documents EXCEPT the setting
@@ -483,6 +484,11 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
     Raises ValueError, naming the offending key, if any of that is wrong.
     """
     _validate_default_layout(field_keys, default_layout)
+    # Defaults to audit_module so the eight existing declarations (and the three
+    # new ones that don't pass it) need no edit: doc_type only needs to differ
+    # from audit_module when a module wants a resolution scope distinct from its
+    # audit log name, which none currently do.
+    doc_type = doc_type or audit_module
 
     def sanitize_layout(raw):
         """Return a fully-populated, validated layout built from `raw` over the defaults."""
@@ -517,9 +523,22 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
         """Per-branch setting key; None -> the legacy un-scoped key (back-compat)."""
         return f'{setting_key}:{branch_id}' if branch_id is not None else setting_key
 
-    def get_layout(branch_id=None):
-        """Current sanitized layout for a branch (defaults if unset or corrupt)."""
-        stored = AppSettings.get_setting(_layout_key(branch_id))
+    def get_layout(branch_id=None, device_id=None):
+        """Current sanitized layout (defaults if unset or corrupt).
+
+        Order: this workstation's chosen layout, then the scope's default layout,
+        then the legacy app_settings key, then the declared defaults. Every step is
+        fail-safe: the print page HOSTS the designer, so a raise here would leave a
+        branch with no UI to fix its own layout with.
+        """
+        from app.print_layouts.service import resolve_payload
+        stored = None
+        try:
+            stored = resolve_payload(doc_type, branch_id or 0, device_id)
+        except Exception:  # noqa: BLE001 -- table may not exist pre-migration
+            stored = None
+        if stored is None:
+            stored = AppSettings.get_setting(_layout_key(branch_id))
         if not stored:
             # NOTE this branch sits OUTSIDE the try below on purpose, and is only
             # safe because `_validate_default_layout` has already proven that
@@ -538,17 +557,121 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
             # the reason given above.
             return sanitize_layout(copy.deepcopy(default_layout))
 
-    def save_layout(raw, username, branch_id=None):
-        """Sanitize, persist (per branch), audit, and return the clean layout."""
+    def save_layout(raw, username, branch_id=None, layout_id=None, user_id=None):
+        """Sanitize, persist (per branch), audit, and return the clean layout.
+
+        `layout_id`, when given, is the specific `named_print_layouts` row this
+        save targets (Task 5's save-as/rename write path -- PO/PR/RR only, the
+        three modules resolved through `app.print_layouts.service`). It must name
+        a row in THIS doc_type/scope or the save is refused -- see below. Omitted
+        (the shape every pre-existing caller across all eleven pre-printed
+        modules still uses), the save targets the scope's DEFAULT named layout,
+        matching the order `get_layout` already resolves in, and never raises for
+        a missing row (a scope that has not been migrated to named layouts yet
+        simply has no row to write into -- see the `else` branch below).
+
+        `user_id`, when given, sets the written PrintLayout row's `updated_by_id`
+        -- previously only `print_layouts.service.create_layout` set that column
+        at all, leaving it stale for every edit after creation. Optional and
+        additive: the ten pre-existing callers that only pass `username` (a
+        string, used below for the legacy AppSettings audit trail -- a separate
+        column on a separate table) are unaffected.
+
+        An explicit `layout_id` that names no row (deleted by someone else
+        between page load and submit, or from a different doc_type/scope) raises
+        `ValueError` BEFORE anything is persisted or audited -- deliberately, not
+        the read path's fail-safe-to-defaults behaviour. `get_layout` degrades
+        silently because the print page hosts the designer that would fix a bad
+        layout, so a raise there stops a branch printing at all; a rejected SAVE
+        strands no one, it just declines one submit. And unlike a bare "do
+        nothing", `log_audit` below runs unconditionally on every code path that
+        reaches it -- letting an unknown `layout_id` fall through as a no-op
+        would still write an audit row asserting the save happened, which is a
+        lying audit entry, not a harmless no-op.
+
+        TRANSITIONAL dual-write: the legacy `app_settings` key
+        (`<setting_key>[:branch_id]`) is the only store older code, and any
+        pre-Task-5 print request, still reads -- `get_layout` falls back to it,
+        and it is what a rollback would read from. It is kept in lock-step ONLY
+        when the row being saved IS the scope's default; a non-default named
+        layout has no legacy representation to write into, and writing one would
+        make the legacy key disagree with whichever layout the workstation
+        actually resolves to. Remove this block -- and the `_layout_key`/
+        `AppSettings` read+write in this function entirely -- in the release that
+        drops the legacy `<key>[:branch_id]` settings rows (the same release
+        `app.print_layouts.migrate.seed_from_app_settings` stops being needed).
+        """
+        from app import db
+        from app.print_layouts.models import PrintLayout
+        from app.print_layouts import service as layout_service
+
         clean = sanitize_layout(raw)
         key = _layout_key(branch_id)
+        scope_id = branch_id or 0
+
+        if layout_id is not None:
+            # Explicit target: must resolve, in THIS doc_type/scope, or the save
+            # is refused outright -- see the docstring. Nothing has been written
+            # yet at this point (sanitizing is pure), so raising here leaves
+            # storage and the audit log untouched.
+            target_row = db.session.get(PrintLayout, layout_id)
+            if target_row is None or target_row.doc_type != doc_type \
+                    or target_row.scope_id != scope_id:
+                raise ValueError('That layout no longer exists. Refresh and try again.')
+            # Captured BEFORE the assignment below -- this row's own prior
+            # payload, not the legacy/default app_settings blob `old` (further
+            # down) reads. Without this the audit row for a non-default save
+            # would log a before/after spanning two different rows.
+            old_row_payload = target_row.payload
+            target_row.payload = json.dumps(clean)
+            if user_id is not None:
+                target_row.updated_by_id = user_id
+            db.session.commit()
+        else:
+            # Implicit target: the scope's default. Deliberately fail-safe, NOT
+            # the explicit-id branch's raise -- a scope that has never been
+            # migrated into named_print_layouts (e.g. PR/RR pre-Task-4, or the
+            # table not existing yet on an old DB) has no default row to write
+            # into, and that must remain a legacy-only save exactly as it always
+            # was, not a new error for every pre-existing caller.
+            target_row = None
+            try:
+                target_row = layout_service.default_layout_row(doc_type, scope_id)
+                if target_row is not None:
+                    target_row.payload = json.dumps(clean)
+                    if user_id is not None:
+                        target_row.updated_by_id = user_id
+                    db.session.commit()
+            except Exception:  # noqa: BLE001 -- named_print_layouts table may not
+                # exist yet (pre-migration DB), matching get_layout's own guard above.
+                db.session.rollback()
+                target_row = None
+
+        is_default_target = layout_id is None or target_row.is_default
         old = AppSettings.get_setting(key)
-        AppSettings.set_setting(key, json.dumps(clean), updated_by=username)
-        log_audit(module=audit_module, action='update', record_id=None,
-                  record_identifier=audit_identifier,
-                  old_values={'layout': old, 'branch_id': branch_id},
-                  new_values={'layout': json.dumps(clean), 'branch_id': branch_id},
-                  notes=f'Pre-printed layout updated (branch {branch_id})')
+        if is_default_target:
+            AppSettings.set_setting(key, json.dumps(clean), updated_by=username)
+
+        if layout_id is not None:
+            # Names WHICH layout was written -- record_id is the actual
+            # named_print_layouts row, old_values is THAT row's own prior
+            # payload (captured above), and notes names it, matching the
+            # sibling named-layout routes (e.g.
+            # purchase_orders.views.select_print_layout).
+            log_audit(module=audit_module, action='update', record_id=target_row.id,
+                      record_identifier=audit_identifier,
+                      old_values={'layout': old_row_payload, 'branch_id': branch_id},
+                      new_values={'layout': json.dumps(clean), 'branch_id': branch_id},
+                      notes=f'Pre-printed layout "{target_row.name}" updated '
+                            f'(branch {branch_id})')
+        else:
+            # Unchanged for every pre-existing caller (all eleven modules'
+            # plain save, none of which ever pass layout_id).
+            log_audit(module=audit_module, action='update', record_id=None,
+                      record_identifier=audit_identifier,
+                      old_values={'layout': old, 'branch_id': branch_id},
+                      new_values={'layout': json.dumps(clean), 'branch_id': branch_id},
+                      notes=f'Pre-printed layout updated (branch {branch_id})')
         return clean
 
     return sanitize_layout, get_layout, save_layout

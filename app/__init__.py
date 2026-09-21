@@ -269,6 +269,7 @@ def create_app(config_name=None):
     from app.units_of_measure.models import UnitOfMeasure
     from app.amendments.models import DocumentRevision  # noqa: F401
     from app.attachments.models import DocumentAttachment  # noqa: F401
+    from app.print_layouts.models import PrintLayout, PrintLayoutDevicePref  # noqa: F401
     from app.product_categories.models import ProductCategory
     from app.products.models import Product
     from app.expense_allocation_rules.models import ExpenseAllocationRule
@@ -759,6 +760,9 @@ def create_app(config_name=None):
         response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
 
         return response
+
+    from app.print_layouts.device import attach_device_cookie
+    app.after_request(attach_device_cookie)
 
     # 429 (rate limit) handler — friendly page + audit trail. This is a specific,
     # benign handler and is intentionally kept while the generic error handlers
