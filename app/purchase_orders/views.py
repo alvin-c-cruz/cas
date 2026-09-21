@@ -18,23 +18,28 @@ from app.purchase_orders.models import (
     NOTHING_FOLLOWS)
 from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
 from app.purchase_orders.preprinted_layout import (
-    COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
+    COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout, sanitize_layout)
 from app.common.form_restore import restore_posted_lines
 from app.common.preprinted_base import (
     DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
+from app.print_layouts.models import PrintLayout, PrintLayoutDevicePref
+from app.print_layouts.device import current_device_id
+from app.print_layouts import service as print_layout_service
 from app.vendors.models import Vendor
 from app.users.models import User
 from app.settings import AppSettings
 from app.amendments.models import DocumentRevision
 from app.amendments.service import write_revision
 from app.amendments.validation import validate_amendment
-from app.audit.utils import log_audit, log_create, log_update, model_to_dict
+from app.audit.utils import log_audit, log_create, log_update, model_to_dict, get_changes
 from app.attachments.registry import get_target
 from app.attachments.service import save_queued_attachments
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products, get_vat_categories
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
+
+PO_LAYOUT_DOC_TYPE = 'purchase_orders'
 
 purchase_orders_bp = Blueprint('purchase_orders', __name__, template_folder='templates')
 
@@ -1169,7 +1174,7 @@ def print_po(id):
             'purchase_orders/print_preprinted.html', po=po, company=company,
             overlay_lines=overlay_rows(po.line_items),
             pr_numbers=_pr_numbers_for(po), nothing_follows=NOTHING_FOLLOWS,
-            printed_at=ph_now(), layout=get_layout(po.branch_id),
+            printed_at=ph_now(), layout=get_layout(po.branch_id, device_id=current_device_id()),
             can_edit_layout=current_user.can_edit_print_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
@@ -1197,6 +1202,119 @@ def save_print_layout():
     # the document's branch, so the session branch is the document's branch.
     clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
     return jsonify(ok=True, layout=clean)
+
+
+@purchase_orders_bp.route('/purchase-orders/print-layout/save-as', methods=['POST'])
+@login_required
+def save_as_print_layout():
+    """Create a NEW named layout from the designer's current canvas state.
+
+    Configuration, so "Save as...", never "New" -- see CLAUDE.md UI verb rule.
+    Same access as editing a layout: this creates content that prints on the
+    client's real stationery, same as save_print_layout above."""
+    if not current_user.can_edit_print_layout:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify(ok=False, error='A name is required.'), 400
+    branch_id = session.get('selected_branch_id')
+    submitted_branch_id = data.get('branch_id')
+    if submitted_branch_id is not None and submitted_branch_id != branch_id:
+        return jsonify(ok=False, error='Selected branch changed; layout not saved. '
+                       'Reopen the print page and try again.'), 409
+    scope_id = branch_id or 0
+    existing_names = {r.name for r in print_layout_service.list_layouts(PO_LAYOUT_DOC_TYPE, scope_id)}
+    if name in existing_names:
+        return jsonify(ok=False, error=f'A layout named "{name}" already exists.'), 400
+    clean = sanitize_layout(data)
+    row = print_layout_service.create_layout(PO_LAYOUT_DOC_TYPE, scope_id, name,
+                                              json.dumps(clean), current_user)
+    log_audit(module='purchase_orders', action='create', record_id=row.id,
+              record_identifier='po_print_layout',
+              new_values={'name': row.name, 'scope_id': scope_id},
+              notes=f'Print layout "{row.name}" created by {current_user.username}')
+    return jsonify(ok=True, layout_id=row.id, name=row.name)
+
+
+@purchase_orders_bp.route('/purchase-orders/print-layout/rename', methods=['POST'])
+@login_required
+def rename_print_layout():
+    """Rename an existing named layout -- configuration, so "Rename", never a
+    delete-and-recreate. The device prefs that point at this row by id are
+    untouched (AC 5): only the label changes."""
+    if not current_user.can_edit_print_layout:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    layout_id = data.get('layout_id')
+    name = (data.get('name') or '').strip()
+    if not layout_id or not name:
+        return jsonify(ok=False, error='A layout id and a name are required.'), 400
+    row = db.session.get(PrintLayout, layout_id)
+    old_values, new_values = get_changes(row, {'name': name}, ['name']) if row else ({}, {})
+    try:
+        print_layout_service.rename_layout(layout_id, name)
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
+    log_audit(module='purchase_orders', action='update', record_id=layout_id,
+              record_identifier='po_print_layout', old_values=old_values, new_values=new_values,
+              notes=f'Print layout renamed by {current_user.username}')
+    return jsonify(ok=True)
+
+
+@purchase_orders_bp.route('/purchase-orders/print-layout/delete', methods=['POST'])
+@login_required
+def delete_print_layout():
+    """Delete a named layout. Narrower than the other three writes -- deleting a
+    layout strands every workstation pointed at it back onto the default, which
+    is cross-machine blast radius the other writes don't have, so this gates on
+    can_delete_print_layout rather than can_edit_print_layout."""
+    if not current_user.can_delete_print_layout:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    layout_id = data.get('layout_id')
+    if not layout_id:
+        return jsonify(ok=False, error='A layout id is required.'), 400
+    row = db.session.get(PrintLayout, layout_id)
+    if row is None:
+        return jsonify(ok=False, error='That layout no longer exists. Refresh and try again.'), 404
+    old_values = model_to_dict(row, ['name', 'scope_id', 'doc_type'])
+    try:
+        print_layout_service.delete_layout(layout_id)
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
+    log_audit(module='purchase_orders', action='delete', record_id=layout_id,
+              record_identifier='po_print_layout', old_values=old_values,
+              notes=f'Print layout "{old_values["name"]}" deleted by {current_user.username}')
+    return jsonify(ok=True)
+
+
+@purchase_orders_bp.route('/purchase-orders/print-layout/select', methods=['POST'])
+@login_required
+def select_print_layout():
+    """Which named layout THIS WORKSTATION prints with -- a per-device preference,
+    not an edit of any layout's content, so it needs nothing more than reaching
+    the print screen itself (no can_edit_print_layout gate)."""
+    data = request.get_json(silent=True) or {}
+    layout_id = data.get('layout_id')
+    device_id = current_device_id()
+    if not device_id:
+        return jsonify(ok=False, error='This workstation is not recognized. '
+                       'Reload the print page and try again.'), 400
+    branch_id = session.get('selected_branch_id')
+    scope_id = branch_id or 0
+    row = db.session.get(PrintLayout, layout_id) if layout_id else None
+    if row is None or row.doc_type != PO_LAYOUT_DOC_TYPE or row.scope_id != scope_id:
+        return jsonify(ok=False, error='That layout no longer exists. Refresh and try again.'), 404
+    pref = PrintLayoutDevicePref.query.filter_by(
+        device_id=device_id, doc_type=PO_LAYOUT_DOC_TYPE, scope_id=scope_id).first()
+    old_values, new_values = get_changes(pref, {'layout_id': row.id}, ['layout_id'])
+    print_layout_service.set_device_layout(device_id, PO_LAYOUT_DOC_TYPE, scope_id, row.id)
+    log_audit(module='purchase_orders', action='update', record_id=row.id,
+              record_identifier='po_print_layout', old_values=old_values, new_values=new_values,
+              notes=f'Print layout selection set to "{row.name}" by {current_user.username} '
+                    f'for device {device_id}')
+    return jsonify(ok=True)
 
 
 # ── export routes ────────────────────────────────────────────────────────────
