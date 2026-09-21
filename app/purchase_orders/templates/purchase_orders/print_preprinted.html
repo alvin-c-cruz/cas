@@ -43,6 +43,10 @@
   .pp-col-controls.pp-show { display: flex; }
   .pp-col-controls label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
   .pp-toolbar { max-width: 912px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  /* Named-layout picker (the toolbar's second row of controls) -- see
+     .superpowers/sdd/2026-09-18-named-print-layouts-plan/task-7-brief.md. */
+  .pp-layout-picker, .pp-device-layout { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+  .pp-layout-help { flex-basis: 100%; margin: 0; font-size: 11px; color: #666; }
   .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
   .btn-print { background: #1565c0; color: #fff; }
   .btn-close { background: #666; color: #fff; }
@@ -97,10 +101,32 @@
     <option value="{{ key }}" {{ 'selected' if key == layout.dateFormat else '' }}>{{ date_labels[key] }}</option>
     {% endfor %}
   </select>
+  {# Named-layout picker: MANY layouts per doc_type/scope, one per workstation
+     (Decision 3 -- picking here only changes what is being EDITED; it never
+     repoints this device). "Save as..."/"Rename"/"Delete" are configuration
+     verbs, never "New" -- see CLAUDE.md. #}
+  <span class="pp-layout-picker">
+    Editing:
+    <select id="ppLayoutPicker">
+      {% for row in print_layouts %}
+      <option value="{{ row.id }}" data-payload="{{ row.payload }}"{{ ' selected' if active_layout and row.id == active_layout.id else '' }}>{{ row.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" id="ppSaveAsBtn" class="btn btn-edit">Save as&hellip;</button>
+    <button type="button" id="ppRenameBtn" class="btn btn-edit">Rename</button>
+    {% if can_delete_layout %}
+    <button type="button" id="ppDeleteLayoutBtn" class="btn btn-edit">Delete</button>
+    {% endif %}
+  </span>
+  <span class="pp-device-layout">
+    This workstation uses: <strong id="ppDeviceLayout" data-layout-id="{{ active_layout.id if active_layout else '' }}">{{ active_layout.name if active_layout else 'Default' }}</strong>
+    <button type="button" id="ppUseHereBtn" class="btn btn-edit">Use on this workstation</button>
+  </span>
   {% endif %}
 </div>
 
 {% if can_edit_layout %}
+<p id="ppSaveAsHelp" class="pp-layout-help screen-only">Name it after the printer, not the person &mdash; e.g. 'Purchasing - LX-310 Malandag'. Layouts are shared, so one name per printer is enough.</p>
 <div id="ppFieldControls" class="pp-col-controls screen-only"></div>
 <div id="ppColControls" class="pp-col-controls screen-only"></div>
 {% endif %}
@@ -212,9 +238,18 @@
    element's data-label and edit permission is this template's decision (it renders
    #editLayoutBtn only for a full-access user), so a fieldLabels/canEdit flag could
    only become a second source of truth that disagrees with the DOM. #}
-<script src="{{ url_for('static', filename='js/preprinted_designer.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/preprinted_designer.js') }}?v=2"></script>
 <script>
-  initPreprintedDesigner({ saveUrl: '{{ url_for("purchase_orders.save_print_layout") }}' });
+  initPreprintedDesigner({
+    saveUrl: '{{ url_for("purchase_orders.save_print_layout") }}',
+    layoutPicker: {
+      saveAsUrl: '{{ url_for("purchase_orders.save_as_print_layout") }}',
+      renameUrl: '{{ url_for("purchase_orders.rename_print_layout") }}',
+      deleteUrl: '{{ url_for("purchase_orders.delete_print_layout") }}',
+      selectUrl: '{{ url_for("purchase_orders.select_print_layout") }}',
+      branchId: {{ po.branch_id | tojson }}
+    }
+  });
 </script>
 {% endif %}
 </body>

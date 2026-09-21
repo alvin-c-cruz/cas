@@ -1170,12 +1170,25 @@ def print_po(id):
         'tin': AppSettings.get_setting('company_tin', ''),
     }
     if po_print_form == 'preprinted':
+        scope_id = po.branch_id or 0
+        device_id = current_device_id()
+        # Fail-safe like get_layout() above: the named_print_layouts table may not
+        # exist yet in the code-first/migration-second deploy window (see the
+        # `deploy` skill's rollout note), and this page hosts the designer that
+        # would otherwise be the only way to fix a broken print page.
+        try:
+            print_layouts = print_layout_service.list_layouts(PO_LAYOUT_DOC_TYPE, scope_id)
+            active_layout = print_layout_service.resolve_layout(PO_LAYOUT_DOC_TYPE, scope_id, device_id)
+        except Exception:  # noqa: BLE001 -- table may not exist pre-migration
+            print_layouts, active_layout = [], None
         return render_template(
             'purchase_orders/print_preprinted.html', po=po, company=company,
             overlay_lines=overlay_rows(po.line_items),
             pr_numbers=_pr_numbers_for(po), nothing_follows=NOTHING_FOLLOWS,
-            printed_at=ph_now(), layout=get_layout(po.branch_id, device_id=current_device_id()),
+            printed_at=ph_now(), layout=get_layout(po.branch_id, device_id=device_id),
             can_edit_layout=current_user.can_edit_print_layout,
+            can_delete_layout=current_user.can_delete_print_layout,
+            print_layouts=print_layouts, active_layout=active_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,

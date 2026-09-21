@@ -246,9 +246,15 @@ class TestPurchaseOrderPrintForm:
         _login(client, admin_user, branch_manila)
         body = client.get(f'/purchase-orders/{approved_po.id}/print').data.decode()
         assert 'css/preprinted_designer.css?v=1' in body
-        assert 'js/preprinted_designer.js?v=1' in body
+        # v=2: Task 7 (named print layouts) added the layoutPicker wiring below --
+        # bumped so a browser holding the pre-picker file in cache fetches it fresh.
+        assert 'js/preprinted_designer.js?v=2' in body
         assert 'po_preprinted_designer' not in body, 'made a ninth per-document copy'
-        assert "initPreprintedDesigner({ saveUrl: '/purchase-orders/print-layout' })" in body
+        assert "saveUrl: '/purchase-orders/print-layout'" in body
+        assert "saveAsUrl: '/purchase-orders/print-layout/save-as'" in body
+        assert "renameUrl: '/purchase-orders/print-layout/rename'" in body
+        assert "deleteUrl: '/purchase-orders/print-layout/delete'" in body
+        assert "selectUrl: '/purchase-orders/print-layout/select'" in body
 
     def test_the_overlay_renders_the_designer_s_dom_contract(
             self, client, db_session, admin_user, branch_manila, approved_po):
