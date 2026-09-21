@@ -15,6 +15,18 @@ document. That is what makes an eleven-way sweep cheap enough to be worth having
 
 PAYROLL IS DELIBERATELY DIFFERENT and is not an oversight -- see
 TestPayrollKeepsItsStricterDoor.
+
+Task 6 (named print layouts) added FOUR more routes to this same print-layout
+family -- PO's save-as/rename/delete/select, for many named layouts per branch
+instead of the eleven's one-layout-per-branch -- and never entered them here.
+TestTheFamilyIsComplete is exactly the guard that is supposed to catch a route
+joining the family without its permission decision, and it did: this file failed
+until the four were named and given real coverage. They do not share the
+eleven's single-shape table (one edit-level door for all of them) -- save-as and
+rename share that same door, delete is narrower, select has none -- so they get
+their own class, TestThePOLayoutFamilyRoutes, and their own route list, rather
+than being appended to LAYOUT_ROUTES. The two completeness checks below assert
+against the UNION of both lists: eleven + four = fifteen.
 """
 import pytest
 
@@ -40,6 +52,25 @@ LAYOUT_ROUTES = [
 PAYROLL_ROUTE = '/payroll/payslip-print-layout'
 
 ALL_ELEVEN = [r for r, _ in LAYOUT_ROUTES] + [PAYROLL_ROUTE]
+
+#: Task 6's four PO named-layout routes -- see TestThePOLayoutFamilyRoutes for
+#: why they need their own list instead of joining LAYOUT_ROUTES: save-as and
+#: rename share the eleven's can_edit_print_layout door, delete is narrower
+#: (can_delete_print_layout), select has no role gate at all (login only).
+PO_NAMED_LAYOUT_EDIT_ROUTES = [
+    '/purchase-orders/print-layout/save-as',
+    '/purchase-orders/print-layout/rename',
+]
+PO_NAMED_LAYOUT_DELETE_ROUTE = '/purchase-orders/print-layout/delete'
+PO_NAMED_LAYOUT_SELECT_ROUTE = '/purchase-orders/print-layout/select'
+PO_NAMED_LAYOUT_ROUTES = (PO_NAMED_LAYOUT_EDIT_ROUTES
+                          + [PO_NAMED_LAYOUT_DELETE_ROUTE, PO_NAMED_LAYOUT_SELECT_ROUTE])
+
+#: The true, named set every registered print-layout route must appear in --
+#: TestTheFamilyIsComplete checks the app's real url map against this UNION, not
+#: a bare number, so a sixteenth route added without a permission decision still
+#: fails it exactly the way the four PO routes just did.
+ALL_LAYOUT_SAVE_ROUTES = ALL_ELEVEN + PO_NAMED_LAYOUT_ROUTES
 
 
 @pytest.fixture(autouse=True)
@@ -149,30 +180,110 @@ class TestPayrollKeepsItsStricterDoor:
         assert _post(client, PAYROLL_ROUTE).status_code != 200
 
 
+class TestThePOLayoutFamilyRoutes:
+    """Task 6's four MANY-layouts-per-branch routes -- joined the print-layout
+    family (see the module docstring) but were never entered in this file's
+    table, which is exactly the class of miss TestTheFamilyIsComplete exists to
+    catch. Three different doors, so three groups of tests rather than one
+    parametrized sweep:
+
+    - save-as and rename gate on can_edit_print_layout, the SAME door as the
+      eleven above (admin/chief_accountant/accountant/staff; viewer refused).
+    - delete gates on can_delete_print_layout, narrower -- admin/chief_accountant
+      only. Staff can edit a layout but must still be refused deleting one; see
+      app/purchase_orders/views.py::delete_print_layout's own docstring for why
+      (deleting strands every workstation pointed at the row, cross-machine
+      blast radius the other writes don't have).
+    - select requires only login -- a per-DEVICE preference, not an edit of any
+      layout's content (app/purchase_orders/views.py::select_print_layout).
+
+    Posts an empty body throughout, like TestPayrollKeepsItsStricterDoor: every
+    one of these routes checks its door BEFORE its body, so an empty body still
+    reaches a real permission decision (never 403 for an allowed role, always
+    403 for a forbidden one) without needing a real PrintLayout row.
+    """
+
+    @pytest.mark.parametrize('url', PO_NAMED_LAYOUT_EDIT_ROUTES)
+    def test_staff_is_not_forbidden(self, client, db_session, main_branch, url):
+        _login(client, _user(db_session, 'staff', main_branch), main_branch)
+        assert _post(client, url).status_code != 403, url
+
+    @pytest.mark.parametrize('url', PO_NAMED_LAYOUT_EDIT_ROUTES)
+    def test_accountant_is_not_forbidden(self, client, db_session, main_branch, url):
+        _login(client, _user(db_session, 'accountant', main_branch), main_branch)
+        assert _post(client, url).status_code != 403, url
+
+    @pytest.mark.parametrize('url', PO_NAMED_LAYOUT_EDIT_ROUTES)
+    def test_viewer_gets_403(self, client, db_session, main_branch, url):
+        _login(client, _user(db_session, 'viewer', main_branch), main_branch)
+        assert _post(client, url).status_code == 403, url
+
+    @pytest.mark.parametrize('url', PO_NAMED_LAYOUT_EDIT_ROUTES)
+    def test_admin_is_not_forbidden(self, client, db_session, main_branch, url):
+        """Control on the direction: the door only ever ADMITS admin."""
+        _login(client, _user(db_session, 'admin', main_branch), main_branch)
+        assert _post(client, url).status_code != 403, url
+
+    def test_delete_refuses_staff(self, client, db_session, main_branch):
+        """THE narrower door -- staff can edit a layout but not delete one."""
+        _login(client, _user(db_session, 'staff', main_branch), main_branch)
+        assert _post(client, PO_NAMED_LAYOUT_DELETE_ROUTE).status_code == 403
+
+    def test_delete_refuses_accountant(self, client, db_session, main_branch):
+        _login(client, _user(db_session, 'accountant', main_branch), main_branch)
+        assert _post(client, PO_NAMED_LAYOUT_DELETE_ROUTE).status_code == 403
+
+    def test_delete_refuses_viewer(self, client, db_session, main_branch):
+        _login(client, _user(db_session, 'viewer', main_branch), main_branch)
+        assert _post(client, PO_NAMED_LAYOUT_DELETE_ROUTE).status_code == 403
+
+    def test_delete_admits_admin(self, client, db_session, main_branch):
+        _login(client, _user(db_session, 'admin', main_branch), main_branch)
+        assert _post(client, PO_NAMED_LAYOUT_DELETE_ROUTE).status_code != 403
+
+    def test_delete_admits_chief_accountant(self, client, db_session, main_branch):
+        _login(client, _user(db_session, 'chief_accountant', main_branch), main_branch)
+        assert _post(client, PO_NAMED_LAYOUT_DELETE_ROUTE).status_code != 403
+
+    @pytest.mark.parametrize('role', ['staff', 'accountant', 'viewer', 'admin'])
+    def test_select_requires_only_login(self, client, db_session, main_branch, role):
+        """No can_edit/can_delete gate at all -- every role reaches the route;
+        NONE of them may be 403'd (a missing device cookie or layout_id still
+        answers with 400/404, never 403)."""
+        _login(client, _user(db_session, role, main_branch), main_branch)
+        assert _post(client, PO_NAMED_LAYOUT_SELECT_ROUTE).status_code != 403, role
+
+
 class TestTheFamilyIsComplete:
     """Guard on the sweep itself.
 
     The bug this whole exercise is about is a rule copy-pasted into N places and
     updated in N-1 of them. A test that lists ten routes cannot notice an
-    eleventh, so the list is checked against the app's REAL url map.
+    eleventh, so the list is checked against the app's REAL url map -- against
+    ALL_LAYOUT_SAVE_ROUTES, the union of the eleven-route table above and
+    TestThePOLayoutFamilyRoutes' own four-route list, not a bare number that
+    could be bumped without anyone naming what grew.
     """
 
     def test_every_layout_route_in_the_app_is_covered(self, app):
         registered = sorted(
             str(r.rule) for r in app.url_map.iter_rules()
             if 'print-layout' in str(r.rule))
-        missing = set(registered) - set(ALL_ELEVEN)
+        missing = set(registered) - set(ALL_LAYOUT_SAVE_ROUTES)
         assert not missing, (
             'These layout-save routes exist in the app but are not in this '
             "sweep's table, so nothing checks who may call them: %s"
             % sorted(missing))
 
-    def test_the_url_map_still_has_eleven(self, app):
-        """Cross-check the other way -- a route REMOVED from the app would leave
-        a stale entry here silently passing against a 404."""
+    def test_the_url_map_still_has_fifteen(self, app):
+        """11 single-shape family routes + Task 6's 4 PO named-layout routes
+        (their own shapes -- see TestThePOLayoutFamilyRoutes) = 15. Cross-check
+        the other way from the test above -- a route REMOVED from the app would
+        leave a stale entry in ALL_LAYOUT_SAVE_ROUTES silently passing against a
+        404 there."""
         registered = [str(r.rule) for r in app.url_map.iter_rules()
                       if 'print-layout' in str(r.rule)]
-        assert len(set(registered)) == 11, sorted(set(registered))
+        assert len(set(registered)) == 15, sorted(set(registered))
 
 
 class TestNoRouteStillUsesTheOldRule:

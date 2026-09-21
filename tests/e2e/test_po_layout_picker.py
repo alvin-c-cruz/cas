@@ -29,6 +29,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 
 # Made-up paths; nothing in app/ uses them -- a designer that ignored config and
 # POSTed a hardcoded purchase-orders URL would miss the route and fail these tests.
+SAVE_PATH = '/pp-test-save'        # matches the designer fixture's saveUrl below
 SAVE_AS_PATH = '/pp-test-save-as'
 RENAME_PATH = '/pp-test-rename'
 DELETE_PATH = '/pp-test-delete'
@@ -136,6 +137,29 @@ def test_picking_the_default_back_restores_its_own_geometry(designer):
     designer.select_option('#ppLayoutPicker', label='Purchasing - HP LaserJet')
     designer.select_option('#ppLayoutPicker', label='Default')
     assert _po_no_left(designer) == 620
+
+
+# --- Save targets whatever the picker is on (fix round 1, finding 2) --------------
+
+def test_saving_while_a_named_layout_is_selected_targets_that_layout(designer):
+    """A toolbar reading "Editing: Purchasing - HP" must not have Save silently
+    overwrite "Default" -- Save must send the id of whatever is picked."""
+    designer.select_option('#ppLayoutPicker', label='Purchasing - HP LaserJet')
+    captured = _intercept(designer, SAVE_PATH)
+    designer.click('#editLayoutBtn')          # reveals #saveLayoutBtn
+    designer.click('#saveLayoutBtn')
+    designer.wait_for_function("() => document.getElementById('layoutSavedFlag') !== null")
+    assert json.loads(captured['body'])['layout_id'] == '2'
+
+
+def test_saving_with_the_default_still_selected_sends_its_own_id(designer):
+    """Control: the default is not special-cased into omitting layout_id -- it
+    is just another row with its own real id."""
+    captured = _intercept(designer, SAVE_PATH)
+    designer.click('#editLayoutBtn')
+    designer.click('#saveLayoutBtn')
+    designer.wait_for_function("() => document.getElementById('layoutSavedFlag') !== null")
+    assert json.loads(captured['body'])['layout_id'] == '1'
 
 
 # --- Save as... ---------------------------------------------------------------

@@ -455,10 +455,19 @@
       // copied from one of them still matches.
       saveBtn.textContent = 'Saving\u2026';
       try {
+        // When a named-layout picker exists (currently PO only -- see the
+        // layoutPicker banner comment above), Save targets whatever it is
+        // CURRENTLY EDITING, not silently the scope's default. `layoutPicker`
+        // is declared further down this same function; referencing it here is
+        // safe because this closure only runs on a later click, by which time
+        // initPreprintedDesigner has already finished assigning it (null where
+        // the template renders no #ppLayoutPicker, e.g. PR/RR).
+        const body = collect();
+        if (layoutPicker && layoutPicker.value) body.layout_id = layoutPicker.value;
         const resp = await fetch(saveUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-          body: JSON.stringify(collect()),
+          body: JSON.stringify(body),
         });
         if (resp.ok) {
           if (!document.getElementById('layoutSavedFlag')) {

@@ -1207,13 +1207,30 @@ def save_print_layout():
 
     Mirrors sales_orders.save_print_layout: a layout edit changes what prints on a
     client's real, BIR-registered stationery, so it is deliberately narrower than
-    the module's edit-level role rule."""
+    the module's edit-level role rule.
+
+    Optional `layout_id`: the designer's picker (Task 7) sends the layout it is
+    currently EDITING so Save updates THAT row, not silently the scope's default
+    -- without this, a toolbar reading "Editing: Purchasing - HP" would have Save
+    overwrite "Default" instead, the one layout every unconfigured workstation
+    resolves to. Omitted, this is exactly the call every other caller (PR, RR,
+    and the other nine pre-printed documents, none of which have a picker) makes
+    today, and save_layout's own default-row behaviour is unchanged for them.
+    save_layout raises ValueError when layout_id names no row in this doc_type/
+    scope (e.g. deleted by someone else between page load and submit); that must
+    come back as a 4xx with the message, same as save-as/rename/delete, never an
+    uncaught 500."""
     if not current_user.can_edit_print_layout:
         abort(403)
     data = request.get_json(silent=True) or {}
+    layout_id = data.get('layout_id')
     # The layout is per-branch; the print page requires the selected branch to equal
     # the document's branch, so the session branch is the document's branch.
-    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
+    try:
+        clean = save_layout(data, current_user.username, session.get('selected_branch_id'),
+                            layout_id=layout_id)
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
     return jsonify(ok=True, layout=clean)
 
 

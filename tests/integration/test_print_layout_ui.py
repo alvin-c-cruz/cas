@@ -113,3 +113,55 @@ def test_the_copy_names_printers_not_people(client, db_session, main_branch, po_
     _mk('Default', is_default=True)
     body = client.get('/purchase-orders/%d/print' % po_fixture.id).data.decode()
     assert 'Name it after the printer, not the person' in body
+
+
+def test_save_targets_the_picked_layout_not_silently_the_default(
+        client, db_session, main_branch, po_fixture):
+    """Fix round 1, finding 2: a toolbar reading "Editing: Purchasing - HP" must
+    not have Save silently overwrite "Default" -- the one layout every
+    unconfigured workstation resolves to. POSTing an explicit layout_id must
+    update THAT row and leave every other row (especially the default) alone."""
+    default_row = _mk('Default', is_default=True)
+    other_row = _mk('Purchasing - HP')
+    default_payload_before = default_row.payload
+    assert other_row.payload == json.dumps({})     # control: starts untouched
+
+    resp = client.post('/purchase-orders/print-layout', json={
+        'layout_id': other_row.id, 'paper': 'letter', 'dateFormat': 'us',
+    })
+    assert resp.status_code == 200, resp.get_json()
+
+    db.session.refresh(default_row)
+    db.session.refresh(other_row)
+    # the NON-DEFAULT row (the one Save was told it is editing) changed...
+    saved = json.loads(other_row.payload)
+    assert saved['paper'] == 'letter' and saved['dateFormat'] == 'us'
+    # ...and the DEFAULT row -- what every other workstation prints with -- did not.
+    assert default_row.payload == default_payload_before
+
+
+def test_save_without_a_layout_id_still_targets_the_default(
+        client, db_session, main_branch, po_fixture):
+    """Control on the direction: every OTHER caller (PR, RR, the nine documents
+    with no picker) posts no layout_id at all, and that must keep landing on the
+    scope's default exactly as it always has -- this fix must not have narrowed
+    the plain save path."""
+    default_row = _mk('Default', is_default=True)
+    resp = client.post('/purchase-orders/print-layout', json={'paper': 'letter'})
+    assert resp.status_code == 200, resp.get_json()
+    db.session.refresh(default_row)
+    assert json.loads(default_row.payload)['paper'] == 'letter'
+
+
+def test_save_with_an_unknown_layout_id_refuses_with_a_4xx_not_a_500(
+        client, db_session, main_branch, po_fixture):
+    """save_layout raises ValueError for a layout_id naming no row in this
+    doc_type/scope (e.g. deleted by someone else between page load and submit);
+    the route must turn that into a JSON 4xx, same as save-as/rename/delete,
+    never an uncaught 500."""
+    _mk('Default', is_default=True)
+    resp = client.post('/purchase-orders/print-layout',
+                       json={'layout_id': 999999, 'paper': 'letter'})
+    assert resp.status_code == 400
+    assert resp.get_json()['ok'] is False
+    assert 'no longer exists' in resp.get_json()['error']
