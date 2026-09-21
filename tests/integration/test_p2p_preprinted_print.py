@@ -250,6 +250,10 @@ class TestPurchaseOrderPrintForm:
         # bumped so a browser holding the pre-picker file in cache fetches it fresh.
         assert 'js/preprinted_designer.js?v=2' in body
         assert 'po_preprinted_designer' not in body, 'made a ninth per-document copy'
+        # The initializer is actually CALLED, not merely mentioned -- a template
+        # that kept the config keys below in an inert comment would otherwise
+        # still pass every assertion that follows.
+        assert 'initPreprintedDesigner({' in body
         assert "saveUrl: '/purchase-orders/print-layout'" in body
         assert "saveAsUrl: '/purchase-orders/print-layout/save-as'" in body
         assert "renameUrl: '/purchase-orders/print-layout/rename'" in body

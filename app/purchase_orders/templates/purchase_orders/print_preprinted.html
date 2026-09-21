@@ -46,7 +46,11 @@
   /* Named-layout picker (the toolbar's second row of controls) -- see
      .superpowers/sdd/2026-09-18-named-print-layouts-plan/task-7-brief.md. */
   .pp-layout-picker, .pp-device-layout { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
-  .pp-layout-help { flex-basis: 100%; margin: 0; font-size: 11px; color: #666; }
+  /* #ppSaveAsHelp is a sibling of .pp-toolbar, not a child of it (see below) --
+     flex-basis never applied to it and was dead. Centered/width-constrained the
+     same way .pp-col-controls (ppFieldControls/ppColControls) is, since it sits
+     in the same position: its own row below the toolbar, not inside it. */
+  .pp-layout-help { max-width: 912px; margin: 4px auto 0; font-size: 11px; color: #666; }
   .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
   .btn-print { background: #1565c0; color: #fff; }
   .btn-close { background: #666; color: #fff; }

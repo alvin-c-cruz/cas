@@ -233,3 +233,61 @@ def test_a_refused_use_here_shows_the_servers_message(designer):
     assert 'no longer exists' in designer.locator('#ppNotice').inner_text()
     # and Decision 3 holds even on a refusal: nothing repointed
     assert designer.locator('#ppDeviceLayout').inner_text() == 'Default'
+
+
+# --- IMPORTANT 3 (fix round 2): a missing key must not wipe signatories -----------
+
+def _add_option(page, value, label, payload):
+    """Inject a picker <option> with an arbitrary payload -- lets a test exercise
+    a payload shape (missing keys, explicit empties) without hand-editing the
+    static harness file for every case."""
+    page.evaluate(
+        """([value, label, payloadStr]) => {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = label;
+            opt.dataset.payload = payloadStr;
+            document.getElementById('ppLayoutPicker').appendChild(opt);
+        }""",
+        [value, label, json.dumps(payload)])
+
+
+_BLANK_PAGE = {'paper': 'continuous', 'dateFormat': 'long',
+              'page': {'fontFamily': '"Courier New", Courier, monospace'},
+              'fields': {}, 'lineItems': {'columns': []}}
+
+
+def test_picking_a_layout_missing_the_texts_key_leaves_signatories_alone(designer):
+    """A partial/{} payload (e.g. a freshly-created row before its first real
+    save) must NOT wipe the signatory lines off the canvas -- a MISSING key
+    means 'leave the canvas alone', distinct from an explicit empty list. Before
+    the fix this was a real data-loss path: a subsequent Save would PERSIST
+    texts: [] and the user would lose signatory lines they never touched."""
+    _add_option(designer, '3', 'Blank Draft', dict(_BLANK_PAGE))   # no texts/extras key at all
+    designer.select_option('#ppLayoutPicker', label='Blank Draft')
+    preparer = designer.locator('.pp-text[data-text="preparer"]')
+    assert preparer.count() == 1
+    assert preparer.inner_text() == 'Preparer'
+
+
+def test_picking_a_layout_with_an_explicit_empty_texts_list_still_clears_them(designer):
+    """Control on the direction: an EXPLICIT [] is still honoured as 'this
+    layout really has none' -- the fix is about a MISSING key, not about never
+    touching texts again."""
+    payload = dict(_BLANK_PAGE, texts=[], extras=[])
+    _add_option(designer, '4', 'No Texts', payload)
+    designer.select_option('#ppLayoutPicker', label='No Texts')
+    assert designer.locator('.pp-text').count() == 0
+
+
+def test_a_recreated_signatory_text_still_warns_when_deleted(designer):
+    """The other half of IMPORTANT 3: a .pp-text recreated by
+    applyLayoutToCanvas must still carry data-signatory, or selectEl's "Removed
+    signatory line ..." warning silently stops firing for every text touched
+    after any pick."""
+    designer.select_option('#ppLayoutPicker', label='Purchasing - HP LaserJet')
+    designer.click('#editLayoutBtn')
+    designer.click('.pp-text[data-text="preparer"]')
+    designer.click('#ppDelBtn')
+    designer.wait_for_selector('#ppNotice', state='visible', timeout=5000)
+    assert 'Removed signatory line' in designer.locator('#ppNotice').inner_text()

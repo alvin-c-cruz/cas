@@ -253,6 +253,15 @@ class TestThePOLayoutFamilyRoutes:
         _login(client, _user(db_session, role, main_branch), main_branch)
         assert _post(client, PO_NAMED_LAYOUT_SELECT_ROUTE).status_code != 403, role
 
+    def test_anonymous_is_refused(self, client, db_session, main_branch):
+        """THE login half of "login only" -- untested until now. An anonymous
+        POST must not reach the view (login_manager.login_view redirects it,
+        302), and specifically must not be a false '!= 403' pass that a bug
+        dropping @login_required entirely would also produce (a 200)."""
+        resp = _post(client, PO_NAMED_LAYOUT_SELECT_ROUTE)
+        assert resp.status_code == 302
+        assert resp.status_code != 200
+
 
 class TestTheFamilyIsComplete:
     """Guard on the sweep itself.

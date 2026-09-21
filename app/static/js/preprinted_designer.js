@@ -44,6 +44,13 @@
   var CANVAS_H = 1008;           // preprinted_base.CANVAS_H -- the server's y ceiling
   var FONT_MIN = 6, FONT_MAX = 72;
   var COL_WIDTH_MIN = 20;        // narrowest a line-item column may be dragged
+  // preprinted_base.TEXT_KEYS -- shared across every document (unlike FIELD_KEYS,
+  // this one does NOT vary per document), so applyLayoutToCanvas (layoutPicker
+  // block below) can name these directly rather than reconstruct them from
+  // whatever the canvas happens to hold. Decides whether a recreated .pp-text
+  // keeps data-signatory, which is what makes selectEl's "Removed signatory
+  // line ..." warning still fire after a layout is picked.
+  var SIGNATORY_TEXT_IDS = ['preparer', 'checker', 'approver'];
 
   function initPreprintedDesigner(config) {
     const cfg = config || {};
@@ -609,16 +616,10 @@
           fontSel.value = data.page.fontFamily;
           document.body.style.fontFamily = fontSel.value;
         }
-        if (paperSel) {
-          const opt = paperSel.selectedOptions[0];
-          const ps = document.getElementById('ppPageStyle');
-          if (opt) {
-            document.body.dataset.paper = paperSel.value;
-            canvas.style.width = opt.dataset.w + 'px';
-            canvas.style.height = opt.dataset.h + 'px';
-            if (ps) ps.textContent = '@page { size: ' + opt.dataset.css + '; margin: 0; }';
-          }
-        }
+        // Same idiom as the dateSel dispatch below: re-run the existing change
+        // handler (line ~547) rather than reproducing its body here, so the
+        // canvas-resize/@page logic has exactly one copy.
+        if (paperSel) paperSel.dispatchEvent(new Event('change'));
         if (dateSel) dateSel.dispatchEvent(new Event('change'));
 
         Object.keys(data.fields || {}).forEach((key) => {
@@ -636,36 +637,51 @@
         });
 
         // Extras/texts vary in count per saved layout -- replace wholesale rather
-        // than trying to reconcile in place.
-        canvas.querySelectorAll('.pp-el[data-extra]').forEach((el) => el.remove());
-        (data.extras || []).forEach((ex) => {
-          const base = canvas.querySelector('.pp-el[data-el="' + ex.key + '"]:not([data-extra])');
-          const el = document.createElement('div');
-          el.className = 'pp-el';
-          el.dataset.el = ex.key;
-          el.dataset.extra = '1';
-          el.dataset.label = (base && base.dataset.label) || ex.key;
-          el.textContent = base ? base.textContent : '';
-          el.style.left = ex.x + 'px';
-          el.style.top = ex.y + 'px';
-          el.style.fontSize = ex.fontSize + 'px';
-          el.style.fontWeight = ex.bold ? 'bold' : 'normal';
-          canvas.appendChild(el);
-        });
+        // than trying to reconcile in place. But ONLY when the key is actually
+        // PRESENT: a partial or {} payload (e.g. a freshly-created row before its
+        // first real save) must leave the canvas's existing extras/texts alone,
+        // not wipe them. An explicit [] is still honoured as "this layout really
+        // has none" -- 'in' distinguishes the two; `data.extras || []` cannot,
+        // since a missing key and an empty array both fall to the same [].
+        // Wiping signatory lines here was a real data-loss path: a subsequent
+        // Save would then PERSIST texts: [] and the user loses signatory lines
+        // they never touched.
+        if ('extras' in data) {
+          canvas.querySelectorAll('.pp-el[data-extra]').forEach((el) => el.remove());
+          (data.extras || []).forEach((ex) => {
+            const base = canvas.querySelector('.pp-el[data-el="' + ex.key + '"]:not([data-extra])');
+            const el = document.createElement('div');
+            el.className = 'pp-el';
+            el.dataset.el = ex.key;
+            el.dataset.extra = '1';
+            el.dataset.label = (base && base.dataset.label) || ex.key;
+            el.textContent = base ? base.textContent : '';
+            el.style.left = ex.x + 'px';
+            el.style.top = ex.y + 'px';
+            el.style.fontSize = ex.fontSize + 'px';
+            el.style.fontWeight = ex.bold ? 'bold' : 'normal';
+            canvas.appendChild(el);
+          });
+        }
 
-        canvas.querySelectorAll('.pp-text').forEach((el) => el.remove());
-        (data.texts || []).forEach((t) => {
-          const el = document.createElement('div');
-          el.className = 'pp-el pp-text' + (t.hidden ? ' pp-field-hidden' : '');
-          el.dataset.text = t.id;
-          el.dataset.label = t.text;
-          el.textContent = t.text;
-          el.style.left = t.x + 'px';
-          el.style.top = t.y + 'px';
-          el.style.fontSize = t.fontSize + 'px';
-          el.style.fontWeight = t.bold ? 'bold' : 'normal';
-          canvas.appendChild(el);
-        });
+        if ('texts' in data) {
+          canvas.querySelectorAll('.pp-text').forEach((el) => el.remove());
+          (data.texts || []).forEach((t) => {
+            const el = document.createElement('div');
+            el.className = 'pp-el pp-text' + (t.hidden ? ' pp-field-hidden' : '');
+            el.dataset.text = t.id;
+            el.dataset.label = t.text;
+            // Restored: without it, selectEl's "Removed signatory line ..."
+            // warning silently stops firing for every text recreated here.
+            if (SIGNATORY_TEXT_IDS.indexOf(t.id) !== -1) el.dataset.signatory = '1';
+            el.textContent = t.text;
+            el.style.left = t.x + 'px';
+            el.style.top = t.y + 'px';
+            el.style.fontSize = t.fontSize + 'px';
+            el.style.fontWeight = t.bold ? 'bold' : 'normal';
+            canvas.appendChild(el);
+          });
+        }
 
         const li = data.lineItems || {};
         (li.columns || []).forEach((c) => {

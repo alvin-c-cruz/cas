@@ -611,6 +611,11 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
             if target_row is None or target_row.doc_type != doc_type \
                     or target_row.scope_id != scope_id:
                 raise ValueError('That layout no longer exists. Refresh and try again.')
+            # Captured BEFORE the assignment below -- this row's own prior
+            # payload, not the legacy/default app_settings blob `old` (further
+            # down) reads. Without this the audit row for a non-default save
+            # would log a before/after spanning two different rows.
+            old_row_payload = target_row.payload
             target_row.payload = json.dumps(clean)
             db.session.commit()
         else:
@@ -636,11 +641,26 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
         if is_default_target:
             AppSettings.set_setting(key, json.dumps(clean), updated_by=username)
 
-        log_audit(module=audit_module, action='update', record_id=None,
-                  record_identifier=audit_identifier,
-                  old_values={'layout': old, 'branch_id': branch_id},
-                  new_values={'layout': json.dumps(clean), 'branch_id': branch_id},
-                  notes=f'Pre-printed layout updated (branch {branch_id})')
+        if layout_id is not None:
+            # Names WHICH layout was written -- record_id is the actual
+            # named_print_layouts row, old_values is THAT row's own prior
+            # payload (captured above), and notes names it, matching the
+            # sibling named-layout routes (e.g.
+            # purchase_orders.views.select_print_layout).
+            log_audit(module=audit_module, action='update', record_id=target_row.id,
+                      record_identifier=audit_identifier,
+                      old_values={'layout': old_row_payload, 'branch_id': branch_id},
+                      new_values={'layout': json.dumps(clean), 'branch_id': branch_id},
+                      notes=f'Pre-printed layout "{target_row.name}" updated '
+                            f'(branch {branch_id})')
+        else:
+            # Unchanged for every pre-existing caller (all eleven modules'
+            # plain save, none of which ever pass layout_id).
+            log_audit(module=audit_module, action='update', record_id=None,
+                      record_identifier=audit_identifier,
+                      old_values={'layout': old, 'branch_id': branch_id},
+                      new_values={'layout': json.dumps(clean), 'branch_id': branch_id},
+                      notes=f'Pre-printed layout updated (branch {branch_id})')
         return clean
 
     return sanitize_layout, get_layout, save_layout

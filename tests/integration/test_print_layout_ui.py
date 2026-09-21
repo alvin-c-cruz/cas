@@ -8,6 +8,7 @@ from decimal import Decimal
 import pytest
 
 from app import db
+from app.audit.models import AuditLog
 from app.print_layouts.models import PrintLayout
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 from app.settings import AppSettings
@@ -102,10 +103,40 @@ def test_delete_is_absent_from_the_toolbar_for_staff(client, db_session, main_br
     perms = staff_user.get_book_permissions()
     perms['purchase_orders'] = True
     staff_user.set_book_permissions(perms)
+    # Staff is BRANCH-SCOPED (app/users/utils.py::get_accessible_branches):
+    # without an assignment, validate_branch_session's before_request finds
+    # zero accessible branches and redirects to /select-branch BEFORE the print
+    # route is ever reached -- a redirect page that (of course) contains
+    # neither `pp-layout-picker` nor `ppDeleteLayoutBtn`, which is exactly how
+    # the positive-control assertion below caught this: this test was passing
+    # for the wrong reason (staff never actually reached the page) until this
+    # line was added.
+    staff_user.set_branches([main_branch])
     db.session.commit()
     _login(client, staff_user, main_branch)
     body = client.get('/purchase-orders/%d/print' % po_fixture.id).data.decode()
+    # POSITIVE CONTROL: staff still gets the rest of the toolbar (can_edit_print_layout
+    # includes staff) -- without this, the absence assertion below would pass just as
+    # well against a page that rendered no toolbar at all for staff.
+    assert 'class="pp-layout-picker"' in body
     assert 'id="ppDeleteLayoutBtn"' not in body
+
+
+def test_delete_is_present_for_admin(client, db_session, main_branch, po_fixture):
+    """Fix round 2 test gap: nothing previously proved this button ever renders
+    for anyone -- only that it is ABSENT for staff. po_fixture already logs in
+    as admin, who has can_delete_print_layout (app/users/models.py:156)."""
+    _mk('Default', is_default=True)
+    body = client.get('/purchase-orders/%d/print' % po_fixture.id).data.decode()
+    assert 'id="ppDeleteLayoutBtn"' in body
+
+
+def test_delete_is_present_for_chief_accountant(client, db_session, main_branch,
+                                                po_fixture, chief_accountant_user):
+    _mk('Default', is_default=True)
+    _login(client, chief_accountant_user, main_branch)
+    body = client.get('/purchase-orders/%d/print' % po_fixture.id).data.decode()
+    assert 'id="ppDeleteLayoutBtn"' in body
 
 
 def test_the_copy_names_printers_not_people(client, db_session, main_branch, po_fixture):
@@ -120,14 +151,19 @@ def test_save_targets_the_picked_layout_not_silently_the_default(
     """Fix round 1, finding 2: a toolbar reading "Editing: Purchasing - HP" must
     not have Save silently overwrite "Default" -- the one layout every
     unconfigured workstation resolves to. POSTing an explicit layout_id must
-    update THAT row and leave every other row (especially the default) alone."""
+    update THAT row and leave every other row (especially the default) alone.
+
+    Posts layout_id as a STRING -- that is the shape the browser actually
+    sends (`layoutPicker.value`, an <option> value, always a string); a test
+    posting a bare int would not have caught a str/int mismatch anywhere on
+    this path."""
     default_row = _mk('Default', is_default=True)
     other_row = _mk('Purchasing - HP')
     default_payload_before = default_row.payload
     assert other_row.payload == json.dumps({})     # control: starts untouched
 
     resp = client.post('/purchase-orders/print-layout', json={
-        'layout_id': other_row.id, 'paper': 'letter', 'dateFormat': 'us',
+        'layout_id': str(other_row.id), 'paper': 'letter', 'dateFormat': 'us',
     })
     assert resp.status_code == 200, resp.get_json()
 
@@ -138,6 +174,37 @@ def test_save_targets_the_picked_layout_not_silently_the_default(
     assert saved['paper'] == 'letter' and saved['dateFormat'] == 'us'
     # ...and the DEFAULT row -- what every other workstation prints with -- did not.
     assert default_row.payload == default_payload_before
+
+
+def test_saving_the_picked_layout_audits_that_rows_own_before_and_after(
+        client, db_session, main_branch, po_fixture):
+    """Fix round 2, IMPORTANT 1: the audit entry for a non-default save must
+    diff THAT row's own prior payload against its new one and name which
+    layout was written -- not the legacy/default app_settings blob, which is a
+    DIFFERENT row's data once layout_id targets a non-default one. CLAUDE.md:
+    verify the audit log via the real HTTP route, not the service layer alone."""
+    _mk('Default', is_default=True)
+    other_row = _mk('Purchasing - HP')
+    before_payload = other_row.payload
+    # A stand-in for what the BUG logged as "old" instead: the legacy/default
+    # blob, untouched by this save and belonging to a different row entirely.
+    AppSettings.set_setting('po_preprinted_layout:%d' % main_branch.id,
+                            json.dumps({'marker': 'legacy-untouched'}), 'system')
+    audit_count_before = AuditLog.query.count()
+
+    resp = client.post('/purchase-orders/print-layout',
+                       json={'layout_id': str(other_row.id), 'paper': 'letter'})
+    assert resp.status_code == 200, resp.get_json()
+
+    assert AuditLog.query.count() == audit_count_before + 1
+    entry = AuditLog.query.order_by(AuditLog.id.desc()).first()
+    assert entry.record_id == other_row.id          # names WHICH layout...
+    assert other_row.name in (entry.notes or '')     # ...twice over
+    old = json.loads(entry.old_values)['layout']
+    new = json.loads(entry.new_values)['layout']
+    assert old == before_payload                     # this row's own prior payload
+    assert old != new                                # a REAL before/after diff
+    assert 'legacy-untouched' not in old             # not the legacy/default blob
 
 
 def test_save_without_a_layout_id_still_targets_the_default(
