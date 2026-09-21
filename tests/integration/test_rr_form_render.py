@@ -858,3 +858,27 @@ class TestOneRowPerPurchaseOrderLine:
         picker = form_script(create_page, 'pullPoBtn')
         assert 'rrAddLine' in picker
         assert 'rr-recv' not in picker
+
+
+# -- no-PO picker: allowed-units payload ---------------------------------------
+
+def test_direct_products_payload_carries_allowed_units_to_form(
+        client, db_session, main_branch, admin_user, rr_enabled):
+    """The no-PO picker's JS filters the unit dropdown to a product's curated
+    allowed set (Task 4), but it can only filter to data it actually receives --
+    this is a contract guard on the payload Task 3 added to _direct_products_payload(),
+    not a driver for the JS filtering itself (see the module docstring in
+    test_rr_form_render.py's task-4 companion: a DOM shim throws on fetch/Choices/
+    modals in this suite, so the filter is verified manually in the browser)."""
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    box = UnitOfMeasure(code='BOX', name='Box', is_active=True)
+    db_session.add(box); db_session.commit()
+    p = Product(name='PickerProd', track_inventory=False, is_active=True)
+    p.allowed_units = [box]
+    db_session.add(p); db_session.commit()
+    _login(client, admin_user, main_branch)
+    resp = client.get('/receiving-reports/create')
+    body = resp.get_data(as_text=True)
+    assert 'allowed_unit_ids' in body
+    assert str(box.id) in body

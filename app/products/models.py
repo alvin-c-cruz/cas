@@ -14,6 +14,20 @@ from app.utils import ph_now
 
 COSTING_METHODS = ('moving_average', 'fifo', 'standard', 'lifo', 'specific_identification')
 
+# Per-product allowed units for no-PO receiving lines (prodau_0001). Opt-in:
+# an empty set means "any active unit". Surrogate id PK + a unique (product,
+# unit) pair — a proper relationship, mirroring how user<->branches is modelled.
+product_allowed_units = db.Table(
+    'product_allowed_units',
+    db.Column('id', db.Integer, primary_key=True),
+    db.Column('product_id', db.Integer,
+              db.ForeignKey('products.id'), nullable=False),
+    db.Column('unit_of_measure_id', db.Integer,
+              db.ForeignKey('units_of_measure.id'), nullable=False),
+    db.UniqueConstraint('product_id', 'unit_of_measure_id',
+                        name='uq_product_allowed_units_product_unit'),
+)
+
 
 class Product(db.Model):
     __tablename__ = 'products'
@@ -49,9 +63,28 @@ class Product(db.Model):
     default_account = db.relationship('Account', foreign_keys=[default_account_id])
     category = db.relationship('ProductCategory', foreign_keys=[category_id])
     created_by = db.relationship('User', foreign_keys=[created_by_id])
+    allowed_units = db.relationship('UnitOfMeasure', secondary=product_allowed_units)
 
     def __repr__(self):
         return f'<Product {self.code} - {self.name}>'
+
+    def allowed_unit_ids(self):
+        """The set of unit ids curated for no-PO receiving. Empty = unconstrained."""
+        return {u.id for u in self.allowed_units}
+
+    def unit_allowed(self, uom_id):
+        """Whether uom_id may be used on a no-PO receiving line for this product.
+
+        A blank unit (falls back to the product default) always passes. An empty
+        curated set is unconstrained (opt-in). Otherwise the unit must be in the
+        set, or be the product's default (always implicitly allowed).
+        """
+        if not uom_id:
+            return True
+        ids = self.allowed_unit_ids()
+        if not ids:
+            return True
+        return uom_id in ids or uom_id == self.default_unit_of_measure_id
 
     def to_dict(self):
         return {
@@ -61,6 +94,7 @@ class Product(db.Model):
             'job_order_name': self.job_order_name,
             'default_uom_id': self.default_unit_of_measure_id,
             'default_uom_code': self.default_unit_of_measure.code if self.default_unit_of_measure else None,
+            'allowed_unit_ids': sorted(self.allowed_unit_ids()),
             'default_unit_price': float(self.default_unit_price) if self.default_unit_price is not None else None,
             'default_account_id': self.default_account_id,
             'category_id': self.category_id,

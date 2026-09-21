@@ -1,6 +1,7 @@
 """WTForms form definitions for the Product master."""
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SelectField, DecimalField, BooleanField
+from wtforms import (StringField, TextAreaField, SelectField, DecimalField,
+                     BooleanField, SelectMultipleField)
 from wtforms.validators import DataRequired, Length, Optional, NumberRange, ValidationError
 from app.products.models import COSTING_METHODS
 
@@ -20,6 +21,10 @@ class ProductForm(FlaskForm):
     # choices populated in the view from active UOMs / accounts; '' = none
     default_unit_of_measure_id = SelectField('Default Unit of Measure',
                                              validators=[Optional()], default='')
+    # Curated per-product allow-list for NO-PO receiving lines. Empty = any active
+    # unit (opt-in). coerce=int; choices are active UOMs, populated in the view.
+    allowed_unit_ids = SelectMultipleField('Allowed Units (no-PO receiving)',
+                                           coerce=int, validators=[Optional()])
     default_unit_price = DecimalField('Default Unit Price (₱, VAT-inclusive)', places=2,
                                       validators=[Optional(), NumberRange(min=0)])
     default_account_id = SelectField('Default Account', validators=[Optional()], default='')
