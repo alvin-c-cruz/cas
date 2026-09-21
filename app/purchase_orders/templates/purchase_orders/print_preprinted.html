@@ -241,7 +241,14 @@
    per-document copy. Its config has exactly ONE key: saveUrl. Labels ride on each
    element's data-label and edit permission is this template's decision (it renders
    #editLayoutBtn only for a full-access user), so a fieldLabels/canEdit flag could
-   only become a second source of truth that disagrees with the DOM. #}
+   only become a second source of truth that disagrees with the DOM.
+
+   ?v=N MUST match app/purchase_requests/templates/purchase_requests/print_preprinted.html
+   and app/receiving_reports/templates/receiving_reports/print_preprinted.html --
+   all three load this ONE file, so a cache-buster bump belongs to the file, not
+   to whichever template happened to change. test_p2p_preprinted_print.py's
+   test_the_three_shared_designer_templates_use_the_same_cache_buster fails if
+   these three ever diverge again. #}
 <script src="{{ url_for('static', filename='js/preprinted_designer.js') }}?v=2"></script>
 <script>
   initPreprintedDesigner({

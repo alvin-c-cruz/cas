@@ -683,8 +683,12 @@
           });
         }
 
-        const li = data.lineItems || {};
-        (li.columns || []).forEach((c) => {
+        // Named lineItemsData, not li -- li is the module-level band-element
+        // helper (canvas.querySelector('.pp-lineitems'), declared above) and a
+        // same-named local here shadowed it, which is why the band element was
+        // awkward to reach from this function.
+        const lineItemsData = data.lineItems || {};
+        (lineItemsData.columns || []).forEach((c) => {
           const col = canvas.querySelector('.pp-col[data-col="' + c.key + '"]');
           if (!col) return;
           col.style.left = c.x + 'px';
@@ -693,7 +697,28 @@
           const cb = colStrip && colStrip.querySelector('[data-coltoggle="' + c.key + '"]');
           if (cb) cb.checked = !!c.visible;
         });
-        if (li.y !== undefined) cols().forEach((c) => { c.style.top = li.y + 'px'; });
+        if (lineItemsData.y !== undefined) cols().forEach((c) => { c.style.top = lineItemsData.y + 'px'; });
+        // fontSize/bold are the BAND's font, shared across every column (see
+        // fontTargets() above) -- and rowHeight lives on .pp-lineitems' own
+        // dataset. All three are exactly what collect() reads back at Save
+        // time (fontSize/bold from the first .pp-col's computed style,
+        // rowHeight from .pp-lineitems[data-rowheight]), which is what made
+        // this a real bug: without applying them here, Save after a pick
+        // silently wrote the SERVER-RENDERED layout's font/rowHeight into the
+        // PICKED layout's stored payload -- the line-item block landing
+        // outside the pre-printed grid on the next print of that pad. Same
+        // 'key' in data discipline as extras/texts above: a missing key means
+        // leave the canvas alone.
+        if ('fontSize' in lineItemsData) {
+          cols().forEach((c) => { c.style.fontSize = lineItemsData.fontSize + 'px'; });
+        }
+        if ('bold' in lineItemsData) {
+          cols().forEach((c) => { c.style.fontWeight = lineItemsData.bold ? 'bold' : 'normal'; });
+        }
+        if ('rowHeight' in lineItemsData) {
+          const band = li();
+          if (band) band.dataset.rowheight = lineItemsData.rowHeight;
+        }
 
         selectEl(null);
       }

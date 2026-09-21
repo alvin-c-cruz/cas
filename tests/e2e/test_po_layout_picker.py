@@ -162,6 +162,25 @@ def test_saving_with_the_default_still_selected_sends_its_own_id(designer):
     assert json.loads(captured['body'])['layout_id'] == '1'
 
 
+def test_pick_then_save_keeps_the_picked_layouts_own_line_item_geometry(designer):
+    """CRITICAL (final review): applyLayoutToCanvas applied columns.x/width/
+    visible and lineItems.y, but never fontSize/bold/rowHeight -- so those three
+    stayed at whatever the SERVER-RENDERED layout ("Default": 10pt, rowHeight
+    20) had, even after picking a layout with its own different values
+    ("Purchasing - HP LaserJet": 11pt, rowHeight 22, per the harness). A
+    pick-then-Save with no other edit would silently overwrite HP LaserJet's
+    stored payload with Default's line-item font/row height -- the block
+    landing outside the pre-printed grid on the next print of that pad."""
+    designer.select_option('#ppLayoutPicker', label='Purchasing - HP LaserJet')
+    captured = _intercept(designer, SAVE_PATH)
+    designer.click('#editLayoutBtn')
+    designer.click('#saveLayoutBtn')
+    designer.wait_for_function("() => document.getElementById('layoutSavedFlag') !== null")
+    li = json.loads(captured['body'])['lineItems']
+    assert li['fontSize'] == 11          # HP LaserJet's own value, not Default's 10
+    assert li['rowHeight'] == 22         # HP LaserJet's own value, not Default's 20
+
+
 # --- Save as... ---------------------------------------------------------------
 
 def test_save_as_posts_the_name_and_the_current_canvas_over_the_configured_url(designer):

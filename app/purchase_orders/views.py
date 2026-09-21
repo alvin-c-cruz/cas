@@ -1203,7 +1203,8 @@ def print_po(id):
 @purchase_orders_bp.route('/purchase-orders/print-layout', methods=['POST'])
 @login_required
 def save_print_layout():
-    """Persist the pre-printed layout JSON (full-access: admin or Chief Accountant).
+    """Persist the pre-printed layout JSON (admin/chief_accountant/accountant/staff
+    -- current_user.can_edit_print_layout's edit-level role set).
 
     Mirrors sales_orders.save_print_layout: a layout edit changes what prints on a
     client's real, BIR-registered stationery, so it is deliberately narrower than
@@ -1228,7 +1229,7 @@ def save_print_layout():
     # the document's branch, so the session branch is the document's branch.
     try:
         clean = save_layout(data, current_user.username, session.get('selected_branch_id'),
-                            layout_id=layout_id)
+                            layout_id=layout_id, user_id=current_user.id)
     except ValueError as e:
         return jsonify(ok=False, error=str(e)), 400
     return jsonify(ok=True, layout=clean)
@@ -1254,12 +1255,19 @@ def save_as_print_layout():
         return jsonify(ok=False, error='Selected branch changed; layout not saved. '
                        'Reopen the print page and try again.'), 409
     scope_id = branch_id or 0
+    # Fast, friendly path for the common case. NOT the only guard -- a genuinely
+    # simultaneous double-submit can still pass this check for both requests;
+    # create_layout's own atomic commit is the correctness backstop (see
+    # print_layouts.service._commit_or_refuse_duplicate).
     existing_names = {r.name for r in print_layout_service.list_layouts(PO_LAYOUT_DOC_TYPE, scope_id)}
     if name in existing_names:
         return jsonify(ok=False, error=f'A layout named "{name}" already exists.'), 400
     clean = sanitize_layout(data)
-    row = print_layout_service.create_layout(PO_LAYOUT_DOC_TYPE, scope_id, name,
-                                              json.dumps(clean), current_user)
+    try:
+        row = print_layout_service.create_layout(PO_LAYOUT_DOC_TYPE, scope_id, name,
+                                                  json.dumps(clean), current_user)
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
     log_audit(module='purchase_orders', action='create', record_id=row.id,
               record_identifier='po_print_layout',
               new_values={'name': row.name, 'scope_id': scope_id},
@@ -1280,10 +1288,17 @@ def rename_print_layout():
     name = (data.get('name') or '').strip()
     if not layout_id or not name:
         return jsonify(ok=False, error='A layout id and a name are required.'), 400
+    # can_edit_print_layout includes accountant and staff, who ARE branch-scoped
+    # -- without this check a purchaser assigned only to branch 2 could rename
+    # branch 1's layout by posting its id. Matches select_print_layout's own
+    # scope check below.
+    scope_id = session.get('selected_branch_id') or 0
     row = db.session.get(PrintLayout, layout_id)
-    old_values, new_values = get_changes(row, {'name': name}, ['name']) if row else ({}, {})
+    if row is None or row.doc_type != PO_LAYOUT_DOC_TYPE or row.scope_id != scope_id:
+        return jsonify(ok=False, error='That layout no longer exists. Refresh and try again.'), 404
+    old_values, new_values = get_changes(row, {'name': name}, ['name'])
     try:
-        print_layout_service.rename_layout(layout_id, name)
+        print_layout_service.rename_layout(layout_id, name, user_id=current_user.id)
     except ValueError as e:
         return jsonify(ok=False, error=str(e)), 400
     log_audit(module='purchase_orders', action='update', record_id=layout_id,
@@ -1305,8 +1320,14 @@ def delete_print_layout():
     layout_id = data.get('layout_id')
     if not layout_id:
         return jsonify(ok=False, error='A layout id is required.'), 400
+    # can_delete_print_layout is admin/chief_accountant only today (both
+    # all-branch), so this is hygiene rather than a live hole right now -- but
+    # the moment a second document type adopts named_print_layouts, an id
+    # alone could delete another document's row without this. Matches
+    # select_print_layout's own scope check.
+    scope_id = session.get('selected_branch_id') or 0
     row = db.session.get(PrintLayout, layout_id)
-    if row is None:
+    if row is None or row.doc_type != PO_LAYOUT_DOC_TYPE or row.scope_id != scope_id:
         return jsonify(ok=False, error='That layout no longer exists. Refresh and try again.'), 404
     old_values = model_to_dict(row, ['name', 'scope_id', 'doc_type'])
     try:

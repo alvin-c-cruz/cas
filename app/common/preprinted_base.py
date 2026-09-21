@@ -557,7 +557,7 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
             # the reason given above.
             return sanitize_layout(copy.deepcopy(default_layout))
 
-    def save_layout(raw, username, branch_id=None, layout_id=None):
+    def save_layout(raw, username, branch_id=None, layout_id=None, user_id=None):
         """Sanitize, persist (per branch), audit, and return the clean layout.
 
         `layout_id`, when given, is the specific `named_print_layouts` row this
@@ -569,6 +569,13 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
         matching the order `get_layout` already resolves in, and never raises for
         a missing row (a scope that has not been migrated to named layouts yet
         simply has no row to write into -- see the `else` branch below).
+
+        `user_id`, when given, sets the written PrintLayout row's `updated_by_id`
+        -- previously only `print_layouts.service.create_layout` set that column
+        at all, leaving it stale for every edit after creation. Optional and
+        additive: the ten pre-existing callers that only pass `username` (a
+        string, used below for the legacy AppSettings audit trail -- a separate
+        column on a separate table) are unaffected.
 
         An explicit `layout_id` that names no row (deleted by someone else
         between page load and submit, or from a different doc_type/scope) raises
@@ -617,6 +624,8 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
             # would log a before/after spanning two different rows.
             old_row_payload = target_row.payload
             target_row.payload = json.dumps(clean)
+            if user_id is not None:
+                target_row.updated_by_id = user_id
             db.session.commit()
         else:
             # Implicit target: the scope's default. Deliberately fail-safe, NOT
@@ -630,6 +639,8 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
                 target_row = layout_service.default_layout_row(doc_type, scope_id)
                 if target_row is not None:
                     target_row.payload = json.dumps(clean)
+                    if user_id is not None:
+                        target_row.updated_by_id = user_id
                     db.session.commit()
             except Exception:  # noqa: BLE001 -- named_print_layouts table may not
                 # exist yet (pre-migration DB), matching get_layout's own guard above.

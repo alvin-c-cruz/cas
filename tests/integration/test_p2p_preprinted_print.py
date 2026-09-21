@@ -18,6 +18,31 @@ from app.settings import AppSettings
 pytestmark = [pytest.mark.integration, pytest.mark.purchase_orders, pytest.mark.purchase_requests, pytest.mark.receiving_reports]
 
 
+def test_the_three_shared_designer_templates_use_the_same_cache_buster():
+    """PO, PR and RR all load ONE file (app/static/js/preprinted_designer.js), so
+    its ?v=N cache-buster belongs to the FILE, not to whichever template's
+    change happened to remember to bump it -- final review's deferred concern,
+    now closed by making the suite enforce it rather than a comment asking
+    someone to remember. Source-level, not HTTP: it must catch a divergence
+    without needing three print-page fixtures' worth of setup to notice one."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[2] / 'app'
+    templates = [
+        root / 'purchase_orders' / 'templates' / 'purchase_orders' / 'print_preprinted.html',
+        root / 'purchase_requests' / 'templates' / 'purchase_requests' / 'print_preprinted.html',
+        root / 'receiving_reports' / 'templates' / 'receiving_reports' / 'print_preprinted.html',
+    ]
+    versions = {}
+    for path in templates:
+        src = path.read_text(encoding='utf-8')
+        m = re.search(r"filename='js/preprinted_designer\.js'\)\s*\}\}\?v=(\d+)", src)
+        assert m, f'{path} does not load preprinted_designer.js with a ?v= cache-buster'
+        versions[str(path.relative_to(root))] = m.group(1)
+    assert len(set(versions.values())) == 1, (
+        'The three templates that load preprinted_designer.js have diverged on '
+        f'?v=N: {versions}')
+
+
 def _set_modules(db_session, **states):
     from app.utils.cache_helpers import clear_module_config_cache
     for key, on in states.items():
@@ -1191,7 +1216,8 @@ class TestPurchaseRequisitionPrintForm:
         _login(client, admin_user, branch_manila)
         body = client.get(f'/purchase-requests/{approved_pr.id}/print').data.decode()
         assert 'css/preprinted_designer.css?v=1' in body
-        assert 'js/preprinted_designer.js?v=1' in body
+        # v=2: must match PO/RR -- see test_the_three_shared_designer_templates_use_the_same_cache_buster.
+        assert 'js/preprinted_designer.js?v=2' in body
         assert 'pr_preprinted_designer' not in body, 'made a per-document copy'
         assert "initPreprintedDesigner({ saveUrl: '/purchase-requests/print-layout' })" in body
 
@@ -1683,7 +1709,8 @@ class TestReceivingReportPrintForm:
         _login(client, admin_user, branch_manila)
         body = client.get(f'/receiving-reports/{approved_rr.id}/print').data.decode()
         assert 'css/preprinted_designer.css?v=1' in body
-        assert 'js/preprinted_designer.js?v=1' in body
+        # v=2: must match PO/PR -- see test_the_three_shared_designer_templates_use_the_same_cache_buster.
+        assert 'js/preprinted_designer.js?v=2' in body
         assert 'rr_preprinted_designer' not in body, 'made a per-document copy'
         assert "initPreprintedDesigner({ saveUrl: '/receiving-reports/print-layout' })" in body
 
