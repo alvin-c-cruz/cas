@@ -10,7 +10,7 @@
 {% block content %}
 {% from "macros.html" import render_field %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='customer-form.css') }}?v=1">
 
@@ -20,7 +20,10 @@
             {{ form.hidden_tag() }}
 
             {# ── Header grid: left fields | customer card | notes ── #}
-            <div class="form-main-grid">
+            {# --signatories: this form has a FOURTH header block and needs the
+               extra grid row for it. Without the modifier the signatories reuse
+               the Notes area and cover the Notes box. See transactions.css. #}
+            <div class="form-main-grid form-main-grid--signatories">
 
                 {# Left 1/3: header fields #}
                 <div class="left-col-fields header-fields{% if so %} header-fields--active{% endif %}">
@@ -78,7 +81,7 @@
                    (next_so_signatories_for); blanks print an empty ruled line to
                    sign by hand. There is deliberately no company-wide default and
                    no "Modify signatories" button on the printout (owner, 2026-08-21). #}
-                <div class="notes-col header-fields{% if so %} header-fields--active{% endif %}">
+                <div class="signatories-col header-fields{% if so %} header-fields--active{% endif %}">
                   <div class="form-row-3">
                     <div class="form-group">{{ form.prepared_by.label(class='form-label') }} {{ form.prepared_by(class='form-control') }}</div>
                     <div class="form-group">{{ form.checked_by.label(class='form-label') }} {{ form.checked_by(class='form-control') }}</div>

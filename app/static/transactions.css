@@ -37,6 +37,36 @@
 }
 .notes-col .form-control { flex: 1; min-height: 60px; }
 
+/* ── A FOURTH header block: printed signatories (Sales Order only) ────────── */
+/* The Sales Order form carries per-order signatories on top of the three blocks
+   every other transaction form has, and was written reusing `.notes-col`. That
+   class assigns `grid-area: notes`, so BOTH blocks landed in the one named area
+   and stacked: the signatories, being later in the DOM, painted OVER the Notes
+   box and took every click aimed at it. Notes could not be typed into at all --
+   on create, edit and amend alike -- while looking perfectly normal, because the
+   textarea was still visible, still enabled and still keyboard-reachable.
+
+   OPT-IN via the modifier, so the other five forms' grids are untouched: adding
+   a row to the shared `grid-template-areas` would open an empty row on the AP,
+   CDV, CRV, quotation and sales-invoice forms.
+
+   Check with `document.elementFromPoint()` over the Notes box, not by eye -- an
+   overlay of exactly the same size is invisible until you click it. */
+.form-main-grid--signatories {
+    grid-template-areas:
+        "left vendor"
+        "left notes"
+        "signatories signatories";
+}
+.signatories-col { grid-area: signatories; display: flex; flex-direction: column; }
+/* Matches .notes-col's label treatment so the row reads as part of the header.
+   Deliberately NOT inheriting `.notes-col .form-control { min-height: 60px }`:
+   that height belongs to a multi-line notes box, not to four name fields. */
+.signatories-col .form-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text-2); margin-bottom: 6px;
+}
+
 /* ── Line item action button ─────────────────────────────────────────────── */
 .li-btn-action { padding: 4px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; font-size: 14px; }
 .li-btn-action:hover { background: var(--border); }
@@ -136,6 +166,16 @@
             "left"
             "notes";
         gap: 12px;
+    }
+
+    /* Single column here too -- the signatories row must still get its OWN row
+       name, or the stacking bug returns at tablet width only. */
+    .form-main-grid--signatories {
+        grid-template-areas:
+            "vendor"
+            "left"
+            "notes"
+            "signatories";
     }
 
     /* JE preview + Bill Summary stack vertically */
