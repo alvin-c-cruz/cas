@@ -55,6 +55,24 @@ class Vendor(db.Model):
     # Status
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
+    @property
+    def status(self):
+        """'active' | 'inactive' -- read-only, derived from `is_active`.
+
+        A vendor is MASTER DATA and has no lifecycle, so it has no status column
+        and needs none. This exists because the attachments module keys its
+        upload/delete gate on `doc.status` against a target's `open_statuses`
+        (app/attachments/registry.py::can_upload), a shape built for approvable
+        documents. Rather than make that gate status-agnostic for one caller --
+        which would loosen it for the four documents where the status check is
+        the whole point -- the vendor target declares BOTH values open, and this
+        property gives the gate something real to read.
+
+        Deliberately not stored and not settable: `is_active` stays the single
+        source of truth, so the two can never drift.
+        """
+        return 'active' if self.is_active else 'inactive'
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=ph_now)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)

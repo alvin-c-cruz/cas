@@ -269,6 +269,10 @@ _ATTACHMENT_DOC_TYPES = [
     ('receiving_reports', 'Receiving Report'),
     ('accounts_payable', 'AP Voucher'),
     ('cash_disbursements', 'Cash Disbursement Voucher'),
+    # Master data rather than a document, so none of its slots is required by
+    # default -- but a company that wants to insist on a supplier's BIR 2303
+    # before trading with them can say so here.
+    ('vendors', 'Vendor'),
 ]
 
 

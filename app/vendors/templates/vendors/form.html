@@ -8,7 +8,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor-form.css') }}?v=3">
 
 <div class="vendor-form-container">
-    <form method="POST" novalidate autocomplete="off" data-track-changes="{{ 'true' if vendor else 'false' }}">
+    {# enctype: the create-mode attachment queue below posts files with the form. #}
+    <form method="POST" enctype="multipart/form-data" novalidate autocomplete="off" data-track-changes="{{ 'true' if vendor else 'false' }}">
         {{ form.hidden_tag() }}
 
         <!-- Hidden dummy field to absorb stray text autocomplete. A dummy *password*
@@ -20,6 +21,11 @@
             {% include "vendors/_form_fields.html" %}
         </div>
 
+        {# CREATE only: files chosen here are held in the browser and saved by
+           the create route once the vendor has an id to hang them off. On EDIT
+           the full panel below does the job, with named slots. #}
+        {% if not vendor %}{% include 'attachments/_create_queue.html' %}{% endif %}
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary btn-sm">
                 {{ 'Update Vendor' if vendor else 'Save Vendor' }}
@@ -27,6 +33,15 @@
             <a href="{{ url_for('vendors.list_vendors') }}" class="btn btn-secondary btn-sm">Back</a>
         </div>
     </form>
+
+    {# AFTER </form>: the panel carries its own upload forms and nested forms are
+       invalid HTML -- the same placement every document's edit page uses. #}
+    {% if vendor %}
+    {% set att = attachment_panel('vendors', vendor, next_url=request.path) %}
+    {% include 'attachments/_panel.html' %}
+    {% else %}
+    <script src="{{ url_for('static', filename='js/attachment_queue.js') }}?v=1"></script>
+    {% endif %}
 </div>
 
 <style>

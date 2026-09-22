@@ -212,6 +212,20 @@ def create():
                 new_values=model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
             )
 
+            # Queued create-form files, now that there is an id to hang them off.
+            # They land UNLABELLED (kind=None, "Other"); the named certificate
+            # slots are filled from the edit page's panel. Never on the JSON
+            # quick-add path -- that modal posts no files.
+            if not _wants_json():
+                from app.attachments.registry import get_target
+                from app.attachments.service import save_queued_attachments
+                skipped = save_queued_attachments(
+                    get_target('vendors'), vendor,
+                    request.files.getlist('attachments'), current_user)
+                if skipped:
+                    flash('Some files were not attached and were skipped: '
+                          + ', '.join(skipped), 'warning')
+
             if _wants_json():
                 return jsonify(ok=True, vendor={
                     'id': vendor.id,
@@ -358,6 +372,20 @@ def delete(id):
         flash(f'Cannot delete vendor "{vendor.name}": it is referenced by '
               f'{" and ".join(parts)}. Set it inactive instead.', 'error')
         return redirect(url_for('vendors.list_vendors'))
+
+    # Attachments are keyed by (document_type, document_id) with no ORM foreign
+    # key, so nothing cascades: deleting the vendor would otherwise strand its
+    # certificate rows AND their files on disk, and a later vendor reusing the id
+    # would inherit them. Done through the service so each removal is audited.
+    from app.attachments.registry import get_target
+    from app.attachments.models import DocumentAttachment
+    from app.attachments.service import delete_attachment
+    orphans = DocumentAttachment.query.filter_by(
+        document_type='vendors', document_id=vendor.id).all()
+    if orphans:
+        target = get_target('vendors')
+        for attachment in orphans:
+            delete_attachment(target, vendor, attachment, current_user)
 
     try:
         # Capture values before delete

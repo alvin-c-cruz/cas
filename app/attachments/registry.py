@@ -137,6 +137,35 @@ TARGETS = {
         ),
         late_complete_statuses=('approved', 'billed'),
     ),
+    # MASTER DATA, unlike the four documents around it. Two consequences worth
+    # knowing before editing this entry:
+    #
+    #  * No branch. `document_attachments` carries no `branch_id` on the stated
+    #    grounds that an attachment takes its parent's branch; a vendor has no
+    #    branch, so its certificates are company-wide. That is the right answer
+    #    rather than a gap -- one vendor's BIR 2303 is the same document whichever
+    #    branch is buying from them.
+    #  * No approval, so no soft gate and no required slots. `approved_incomplete`
+    #    reads `approved_incomplete_slots` through getattr and degrades to [], and
+    #    the panel's soft-gate script only intercepts submits to approve/post/
+    #    submit endpoints, of which a vendor form has none. Marking a slot
+    #    required here would raise a warning badge that nothing in the vendor's
+    #    own workflow could ever clear.
+    'vendors': AttachmentTarget(
+        document_type='vendors',
+        model_path='app.vendors.models:Vendor',
+        number_attr='code',
+        view_endpoint='vendors.detail',
+        # Both values of Vendor.status (a derived property -- see its docstring):
+        # an inactive vendor's certificates must stay manageable, since going
+        # inactive is not an approval and freezes nothing.
+        open_statuses=('active', 'inactive'),
+        slots=(
+            Slot('bir_2303', 'BIR Form 2303'),
+            Slot('sec_registration', 'SEC Registration'),
+            Slot('business_permit', 'Business Permit'),
+        ),
+    ),
     'cash_disbursements': AttachmentTarget(
         document_type='cash_disbursements',
         model_path='app.cash_disbursements.models:CashDisbursementVoucher',

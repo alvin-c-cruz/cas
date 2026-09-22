@@ -46,10 +46,37 @@ def test_amend_statuses_track_the_models():
     assert get_target('purchase_orders').amend_statuses == PurchaseOrder.AMEND_STATUSES
 
 
-def test_all_four_targets_registered():
+def test_every_target_is_registered():
+    """The four buy-side documents, plus vendors (master data, added
+    2026-09-22 so a supplier's BIR 2303, SEC registration and Business Permit
+    have somewhere to live).
+
+    accounts_payable stays absent on purpose: it predates this module and keeps
+    its own table and routes, which is why slots_for special-cases it."""
     assert set(TARGETS) == {'purchase_requests', 'purchase_orders',
-                            'receiving_reports', 'cash_disbursements'}
+                            'receiving_reports', 'cash_disbursements',
+                            'vendors'}
     assert get_target('accounts_payable') is None
+
+
+def test_the_vendor_target_declares_no_required_slot():
+    """A required slot drives a warning badge and an approval soft gate, both
+    built for approvable documents. A vendor has no approval step, so a
+    required slot there could never be cleared by its own workflow."""
+    target = get_target('vendors')
+    assert [s.key for s in target.slots] == ['bir_2303', 'sec_registration',
+                                             'business_permit']
+    assert not any(s.required for s in target.slots)
+
+
+def test_a_vendor_is_uploadable_whether_active_or_inactive():
+    """Going inactive is not an approval and freezes nothing, so the
+    certificates must stay manageable either way."""
+    from types import SimpleNamespace
+    target = get_target('vendors')
+    staff = SimpleNamespace(role='staff', has_full_access=False, id=1)
+    for status in ('active', 'inactive'):
+        assert can_upload(target, SimpleNamespace(status=status), staff) is True
 
 
 @pytest.mark.parametrize('doc_type,status,user,expected', [

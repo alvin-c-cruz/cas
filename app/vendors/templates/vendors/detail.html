@@ -105,6 +105,12 @@
     </div>
 </div>
 
+{# Vendor certificates -- BIR 2303, SEC registration, Business Permit. The panel
+   carries its own upload and delete forms, so it sits after the grid rather
+   than inside one of its cards. #}
+{% set att = attachment_panel('vendors', vendor) %}
+{% include 'attachments/_panel.html' %}
+
 {% else %}
 <!-- ── BILLS TAB ── -->
 <div style="margin-top:16px;">
