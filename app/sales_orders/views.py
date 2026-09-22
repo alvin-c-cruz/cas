@@ -153,6 +153,39 @@ def _assign_so_line_fields(so, item, d, idx):
     return True
 
 
+#: Header fields captured in the audit trail on edit and amend. `notes` and the
+#: four below it were all ASSIGNED by both routes and named in neither's list, so
+#: a header-only change wrote an audit row asserting nothing had changed -- the
+#: exact shape app/audit/utils.py's get_changes contract exists to prevent. The
+#: money totals and status stay because a line edit moves them.
+SO_AUDIT_FIELDS = [
+    'so_number', 'order_date', 'expected_delivery_date',
+    'customer_name', 'customer_po_number', 'payment_terms', 'reference',
+    'notes',
+    'subtotal', 'vat_amount', 'total_amount', 'status',
+]
+
+
+def _lines_untouched():
+    """True when the form says its line grid is identical to the one it loaded.
+
+    Set by sales_orders/form.html, which snapshots its serialised lines after
+    initItems() and compares on submit. It exists because saving was gated on
+    LINE validity at both ends for a change that touches no line: the Update
+    button (validateForm) and, behind it, _assign_so_line_fields's 'select a
+    product' raise. SalesOrderItem.product_id is nullable, so an order with a
+    product-less line is legal in the database -- and its header was unreachable.
+
+    FAIL-SAFE BY CONSTRUCTION, and this is the whole reason a client-set flag is
+    acceptable here. Its only effect is to make the server IGNORE the submitted
+    lines in favour of what is already stored. It can never cause unvalidated
+    line data to be written, so a tampered or buggy client cannot use it to
+    corrupt lines -- it can only decline to change them. Do not extend it to
+    skip any check that guards what IS written.
+    """
+    return request.form.get('lines_unchanged') == '1'
+
+
 def _parse_and_attach_so_lines(so, lines_json):
     """Parse hidden-JSON line array and attach SalesOrderItem objects to *so*.
     Mirrors sales_invoices.views._parse_and_attach_line_items but with no account_id/wt.
@@ -517,9 +550,7 @@ def create():
                 module='sales_orders',
                 record_id=so.id,
                 record_identifier=f'{so.so_number} - {so.customer_name}',
-                new_values=model_to_dict(so, [
-                    'so_number', 'order_date', 'customer_name',
-                    'subtotal', 'vat_amount', 'total_amount', 'status'])
+                new_values=model_to_dict(so, SO_AUDIT_FIELDS)
             )
             flash(f'Sales Order "{so.so_number}" created successfully!', 'success')
             # Land on the new order's OWN EDIT FORM, not the list (owner,
@@ -603,9 +634,7 @@ def edit(id):
                                    line_items=restore_items, **_common_form_ctx())
 
         try:
-            old_values = model_to_dict(so, [
-                'so_number', 'order_date', 'customer_name',
-                'subtotal', 'vat_amount', 'total_amount', 'status'])
+            old_values = model_to_dict(so, SO_AUDIT_FIELDS)
 
             # Lost-update guard: the first write, before the line teardown below.
             if not claim_version(SalesOrder, so.id, submitted_version()):
@@ -629,11 +658,19 @@ def edit(id):
             so.notes = form.notes.data or ''
             assign_signatories(so, form, SIGNATORY_FIELDS)
 
-            db.session.execute(db.delete(SalesOrderItem).where(SalesOrderItem.sales_order_id == so.id))
-            _parse_and_attach_so_lines(so, request.form.get('line_items', '[]'))
-            db.session.flush()
-            db.session.expire(so, ['line_items'])
-            so.calculate_totals()
+            # A header-only save leaves the lines ALONE rather than rebuilding
+            # them from the submission. Not just an optimisation: the rebuild
+            # runs _assign_so_line_fields, which refuses a line with no product,
+            # so an order carrying one (legal -- product_id is nullable) could
+            # not have its notes corrected at all. Skipping also preserves each
+            # line's id and the line_status/closed_* companions a rebuild would
+            # reset, which is the same reason amend() never rebuilds.
+            if not _lines_untouched():
+                db.session.execute(db.delete(SalesOrderItem).where(SalesOrderItem.sales_order_id == so.id))
+                _parse_and_attach_so_lines(so, request.form.get('line_items', '[]'))
+                db.session.flush()
+                db.session.expire(so, ['line_items'])
+                so.calculate_totals()
             db.session.commit()
 
             log_update(
@@ -641,9 +678,7 @@ def edit(id):
                 record_id=so.id,
                 record_identifier=f'{so.so_number} - {so.customer_name}',
                 old_values=old_values,
-                new_values=model_to_dict(so, [
-                    'so_number', 'order_date', 'customer_name',
-                    'subtotal', 'vat_amount', 'total_amount', 'status'])
+                new_values=model_to_dict(so, SO_AUDIT_FIELDS)
             )
             flash(f'Sales Order "{so.so_number}" updated successfully!', 'success')
             return redirect(url_for('sales_orders.view', id=so.id))
@@ -750,9 +785,7 @@ def amend(id):
                 flash(conflict_message('sales_orders', so.id), 'error')
                 return _render()
 
-            old_values = model_to_dict(so, [
-                'so_number', 'order_date', 'customer_name',
-                'subtotal', 'vat_amount', 'total_amount', 'status'])
+            old_values = model_to_dict(so, SO_AUDIT_FIELDS)
 
             # so_number is deliberately NOT reassigned (an amendment revises an
             # order, it does not renumber it) -- but order_date is an ordinary
@@ -779,10 +812,15 @@ def amend(id):
             # amendment must not quietly undo it.
             # (It also keeps SalesOrderItem.id stable across revisions, so two
             # snapshots can be lined up by row when a reader compares them.)
-            _apply_amended_so_lines(so, submitted_lines)
-            db.session.flush()
-            db.session.expire(so, ['line_items'])
-            so.calculate_totals()
+            # Header-only: apply nothing. _apply_amended_so_lines reaches the
+            # same 'select a product' raise as the edit path, so a confirmed
+            # order with a product-less line could not have its note corrected.
+            header_only = _lines_untouched()
+            if not header_only:
+                _apply_amended_so_lines(so, submitted_lines)
+                db.session.flush()
+                db.session.expire(so, ['line_items'])
+                so.calculate_totals()
 
             # Judge the APPLIED RESULT, not the payload. Re-deriving the rule
             # from the submission is how the same hole survived its first fix on
@@ -792,7 +830,12 @@ def amend(id):
             # unrelated guard fired. Raising routes this through the existing
             # ValueError handler below, whose rollback undoes both the line
             # changes and claim_version's row_version bump.
-            if not so.has_usable_line():
+            # Only when lines were actually applied. This guard judges what the
+            # amendment DID to the lines; a header-only save did nothing to them,
+            # so the order's line invariant is exactly as it was -- and running it
+            # anyway would block the header of precisely the orders whose lines
+            # are already short of it, which is the case being fixed.
+            if not header_only and not so.has_usable_line():
                 raise ValueError(
                     'A Sales Order must keep at least one line with a product '
                     'and an amount greater than zero. This amendment would '
@@ -808,9 +851,7 @@ def amend(id):
                 module='sales_orders', record_id=so.id,
                 record_identifier=f'{so.so_number} - {so.customer_name}',
                 old_values=old_values,
-                new_values=model_to_dict(so, [
-                    'so_number', 'order_date', 'customer_name',
-                    'subtotal', 'vat_amount', 'total_amount', 'status']),
+                new_values=model_to_dict(so, SO_AUDIT_FIELDS),
                 notes=f'Amended to Rev {rev.revision_number}')
 
             flash(f'Sales Order "{so.so_number}" amended '

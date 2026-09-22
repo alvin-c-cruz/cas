@@ -132,6 +132,11 @@
 
                 <button type="button" class="btn btn-secondary" id="addLineBtn" onclick="addLineItem()" style="margin-top: 8px;">+ Add Line</button>
                 <input type="hidden" name="line_items" id="lineItemsData">
+                {# Set to 1 on submit when the line grid is byte-identical to the one
+                   loaded, which tells the server to leave the lines alone. See
+                   _lines_untouched() in views.py for why a client-set flag is safe
+                   here: it can only ever make the server IGNORE submitted lines. #}
+                <input type="hidden" name="lines_unchanged" id="linesUnchanged" value="0" data-no-track>
 
                 {# ── Amend-mode fields (Task 7). NOTE: amend() flashes form.errors on a
                    failed validation POST (Task 6) -- that flash is the SINGLE channel for
@@ -765,6 +770,15 @@ function validateForm() {
     function block(msg) { btn.disabled = true; hint.textContent = msg; }
     function allow()    { btn.disabled = false; hint.textContent = ''; }
 
+    // HEADER-ONLY SAVE. The line rules below exist to stop bad line data being
+    // written; when the grid is identical to the one loaded, nothing is being
+    // written and they have nothing to protect. Without this, an order carrying
+    // a line with no product -- legal, since product_id is nullable -- could
+    // never have its notes, terms or signatories corrected, on either the edit
+    // or the amend screen, and the hint said "select a product" rather than
+    // anything about the field the user was actually trying to change.
+    if (linesAreUntouched()) { allow(); return; }
+
     if (lineItems.length === 0) { block('Add at least one line item.'); return; }
 
     for (let i = 0; i < lineItems.length; i++) {
@@ -779,8 +793,11 @@ function validateForm() {
 
 // ── Form submit: serialize line items ──────────────────────────────────────────
 
-document.getElementById('soForm').addEventListener('submit', function () {
-    document.getElementById('lineItemsData').value = JSON.stringify(lineItems.map(item => {
+// The ONE serialisation of the line grid. Used both for the submitted payload and
+// for the load-time snapshot the header-only check compares against -- if the two
+// ever diverged, the snapshot could report "unchanged" for a grid that was not.
+function serializeLines() {
+    return JSON.stringify(lineItems.map(item => {
         const vat     = vatCategories.find(v => v.code === item.vat_category);
         const vatRate = vat ? vat.rate : 0;
         return {
@@ -798,6 +815,19 @@ document.getElementById('soForm').addEventListener('submit', function () {
             delivery_site_id:  item.delivery_site_id   != null ? item.delivery_site_id  : null,
         };
     }));
+}
+
+//: The grid as it stood on load, for an EXISTING order. null while creating --
+//: there is nothing to leave alone, so a new order always validates its lines.
+let initialLinesSnapshot = null;
+
+function linesAreUntouched() {
+    return initialLinesSnapshot !== null && serializeLines() === initialLinesSnapshot;
+}
+
+document.getElementById('soForm').addEventListener('submit', function () {
+    document.getElementById('lineItemsData').value = serializeLines();
+    document.getElementById('linesUnchanged').value = linesAreUntouched() ? '1' : '0';
 });
 
 // ── Init: load existing items on edit ──────────────────────────────────────────
@@ -816,6 +846,18 @@ function initItems() {
 }
 
 initItems();
+
+// AFTER initItems: the grid now holds what the server sent. On an existing order
+// this is the baseline a header-only save is measured against.
+{% if so %}
+initialLinesSnapshot = serializeLines();
+{% endif %}
+
+// Run once on load regardless. initItems() only reaches validateForm() through
+// addLineItem -> updateDerivedAmount, so an order with NO lines never validated
+// at all and its Update button stayed disabled with an empty hint -- disabled
+// for a reason the page never gave.
+validateForm();
 
 // ── Edit mode: populate the customer card badges on load ────────────────────────
 {% if so %}
