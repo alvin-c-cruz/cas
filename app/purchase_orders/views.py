@@ -38,6 +38,7 @@ from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products, get_vat_categories
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
+from app.utils.branch_scope import require_same_branch
 
 PO_LAYOUT_DOC_TYPE = 'purchase_orders'
 
@@ -364,8 +365,7 @@ def _has_approve_level_role():
 
 def _get_po_or_404(id):
     po = db.get_or_404(PurchaseOrder, id)
-    if po.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(po)
     return po
 
 

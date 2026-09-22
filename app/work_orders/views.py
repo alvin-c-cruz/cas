@@ -16,6 +16,7 @@ from app.work_orders.forms import WorkOrderForm, generate_wo_number
 from app.work_orders.service import (release_work_order, start_operation, complete_operation,
                                      issue_material, complete_work_order_batch, force_close_work_order)
 from app.bill_of_materials.models import BillOfMaterial
+from app.utils.branch_scope import require_same_branch
 
 work_orders_bp = Blueprint('work_orders', __name__, template_folder='templates')
 
@@ -78,8 +79,7 @@ def create():
 @accountant_or_above_required
 def view(id):
     wo = db.get_or_404(WorkOrder, id)
-    if wo.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(wo)
     return render_template('work_orders/view.html', wo=wo)
 
 
@@ -88,8 +88,7 @@ def view(id):
 @accountant_or_above_required
 def edit(id):
     wo = db.get_or_404(WorkOrder, id)
-    if wo.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(wo)
     if wo.status != 'draft':
         flash('Only a draft Work Order can be edited.', 'error')
         return redirect(url_for('work_orders.view', id=id))
@@ -116,8 +115,7 @@ def edit(id):
 @accountant_or_above_required
 def release(id):
     wo = db.get_or_404(WorkOrder, id)
-    if wo.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(wo)
     try:
         release_work_order(wo, current_user)
         db.session.commit()
@@ -134,8 +132,7 @@ def release(id):
 @accountant_or_above_required
 def cancel(id):
     wo = db.get_or_404(WorkOrder, id)
-    if wo.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(wo)
     if wo.status in ('completed', 'cancelled'):
         flash('This Work Order can no longer be cancelled.', 'error')
         return redirect(url_for('work_orders.view', id=id))
@@ -167,8 +164,7 @@ def cancel(id):
 @accountant_or_above_required
 def start_operation_route(id, op_id):
     wo = db.get_or_404(WorkOrder, id)
-    if wo.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(wo)
     op = db.get_or_404(WorkOrderOperation, op_id)
     if op.wo_id != wo.id:
         abort(404)
@@ -188,8 +184,7 @@ def start_operation_route(id, op_id):
 @accountant_or_above_required
 def complete_operation_route(id, op_id):
     wo = db.get_or_404(WorkOrder, id)
-    if wo.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(wo)
     op = db.get_or_404(WorkOrderOperation, op_id)
     if op.wo_id != wo.id:
         abort(404)
@@ -209,8 +204,7 @@ def complete_operation_route(id, op_id):
 @accountant_or_above_required
 def issue_material_route(id, mat_id):
     wo = db.get_or_404(WorkOrder, id)
-    if wo.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(wo)
     mat = db.get_or_404(WorkOrderMaterial, mat_id)
     if mat.wo_id != wo.id:
         abort(404)
@@ -240,8 +234,7 @@ def issue_material_route(id, mat_id):
 @accountant_or_above_required
 def complete_batch(id):
     wo = db.get_or_404(WorkOrder, id)
-    if wo.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(wo)
     try:
         batch_qty = Decimal(request.form.get('batch_qty', '0'))
     except InvalidOperation:
@@ -267,8 +260,7 @@ def complete_batch(id):
 @accountant_or_above_required
 def force_close(id):
     wo = db.get_or_404(WorkOrder, id)
-    if wo.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(wo)
     note = request.form.get('force_close_note', '')
     try:
         force_close_work_order(wo, note, current_user)

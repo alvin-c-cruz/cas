@@ -686,7 +686,11 @@ def test_print_job_order_cross_branch_404(client, db_session, admin_user, main_b
     _login(client, admin_user)
     _select_branch(client, main_branch.id)   # different branch than the SO
     resp = client.get(f'/sales-orders/{so.so_number}/print-job-order')
-    assert resp.status_code == 404
+    # 302, not 404: admin holds full access, so the other branch is reachable and
+    # the refusal names it instead of pretending the order does not exist. The
+    # accountant tests below still expect 404, because an accountant reaches only
+    # their assigned branches -- which is exactly the split being relied on.
+    assert resp.status_code == 302
 
 
 def test_detail_shows_salesperson_and_plain_vat_code(client, db_session, admin_user, main_branch):

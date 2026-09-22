@@ -24,6 +24,7 @@ from app.periods.utils import validate_transaction_date_with_flash
 from app.customers.views import build_customer_quick_add_form
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.posting.buckets import group_tax_buckets, reconcile_buckets_to_total
+from app.utils.branch_scope import require_same_branch
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
@@ -88,8 +89,7 @@ def generate_crv_number():
 
 def _get_crv_or_404(id):
     crv = db.get_or_404(CashReceiptVoucher, id)
-    if crv.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(crv)
     return crv
 
 

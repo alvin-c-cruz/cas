@@ -295,7 +295,7 @@ def test_view_is_branch_scoped(client, db_session, admin_user, main_branch, bran
     dr = DeliveryReceipt.query.first()
     assert client.get(f'/delivery-receipts/{dr.id}').status_code == 200
     with client.session_transaction() as s: s['selected_branch_id'] = branch_manila.id
-    assert client.get(f'/delivery-receipts/{dr.id}').status_code == 404
+    assert client.get(f'/delivery-receipts/{dr.id}').status_code == 302
 
 
 def test_edit_draft_updates_quantities(client, db_session, admin_user, main_branch):
@@ -381,7 +381,7 @@ def test_print_is_branch_scoped(client, db_session, admin_user, main_branch, bra
         follow_redirects=True)
     dr = DeliveryReceipt.query.first()
     with client.session_transaction() as s: s['selected_branch_id'] = branch_manila.id
-    assert client.get(f'/delivery-receipts/{dr.id}/print').status_code == 404
+    assert client.get(f'/delivery-receipts/{dr.id}/print').status_code == 302
 
 
 def test_so_detail_offers_create_dr_when_module_on(client, db_session, admin_user, main_branch):

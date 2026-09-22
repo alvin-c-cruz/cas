@@ -15,6 +15,7 @@ from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.utils.concurrency import commit_with_renumber_retry
 from app.settings import AppSettings
 from app.journal_entries.preprinted_layout import get_layout, save_layout
+from app.utils.branch_scope import require_same_branch
 from datetime import datetime, date
 from decimal import Decimal
 import json
@@ -54,8 +55,7 @@ def _get_entry_or_404(id):
     user reaches another branch by switching the session branch.
     """
     entry = db.get_or_404(JournalEntry, id)
-    if entry.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(entry)
     return entry
 
 

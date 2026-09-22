@@ -117,11 +117,22 @@ class TestCrossBranchView:
 
     def test_edit_still_blocked_off_branch(self, client, db_session, admin_user,
                                            main_branch, branch_manila):
-        """The write guard must NOT be loosened along with the read guard."""
+        """The write guard must NOT be loosened along with the read guard.
+
+        Since 2026-09-23 the refusal names the branch and redirects instead of
+        404ing, so the status code alone no longer expresses the rule. What
+        "not loosened" means is that the EDIT FORM IS NOT SERVED, which is
+        asserted directly below -- a stronger check than the old one.
+        """
         inv = _invoice(db_session, branch_manila.id, 'SI-X5', status='draft')
         _login(client)
         _set_branch(client, main_branch.id)
-        assert client.get(f'/sales-invoices/{inv.id}/edit').status_code == 404
+
+        resp = client.get(f'/sales-invoices/{inv.id}/edit')
+
+        assert resp.status_code == 302, 'off-branch edit must still be refused'
+        assert resp.headers['Location'].endswith('/sales-invoices')
+        assert b'<form' not in resp.data, 'the edit form was served off-branch'
 
     # -- Task 5 review defect: print/download/preview left on the strict
     # selected-branch guard while detail.html renders their links unconditionally.

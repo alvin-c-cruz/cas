@@ -33,6 +33,7 @@ from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
+from app.utils.branch_scope import require_same_branch
 
 purchase_requests_bp = Blueprint('purchase_requests', __name__, template_folder='templates')
 
@@ -88,8 +89,7 @@ def _approve_gate(action):
 
 def _get_pr_or_404(id):
     pr = db.get_or_404(PurchaseRequest, id)
-    if pr.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(pr)
     return pr
 
 

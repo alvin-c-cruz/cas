@@ -19,6 +19,7 @@ from app.customers.models import Customer
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.utils import ph_now
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
+from app.utils.branch_scope import require_same_branch
 
 delivery_receipts_bp = Blueprint('delivery_receipts', __name__, template_folder='templates')
 
@@ -143,8 +144,7 @@ def _parse_dr_lines(dr, lines_json):
 
 def _dr_or_404(id):
     dr = db.get_or_404(DeliveryReceipt, id)
-    if dr.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(dr)
     return dr
 
 

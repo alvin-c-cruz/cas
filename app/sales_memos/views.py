@@ -28,6 +28,7 @@ from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.periods.utils import validate_transaction_date_with_flash
 from app.sales_memos.je import post_memo_je, reverse_memo_je
+from app.utils.branch_scope import require_same_branch
 
 sales_memos_bp = Blueprint('sales_memos', __name__, template_folder='templates')
 
@@ -230,8 +231,14 @@ def _create_impl(memo_type):
 
 def _memo_or_404(id, memo_type):
     memo = db.get_or_404(SalesMemo, id)
-    if memo.memo_type != memo_type or memo.branch_id != session.get('selected_branch_id'):
+    # The two refusals were one condition and are not the same thing. A debit memo
+    # reached through a credit URL is genuinely not-found and always will be, so it
+    # keeps the bare 404. A WRONG BRANCH is a live record the user may well be
+    # entitled to see, so it gets named -- and this blueprint serves two lists, so
+    # the destination has to be passed rather than looked up by blueprint.
+    if memo.memo_type != memo_type:
         abort(404)
+    require_same_branch(memo, MEMO_META[memo_type]['prefix'] + 'list')
     return memo
 
 

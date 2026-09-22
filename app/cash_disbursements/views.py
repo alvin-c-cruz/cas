@@ -29,6 +29,7 @@ from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.posting.buckets import group_tax_buckets, reconcile_buckets_to_total
+from app.utils.branch_scope import require_same_branch
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
@@ -98,8 +99,7 @@ def generate_cdv_number():
 
 def _get_cdv_or_404(id):
     cdv = db.get_or_404(CashDisbursementVoucher, id)
-    if cdv.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(cdv)
     return cdv
 
 

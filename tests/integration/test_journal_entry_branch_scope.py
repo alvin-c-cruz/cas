@@ -61,21 +61,21 @@ class TestJEBranchScoping:
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user)
-        assert client.get(f'/journal-entries/{je.id}').status_code == 404
+        assert client.get(f'/journal-entries/{je.id}').status_code == 302
 
     def test_print_cross_branch_returns_404(self, client, db_session, admin_user,
                                             main_branch, branch_manila):
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user)
-        assert client.get(f'/journal-entries/{je.id}/print').status_code == 404
+        assert client.get(f'/journal-entries/{je.id}/print').status_code == 302
 
     def test_post_cross_branch_returns_404_and_stays_draft(self, client, db_session,
                                                            admin_user, main_branch, branch_manila):
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user, status='draft')
-        assert client.post(f'/journal-entries/{je.id}/post').status_code == 404
+        assert client.post(f'/journal-entries/{je.id}/post').status_code == 302
         db_session.refresh(je)
         assert je.status == 'draft'
 
@@ -84,7 +84,7 @@ class TestJEBranchScoping:
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user, status='posted')
-        assert client.post(f'/journal-entries/{je.id}/cancel').status_code == 404
+        assert client.post(f'/journal-entries/{je.id}/cancel').status_code == 302
         db_session.refresh(je)
         assert je.status == 'posted'
         assert je.cancelled_at is None
@@ -94,7 +94,7 @@ class TestJEBranchScoping:
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user, status='draft')
-        assert client.post(f'/journal-entries/{je.id}/delete').status_code == 404
+        assert client.post(f'/journal-entries/{je.id}/delete').status_code == 302
         assert db.session.get(JournalEntry, je.id) is not None
 
     def test_same_branch_view_still_200(self, client, db_session, admin_user, main_branch):

@@ -497,11 +497,16 @@ class TestCRVBranchScoping:
         resp = client.get(f'/cash-receipts/{crv.id}')
         assert resp.status_code == 200
 
-        # Re-point the session to a different branch — the same CRV must 404.
+        # Re-point the session to a different branch -- the same CRV must be
+        # refused. Since 2026-09-23 that refusal NAMES the branch and redirects to
+        # the CRV list rather than 404ing; admin holds full access, so the other
+        # branch is reachable. A user who cannot reach it still gets 404 --
+        # pinned in tests/integration/test_branch_scope_guard.py.
         with client.session_transaction() as sess:
             sess['selected_branch_id'] = branch_manila.id
         resp = client.get(f'/cash-receipts/{crv.id}')
-        assert resp.status_code == 404
+        assert resp.status_code == 302
+        assert resp.headers['Location'].endswith('/cash-receipts')
 
 
 class TestCRVTOCTOU:

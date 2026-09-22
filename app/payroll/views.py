@@ -28,6 +28,7 @@ from app.users.utils import get_accessible_branches
 from app.utils import ph_now
 from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
                                     commit_with_renumber_retry)
+from app.utils.branch_scope import require_same_branch
 
 
 def staff_or_above_required(f):
@@ -96,8 +97,7 @@ def generate_payroll_run_number():
 
 def _get_run_or_404(id):
     run = db.get_or_404(PayrollRun, id)
-    if run.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(run)
     return run
 
 

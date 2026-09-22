@@ -23,6 +23,7 @@ from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products, get_sales_vat_categories
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
+from app.utils.branch_scope import require_same_branch
 
 quotations_bp = Blueprint('quotations', __name__, template_folder='templates')
 
@@ -209,8 +210,7 @@ def edit(id):
         return gate
 
     q = db.get_or_404(Quotation, id)
-    if q.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(q)
     if q.status != 'draft':
         flash('Only draft quotations can be edited.', 'error')
         return redirect(url_for('quotations.view', id=id))
@@ -299,8 +299,7 @@ def edit(id):
 def view(id):
     """Read-only detail view for a Quotation."""
     q = db.get_or_404(Quotation, id)
-    if q.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(q)
     created_by_user = db.session.get(User, q.created_by_id) if q.created_by_id else None
     return render_template('quotations/detail.html', quote=q,
                            created_by_user=created_by_user)
@@ -312,8 +311,7 @@ def print_quote(id):
     """Standard printable quotation (Subtotal / VAT / Total per the quote's VAT treatment)."""
     from app.settings import AppSettings
     q = db.get_or_404(Quotation, id)
-    if q.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(q)
     company = {
         'name': AppSettings.get_setting('company_name', ''),
         'address': AppSettings.get_setting('company_address', ''),
@@ -340,8 +338,7 @@ def _quote_admin_gate():
 @login_required
 def send(id):
     q = db.get_or_404(Quotation, id)
-    if q.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(q)
     if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(url_for('quotations.view', id=id))
@@ -360,8 +357,7 @@ def send(id):
 @login_required
 def accept(id):
     q = db.get_or_404(Quotation, id)
-    if q.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(q)
     if not _quote_admin_gate():
         return redirect(url_for('quotations.view', id=id))
     if q.status != 'sent':
@@ -421,8 +417,7 @@ def accept(id):
 @login_required
 def reject(id):
     q = db.get_or_404(Quotation, id)
-    if q.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(q)
     if not _quote_admin_gate():
         return redirect(url_for('quotations.view', id=id))
     if q.status != 'sent':
@@ -445,8 +440,7 @@ def reject(id):
 @login_required
 def cancel(id):
     q = db.get_or_404(Quotation, id)
-    if q.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(q)
     if not _quote_admin_gate():
         return redirect(url_for('quotations.view', id=id))
     if q.status in ('accepted', 'cancelled'):

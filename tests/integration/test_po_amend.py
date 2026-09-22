@@ -348,7 +348,9 @@ class TestPoAmend:
     def test_a_po_in_another_branch_is_404(self, client, admin_user, main_branch, approved_po):
         _login(client, admin_user, main_branch)
         resp = client.post(f'/purchase-orders/{approved_po.id}/amend', data={})
-        assert resp.status_code == 404
+        # 302, not 404: the refusal now names the branch (2026-09-23). What the
+        # test is actually for is the line below -- no amendment was written.
+        assert resp.status_code == 302
         assert _revs(approved_po) and len(_revs(approved_po)) == 1
 
     def test_the_amendment_is_audited_under_the_amend_action(

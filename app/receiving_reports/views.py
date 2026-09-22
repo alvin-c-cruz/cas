@@ -35,6 +35,7 @@ from app.attachments.registry import get_target
 from app.attachments.service import save_queued_attachments
 from app.utils import ph_now
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
+from app.utils.branch_scope import require_same_branch
 
 receiving_reports_bp = Blueprint('receiving_reports', __name__, template_folder='templates')
 
@@ -611,8 +612,7 @@ def _parse_rr_lines(rr, lines_json):
 
 def _rr_or_404(id):
     rr = db.get_or_404(ReceivingReport, id)
-    if rr.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(rr)
     return rr
 
 

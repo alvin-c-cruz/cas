@@ -107,7 +107,10 @@ def test_wo_scoped_to_current_branch(client, admin_user, db_session, main_branch
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch_manila.id
     resp = client.get(f'/work-orders/{wo.id}')
-    assert resp.status_code == 404
+    # 302, not 404: admin can reach the other branch, so the refusal names it and
+    # redirects to the work-order list (2026-09-23).
+    assert resp.status_code == 302
+    assert resp.headers['Location'].endswith('/work-orders')
 
 
 def _released_wo_for_execution(db_session, main_branch, client, accountant_user):

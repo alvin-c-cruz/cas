@@ -33,6 +33,7 @@ from app.sales_orders.preprinted_layout import (
     DATE_FORMATS, FIELD_LABELS, TEXT_KEYS)
 from app.sales_orders.revisions import write_revision, validate_amendment, latest_revision
 from app.sales_orders.revision_models import SalesOrderRevision
+from app.utils.branch_scope import require_same_branch
 
 sales_orders_bp = Blueprint('sales_orders', __name__, template_folder='templates')
 
@@ -594,8 +595,7 @@ def edit(id):
         return gate
 
     so = db.get_or_404(SalesOrder, id)
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(so)
     if so.status != 'draft':
         flash('Only draft Sales Orders can be edited.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
@@ -708,8 +708,7 @@ def amend(id):
         return gate
 
     so = db.get_or_404(SalesOrder, id)
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(so)
     if so.status != 'confirmed':
         flash('Only confirmed Sales Orders can be amended.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
@@ -894,8 +893,7 @@ def view_revision(id, number):
     however many times the order has since been amended.
     """
     so = db.get_or_404(SalesOrder, id)
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(so)
 
     rev = (SalesOrderRevision.query
            .filter_by(sales_order_id=so.id, revision_number=number)
@@ -913,8 +911,7 @@ def view_revision(id, number):
 def view(id):
     """Read-only detail view for a Sales Order."""
     so = db.get_or_404(SalesOrder, id)
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(so)
     created_by_user = (db.session.get(User, so.created_by_id)
                        if so.created_by_id else None)
     confirmed_by_user = (db.session.get(User, so.confirmed_by_id)
@@ -961,8 +958,7 @@ def print_so(id):
     (current = standard printable form · preprinted = data-only overlay for BIR-registered
     physical stock · hidden = printing disabled). Mirrors the SI/APV/CRV/CDV pattern."""
     so = db.get_or_404(SalesOrder, id)
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(so)
     so_print_form = AppSettings.get_setting('so_print_form', 'current')
     if so_print_form == 'hidden':
         flash('Sales Order printing is not enabled.', 'error')
@@ -1002,8 +998,7 @@ def print_job_order(so_number):
     accounting SO print form only. Keyed by so_number (unique, business-facing) rather than
     the internal id -- shop-floor staff reference the document by its printed number."""
     so = SalesOrder.query.filter_by(so_number=so_number).first_or_404()
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(so)
     company = {
         'name': AppSettings.get_setting('company_name', ''),
         'address': AppSettings.get_setting('company_address', ''),
@@ -1063,8 +1058,7 @@ def save_print_layout():
 def confirm(id):
     """Draft → confirmed.  No journal entry — SO posts nothing."""
     so = db.get_or_404(SalesOrder, id)
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(so)
 
     # Role guard: staff/accountant/admin (mirrors detail.html gating)
     if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
@@ -1107,8 +1101,7 @@ def confirm(id):
 def cancel(id):
     """Non-terminal SO → cancelled.  Captures a reason from the custom modal form."""
     so = db.get_or_404(SalesOrder, id)
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(so)
 
     # Role guard: accountant/admin (mirrors detail.html gating)
     if not (current_user.role == 'accountant' or current_user.has_full_access):
@@ -1161,8 +1154,7 @@ def close_line(id, item_id):
     Does not touch quantity/amount/delivery history -- so_line_open_qty() reads
     line_status to report 0 undelivered for this line going forward."""
     so = db.get_or_404(SalesOrder, id)
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(so)
     item = db.session.get(SalesOrderItem, item_id)
     if item is None or item.sales_order_id != so.id:
         abort(404)

@@ -26,6 +26,7 @@ from app.sales_invoices.preprinted_layout import (
     DATE_FORMATS, FIELD_LABELS, TEXT_KEYS)
 from app.periods.utils import validate_transaction_date_with_flash
 from app.posting.sales_vat import output_vat_buckets
+from app.utils.branch_scope import require_same_branch
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 import json
@@ -102,8 +103,7 @@ def generate_invoice_number():
 
 def _get_invoice_or_404(id):
     invoice = db.get_or_404(SalesInvoice, id)
-    if invoice.branch_id != session.get('selected_branch_id'):
-        abort(404)
+    require_same_branch(invoice)
     return invoice
 
 
