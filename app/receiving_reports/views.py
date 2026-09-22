@@ -1182,12 +1182,27 @@ def print_rr(id):
     the client's own pre-printed stationery . hidden = printing disabled). Mirrors
     purchase_orders.print_po.
 
-    There is deliberately NO `rr_print_access` sibling to purchase_orders'. An RR is
-    receipt evidence held INTERNALLY -- it never reaches a supplier, so the
-    commercial risk that justifies refusing to print a draft purchase order does not
-    exist here. `rr_print_form: hidden` is this document's off switch.
+    A DRAFT is refused (owner decision 2026-09-21). This overturns the earlier choice
+    recorded here -- that an RR, unlike a PO, never reaches a supplier, so the
+    commercial risk justifying a draft-order gate does not apply. That argument was
+    about the SUPPLIER's copy; the objection is about the internal one. A draft can
+    still be edited or deleted, so a printed draft is paper that the record can
+    contradict later, signed by whoever received the goods.
+
+    Still NO `rr_print_access` setting sibling to purchase_orders': the rule asked
+    for is flat ("after Submit"), and a setting whose only other value re-permits the
+    thing just reported as a defect would be surface with no demand behind it.
+    `rr_print_form: hidden` remains this document's off switch.
+
+    Enforced HERE, not only by hiding the button -- a direct GET bypasses the
+    template entirely. Cancelled is deliberately NOT gated here; every sibling
+    refuses a cancelled document, but that was not part of this decision and RR's
+    print surfaces would need checking first. See the note to the owner.
     """
     rr = _rr_or_404(id)
+    if rr.status == 'draft':
+        flash('A draft Receiving Report cannot be printed. Submit it first.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
     rr_print_form = AppSettings.get_setting('rr_print_form', 'current')
     if rr_print_form == 'hidden':
         flash('Receiving Report printing is not enabled.', 'error')
