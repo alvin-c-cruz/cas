@@ -131,15 +131,28 @@ def _clamp(value, lo, hi, fallback):
     return max(lo, min(hi, n))
 
 
-def _clean_box(raw, default):
+def _clean_box(raw, default, absent=False):
     """One field's position/style. Includes 'w' (width) -- unlike the eight
     existing per-document clones, a P2P document's fields carry their own width
     (used for text wrapping/alignment on the print), so it is validated here.
 
     `default` MUST carry an explicit 'w' (checked once, at build_layout_api time):
     a silent WIDTH_MIN fallback would print every field of a document clipped to
-    10px, a defect that only shows up on physical stationery."""
+    10px, a defect that only shows up on physical stationery.
+
+    `absent=True` means the stored payload this box is being merged into never
+    mentioned this field -- a release added it after that layout was saved. The
+    box then arrives HIDDEN at its declared geometry, so it cannot overprint
+    whatever the user has since dragged into that spot, and is still one designer
+    click from visible. Only `sanitize_layout(..., hide_unknown=True)` sets it;
+    see the note there for why the save and defaults paths must not."""
     raw = raw if isinstance(raw, dict) else {}
+    if absent:
+        return {
+            'x': default['x'], 'y': default['y'], 'w': default['w'],
+            'fontSize': default['fontSize'], 'bold': bool(default['bold']),
+            'hidden': True,
+        }
     return {
         'x': _clamp(raw.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, default['x']),
         'y': _clamp(raw.get('y'), 0, CANVAS_H, default['y']),
@@ -150,7 +163,7 @@ def _clean_box(raw, default):
     }
 
 
-def _clean_columns(raw, default_columns):
+def _clean_columns(raw, default_columns, hide_unknown=False):
     """Line-item columns, validated against the document's OWN default columns.
 
     Generic lift of the per-module `_clean_columns` (see
@@ -182,7 +195,13 @@ def _clean_columns(raw, default_columns):
     - first-seen input order is kept, then ANY known column the input omitted is
       appended at its default -- the column-level forward-compat case: a release
       that adds a column must still print it for a client whose stored JSON
-      predates it,
+      predates it. With `hide_unknown=True` that appended column arrives
+      `visible: False` instead, because landing it visible at its default x is
+      exactly how a new column overprints a layout the user has since rearranged
+      (the PO declaration records a live instance). It stays in the band, at its
+      own slot, one checkbox from visible. A NON-EMPTY input is required before
+      anything is hidden: an empty or absent list means the payload has no
+      opinion about the band, not that the band should be blank,
     - a key repeated in the input resolves to its FIRST occurrence, for BOTH its
       values and its position. Values and ordering are built in one pass over one
       dict so the two can never disagree (they previously did: last-wins values
@@ -200,6 +219,8 @@ def _clean_columns(raw, default_columns):
                 if isinstance(c, dict) and isinstance(c.get('key'), str)}
     column_keys = list(defaults)
     raw = raw[:MAX_COLUMNS] if isinstance(raw, list) else []
+    # Only a payload that names at least one column gets to hide the rest.
+    hide_unknown = hide_unknown and bool(raw)
     by_key = {}
     for c in raw:
         if not isinstance(c, dict):
@@ -216,21 +237,25 @@ def _clean_columns(raw, default_columns):
         out.append({
             'key': k,
             'x': _clamp(src.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, d['x']),
-            'visible': bool(src.get('visible', d.get('visible', True))),
+            'visible': False if (hide_unknown and k not in by_key)
+                       else bool(src.get('visible', d.get('visible', True))),
             'width': _clamp(src.get('width'), WIDTH_MIN, WIDTH_MAX, d['width']),
         })
     return out
 
 
-def _clean_line_items(raw_li, default_li):
-    """Line-item band position/style plus its validated `columns` list."""
+def _clean_line_items(raw_li, default_li, hide_unknown=False):
+    """Line-item band position/style plus its validated `columns` list.
+
+    `hide_unknown` is passed straight through to `_clean_columns`; see there."""
     raw_li = raw_li if isinstance(raw_li, dict) else {}
     return {
         'y': _clamp(raw_li.get('y'), 0, CANVAS_H, default_li['y']),
         'rowHeight': _clamp(raw_li.get('rowHeight'), ROW_MIN, ROW_MAX, default_li['rowHeight']),
         'fontSize': _clamp(raw_li.get('fontSize'), FONT_MIN, FONT_MAX, default_li['fontSize']),
         'bold': bool(raw_li.get('bold', default_li['bold'])),
-        'columns': _clean_columns(raw_li.get('columns'), default_li.get('columns')),
+        'columns': _clean_columns(raw_li.get('columns'), default_li.get('columns'),
+                                  hide_unknown=hide_unknown),
     }
 
 
@@ -490,8 +515,28 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
     # audit log name, which none currently do.
     doc_type = doc_type or audit_module
 
-    def sanitize_layout(raw):
-        """Return a fully-populated, validated layout built from `raw` over the defaults."""
+    def sanitize_layout(raw, hide_unknown=False):
+        """Return a fully-populated, validated layout built from `raw` over the defaults.
+
+        `hide_unknown=True` is for merging a STORED payload, and only for that.
+        A field or column that payload never mentioned arrives hidden rather than
+        visible at its declared default, which is what made a newly released
+        element overprint a layout the user had already arranged (owner report
+        2026-09-18). Nothing is dropped, so the forward-compat promise holds: the
+        element is on the canvas at its own slot, one click from visible.
+
+        It must stay OFF for the two other callers:
+          * `save_layout` sanitizes what the designer collected, which names every
+            key -- and a round-trip that hid keys would persist the hiding,
+          * the defaults path sanitizes the declaration itself, which would then
+            render a brand-new branch a blank printout.
+
+        Each half is judged independently, and only a payload that actually names
+        something gets to hide its siblings -- a stored `{}` or a junk blob means
+        "no opinion", never "hide everything". Hiding everything would blank a
+        printout unrecoverably, since the designer could not show what is not on
+        the canvas.
+        """
         raw = raw if isinstance(raw, dict) else {}
         d = default_layout
         paper = raw.get('paper') if raw.get('paper') in ALLOWED_PAPERS else d['paper']
@@ -505,8 +550,14 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
         font = raw_page.get('fontFamily')
         page = {'fontFamily': font if font in ALLOWED_FONTS else d['page']['fontFamily']}
         raw_fields = raw.get('fields') if isinstance(raw.get('fields'), dict) else {}
-        fields = {k: _clean_box(raw_fields.get(k), d['fields'][k]) for k in field_keys}
-        line_items = _clean_line_items(raw.get('lineItems'), d['lineItems'])
+        # An empty or misshapen `fields` key leaves `raw_fields` falsy, so a
+        # payload with no opinion hides nothing.
+        hide_fields = hide_unknown and bool(raw_fields)
+        fields = {k: _clean_box(raw_fields.get(k), d['fields'][k],
+                                absent=hide_fields and k not in raw_fields)
+                  for k in field_keys}
+        line_items = _clean_line_items(raw.get('lineItems'), d['lineItems'],
+                                       hide_unknown=hide_unknown)
         extras = _clean_extras(raw.get('extras'), field_keys)
         texts = clean_texts(raw.get('texts'), _texts_defaults(d))
         return {
@@ -548,7 +599,10 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
             # becomes an uncaught 500 on the print page.
             return sanitize_layout(copy.deepcopy(default_layout))
         try:
-            return sanitize_layout(json.loads(stored))
+            # hide_unknown: this is a STORED layout, so an element it never
+            # mentioned is one a later release added. Show it hidden rather than
+            # visible on top of whatever the user has arranged since.
+            return sanitize_layout(json.loads(stored), hide_unknown=True)
         except Exception:  # noqa: BLE001 -- deliberately fail-safe
             # ANY failure reading a stored layout must degrade to the defaults.
             # A narrower except is not fail-safe: the print page hosts the

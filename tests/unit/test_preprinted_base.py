@@ -955,3 +955,144 @@ class TestPersistence:
             {'key': 'product', 'x': 1, 'width': 1, 'junk': 'z' * 100} for _ in range(5000)]}},
             admin_user.username, branch_id=1)
         assert len(AppSettings.get_setting('test_cols_layout:1')) < 5000
+
+
+class TestAnElementTheStoredLayoutNeverKnewAboutArrivesHidden:
+    """Owner report 2026-09-18: "new layout elements land at default coordinates
+    on a pre-existing layout and overprint".
+
+    The cause is in sanitize_layout: it iterates the DECLARED key list, not the
+    stored JSON, so a field or column added to the code after a layout was saved
+    is merged in at its declared default position -- on top of whatever the user
+    has since dragged there. The PO declaration documents a live instance of it:
+    line_number sitting inside product on this client's own saved layout.
+
+    The fix is hide_unknown=True, passed ONLY when merging a stored payload. A
+    key that payload never mentioned arrives hidden, so it cannot overprint, and
+    it is still one designer click from visible -- which keeps the forward-compat
+    promise TestForwardCompatibility pins (nothing vanishes from the layout, it
+    just does not print until asked for).
+
+    hide_unknown defaults to False, so the save path and the defaults path are
+    untouched: echoing the declaration back must still yield the declaration.
+    """
+
+    def test_a_field_absent_from_a_stored_payload_arrives_hidden(self, api):
+        sanitize, _, _ = api
+        out = sanitize({'fields': {'doc_no': {'x': 50, 'y': 60}}}, hide_unknown=True)
+        assert out['fields']['doc_date']['hidden'] is True
+
+    def test_it_keeps_its_default_geometry_so_unhiding_lands_it_somewhere_sane(self, api):
+        """Hidden is not deleted. Ticking the box in the designer must reveal a
+        real box, not a zero-sized one at the origin."""
+        sanitize, _, _ = api
+        out = sanitize({'fields': {'doc_no': {'x': 50, 'y': 60}}}, hide_unknown=True)
+        assert out['fields']['doc_date'] == \
+            {'x': 300, 'y': 100, 'w': 120, 'fontSize': 10, 'bold': False, 'hidden': True}
+
+    def test_a_field_the_payload_does_mention_is_untouched(self, api):
+        sanitize, _, _ = api
+        out = sanitize({'fields': {'doc_no': {'x': 50, 'y': 60}}}, hide_unknown=True)
+        assert out['fields']['doc_no']['hidden'] is False
+        assert (out['fields']['doc_no']['x'], out['fields']['doc_no']['y']) == (50, 60)
+
+    def test_a_field_the_payload_mentions_as_visible_stays_visible(self, api):
+        """An explicit hidden:false in the payload is a user decision and must
+        outrank the forward-compat default."""
+        sanitize, _, _ = api
+        out = sanitize({'fields': {'doc_no': {'x': 50}, 'doc_date': {'hidden': False}}},
+                       hide_unknown=True)
+        assert out['fields']['doc_date']['hidden'] is False
+
+    def test_a_column_absent_from_a_stored_payload_arrives_invisible(self, api_cols):
+        sanitize, _, _ = api_cols
+        out = sanitize({'lineItems': {'columns': [{'key': 'amount', 'x': 700, 'width': 110}]}},
+                       hide_unknown=True)
+        cols = {c['key']: c for c in out['lineItems']['columns']}
+        assert cols['line_number']['visible'] is False
+        assert cols['product']['visible'] is False
+
+    def test_an_absent_column_keeps_its_default_slot(self, api_cols):
+        sanitize, _, _ = api_cols
+        out = sanitize({'lineItems': {'columns': [{'key': 'amount', 'x': 700, 'width': 110}]}},
+                       hide_unknown=True)
+        cols = {c['key']: c for c in out['lineItems']['columns']}
+        assert cols['product'] == {'key': 'product', 'x': 92, 'visible': False, 'width': 300}
+
+    def test_a_column_the_payload_does_mention_keeps_its_own_visibility(self, api_cols):
+        sanitize, _, _ = api_cols
+        out = sanitize({'lineItems': {'columns': [
+            {'key': 'amount', 'x': 700, 'width': 110, 'visible': True},
+        ]}}, hide_unknown=True)
+        cols = {c['key']: c for c in out['lineItems']['columns']}
+        assert cols['amount']['visible'] is True
+
+    def test_column_ordering_is_unchanged(self, api_cols):
+        """Hiding must not reshuffle the band -- the first-seen-then-appended
+        order is a separate contract, pinned above."""
+        sanitize, _, _ = api_cols
+        out = sanitize({'lineItems': {'columns': [{'key': 'amount', 'x': 700, 'width': 110}]}},
+                       hide_unknown=True)
+        assert [c['key'] for c in out['lineItems']['columns']] == \
+            ['amount', 'line_number', 'product']
+
+
+class TestHideUnknownDoesNotFireOnAPayloadThatKnowsNothing:
+    """The dangerous edge. A stored payload of {} -- or one whose fields key is
+    junk, or empty -- means "I have no opinion", NOT "hide everything". Firing
+    there would blank an entire printout, which is far worse than the overprint
+    being fixed, and is unrecoverable from the designer because the fields would
+    not be on the canvas to unhide.
+    """
+
+    def test_an_empty_payload_still_returns_the_full_visible_default(self, api):
+        sanitize, _, _ = api
+        assert sanitize({}, hide_unknown=True) == EXPECTED_DEFAULT
+
+    @pytest.mark.parametrize('junk', [None, [], 'a string', 42])
+    def test_a_junk_payload_still_returns_the_full_visible_default(self, api, junk):
+        sanitize, _, _ = api
+        assert sanitize(junk, hide_unknown=True) == EXPECTED_DEFAULT
+
+    def test_an_empty_fields_dict_hides_nothing(self, api):
+        sanitize, _, _ = api
+        out = sanitize({'fields': {}}, hide_unknown=True)
+        assert all(f['hidden'] is False for f in out['fields'].values())
+
+    @pytest.mark.parametrize('junk', ['not a container', None, 42])
+    def test_a_misshapen_fields_key_hides_nothing(self, api, junk):
+        sanitize, _, _ = api
+        out = sanitize({'fields': junk}, hide_unknown=True)
+        assert all(f['hidden'] is False for f in out['fields'].values())
+
+    def test_an_empty_columns_list_hides_nothing(self, api_cols):
+        sanitize, _, _ = api_cols
+        out = sanitize({'lineItems': {'columns': []}}, hide_unknown=True)
+        assert [c['visible'] for c in out['lineItems']['columns']] == \
+            [c['visible'] for c in COLUMNS]
+
+    def test_a_payload_with_fields_but_no_line_items_hides_no_column(self, api_cols):
+        """The two halves are judged independently: a payload may know about
+        fields and say nothing about the band, or the reverse."""
+        sanitize, _, _ = api_cols
+        out = sanitize({'fields': {'doc_no': {'x': 50}}}, hide_unknown=True)
+        assert [c['visible'] for c in out['lineItems']['columns']] == \
+            [c['visible'] for c in COLUMNS]
+        assert out['fields']['doc_date']['hidden'] is True
+
+
+class TestTheDefaultStaysTheOldBehaviour:
+    """hide_unknown is opt-in. The save path sanitizes what the designer
+    collected -- which names every key -- and the defaults path sanitizes the
+    declaration itself. Neither may start hiding things."""
+
+    def test_omitting_the_flag_leaves_an_absent_field_visible(self, api):
+        sanitize, _, _ = api
+        out = sanitize({'fields': {'doc_no': {'x': 50, 'y': 60}}})
+        assert out['fields']['doc_date']['hidden'] is False
+
+    def test_omitting_the_flag_leaves_an_absent_column_visible(self, api_cols):
+        sanitize, _, _ = api_cols
+        out = sanitize({'lineItems': {'columns': [{'key': 'amount', 'x': 700, 'width': 110}]}})
+        cols = {c['key']: c for c in out['lineItems']['columns']}
+        assert cols['product']['visible'] is True
