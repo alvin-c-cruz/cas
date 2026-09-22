@@ -1194,14 +1194,25 @@ def print_rr(id):
     thing just reported as a defect would be surface with no demand behind it.
     `rr_print_form: hidden` remains this document's off switch.
 
+    A CANCELLED one is refused too (owner decision 2026-09-22, taken separately).
+    The printout carries no cancelled marking, so on paper a voided receipt is
+    indistinguishable from a live one -- the argument purchase_orders.print_po
+    already makes for its own gate.
+
+    The two refusals keep SEPARATE messages on purpose: a draft is told what to do
+    next, a cancelled receipt has no next step, and one merged message would either
+    tell a receiver to submit something unsubmittable or leave a draft with no
+    instruction.
+
     Enforced HERE, not only by hiding the button -- a direct GET bypasses the
-    template entirely. Cancelled is deliberately NOT gated here; every sibling
-    refuses a cancelled document, but that was not part of this decision and RR's
-    print surfaces would need checking first. See the note to the owner.
+    template entirely.
     """
     rr = _rr_or_404(id)
     if rr.status == 'draft':
         flash('A draft Receiving Report cannot be printed. Submit it first.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    if rr.status == 'cancelled':
+        flash('A cancelled Receiving Report cannot be printed.', 'error')
         return redirect(url_for('receiving_reports.view', id=id))
     rr_print_form = AppSettings.get_setting('rr_print_form', 'current')
     if rr_print_form == 'hidden':

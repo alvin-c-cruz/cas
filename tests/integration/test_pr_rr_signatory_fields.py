@@ -179,7 +179,9 @@ def _rr_row(db_session, branch, number, vendor, **sig):
     rr = ReceivingReport(rr_number=number, branch_id=branch.id,
                          receipt_date=date(2026, 8, 21),
                          vendor_id=vendor.id, vendor_name=vendor.name,
-                         status='draft', **sig)
+                         # SUBMITTED: a draft RR is not printable (2026-09-21) and
+                         # both callers print. This file is about signatory names.
+                         status='submitted', **sig)
     db_session.add(rr)
     db_session.commit()
     return rr

@@ -36,9 +36,11 @@ def rr_enabled(db_session):
 
 @pytest.fixture
 def rr(db_session, admin_user, main_branch, vl_vendor):
+    """SUBMITTED, not draft: a draft is not printable (2026-09-21) and every test
+    here prints. Nothing in this file is about the draft lifecycle."""
     r = ReceivingReport(rr_number='RR-SIG-1', receipt_date=date(2026, 8, 19),
                         branch_id=main_branch.id, vendor_id=vl_vendor.id,
-                        vendor_name='Johnson Hardware', status='draft',
+                        vendor_name='Johnson Hardware', status='submitted',
                         remarks='CI #67050', created_by_id=admin_user.id)
     db_session.add(r)
     db_session.commit()

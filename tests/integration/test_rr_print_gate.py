@@ -91,6 +91,46 @@ class TestPrintingIsGatedOnSubmit:
         assert client.get(f'/receiving-reports/{rr.id}/print').status_code == 200
 
 
+class TestACancelledReceiptIsRefusedToo:
+    """Owner decision 2026-09-22, decided separately from the draft gate above.
+
+    Every sibling document refuses to print a cancelled copy, for a reason that
+    applies here unchanged: the printout carries no cancelled marking, so on
+    paper a voided receipt is indistinguishable from a live one. See
+    purchase_orders/views.py print_po, which states the same argument.
+    """
+
+    def test_a_cancelled_receipt_is_refused(self, client, db_session, admin_user,
+                                            main_branch, vl_vendor):
+        rr = _rr(db_session, main_branch, vl_vendor, 'cancelled', 'RR-GATE-CANC')
+        _login(client, admin_user, main_branch)
+
+        resp = client.get(f'/receiving-reports/{rr.id}/print', follow_redirects=True)
+
+        assert b'cannot be printed' in resp.data
+        assert b'Prepared by' not in resp.data,             'the printout rendered anyway -- the redirect must replace it, not precede it'
+
+    def test_the_draft_message_still_names_submitting(self, client, db_session,
+                                                      admin_user, main_branch, vl_vendor):
+        """The two refusals must not collapse into one message. A draft is told
+        what to DO next; a cancelled receipt has no next step."""
+        rr = _rr(db_session, main_branch, vl_vendor, 'draft', 'RR-GATE-MSG-D')
+        _login(client, admin_user, main_branch)
+
+        resp = client.get(f'/receiving-reports/{rr.id}/print', follow_redirects=True)
+
+        assert b'Submit it first' in resp.data
+
+    def test_the_detail_page_offers_no_print_button_for_a_cancelled_receipt(
+            self, client, db_session, admin_user, main_branch, vl_vendor):
+        rr = _rr(db_session, main_branch, vl_vendor, 'cancelled', 'RR-GATE-BTN-C')
+        _login(client, admin_user, main_branch)
+
+        body = client.get(f'/receiving-reports/{rr.id}').data.decode()
+
+        assert f'/receiving-reports/{rr.id}/print' not in body
+
+
 class TestTheButtonMatchesTheRoute:
     """A button the route refuses is a bug report waiting to happen -- but the
     button is never the enforcement (see the module docstring)."""

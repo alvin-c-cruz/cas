@@ -122,6 +122,10 @@ def test_print_renders(client, accountant_user, main_branch, vl_vendor, db_sessi
     _login(client, accountant_user, main_branch)
     po = _approved_po(db_session, main_branch, vl_vendor)
     rr = _make_draft_rr(db_session, main_branch, po, received=10)
+    # A draft is not printable (2026-09-21); this test is about the RENDERING.
+    # The helper stays draft because the lifecycle tests around it need it that way.
+    rr.status = 'submitted'
+    db_session.commit()
     resp = client.get(f'/receiving-reports/{rr.id}/print')
     assert resp.status_code == 200
     assert b'RECEIVING REPORT' in resp.data and bytes(rr.rr_number, 'utf-8') in resp.data

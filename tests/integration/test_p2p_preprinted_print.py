@@ -1628,7 +1628,7 @@ def approved_rr(client, db_session, admin_user, branch_manila, rr_source_po):
                          receipt_date=date(2026, 8, 6),
                          vendor_id=rr_source_po.vendor_id,
                          vendor_name=rr_source_po.vendor_name,
-                         remarks='Received in good order', status='draft')
+                         remarks='Received in good order', status='submitted')
     rr.line_items.append(ReceivingReportItem(
         line_number=1, purchase_order_item_id=po_line.id,
         product_id=po_line.product_id, received_quantity=Decimal('15')))
@@ -1975,7 +1975,7 @@ def multi_po_rr(db_session, branch_manila, rr_source_po, rr_source_po_2):
                          receipt_date=date(2026, 8, 6),
                          vendor_id=rr_source_po.vendor_id,
                          vendor_name=rr_source_po.vendor_name,
-                         remarks='Two POs, one delivery', status='draft')
+                         remarks='Two POs, one delivery', status='submitted')
     rr.line_items.append(ReceivingReportItem(
         line_number=1, purchase_order_item_id=poi_1.id,
         product_id=poi_1.product_id, received_quantity=Decimal('10')))
@@ -2003,7 +2003,7 @@ def rr_with_an_orphaned_line(db_session, branch_manila, rr_source_po):
                          receipt_date=date(2026, 8, 6),
                          vendor_id=rr_source_po.vendor_id,
                          vendor_name=rr_source_po.vendor_name,
-                         remarks='One good line, one orphaned', status='draft')
+                         remarks='One good line, one orphaned', status='submitted')
     rr.line_items.append(ReceivingReportItem(
         line_number=1, purchase_order_item_id=poi.id,
         product_id=poi.product_id, received_quantity=Decimal('10')))
