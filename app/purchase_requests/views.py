@@ -310,9 +310,14 @@ def list_pr():
     # LINE links, not the convert()-only header FK. See po_links_for_pr_ids.
     from app.purchase_requests.allocation import (
         ap_links_for_pr_ids, cd_links_for_pr_ids, po_links_for_pr_ids,
-        rr_links_for_pr_ids)
+        order_status_for_pr_ids, rr_links_for_pr_ids)
     page_ids = [p.id for p in pagination.items]
     po_links = po_links_for_pr_ids(page_ids)
+    # How far each requisition has got towards being ORDERED, and from whom
+    # (owner request 2026-09-18, replacing the Note column). Computed from the
+    # order links rather than read off pr.status, because in recompute_pr_status
+    # delivery outranks ordering -- see order_status_for_pr_ids.
+    order_status = order_status_for_pr_ids(page_ids)
     # The rest of the buy-side chain, each ONE query for the whole page (owner
     # request 2026-09-06). Four columns rather than four statuses: where a
     # requisition's goods have got is a question about which documents exist,
@@ -324,6 +329,7 @@ def list_pr():
     return render_template('purchase_requests/list.html',
                            pr_list=pagination.items,
                            po_links=po_links,
+                           order_status=order_status,
                            rr_links=rr_links, ap_links=ap_links,
                            cd_links=cd_links,
                            pagination=pagination,

@@ -787,3 +787,121 @@ def allocation_panel_rows(pr):
             'rr_links': rr_map.get(li.id, []),
         })
     return rows
+
+
+#: The three states the PR list's Order Status column reports. Deliberately NOT
+#: the stored `PurchaseRequest.status` values: see order_status_for_pr_ids.
+ORDER_PENDING = 'pending'
+ORDER_PARTIAL = 'partial'
+ORDER_ORDERED = 'ordered'
+
+
+def order_status_for_pr_ids(pr_ids):
+    """``{pr_id: {'state': ..., 'vendors': [...], 'unnamed_vendor': bool}}`` --
+    how far each requisition has got towards being ORDERED, and from whom.
+
+    Two queries for a whole page, in the style of po_links_for_pr_ids: one for
+    the page's requisition lines, one for every committed PO line that points at
+    them (carrying its order's vendor name, so the vendors come along free rather
+    than costing a third query).
+
+    WHY NOT `PurchaseRequest.status`
+    --------------------------------
+    `recompute_pr_status` already stores 'converted' and 'partially_converted',
+    which are exactly "ordered" and "partially ordered". They cannot be used
+    here, because in that function DELIVERY OUTRANKS ORDERING: a fully ordered
+    requisition that has been received reads 'received' or 'partially_received',
+    so a column driven off the stored status would show neither ordered nor
+    partially ordered for precisely the rows furthest along. The Status badge
+    beside this column already reports that lifecycle; this column answers a
+    different question, so it is computed from the order links themselves.
+
+    The per-line test is `pr_line_is_open`'s, reproduced in aggregate and NOT
+    re-derived: a line with a quantity is open while requested minus ordered is
+    positive; a line WITHOUT one (LINE_QUANTITY_REQUIRED is False) is open until
+    any committed PO line references it at all, because a quantity comparison
+    says nothing about an unquantified line and a referencing PO line may itself
+    carry zero or None.
+
+    States, and why 'pending' is about references rather than quantities: a
+    requisition nobody has ordered from has no committed reference on any line.
+    One whose every line is closed is 'ordered'. Anything between is 'partial'.
+    A requisition with no lines at all is 'pending' -- there is nothing to order.
+
+    COMMITTED_PO filters the join for the same reason every allocation sum uses
+    it: cancelling an order releases its lines, so a cancelled order must not
+    make a requisition look ordered.
+
+    `vendors` is sorted and de-duplicated. It can be EMPTY on a partial or
+    ordered row, and that is not a bug: convert() creates a draft order with no
+    vendor and no prices, so a requisition can legitimately be ordered under an
+    order whose vendor has not been filled in yet. `unnamed_vendor` says that
+    happened, so the caller can word it rather than printing a blank.
+    """
+    from app.purchase_requests.models import PurchaseRequestItem
+    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+    ids = [i for i in (pr_ids or []) if i is not None]
+    if not ids:
+        return {}
+
+    lines = (db.session.query(PurchaseRequestItem.purchase_request_id,
+                              PurchaseRequestItem.id,
+                              PurchaseRequestItem.quantity)
+             .filter(PurchaseRequestItem.purchase_request_id.in_(ids))
+             .all())
+
+    ordered_rows = (db.session.query(PurchaseRequestItem.purchase_request_id,
+                                     PurchaseRequestItem.id,
+                                     PurchaseOrderItem.quantity,
+                                     PurchaseOrder.vendor_name)
+                    .join(PurchaseOrderItem,
+                          PurchaseOrderItem.source_pr_item_id == PurchaseRequestItem.id)
+                    .join(PurchaseOrder,
+                          PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
+                    .filter(PurchaseRequestItem.purchase_request_id.in_(ids))
+                    .filter(PurchaseOrder.status.in_(COMMITTED_PO))
+                    .all())
+
+    #: pr_item_id -> ordered quantity, and pr_item_id -> was referenced at all.
+    ordered_qty = {}
+    referenced = set()
+    vendors_by_pr = {}
+    unnamed_by_pr = {}
+    for pr_id, pr_item_id, po_qty, vendor_name in ordered_rows:
+        referenced.add(pr_item_id)
+        # A referencing line may carry None; that references without ordering.
+        if po_qty is not None:
+            ordered_qty[pr_item_id] = ordered_qty.get(pr_item_id, Decimal('0')) \
+                + Decimal(str(po_qty))
+        name = (vendor_name or '').strip()
+        if name:
+            vendors_by_pr.setdefault(pr_id, set()).add(name)
+        else:
+            unnamed_by_pr[pr_id] = True
+
+    lines_by_pr = {}
+    for pr_id, pr_item_id, qty in lines:
+        lines_by_pr.setdefault(pr_id, []).append((pr_item_id, qty))
+
+    out = {}
+    for pr_id in ids:
+        pr_lines = lines_by_pr.get(pr_id, [])
+        any_referenced = any(i in referenced for i, _ in pr_lines)
+        if not pr_lines or not any_referenced:
+            out[pr_id] = {'state': ORDER_PENDING, 'vendors': [], 'unnamed_vendor': False}
+            continue
+        open_count = 0
+        for pr_item_id, qty in pr_lines:
+            got = ordered_qty.get(pr_item_id, Decimal('0'))
+            if qty is None:
+                # pr_line_is_open's unquantified branch, verbatim.
+                if got == Decimal('0') and pr_item_id not in referenced:
+                    open_count += 1
+            elif Decimal(str(qty)) - got > Decimal('0'):
+                open_count += 1
+        out[pr_id] = {
+            'state': ORDER_ORDERED if open_count == 0 else ORDER_PARTIAL,
+            'vendors': sorted(vendors_by_pr.get(pr_id, ())),
+            'unnamed_vendor': bool(unnamed_by_pr.get(pr_id)),
+        }
+    return out

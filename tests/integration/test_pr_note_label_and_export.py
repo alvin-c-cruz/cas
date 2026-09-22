@@ -6,9 +6,14 @@ Two things, both about the same field.
 1. RENAME. The field labelled "Reason / Justification" is now "Note" -- owner
    directive 2026-08-14. The stored column stays `reason`; only what the user
    reads changes, so there is no migration and no risk to existing data. The
-   rename has to reach create, edit, detail, LIST and PRINT together: a document
+   rename has to reach create, edit, detail and PRINT together: a document
    whose surfaces disagree about what a field is called is the defect
    `feedback-si-surface-consistency` exists to prevent.
+
+   The LIST dropped its Note column entirely on 2026-09-18 (owner request,
+   replaced by Order Status), so it is no longer one of those surfaces. The test
+   below asserts the column's ABSENCE rather than being deleted, so the change
+   stays visible next to the rename it partly undoes.
 
    Two OTHER labels containing "Reason" belong to different fields and must NOT
    move -- `amend_reason` ("Reason for amendment") and the shared
@@ -116,10 +121,21 @@ class TestEverySurfaceSaysNote:
         assert 'Note:' in html
         assert 'Attention: Anissa Tang' in html
 
-    def test_the_list_page(self, client, admin_user, main_branch, pr):
+    def test_the_list_page_no_longer_carries_the_note_column(
+            self, client, admin_user, main_branch, pr):
+        """The LIST is the one surface the rename no longer has to reach: the
+        owner replaced that column with Order Status on 2026-09-18, on the
+        grounds that a 60-character truncation of free text earned less of the
+        row than knowing whether the requisition has been ordered and from whom.
+
+        Note is untouched on every other surface, which the sibling tests here
+        still pin. Asserting the column is GONE, rather than deleting this test,
+        keeps the rename's list-page history readable.
+        """
         _login(client, admin_user, main_branch)
         html = client.get('/purchase-requests').data.decode()
-        assert '<th>Note</th>' in html
+        assert '<th>Note</th>' not in html
+        assert '<th>Order Status</th>' in html
 
     def test_the_printout(self, client, db_session, admin_user, main_branch, pr):
         # Submitted, not draft: printing a draft is refused by pr_print_access.
