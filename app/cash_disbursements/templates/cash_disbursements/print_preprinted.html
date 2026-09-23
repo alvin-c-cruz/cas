@@ -182,7 +182,7 @@
     'vendor_name': cdv.vendor_name,
     'check_payee': (cdv.vendor.check_payee_name or '') if cdv.vendor else '',
     'vendor_tin': cdv.vendor_tin or '',
-    'deposit_account': ((cdv.vendor.bank_details_line if cdv.vendor else '') or 'Bank details not on file') if cdv.pays_by_deposit else '',
+    'deposit_account': (cdv.vendor.bank_details_line if cdv.vendor else '') if cdv.pays_by_deposit else '',
     'notes': cdv.notes or '',
   } %}
   {% set field_isos = {

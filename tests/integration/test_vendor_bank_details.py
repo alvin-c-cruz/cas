@@ -10,8 +10,8 @@ Decisions taken with the owner, pinned here so they are not reopened as bugs:
 2. Read LIVE from the vendor, never snapshotted onto the CDV. The owner does not reprint
    CVs; the same ruling already governs check_payee_name.
 3. Shown only for the deposit methods (Bank Transfer, Online), the way check details
-   show only for a check. A deposit CDV whose vendor has no details says so, rather than
-   printing nothing, so the gap is seen before the money moves.
+   show only for a check. A deposit CDV whose vendor has no details stays BLANK -- owner,
+   2026-09-24, reversing a first cut that printed "Bank details not on file".
 4. The pre-printed voucher gets a `deposit_account` field that ships HIDDEN, like
    check_payee: a new field must never appear unbidden on a client's pad.
 """
@@ -29,7 +29,6 @@ pytestmark = [pytest.mark.integration, pytest.mark.vendors, pytest.mark.cash_dis
 
 BANK = {'bank_name': 'BDO Unibank', 'bank_account_name': 'Meralco Payee Inc.',
         'bank_account_number': '001234567890'}
-NOT_ON_FILE = 'Bank details not on file'
 
 
 def _vendor_post(**extra):
@@ -173,11 +172,12 @@ class TestCdvShowsTheDepositAccount:
         assert 'data-deposit-to' not in html
         assert '001234567890' not in html, 'anti-leak: the account printed anyway'
 
-    def test_a_deposit_cdv_with_no_details_says_so(self, client, db_session, admin_user,
-                                                   main_branch, page):
+    def test_a_deposit_cdv_with_no_details_stays_blank(self, client, db_session,
+                                                       admin_user, main_branch, page):
         cdv = _cdv(db_session, main_branch, 'bank_transfer', bank=False)
-        block = _deposit_block(_get(client, main_branch, self._url(cdv, page)))
-        assert block is not None and NOT_ON_FILE in block
+        html = _get(client, main_branch, self._url(cdv, page))
+        assert 'data-deposit-to' not in html
+        assert 'not on file' not in html
 
     def test_it_reads_the_vendor_live(self, client, db_session, admin_user, main_branch,
                                       page):
@@ -242,7 +242,7 @@ class TestPreprintedField:
         html = self._render(client, db_session, main_branch, 'check')
         assert _field_text(html, 'deposit_account').strip() == ''
 
-    def test_a_deposit_with_no_details_says_so(self, client, db_session, admin_user,
-                                               main_branch):
+    def test_a_deposit_with_no_details_prints_blank(self, client, db_session, admin_user,
+                                                    main_branch):
         html = self._render(client, db_session, main_branch, 'bank_transfer', bank=False)
-        assert _field_text(html, 'deposit_account') == NOT_ON_FILE
+        assert _field_text(html, 'deposit_account').strip() == ''
