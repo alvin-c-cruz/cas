@@ -70,11 +70,24 @@ def test_create_stores_every_signatory(client, db_session, admin_user, main_bran
         'MARIA SANTOS', 'ANA LIM', 'JUAN DELA CRUZ', 'PEDRO REYES')
 
 
-def test_blank_signatory_is_stored_as_null_not_empty_string(client, db_session, admin_user,
+def test_blank_signatory_is_stored_as_empty_string_not_null(client, db_session, admin_user,
                                                             main_branch,
                                                             sales_orders_module_enabled):
-    """Blank stays blank -- and stays NULL, so it is distinguishable from a typed
-    empty value and prints an empty ruled line."""
+    """Blank stays blank, and is stored as '' -- REVERSED 2026-09-23.
+
+    An emptied slot is stored as '' rather than NULL since 2026-09-23. NULL was
+    doing two jobs -- "never set, this document predates per-document signatories"
+    and "a user deleted this name" -- and for_print() could only read it as the
+    first, so a cleared name reappeared from the company setting on the paper.
+    The assertion below is about the CLEARING, which still works; only the shape
+    of the stored blank changed.
+
+    A Sales Order never calls for_print() and has no company-wide default, so the
+    shape makes no difference to what it prints. It changes here because all three
+    documents share app/common/signatories.py::assign, and one helper with two
+    meanings for the same value is what caused the bug. next_so_signatories_for()
+    already returns '' and never None, so storage now matches carry-forward.
+    """
     c = _customer(db_session); p = _product(db_session, code='SF-2')
     _login(client, admin_user); _select_branch(client, main_branch.id)
 
@@ -85,8 +98,8 @@ def test_blank_signatory_is_stored_as_null_not_empty_string(client, db_session, 
     so = SalesOrder.query.filter_by(so_number='SO-SIG-0002').first()
     assert so.prepared_by == 'MARIA SANTOS'      # trimmed
     assert so.checked_by == 'ANA LIM'            # the new slot trims too
-    assert so.noted_by is None                   # whitespace-only -> NULL
-    assert so.approved_by is None
+    assert so.noted_by == ''                     # whitespace-only -> ''
+    assert so.approved_by == ''
 
 
 def test_edit_updates_the_signatories(client, db_session, admin_user, main_branch,
@@ -108,8 +121,8 @@ def test_edit_updates_the_signatories(client, db_session, admin_user, main_branc
 
     db_session.refresh(so)
     assert so.prepared_by == 'NEW PREPARER'
-    assert so.checked_by is None          # cleared, not left at the old value
-    assert so.noted_by is None            # cleared, not left at the old value
+    assert so.checked_by == ''            # cleared, not left at the old value
+    assert so.noted_by == ''              # cleared, not left at the old value
     assert so.approved_by == 'PEDRO REYES'
 
 

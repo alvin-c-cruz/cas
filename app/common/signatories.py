@@ -52,8 +52,11 @@ def prefill_form_from_last(form, fields, prefix, roles, model, user_id):
     scopes a purchaser's number pad to the purchaser.
 
     The company default remains the fallback PER SLOT -- for a first-ever
-    document, and for any signatory the last document left blank. Falling back
-    slot by slot rather than all-or-nothing matches for_print()'s behaviour.
+    document, and for any signatory the last document NEVER SET. A slot the user
+    deliberately emptied carries forward EMPTY (2026-09-23); refilling it from
+    the company setting meant clearing it again on every document. Falling back
+    slot by slot rather than all-or-nothing matches for_print()'s behaviour, and
+    so does treating None and '' as different things.
 
     This does NOT derive a name from created_by. The module docstring above
     records why: the people who sign are frequently not CAS users, and deriving
@@ -74,8 +77,15 @@ def prefill_form_from_last(form, fields, prefix, roles, model, user_id):
         field = getattr(form, field_name, None)
         if field is None or (field.data or '').strip():
             continue
-        previous = (getattr(last, field_name, None) or '').strip() if last else ''
-        field.data = previous or default_name
+        # `is None`, NOT falsiness -- the same distinction for_print() makes, and
+        # it has to be the same or the two surfaces disagree again:
+        #   None -> that document never set this slot   -> company default
+        #   ''   -> the user deliberately emptied it    -> stay empty
+        #   name -> carry it forward
+        # Reading '' as "nothing to carry" handed back the company name, so a user
+        # who cleared a signatory cleared it again on every subsequent document.
+        previous = getattr(last, field_name, None) if last else None
+        field.data = default_name if previous is None else previous.strip()
 
 
 def assign(document, form, fields):
@@ -84,11 +94,24 @@ def assign(document, form, fields):
     Blank stays blank -- an empty name prints an empty ruled line to sign by
     hand, which is a legitimate choice, not missing data to be back-filled from
     the company setting at save time.
+
+    STORES '' FOR AN EMPTIED FIELD, NEVER None. This used to write None, and
+    for_print() reads None as "this document has no opinion, use the company
+    setting" -- so a user who deleted a name watched it reappear on the paper
+    (Angilyn, via the owner, 2026-09-23). Both halves were behaving exactly as
+    their own docstrings described; the fault was that NULL meant two things.
+
+    The split, which the two functions must keep agreeing on:
+        None -> never set. A document predating per-document signatories.
+        ''   -> a user submitted this field empty. Print a blank line.
+
+    Anything reaching this function came from a submitted form, so the user had
+    an opinion about every slot, which is why nothing here writes None.
     """
     for field_name in fields:
         field = getattr(form, field_name, None)
         if field is not None:
-            setattr(document, field_name, (field.data or '').strip() or None)
+            setattr(document, field_name, (field.data or '').strip())
 
 
 def for_print(document, fields, roles, prefix):
@@ -97,13 +120,19 @@ def for_print(document, fields, roles, prefix):
     Reads the DOCUMENT first and falls back to the company setting per slot, so:
       * a document saved with its own names prints those;
       * a document predating this feature (all NULL) still prints the configured
-        company names instead of three blank lines.
+        company names instead of three blank lines;
+      * a slot the user deliberately EMPTIED ('') prints blank, and is NOT
+        back-filled from the company setting.
     The fallback is per-slot rather than all-or-nothing: a document that names
     only its approver should not lose the other two.
     """
     fallback = defaults_for(prefix, roles)
     out = []
     for field_name, (role, default_name) in zip(fields, fallback):
-        own = (getattr(document, field_name, None) or '').strip()
-        out.append((role, own or default_name))
+        own = getattr(document, field_name, None)
+        # `is None`, NOT falsiness. '' is a user who CLEARED this slot and means
+        # "print a blank line"; None is a document that predates the feature and
+        # means "use the company setting". Collapsing them with `own or default`
+        # is the bug this distinction exists to fix -- see assign().
+        out.append((role, default_name if own is None else own.strip()))
     return out

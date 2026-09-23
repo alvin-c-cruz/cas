@@ -114,13 +114,22 @@ def test_a_one_off_signatory_does_not_change_the_company_default(
 
 def test_a_blank_stays_blank(client, db_session, admin_user, main_branch, company_defaults):
     """A cleared name is a choice -- print an empty ruled line -- not missing
-    data to be silently refilled from the company setting at save time."""
+    data to be silently refilled from the company setting at save time.
+
+    An emptied slot is stored as '' rather than NULL since 2026-09-23. NULL was
+    doing two jobs -- "never set, this document predates per-document signatories"
+    and "a user deleted this name" -- and for_print() could only read it as the
+    first, so a cleared name reappeared from the company setting on the paper.
+    The assertion below is about the CLEARING, which still works; only the shape
+    of the stored blank changed.
+    """
     _login(client, admin_user, main_branch)
     _create_pr(client, '00092', prepared_by='', noted_by='', approved_by='')
 
     pr = PurchaseRequest.query.filter_by(pr_number='00092').first()
     assert pr is not None
-    assert pr.prepared_by is None and pr.noted_by is None and pr.approved_by is None
+    assert pr.prepared_by == '' and pr.noted_by == '' and pr.approved_by == ''
+    assert pr.noted_by is not None, 'NULL would mean "never set" and print the default'
 
 
 # ------------------------------------------------------------- the printout
