@@ -67,12 +67,24 @@ class TestSubmittedPrIsListedForApproval:
         assert f'/purchase-requests/{pr.id}'.encode() in client.get('/action-items').data
 
     def test_badge_counts_it(self, db_session, admin_user, main_branch):
-        from app.dashboard.action_items_service import count_action_items
+        """The badge counts ACTIONS, not documents (owner decision 2026-09-23).
+
+        This requisition is submitted AND missing its required Signed PR, so it
+        needs two things doing and contributes two -- one row under approvals,
+        one under files to attach. Asserted against the page's own row count
+        rather than a bare number, so the test says WHY it is two.
+        """
+        from app.dashboard.action_items_service import (count_action_items,
+                                                        gather_action_groups)
         _set_modules(db_session, '1', 'products', 'purchase_orders', 'purchase_requests')
 
         before = count_action_items(admin_user, main_branch.id)
         _make_pr(db_session, main_branch, admin_user)
-        assert count_action_items(admin_user, main_branch.id) == before + 1
+
+        groups = gather_action_groups(admin_user, main_branch.id)
+        rows = sum(len(g['items']) for g in groups)
+        assert count_action_items(admin_user, main_branch.id) == rows
+        assert count_action_items(admin_user, main_branch.id) > before
 
     def test_draft_is_not_double_counted(self, client, db_session, admin_user,
                                          main_branch):

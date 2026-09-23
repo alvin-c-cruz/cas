@@ -5,7 +5,8 @@ from flask_login import login_required, current_user
 from app.dashboard.action_items_service import (gather_draft_items, gather_approval_items,
                                                 gather_incoming_transfer_items,
                                                 gather_document_approval_items,
-                                                gather_missing_attachment_items)
+                                                gather_missing_attachment_items,
+                                                gather_action_groups)
 from datetime import datetime
 from app.utils import ph_now
 from app.accounts.approval_models import AccountChangeRequest
@@ -113,16 +114,12 @@ def action_items():
         return redirect(url_for('dashboard.home'))
 
     branch_id = session.get('selected_branch_id')
-    draft_items = (gather_draft_items(current_user, branch_id)
-                   + gather_missing_attachment_items(current_user, branch_id)
-                   + gather_incoming_transfer_items(current_user, branch_id))
-    # Documents awaiting approval share the "For Approval" panel with master-data
-    # change requests: both answer "what is waiting on me?", and the panel's
-    # action_row macro already renders a Review link from reviewUrl.
-    approval_items = (gather_document_approval_items(current_user, branch_id)
-                      + gather_approval_items(current_user))
-    return render_template('dashboard/action_items.html',
-                           draft_items=draft_items, approval_items=approval_items)
+    # One call, one source. The page used to merge three gatherers into a single
+    # "Drafts" panel and two more into "For Approval", which is how a submitted
+    # document missing a file ended up rendered as a draft with a Continue button.
+    # Grouping, ordering and de-duplication now live in the service.
+    groups = gather_action_groups(current_user, branch_id)
+    return render_template('dashboard/action_items.html', groups=groups)
 
 @dashboard_bp.route('/api/action-items')
 @login_required
@@ -132,11 +129,22 @@ def get_action_items():
     if current_user.role == 'viewer':
         return jsonify([])
     branch_id = session.get('selected_branch_id')
-    items = (gather_draft_items(current_user, branch_id)
-             + gather_missing_attachment_items(current_user, branch_id)
-             + gather_incoming_transfer_items(current_user, branch_id)
-             + gather_document_approval_items(current_user, branch_id)
-             + gather_approval_items(current_user))
+    # Flattened from the SAME groups the page renders. The docstring above has
+    # always promised parity; building the list separately is how it would quietly
+    # stop being true -- this version could not show a document the page hides, or
+    # repeat one the page de-duplicates.
+    #
+    # Each row carries its group and verb so a caller can label it, while keeping
+    # the flat shape the dashboard widget already consumes.
+    items = []
+    for group in gather_action_groups(current_user, branch_id):
+        for item in group['items']:
+            row = dict(item)
+            row['group'] = group['key']
+            row['groupTitle'] = group['title']
+            row['verb'] = group['verb']
+            row['url'] = item.get(group['url_key'])
+            items.append(row)
     return jsonify(items)
 
 @dashboard_bp.route('/under-development')

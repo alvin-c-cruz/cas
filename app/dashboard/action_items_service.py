@@ -96,11 +96,20 @@ def _creator_name(doc):
 
 
 def _draft_query(Model, user, branch_id):
-    q = Model.query.filter_by(status='draft', branch_id=branch_id)
-    if user.role == 'staff':
-        # Staff only see the drafts they created.
-        q = q.filter_by(created_by_id=user.id)
-    return q
+    """This user's OWN unfinished drafts, in this branch.
+
+    Own-only for EVERY role since 2026-09-23, not just staff. Action Items is a
+    worklist -- every row is something the reader can act on now (owner decision) --
+    and somebody else's half-typed requisition is not the reader's next action, it
+    is supervision. An accountant or admin previously saw the whole branch's drafts
+    here, which is what made the page read as noise to them.
+
+    Losing that overview is deliberate and was the owner's call. If it is wanted
+    back it belongs in a list or report, not on a worklist.
+    """
+    return (Model.query
+            .filter_by(status='draft', branch_id=branch_id)
+            .filter_by(created_by_id=user.id))
 
 
 # Model name -> attachments registry document_type, for draft-stage required-file
@@ -125,7 +134,9 @@ def gather_draft_items(user, branch_id):
     from app.attachments.registry import slots_for
     items = []
     for label, icon, Model, num_attr, edit_tmpl, _key in _visible_draft_sources(user):
-        docs = _draft_query(Model, user, branch_id).order_by(Model.id.desc()).all()
+        # OLDEST first. id.desc() buried the stalest draft at the bottom of the
+        # page, which is exactly the one that has been forgotten.
+        docs = _draft_query(Model, user, branch_id).order_by(Model.id.asc()).all()
         doctype = _DRAFT_ATTACHMENT_DOCTYPE.get(Model.__name__)
         missing = incomplete_map(doctype, docs) if doctype else {}
         slot_labels = {s.key: s.label for s in slots_for(doctype)} if doctype else {}
@@ -192,7 +203,7 @@ def _missing_attachment_docs(user, branch_id):
         q = Model.query.filter(Model.status.in_(statuses), Model.branch_id == branch_id)
         if user.role == 'staff':
             q = q.filter(Model.created_by_id == user.id)
-        docs = q.all()
+        docs = q.order_by(Model.id.asc()).all()   # oldest first, as for drafts
         if not docs:
             continue
         miss = incomplete_map(doc_type, docs)
@@ -274,7 +285,7 @@ def gather_document_approval_items(user, branch_id):
         if key and not can_access_module(user, key):
             continue
         docs = (Model.query.filter_by(status='submitted', branch_id=branch_id)
-                .order_by(Model.id.desc()).all())
+                .order_by(Model.id.asc()).all())   # oldest first, as for drafts
         for doc in docs:
             submitted_at = getattr(doc, 'submitted_at', None)
             items.append({
@@ -464,49 +475,96 @@ def gather_incoming_transfer_items(user, branch_id):
     return items
 
 
+#: The worklist, in the order a reader should work it. Each group carries its own
+#: VERB -- the page used to render every row behind a single "Continue" button,
+#: including rows whose actual need was "attach a file" or "receive goods".
+#:
+#: `url_key` names which key of the item dict holds the link, because the
+#: gatherers predate this grouping and disagree (`editUrl` vs `reviewUrl`).
+ACTION_GROUPS = (
+    # FILES FIRST (owner, 2026-09-23). Attaching is the prerequisite: the same
+    # document usually appears in both groups, and reading the page top-down should
+    # put the file in place before the approve button is offered.
+    #
+    # This is a matter of ORDER ONLY. Approval is still permitted with files
+    # missing -- that is a deliberate feature of this system, which records the
+    # incomplete slots at approval time -- so nothing here blocks or hides an
+    # incomplete document from the approver.
+    ('attach', 'Missing a required file', 'Attach', 'editUrl'),
+    # Then approvals: somebody else is blocked until these are done.
+    ('approve', 'Waiting for your approval', 'Review', 'reviewUrl'),
+    ('draft', 'Your unfinished drafts', 'Continue', 'editUrl'),
+    ('receive', 'Goods arriving', 'Receive', 'editUrl'),
+)
+
+
+def gather_action_groups(user, branch_id):
+    """``[{key, title, verb, url_key, items}, ...]`` -- the whole worklist.
+
+    ONE source for both the page and the sidebar badge. They were computed
+    separately before, with a comment on count_action_items apologising for the
+    ways they could disagree; deriving both from this makes divergence
+    impossible rather than merely tested for.
+
+    A submitted document that is missing a required file appears in BOTH the
+    'attach' and 'approve' groups, on purpose (owner decision, 2026-09-23). They
+    are two genuinely different actions with two different verbs, and the reader
+    needs to see both.
+
+    An earlier version de-duplicated, keeping only the approval row -- which was a
+    defect, because gather_document_approval_items describes every row as "Review
+    and approve." and names no files, so the upload requirement vanished from the
+    page entirely for anyone able to approve.
+
+    Do NOT "fix" this back by excluding incomplete documents from the approval
+    group either. This system deliberately permits approving with files missing
+    and records which slots were incomplete at approval time (see
+    attachments/service.py::record_approval_completeness); hiding the document
+    would fight that.
+
+    A consequence to keep in mind: the badge therefore counts ACTIONS, not
+    documents, so one document can add two. That is the right reading for a
+    worklist.
+
+    Empty groups are dropped; the caller renders what it is given.
+    """
+    if not user or user.role == 'viewer':
+        return []
+
+    # NOT gated on branch_id. gather_approval_items is COMPANY-level -- account,
+    # VAT, withholding-tax, opening-balance, permission and approved-email change
+    # requests belong to no branch -- so returning early when no branch is selected
+    # would hide them entirely. Every branch-scoped gatherer below already returns
+    # [] for a missing branch_id, so they need no guard here.
+    by_key = {
+        'approve': (gather_document_approval_items(user, branch_id)
+                    + gather_approval_items(user)),
+        'attach': gather_missing_attachment_items(user, branch_id),
+        'draft': gather_draft_items(user, branch_id),
+        'receive': gather_incoming_transfer_items(user, branch_id),
+    }
+    return [{'key': key, 'title': title, 'verb': verb, 'url_key': url_key,
+             'items': by_key[key]}
+            for key, title, verb, url_key in ACTION_GROUPS if by_key[key]]
+
+
 def count_action_items(user, branch_id):
-    """Badge count = drafts the user can see + approvals they can review.
-    Uses COUNT queries (no object hydration) for the per-request badge."""
+    """Sidebar badge = exactly the number of rows the Action Items page shows.
+
+    DERIVED from gather_action_groups rather than recomputed. The previous version
+    summed its own COUNT queries and carried three separate comments apologising
+    for the ways it could drift from the page -- one about draft-source gating,
+    one about approval items, one about double-counting missing files. Deriving
+    it makes that whole class of bug unrepresentable instead of merely commented.
+
+    The cost is hydrating the rows on every request that renders the sidebar. That
+    is a smaller job than it was: drafts are now the reader's OWN only, where they
+    used to be the whole branch's for an accountant or admin, and the old version
+    already hydrated approvals and transfers anyway.
+
+    Counts ACTIONS, not documents. A submitted document missing a required file
+    contributes two, because it needs two things doing -- see gather_action_groups.
+    """
     if not user or user.role == 'viewer':
         return 0
-    n = 0
-    if branch_id:
-        # _visible_draft_sources, same as the list: gating one path and not the
-        # other gives a badge that counts an item the page refuses to show.
-        for _label, _icon, Model, _num, _edit, _key in _visible_draft_sources(user):
-            n += _draft_query(Model, user, branch_id).count()
-        n += len(gather_incoming_transfer_items(user, branch_id))
-        # Documents awaiting approval. Counted here as well as listed, or the
-        # badge says 1 while the page shows 2 -- the same list/badge divergence
-        # the draft sources guard against.
-        n += len(gather_document_approval_items(user, branch_id))
-        # NOTE: gather_missing_attachment_items is intentionally NOT added to the
-        # badge count. It re-surfaces SUBMITTED documents that are already counted
-        # above (approval items) as a distinct "missing required files" line on
-        # the Action Items page; counting it here too would double-count the same
-        # document in the sidebar badge.
-    if user.has_full_access or user.role == 'accountant':
-        # Same gate AND same branch scoping as gather_approval_items' PR block.
-        # Counting them ungated would put a number on the badge that the page
-        # then refuses to show -- the list/badge divergence this function's own
-        # comments guard against twice already.
-        from app.purchase_requests.amendment_service import pending_requests_for_branches
-        from app.users.module_access import can_access_module, module_enabled
-        from app.users.utils import get_accessible_branches
-        if module_enabled('purchase_requests') and can_access_module(user, 'purchase_requests'):
-            n += len(pending_requests_for_branches(
-                {b.id for b in get_accessible_branches(user)}))
-        from app.accounts_payable.amendment_service import pending_requests_for_branches as _ap_pending
-        n += len(_ap_pending({b.id for b in get_accessible_branches(user)}))
-        n += AccountChangeRequest.query.filter_by(status='pending').count()
-        n += VATCategoryChangeRequest.query.filter_by(status='pending').count()
-        n += SalesVATCategoryChangeRequest.query.filter_by(status='pending').count()
-        n += WithholdingTaxChangeRequest.query.filter_by(status='pending').count()
-        n += OpeningBalanceChangeRequest.query.filter_by(status='pending').count()
-    if user.has_full_access:
-        n += ApprovedEmail.query.filter_by(status='pending').count()
-    if user.is_admin:
-        # Admin-only by design: see gather_approval_items()'s Permission
-        # Request block for the rationale.
-        n += PermissionChangeRequest.query.filter_by(status='pending').count()
-    return n
+    return sum(len(g['items']) for g in gather_action_groups(user, branch_id))

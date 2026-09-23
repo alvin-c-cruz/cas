@@ -158,7 +158,18 @@ class TestActionItems:
     def test_a_draft_receipt_appears_in_the_draft_list(self, accountant_user,
                                                        main_branch, db_session,
                                                        rr_with_line):
+        """Drafts became own-only for EVERY role on 2026-09-23 -- Action Items is
+        a worklist, and somebody else's draft is not your next action.
+
+        The shared fixture creates the receipt under the staff user, who holds no
+        receiving_reports book permission and so would see nothing here anyway.
+        Ownership is incidental to this test -- it is about a draft receipt
+        reaching the list at all -- so it is reassigned locally rather than
+        changing a fixture several other tests depend on.
+        """
         from app.dashboard.action_items_service import gather_draft_items
+        rr_with_line.created_by_id = accountant_user.id
+        db_session.commit()
         items = gather_draft_items(accountant_user, main_branch.id)
         assert any(rr_with_line.rr_number in str(i.values()) for i in items)
 

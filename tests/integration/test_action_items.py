@@ -55,7 +55,19 @@ def make_pending_wt_request(db_session, user, name):
 
 
 class TestActionItemsDrafts:
-    def test_admin_sees_all_branch_drafts(self, client, db_session, admin_user, staff_user, main_branch):
+    def test_admin_sees_only_their_OWN_drafts(self, client, db_session, admin_user,
+                                              staff_user, main_branch):
+        """REVERSED 2026-09-23 by owner decision. Admin used to see the whole
+        branch's drafts here.
+
+        Action Items is now a worklist: every row is something the reader can act
+        on now. A colleague's half-typed voucher is not the admin's next action,
+        it is supervision -- and it was the bulk of what made the page unreadable
+        for the owner, who works in the admin account.
+
+        Losing the overview was the explicit trade. If it is wanted back it
+        belongs in a list or a report, not on a worklist.
+        """
         admin_user.add_branch(main_branch)
         staff_user.add_branch(main_branch)
         db_session.commit()
@@ -66,7 +78,7 @@ class TestActionItemsDrafts:
         resp = client.get('/action-items')
         assert resp.status_code == 200
         assert b'AP-ADMIN-1' in resp.data
-        assert b'AP-STAFF-1' in resp.data   # admin sees colleagues' drafts too
+        assert b'AP-STAFF-1' not in resp.data
 
     def test_staff_sees_only_own_drafts(self, client, db_session, admin_user, staff_user, main_branch):
         admin_user.add_branch(main_branch)

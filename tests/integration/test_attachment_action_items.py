@@ -73,7 +73,11 @@ def test_complete_submitted_not_listed(db_session, admin_user, main_branch, vl_v
 
 def test_draft_missing_required_is_annotated_in_the_draft_row(db_session, admin_user, main_branch, vl_vendor):
     from app.dashboard.action_items_service import gather_draft_items, gather_missing_attachment_items
-    po = _po(db_session, main_branch, vl_vendor, status='draft', number='PO-DRAFT-MISS')
+    # creator=admin_user: drafts are own-only for every role since 2026-09-23, so a
+    # creator-less draft appears on nobody's worklist. Ownership is incidental here --
+    # this test is about the row NAMING its missing files.
+    po = _po(db_session, main_branch, vl_vendor, status='draft', number='PO-DRAFT-MISS',
+             creator=admin_user)
     drafts = gather_draft_items(admin_user, main_branch.id)
     row = next(i for i in drafts if i['id'] == 'PO-DRAFT-MISS')
     # The draft row itself names the missing files.
@@ -87,7 +91,8 @@ def test_complete_draft_has_generic_desc(db_session, admin_user, main_branch, vl
     from app.dashboard.action_items_service import gather_draft_items
     from app.attachments.models import DocumentAttachment
     from app.utils import ph_now
-    po = _po(db_session, main_branch, vl_vendor, status='draft', number='PO-DRAFT-OK')
+    po = _po(db_session, main_branch, vl_vendor, status='draft', number='PO-DRAFT-OK',
+             creator=admin_user)
     for kind in ('signed_po', 'vendor_quotation'):
         db.session.add(DocumentAttachment(
             document_type='purchase_orders', document_id=po.id, kind=kind,

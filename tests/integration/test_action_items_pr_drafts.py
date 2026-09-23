@@ -117,28 +117,33 @@ class TestDraftPurchaseRequestInActionItems:
         assert resp.status_code == 200
         assert PR_NUMBER.encode() not in resp.data
 
-    def test_draft_pr_row_names_its_creator(self, client, db_session, admin_user, main_branch):
+    def test_draft_pr_row_names_its_creator(self, db_session, main_branch):
         """PurchaseRequest has no `created_by` relationship (only the column), so
-        the row rendered 'by —' while every sibling named someone.
+        the row rendered 'by --' while every sibling named someone.
 
-        The creator is deliberately NOT the logged-in user: the page header
-        renders the CURRENT user's name, so asserting admin's own name here
-        would pass whether or not the row displays anything at all.
+        Asserted on the SERVICE's row, not the rendered page. Drafts became
+        own-only for every role on 2026-09-23, so a draft by somebody else no
+        longer appears at all -- and a draft by the viewer would put their name in
+        the page header too, which is the ambiguity the old version of this test
+        was written to avoid. Reading the dict sidesteps both.
         """
         from app.users.models import User
+        from app.dashboard.action_items_service import gather_draft_items
         _set_modules(db_session, '1', 'products', 'purchase_orders', 'purchase_requests')
         author = User(username='reqauthor', email='reqauthor@test.com',
                       full_name='Requisition Author ZZ9', role='staff', is_active=True)
         author.set_password('author123')
+        author.branches = [main_branch]
+        author.set_book_permissions({'purchase_requests': True, 'products': True,
+                                     'purchase_orders': True})
         db_session.add(author)
         db_session.commit()
 
         _make_draft_pr(db_session, main_branch, author)
-        _login(client, admin_user, main_branch)
 
-        resp = client.get('/action-items')
-        assert PR_NUMBER.encode() in resp.data
-        assert b'Requisition Author ZZ9' in resp.data
+        rows = gather_draft_items(author, main_branch.id)
+        row = next(r for r in rows if r['id'] == PR_NUMBER)
+        assert row['by'] == 'Requisition Author ZZ9'
 
     def test_badge_count_excludes_pr_when_module_disabled(self, db_session,
                                                           admin_user, main_branch):
