@@ -142,6 +142,35 @@ class TestRenderedValues:
         assert f'account_id={cdv._cash_acct_id}' in body        # save-url is account-scoped
 
 
+def _payee_text(body):
+    """The text INSIDE the check's payee element. Scoped, because the vendor name can
+    appear elsewhere on the page, so a bare `in body` could never fail."""
+    import re
+    m = re.search(r'data-el="payee"[^>]*>([^<]*)</div>', body)
+    assert m, 'payee element not rendered'
+    return m.group(1)
+
+
+class TestPayeeName:
+    """The vendor's Check Payee Name is who the cheque is made out to. It used to reach
+    only the CDV voucher overlay; the check itself printed the vendor name."""
+
+    def _print(self, client, db_session, main_branch, payee_name):
+        cdv = _check_cdv(db_session, main_branch)
+        cdv.vendor.check_payee_name = payee_name
+        db_session.commit()
+        _open(client, main_branch)
+        return _payee_text(client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode())
+
+    def test_check_payee_name_prints_instead_of_vendor_name(self, client, db_session, admin_user, main_branch):
+        assert self._print(client, db_session, main_branch,
+                           'Manila Electric Company') == 'Manila Electric Company'
+
+    @pytest.mark.parametrize('blank', [None, '', '   '])
+    def test_blank_payee_name_falls_back_to_vendor_name(self, client, db_session, admin_user, main_branch, blank):
+        assert self._print(client, db_session, main_branch, blank) == 'Meralco'
+
+
 class TestEditChrome:
     def test_edit_chrome_for_full_access(self, client, db_session, admin_user, main_branch):
         cdv = _check_cdv(db_session, main_branch)

@@ -1487,8 +1487,14 @@ def _build_check_values(cdv, layout):
     except (ValueError, TypeError, InvalidOperation):
         return None, 'The disbursement amount cannot be spelled onto a check.'
     date_fmt = DATE_FORMATS[layout['dateFormat']]
+    # Who the cheque is made out to: the vendor's Check Payee Name when set, else its
+    # name. Read LIVE from the vendor, as the voucher overlay's check_payee is -- the
+    # owner ruled 2026-09-06 that this name needs no snapshot (see the note in
+    # print_preprinted.html). Until 2026-09-23 only the voucher printed it.
+    payee = ((cdv.vendor.check_payee_name or '').strip() if cdv.vendor else '') or \
+        (cdv.vendor.name if cdv.vendor else cdv.vendor_name)
     values = {
-        'payee': (cdv.vendor.name if cdv.vendor else cdv.vendor_name) or '',
+        'payee': payee or '',
         'check_date': cdv.check_date.strftime(date_fmt) if cdv.check_date else '',
         'amount_figures': '{:,.2f}'.format(amt),
         'amount_in_words': words,
