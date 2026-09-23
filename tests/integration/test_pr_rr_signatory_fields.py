@@ -78,6 +78,34 @@ def test_a_new_pr_prefills_from_the_company_default(client, db_session, admin_us
     assert b'ALFREDO REDULFIN JR.' in resp.data
 
 
+def _input_value(html, name):
+    """The value="" of one named input -- scoped, since the company default can also
+    appear elsewhere on the page."""
+    import re
+    m = re.search(r'<input[^>]*name="%s"[^>]*>' % name, html)
+    assert m, '%s is not rendered' % name
+    v = re.search(r'value="([^"]*)"', m.group(0))
+    return v.group(1) if v else ''
+
+
+def test_a_new_pr_prefills_from_the_encoders_last_requisition(
+        client, db_session, admin_user, main_branch, company_defaults):
+    """2026-09-23: requisitions follow the owner's 2026-09-10 directive, as Receiving
+    Reports already did. A slot the user CLEARED stays clear -- the reported case was
+    a user who deleted a name and met it again on her next requisition."""
+    _login(client, admin_user, main_branch)
+    _create_pr(client, '00095', prepared_by='MY OWN PREPARER', noted_by='',
+               approved_by='MY OWN APPROVER')
+    assert PurchaseRequest.query.filter_by(pr_number='00095').first() is not None, \
+        'anti-vacuity: the first requisition was not created'
+
+    html = client.get('/purchase-requests/create').data.decode()
+    assert _input_value(html, 'prepared_by') == 'MY OWN PREPARER'
+    assert _input_value(html, 'approved_by') == 'MY OWN APPROVER'
+    assert _input_value(html, 'noted_by') == '', \
+        'a cleared signatory came back from the company default'
+
+
 # ------------------------------------------------------------- the write
 def _create_pr(client, number, **sig):
     import json

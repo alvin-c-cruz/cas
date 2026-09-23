@@ -15,7 +15,8 @@ from app.purchase_requests.models import (
     PurchaseRequest, PurchaseRequestItem, generate_pr_number,
     SIGNATORY_FIELDS, SIGNATORY_ROLES)
 from app.common.form_restore import restore_posted_lines
-from app.common.signatories import assign as assign_signatories, prefill_form
+from app.common.signatories import (assign as assign_signatories, prefill_form,
+                                    prefill_form_from_last)
 from app.purchase_requests.forms import PurchaseRequestForm, PurchaseRequestAmendForm, PurchaseRequestAmendmentRequestForm
 from app.purchase_requests.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout)
@@ -369,9 +370,18 @@ def create():
     # the '[]' default is what parses, so no method guard is needed.
     restore_items = restore_posted_lines(request.form.get('line_items', '[]'))
     if request.method == 'GET':
-        # A NEW requisition starts from the company default, so an install that
-        # configured its signatories keeps printing the same names.
-        prefill_form(form, SIGNATORY_FIELDS, 'pr', SIGNATORY_ROLES)
+        # From the ENCODER's last requisition, falling back to the company default
+        # per slot. Was prefill_form(), which always used the company default and
+        # made anyone whose crew differs retype all three lines every time.
+        #
+        # The owner's 2026-09-10 directive ("signatories should autofill based on
+        # what the user encoded last time") reached Receiving Reports only;
+        # requisitions were brought into line on 2026-09-23 after a user cleared a
+        # name and met it again on her next requisition. A first-ever requisition
+        # still starts from the company default, so a configured install keeps
+        # printing the same names on day one.
+        prefill_form_from_last(form, SIGNATORY_FIELDS, 'pr', SIGNATORY_ROLES,
+                               PurchaseRequest, getattr(current_user, 'id', None))
     if form.validate_on_submit():
         pr_number = (form.pr_number.data or '').strip()
         if PurchaseRequest.query.filter(PurchaseRequest.pr_number == pr_number).first():
