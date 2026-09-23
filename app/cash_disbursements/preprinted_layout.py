@@ -51,6 +51,7 @@ FIELD_KEYS = [
     'cdv_no', 'cdv_date', 'payment_method',
     'check_no', 'check_date', 'check_bank', 'cash_account',
     'vendor_name', 'check_payee', 'vendor_tin',
+    'deposit_account',
     'notes',
 ]
 
@@ -65,6 +66,7 @@ FIELD_LABELS = {
     'vendor_name': 'Pay To',
     'check_payee': 'Check Payee',
     'vendor_tin': 'TIN',
+    'deposit_account': 'Deposit Account',
     'notes': 'Notes',
 }
 
@@ -163,6 +165,11 @@ DEFAULT_CDV_PREPRINTED_LAYOUT = {
         'check_payee':    {'x': 60,  'y': 62,  'fontSize': 11, 'bold': False,
                            'hidden': True},
         'vendor_tin':     {'x': 60,  'y': 74,  'fontSize': 11, 'bold': False},
+        # The vendor's bank account on one line, for a Bank Transfer / Online voucher
+        # (blank on any other). Ships HIDDEN for the same reason as check_payee above:
+        # tick "Deposit Account" in the designer's Fields strip to place it. 2026-09-23.
+        'deposit_account': {'x': 60, 'y': 86,  'fontSize': 10, 'bold': False,
+                            'hidden': True},
         'cash_account':   {'x': 60,  'y': 98,  'fontSize': 11, 'bold': False},
         'notes':          {'x': 60,  'y': 600, 'fontSize': 10, 'bold': False},
     },

@@ -102,6 +102,19 @@
       <tr><td colspan="2" class="label vendor-header">PAY TO</td></tr>
       <tr><td colspan="2"><strong>{{ cdv.vendor_name }}</strong></td></tr>
       <tr><td class="label">TIN</td><td>{{ cdv.vendor_tin or '—' }}</td></tr>
+      {#- Deposit-paid: the account the money goes into, read live from the vendor. -#}
+      {% if cdv.pays_by_deposit %}
+      {% set v = cdv.vendor %}
+      <tbody data-deposit-to>
+      {% if v and v.bank_details_line %}
+      <tr><td class="label">Bank</td><td>{{ v.bank_name or '—' }}</td></tr>
+      <tr><td class="label">Acct Name</td><td>{{ v.bank_account_name or '—' }}</td></tr>
+      <tr><td class="label">Acct No.</td><td>{{ v.bank_account_number or '—' }}</td></tr>
+      {% else %}
+      <tr><td class="label">Deposit to</td><td>Bank details not on file</td></tr>
+      {% endif %}
+      </tbody>
+      {% endif %}
     </table>
   </div>
 

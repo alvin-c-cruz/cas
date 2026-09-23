@@ -20,6 +20,13 @@ from datetime import datetime
 
 vendors_bp = Blueprint('vendors', __name__, template_folder='templates')
 
+# Fields diffed into the audit log on create / update / delete. One list, so a new
+# column cannot reach the form but miss the audit trail on one of the four paths.
+_VENDOR_AUDIT_FIELDS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
+                        'payment_terms', 'address', 'check_payee_name',
+                        'bank_name', 'bank_account_name', 'bank_account_number',
+                        'postal_code', 'default_vat_category', 'is_active']
+
 
 def _wants_json():
     """True when the request is an AJAX/JSON call (modal quick-add)."""
@@ -190,6 +197,9 @@ def create():
                 payment_terms=form.payment_terms.data,
                 address=form.address.data,
                 check_payee_name=form.check_payee_name.data,
+                bank_name=form.bank_name.data,
+                bank_account_name=form.bank_account_name.data,
+                bank_account_number=form.bank_account_number.data,
                 postal_code=form.postal_code.data,
                 default_vat_category=form.default_vat_category.data if form.default_vat_category.data else None,
                 is_active=bool(int(form.is_active.data)) if form.is_active.data else True
@@ -209,7 +219,7 @@ def create():
                 module='vendor',
                 record_id=vendor.id,
                 record_identifier=f'{vendor.code} - {vendor.name}',
-                new_values=model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
+                new_values=model_to_dict(vendor, _VENDOR_AUDIT_FIELDS)
             )
 
             # Queued create-form files, now that there is an id to hang them off.
@@ -282,7 +292,7 @@ def edit(id):
 
         try:
             # Capture old values before update
-            old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
+            old_values = model_to_dict(vendor, _VENDOR_AUDIT_FIELDS)
 
             vendor.code = form.code.data
             vendor.name = form.name.data
@@ -293,6 +303,9 @@ def edit(id):
             vendor.payment_terms = form.payment_terms.data
             vendor.address = form.address.data
             vendor.check_payee_name = form.check_payee_name.data
+            vendor.bank_name = form.bank_name.data
+            vendor.bank_account_name = form.bank_account_name.data
+            vendor.bank_account_number = form.bank_account_number.data
             vendor.postal_code = form.postal_code.data
             vendor.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
             vendor.is_active = bool(int(form.is_active.data))
@@ -305,7 +318,7 @@ def edit(id):
             db.session.commit()
 
             # Audit log
-            new_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
+            new_values = model_to_dict(vendor, _VENDOR_AUDIT_FIELDS)
             log_update(
                 module='vendor',
                 record_id=vendor.id,
@@ -337,6 +350,9 @@ def edit(id):
         form.payment_terms.data = vendor.payment_terms
         form.address.data = vendor.address
         form.check_payee_name.data = vendor.check_payee_name
+        form.bank_name.data = vendor.bank_name
+        form.bank_account_name.data = vendor.bank_account_name
+        form.bank_account_number.data = vendor.bank_account_number
         form.postal_code.data = vendor.postal_code
         form.default_vat_category.data = vendor.default_vat_category
         form.is_active.data = '1' if vendor.is_active else '0'
@@ -389,7 +405,7 @@ def delete(id):
 
     try:
         # Capture values before delete
-        old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
+        old_values = model_to_dict(vendor, _VENDOR_AUDIT_FIELDS)
         vendor_identifier = f'{vendor.code} - {vendor.name}'
         vendor_id = vendor.id
         vendor_name = vendor.name
@@ -419,10 +435,12 @@ def delete(id):
 
 _VENDOR_EXPORT_COLUMNS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
                           'payment_terms', 'address', 'postal_code', 'check_payee_name',
+                          'bank_name', 'bank_account_name', 'bank_account_number',
                           'default_vat_category', 'withholding_taxes_str', 'is_active']
 
 _VENDOR_EXPORT_HEADERS = ['Vendor Code', 'Vendor Name', 'Contact Person', 'Phone', 'Email',
                           'TIN', 'Payment Terms', 'Address', 'Postal Code', 'Check Payee Name',
+                          'Bank', 'Bank Account Name', 'Bank Account Number',
                           'VAT Category', 'Withholding Taxes', 'Active']
 
 
@@ -446,6 +464,9 @@ def _vendor_export_rows():
             'address': vendor.address or '',
             'postal_code': vendor.postal_code or '',
             'check_payee_name': vendor.check_payee_name or '',
+            'bank_name': vendor.bank_name or '',
+            'bank_account_name': vendor.bank_account_name or '',
+            'bank_account_number': vendor.bank_account_number or '',
             'default_vat_category': vendor.default_vat_category or '',
             'withholding_taxes_str': wt_codes,
             'is_active': 'Yes' if vendor.is_active else 'No',

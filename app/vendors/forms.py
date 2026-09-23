@@ -62,6 +62,20 @@ class VendorForm(FlaskForm):
         Length(max=200, message='Check payee name must be 200 characters or less.')
     ])
 
+    # The one account a deposit-paid vendor is paid into (2026-09-23).
+    bank_name = StringField('Bank', validators=[
+        Optional(),
+        Length(max=100, message='Bank must be 100 characters or less.')
+    ])
+    bank_account_name = StringField('Account Name', validators=[
+        Optional(),
+        Length(max=200, message='Account name must be 200 characters or less.')
+    ])
+    bank_account_number = StringField('Account Number', validators=[
+        Optional(),
+        Length(max=50, message='Account number must be 50 characters or less.')
+    ])
+
     postal_code = StringField('Postal Code', validators=[
         Optional(),
         Length(max=20, message='Postal code must be 20 characters or less.')

@@ -35,6 +35,14 @@ class CashDisbursementVoucher(RowVersioned, db.Model):
     check_date = db.Column(db.Date)
     check_bank = db.Column(db.String(100))
 
+    #: Methods that pay INTO the vendor's bank account, so the voucher shows that account
+    #: (vendor bank details, 2026-09-23) the way a check payment shows its check details.
+    DEPOSIT_METHODS = ('bank_transfer', 'online')
+
+    @property
+    def pays_by_deposit(self):
+        return self.payment_method in self.DEPOSIT_METHODS
+
     cash_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=False)
     cash_account = db.relationship('Account', foreign_keys=[cash_account_id])
 

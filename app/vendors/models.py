@@ -41,6 +41,12 @@ class Vendor(db.Model):
     # Check payee name (for printing on checks)
     check_payee_name = db.Column(db.String(200))
 
+    # The one account a deposit-paid vendor is paid into (owner, 2026-09-23). Shown on a
+    # Bank Transfer / Online CDV, read live. The number is text: leading zeros matter.
+    bank_name = db.Column(db.String(100))
+    bank_account_name = db.Column(db.String(200))
+    bank_account_number = db.Column(db.String(50))
+
     # Postal code
     postal_code = db.Column(db.String(20))
 
@@ -73,6 +79,14 @@ class Vendor(db.Model):
         """
         return 'active' if self.is_active else 'inactive'
 
+    @property
+    def bank_details_line(self):
+        """The deposit account on one line -- 'BDO · JUAN DELA CRUZ · 001234567890' --
+        or '' when none of the three is filled. The pre-printed voucher prints this;
+        the screens lay the three parts out separately."""
+        parts = (self.bank_name, self.bank_account_name, self.bank_account_number)
+        return ' · '.join(p.strip() for p in parts if p and p.strip())
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=ph_now)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)
@@ -93,6 +107,9 @@ class Vendor(db.Model):
             'payment_terms': self.payment_terms,
             'address': self.address,
             'check_payee_name': self.check_payee_name,
+            'bank_name': self.bank_name,
+            'bank_account_name': self.bank_account_name,
+            'bank_account_number': self.bank_account_number,
             'postal_code': self.postal_code,
             'default_vat_category': self.default_vat_category,
             'withholding_taxes': [{'id': wt.id, 'code': wt.code, 'name': wt.name, 'rate': wt.rate} for wt in self.withholding_taxes],
