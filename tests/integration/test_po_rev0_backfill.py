@@ -99,7 +99,10 @@ with app.app_context():
     # first). Reconcile automatically rather than hand-listing, so the next
     # column costs nothing. Only the seeded tables need it, and only ADD COLUMN
     # is possible on SQLite -- which is all a newer model can require.
-    for model in (PurchaseOrder, PurchaseOrderItem):
+    # EVERY seeded model, not just the two PO ones: Vendor was next to trip it
+    # (vbank_0001 added bank_name, 2026-09-24) for the same reason.
+    for model in (Branch, User, Vendor, UnitOfMeasure, Product,
+                  PurchaseOrder, PurchaseOrderItem):
         table = model.__table__
         have = {r[1] for r in db.session.execute(
             db.text('PRAGMA table_info(%s)' % table.name))}
