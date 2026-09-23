@@ -26,6 +26,12 @@ class Config:
     SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
     SESSION_COOKIE_HTTPONLY = os.environ.get('SESSION_COOKIE_HTTPONLY', 'True').lower() == 'true'
     SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+    # Cookies are scoped by HOST, not port. Two local instances (philgen on 5050,
+    # ric on 5051) would otherwise overwrite each other's 'session' cookie and a
+    # login on one would ride along to the other. The launcher sets these per
+    # company (cas_philgen / cas_ric). Production leaves them at Flask's defaults.
+    SESSION_COOKIE_NAME = os.environ.get('SESSION_COOKIE_NAME', 'session')
+    REMEMBER_COOKIE_NAME = os.environ.get('REMEMBER_COOKIE_NAME', 'remember_token')
     PERMANENT_SESSION_LIFETIME = timedelta(seconds=int(os.environ.get('PERMANENT_SESSION_LIFETIME', '43200')))
 
     # Security Headers
