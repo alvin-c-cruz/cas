@@ -115,24 +115,24 @@ class TestCrossBranchView:
         assert f'/sales-invoices/{inv.id}/edit' in body
         assert 'Post Invoice' in body
 
-    def test_edit_still_blocked_off_branch(self, client, db_session, admin_user,
-                                           main_branch, branch_manila):
-        """The write guard must NOT be loosened along with the read guard.
-
-        Since 2026-09-23 the refusal names the branch and redirects instead of
-        404ing, so the status code alone no longer expresses the rule. What
-        "not loosened" means is that the EDIT FORM IS NOT SERVED, which is
-        asserted directly below -- a stronger check than the old one.
-        """
+    def test_edit_off_branch_switches_the_session_into_that_branch(
+            self, client, db_session, admin_user, main_branch, branch_manila):
+        """The write guard still follows the SELECTED branch -- but since
+        2026-09-24 the guard switches the selection for a user who can reach the
+        record's branch (owner: "remove this notification"), so an admin's
+        off-branch edit opens in the invoice's branch. Not a loosening: the
+        session is now IN that branch, and a user who cannot reach it still 404s
+        (tests/integration/test_branch_scope_guard.py)."""
         inv = _invoice(db_session, branch_manila.id, 'SI-X5', status='draft')
         _login(client)
         _set_branch(client, main_branch.id)
 
         resp = client.get(f'/sales-invoices/{inv.id}/edit')
 
-        assert resp.status_code == 302, 'off-branch edit must still be refused'
-        assert resp.headers['Location'].endswith('/sales-invoices')
-        assert b'<form' not in resp.data, 'the edit form was served off-branch'
+        assert resp.status_code == 200
+        with client.session_transaction() as sess:
+            assert sess['selected_branch_id'] == branch_manila.id
+        assert b'<form' in resp.data, "the edit form is served IN the invoice's branch"
 
     # -- Task 5 review defect: print/download/preview left on the strict
     # selected-branch guard while detail.html renders their links unconditionally.

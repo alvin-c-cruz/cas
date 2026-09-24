@@ -5,8 +5,12 @@ with no branch check -- so a user assigned to Branch A, holding the journal_entr
 book, could read or mutate any other branch's voucher (and its plug legs, amounts,
 descriptions) by walking integer ids. SI/AP/CDV/CRV all 404 on a branch mismatch.
 
-No admin bypass: the canonical helpers scope on the ONE `selected_branch_id`, and a
-full-access user reaches another branch by switching the session branch.
+No admin bypass: the canonical helpers scope on the ONE `selected_branch_id`. Since
+2026-09-24 the guard does the switch itself for a user who can REACH the record's
+branch (owner: "remove this notification") -- so for the full-access admin below every
+route opens or runs, and the session ends up in branch_manila. The half that matters
+for scoping -- a user who cannot reach that branch still gets 404 -- is pinned in
+tests/integration/test_branch_scope_guard.py.
 """
 from datetime import date
 from decimal import Decimal
@@ -53,49 +57,60 @@ def _make_je(db_session, branch_id, user, status='posted'):
     return je
 
 
+def _switched_to(client, branch):
+    with client.session_transaction() as s:
+        return s.get('selected_branch_id') == branch.id
+
+
 class TestJEBranchScoping:
-    """Session branch = main_branch; the JE lives in branch_manila."""
+    """Session branch = main_branch; the JE lives in branch_manila. Admin reaches
+    every branch, so the guard switches the session and the route proceeds."""
 
-    def test_view_cross_branch_returns_404(self, client, db_session, admin_user,
-                                           main_branch, branch_manila):
+    def test_view_cross_branch_switches_and_opens(self, client, db_session, admin_user,
+                                                  main_branch, branch_manila):
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user)
-        assert client.get(f'/journal-entries/{je.id}').status_code == 302
+        assert client.get(f'/journal-entries/{je.id}').status_code == 200
+        assert _switched_to(client, branch_manila)
 
-    def test_print_cross_branch_returns_404(self, client, db_session, admin_user,
-                                            main_branch, branch_manila):
+    def test_print_cross_branch_switches_and_opens(self, client, db_session, admin_user,
+                                                   main_branch, branch_manila):
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user)
-        assert client.get(f'/journal-entries/{je.id}/print').status_code == 302
+        assert client.get(f'/journal-entries/{je.id}/print').status_code == 200
+        assert _switched_to(client, branch_manila)
 
-    def test_post_cross_branch_returns_404_and_stays_draft(self, client, db_session,
-                                                           admin_user, main_branch, branch_manila):
+    def test_post_cross_branch_switches_and_posts(self, client, db_session,
+                                                  admin_user, main_branch, branch_manila):
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user, status='draft')
         assert client.post(f'/journal-entries/{je.id}/post').status_code == 302
         db_session.refresh(je)
-        assert je.status == 'draft'
+        assert je.status == 'posted', "the action must RUN in the record's branch, not bounce"
+        assert _switched_to(client, branch_manila)
 
-    def test_cancel_cross_branch_returns_404_and_stays_posted(self, client, db_session,
-                                                             admin_user, main_branch, branch_manila):
+    def test_cancel_cross_branch_switches_and_cancels(self, client, db_session,
+                                                      admin_user, main_branch, branch_manila):
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user, status='posted')
         assert client.post(f'/journal-entries/{je.id}/cancel').status_code == 302
         db_session.refresh(je)
-        assert je.status == 'posted'
-        assert je.cancelled_at is None
+        assert je.status != 'posted'
+        assert je.cancelled_at is not None
+        assert _switched_to(client, branch_manila)
 
-    def test_delete_cross_branch_returns_404_and_row_survives(self, client, db_session,
-                                                            admin_user, main_branch, branch_manila):
+    def test_delete_cross_branch_switches_and_deletes(self, client, db_session,
+                                                      admin_user, main_branch, branch_manila):
         _login_admin(client)
         _set_branch(client, main_branch.id)
         je = _make_je(db_session, branch_manila.id, admin_user, status='draft')
         assert client.post(f'/journal-entries/{je.id}/delete').status_code == 302
-        assert db.session.get(JournalEntry, je.id) is not None
+        assert db.session.get(JournalEntry, je.id) is None
+        assert _switched_to(client, branch_manila)
 
     def test_same_branch_view_still_200(self, client, db_session, admin_user, main_branch):
         """The guard must not be over-broad: same-branch access still works."""
