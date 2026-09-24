@@ -17,6 +17,9 @@ from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
 from app.common.vat_nature import resolve_purchase_nature
+from app.common.payee import (parse_payee as _parse_payee,
+                              employee_payee_query as _employee_payee_query,
+                              resolve_payee as _resolve_payee)
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
@@ -290,66 +293,6 @@ def _units_for_form():
 
 def _products_for_form():
     return [p.to_dict() for p in get_active_products()]
-
-
-def _parse_payee(raw):
-    """'vendor:12' | 'employee:3' -> (payee_type, payee_id) or (None, None)."""
-    try:
-        kind, sid = (raw or '').split(':', 1)
-        if kind in ('vendor', 'employee'):
-            return kind, int(sid)
-    except (ValueError, AttributeError):
-        pass
-    return None, None
-
-
-def _accessible_branch_ids():
-    """Branches this user may act in. Full-access users get every active branch."""
-    from app.users.utils import get_accessible_branches
-    return {b.id for b in get_accessible_branches(current_user)}
-
-
-def _employee_payee_query():
-    """Active employees this user may name as a payee.
-
-    AccountsPayable carries a `branch_id`, so an employee payee from a branch the
-    user cannot reach is incoherent for the document it sits on. Set MEMBERSHIP,
-    not equality against `session['selected_branch_id']` -- a user assigned two
-    branches must still pay an employee in the branch that is not currently
-    selected. BUG-AP-EMPLOYEE-PAYEE-PICKER-NOT-BRANCH-FILTERED.
-
-    Vendors are deliberately NOT scoped here: they carry no `branch_id` at all
-    and are company-wide, exactly like customers.
-    """
-    from app.employees.models import Employee
-    return (Employee.query
-            .filter(Employee.is_active.is_(True),
-                    Employee.branch_id.in_(_accessible_branch_ids()))
-            .order_by(Employee.employee_no))
-
-
-def _resolve_payee(payee_type, payee_id):
-    """Return the Vendor/Employee row for the payee, or None.
-
-    The employee branch check lives HERE, at the single choke point both create
-    and edit already call, because filtering the picker only removes the
-    <option> -- it does not stop a hand-posted `payee=employee:<id>`, which is
-    how the original cross-branch row was actually written. Returning None (not
-    raising) hands the caller its existing "Selected payee not found." path: no
-    new error plumbing, and it does not confirm to the caller that the record
-    exists in some other branch.
-    """
-    if not payee_id:
-        return None
-    if payee_type == 'employee':
-        from app.employees.models import Employee
-        employee = db.session.get(Employee, payee_id)
-        if employee is not None and employee.branch_id not in _accessible_branch_ids():
-            return None
-        return employee
-    if payee_type == 'vendor':
-        return db.session.get(Vendor, payee_id)
-    return None
 
 
 def _build_validated_ap_lines():
