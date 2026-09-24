@@ -104,6 +104,28 @@ class TestThePicker:
         assert b'Selected payee not found.' in resp.data
         assert CashDisbursementVoucher.query.filter_by(cdv_number='EMP-0001').first() is None
 
+    def test_a_hand_posted_inactive_vendor_is_refused(self, client, db_session, admin_user,
+                                                      main_branch, accounts):
+        vendor = make_vendor(db_session)
+        vendor.is_active = False; db_session.commit()
+        _open(client, main_branch)
+        resp = _post_cdv(client, f'vendor:{vendor.id}', accounts['cash'],
+                         expense_lines=[{'description': 'x', 'amount': 10.0, 'vat_category': '',
+                                         'account_id': accounts['exp'].id, 'wt_id': None}])
+        assert b'Selected payee not found.' in resp.data
+        assert CashDisbursementVoucher.query.filter_by(cdv_number='EMP-0001').first() is None
+
+    def test_a_hand_posted_inactive_employee_is_refused(self, client, db_session, admin_user,
+                                                        main_branch, employees, accounts):
+        corp, _ = employees
+        corp.is_active = False; db_session.commit()
+        _open(client, main_branch)
+        resp = _post_cdv(client, f'employee:{corp.id}', accounts['cash'],
+                         expense_lines=[{'description': 'x', 'amount': 10.0, 'vat_category': '',
+                                         'account_id': accounts['exp'].id, 'wt_id': None}])
+        assert b'Selected payee not found.' in resp.data
+        assert CashDisbursementVoucher.query.filter_by(cdv_number='EMP-0001').first() is None
+
 
 class TestSectionA:
 

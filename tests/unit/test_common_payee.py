@@ -82,3 +82,25 @@ def test_resolve_vendor_and_unknowns(app, db_session, admin_user, main_branch):
         assert resolve_payee('vendor', None) is None
     finally:
         ctx.pop()
+
+
+def test_an_inactive_vendor_resolves_to_none(app, db_session, admin_user, main_branch):
+    """The picker offers active payees only; a hand-posted inactive one is refused too."""
+    from app.vendors.models import Vendor
+    v = Vendor(code='PAYV2', name='Retired Vendor', is_active=False)
+    db_session.add(v); db_session.commit()
+    ctx = _as(app, admin_user, main_branch)
+    try:
+        assert resolve_payee('vendor', v.id) is None
+    finally:
+        ctx.pop()
+
+
+def test_an_inactive_reachable_employee_resolves_to_none(app, db_session, admin_user, main_branch):
+    e = _employee(db_session, main_branch, 'E-GONE')
+    e.is_active = False; db_session.commit()
+    ctx = _as(app, admin_user, main_branch)
+    try:
+        assert resolve_payee('employee', e.id) is None
+    finally:
+        ctx.pop()
