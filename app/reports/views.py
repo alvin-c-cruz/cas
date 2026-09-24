@@ -961,13 +961,17 @@ def bir_2307_index():
 @login_required
 @accountant_or_admin_required
 def bir_2307_print():
-    """Box-style BIR 2307 facsimile for one vendor for the quarter."""
+    """Box-style BIR 2307 facsimile for one payee (vendor or employee) for the quarter."""
     year = request.args.get('year', datetime.now().year, type=int)
     quarter = request.args.get('quarter', ((datetime.now().month - 1) // 3) + 1, type=int)
-    vendor_id = request.args.get('vendor_id', type=int)
+    # A vendor's link stays ?vendor_id=N; an employee payee (vendor_id NULL)
+    # is addressed as ?payee_type=employee&payee_id=N.
+    payee_type = request.args.get('payee_type', 'vendor')
+    payee_id = request.args.get('payee_id', type=int) or request.args.get('vendor_id', type=int)
     current_branch_id = session.get('selected_branch_id')
     certificates = get_2307_certificates(year, quarter, branch_id=current_branch_id)
-    cert = next((c for c in certificates if c['vendor_id'] == vendor_id), None)
+    cert = next((c for c in certificates
+                 if c['payee_type'] == payee_type and c['payee_id'] == payee_id), None)
     if cert is None:
         abort(404)
     return render_template('reports/bir_2307_print.html', cert=cert, year=year,

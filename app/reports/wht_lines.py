@@ -13,6 +13,11 @@ must never reach a 2307, a QAP, or a SAWT.
 
 Pure-read. Returns plain namedtuples, never ORM objects, so callers may cache
 results without DetachedInstanceError exposure.
+
+partner_id is the GROUPING KEY, not always a bare row id. Payor side: the
+tuple (payee_type, id) -- an APV or CDV may pay an employee, whose vendor_id is
+NULL, so keying on vendor_id folded every employee into one None row. Payee
+side: the customer_id int, unchanged.
 """
 from collections import namedtuple
 from decimal import Decimal
@@ -24,7 +29,7 @@ from app.accounts_payable.models import AccountsPayable
 from app.cash_disbursements.models import CashDisbursementVoucher
 from app.cash_receipts.models import CashReceiptVoucher
 from app.sales_invoices.models import SalesInvoice
-from app.reports.vat_lines import AP_STATUSES, SI_STATUSES
+from app.reports.vat_lines import AP_STATUSES, SI_STATUSES, payee_key
 
 WhtLine = namedtuple('WhtLine', [
     'side', 'source', 'doc_no', 'doc_date',
@@ -50,7 +55,7 @@ def _emit(side, source, doc_no, doc_date, pid, pname, ptin, line):
 
 
 def _collect(header_model, line_attr, date_col, status_filter, doc_no_attr,
-             partner_id_attr, partner_name_attr, partner_tin_attr,
+             partner_key, partner_name_attr, partner_tin_attr,
              side, source, date_from, date_to, branch_id):
     line_rel = getattr(header_model, line_attr)
     line_model = line_rel.property.mapper.class_
@@ -67,7 +72,7 @@ def _collect(header_model, line_attr, date_col, status_filter, doc_no_attr,
                 continue
             out.append(_emit(side, source, getattr(doc, doc_no_attr),
                              getattr(doc, date_col.key),
-                             getattr(doc, partner_id_attr),
+                             partner_key(doc),
                              getattr(doc, partner_name_attr),
                              getattr(doc, partner_tin_attr), line))
     return out
@@ -76,31 +81,31 @@ def _collect(header_model, line_attr, date_col, status_filter, doc_no_attr,
 def wht_lines(date_from, date_to, side, tax_type=None, branch_id=None):
     """Every withholding-bearing posted line in [date_from, date_to], inclusive.
 
-    side='payor' -> AP + CDV (vendor).  side='payee' -> SI + CRV (customer).
+    side='payor' -> AP + CDV (vendor or employee).  side='payee' -> SI + CRV (customer).
     tax_type=None returns both regimes; pass 'expanded' for creditable surfaces.
     """
     if side == 'payor':
         rows = (
             _collect(AccountsPayable, 'line_items', AccountsPayable.ap_date,
                      AccountsPayable.status.in_(AP_STATUSES),
-                     'vendor_invoice_number', 'vendor_id', 'vendor_name', 'vendor_tin',
+                     'vendor_invoice_number', payee_key, 'vendor_name', 'vendor_tin',
                      side, 'accounts_payable', date_from, date_to, branch_id)
             + _collect(CashDisbursementVoucher, 'expense_lines',
                        CashDisbursementVoucher.cdv_date,
                        CashDisbursementVoucher.status == 'posted',
-                       'cdv_number', 'vendor_id', 'vendor_name', 'vendor_tin',
+                       'cdv_number', payee_key, 'vendor_name', 'vendor_tin',
                        side, 'cash_disbursement', date_from, date_to, branch_id)
         )
     elif side == 'payee':
         rows = (
             _collect(SalesInvoice, 'line_items', SalesInvoice.invoice_date,
                      SalesInvoice.status.in_(SI_STATUSES),
-                     'invoice_number', 'customer_id', 'customer_name', 'customer_tin',
+                     'invoice_number', lambda d: d.customer_id, 'customer_name', 'customer_tin',
                      side, 'sales_invoice', date_from, date_to, branch_id)
             + _collect(CashReceiptVoucher, 'revenue_lines',
                        CashReceiptVoucher.crv_date,
                        CashReceiptVoucher.status == 'posted',
-                       'crv_number', 'customer_id', 'customer_name', 'customer_tin',
+                       'crv_number', lambda d: d.customer_id, 'customer_name', 'customer_tin',
                        side, 'cash_receipt', date_from, date_to, branch_id)
         )
     else:

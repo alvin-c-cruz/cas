@@ -10,6 +10,11 @@ not four edits scattered across bir.py.
 
 Pure-read. Returns plain namedtuples, never ORM objects, so callers may cache
 results without DetachedInstanceError exposure.
+
+partner_id is the GROUPING KEY, not always a bare row id. Purchases side: the
+tuple (payee_type, id) -- an APV or CDV may pay an employee, whose vendor_id is
+NULL, so keying on vendor_id folded every employee into one None row. Sales
+side: the customer_id int, unchanged.
 """
 from collections import namedtuple
 from decimal import Decimal
@@ -50,6 +55,14 @@ VatLine = namedtuple('VatLine', [
 
 def _d(x):
     return Decimal(str(x or 0))
+
+
+def payee_key(doc):
+    """(payee_type, id) for a polymorphic-payee header (APV / CDV).
+
+    payee_id falls back to vendor_id: rows written before the payee columns
+    existed (or by code that sets vendor_id only) carry payee_id=0."""
+    return (doc.payee_type or 'vendor', doc.payee_id or doc.vendor_id)
 
 
 def _emit(side, source, doc_id, doc_no, doc_date, pid, pname, ptin, paddr, line):
@@ -115,7 +128,7 @@ def _purchases(date_from, date_to, branch_id):
         for line in bill.line_items:
             out.append(_emit('purchases', 'accounts_payable', bill.id,
                              bill.vendor_invoice_number, bill.ap_date,
-                             bill.vendor_id, bill.vendor_name, bill.vendor_tin,
+                             payee_key(bill), bill.vendor_name, bill.vendor_tin,
                              bill.vendor_address, line))
 
     q = db.session.query(CashDisbursementVoucher).options(
@@ -126,17 +139,29 @@ def _purchases(date_from, date_to, branch_id):
         CashDisbursementVoucher.status == 'posted')
     if branch_id:
         q = q.filter(CashDisbursementVoucher.branch_id == branch_id)
-    for cdv in q.all():
+    cdvs = q.all()
+    # An employee payee has no vendor row; its address comes from ONE batched
+    # lookup over every employee payee in the result, so this stays O(1) too.
+    emp_ids = {c.payee_id for c in cdvs if c.payee_type == 'employee' and c.payee_id}
+    emp_addr = {}
+    if emp_ids:
+        from app.employees.models import Employee
+        emp_addr = dict(db.session.query(Employee.id, Employee.address)
+                        .filter(Employee.id.in_(emp_ids)).all())
+    for cdv in cdvs:
         # CashDisbursementVoucher has no vendor_address column on its own
         # header (unlike AccountsPayable) -- joinedload(.vendor) pulls it in
         # the SAME statement as the header row (many-to-one, no fan-out), so
         # this stays O(1). Extract the scalar here; no ORM object reaches
         # VatLine.
-        vendor_address = cdv.vendor.address if cdv.vendor else None
+        if cdv.payee_type == 'employee':
+            address = emp_addr.get(cdv.payee_id)
+        else:
+            address = cdv.vendor.address if cdv.vendor else None
         for line in cdv.expense_lines:
             out.append(_emit('purchases', 'cash_disbursement', cdv.id, cdv.cdv_number,
-                             cdv.cdv_date, cdv.vendor_id, cdv.vendor_name,
-                             cdv.vendor_tin, vendor_address, line))
+                             cdv.cdv_date, payee_key(cdv), cdv.vendor_name,
+                             cdv.vendor_tin, address, line))
     return out
 
 

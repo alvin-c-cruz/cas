@@ -103,3 +103,82 @@ def test_bir_index_renders_with_report_links(client, db_session, main_branch, ad
                  b'/reports/bir/vat-return', b'/reports/bir/alphalist',
                  b'/reports/bir/2307'):
         assert link in resp.data, link
+
+
+# --- Employee payees (CV employee payee, 2026-09-24) ------------------------
+# An employee-payee CDV carries vendor_id NULL. Groupings keyed on vendor_id
+# collapsed every employee into ONE row/certificate keyed None, named after
+# whichever line came first and with no address. They key on the payee now.
+
+def _employee(no, first, last, address, branch):
+    from app.employees.models import Employee
+    e = Employee(employee_no=no, first_name=first, last_name=last,
+                 address=address, tin=f'{no}-000', branch_id=branch.id)
+    db.session.add(e); db.session.commit()
+    return e
+
+
+def _posted_employee_cdv_wht(branch, cash_acct, exp_acct, emp, wt, amount, wt_amount,
+                             when=date(2025, 8, 10)):
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+    cdv = CashDisbursementVoucher(
+        branch_id=branch.id,
+        cdv_number=f'CDV-{emp.employee_no}-{when.strftime("%Y%m%d")}', cdv_date=when,
+        payee_type='employee', payee_id=emp.id, vendor_id=None,
+        vendor_name=emp.full_name, vendor_tin=emp.tin,
+        cash_account_id=cash_acct.id, status='posted')
+    cdv.expense_lines.append(CDVExpenseLine(
+        line_number=1, description='svc', amount=Decimal(str(amount)),
+        vat_rate=Decimal('0'), vat_amount=Decimal('0.00'),
+        line_total=Decimal(str(amount)), wt_id=wt.id, wt_rate=wt.rate,
+        wt_amount=Decimal(str(wt_amount)), account_id=exp_acct.id))
+    db.session.add(cdv); db.session.commit()
+    return cdv
+
+
+def test_two_employees_get_two_2307s_and_two_alphalist_rows(
+        client, db_session, main_branch, cash_account, revenue_account, admin_user):
+    from app.reports.bir import get_2307_certificates, get_alphalist_of_payees
+    wt = _wt('WC158', 2)
+    ana = _employee('E-901', 'Ana', 'Reyes', '1 Mabini St', main_branch)
+    ben = _employee('E-902', 'Ben', 'Santos', '2 Rizal Ave', main_branch)
+    # A vendor whose id may equal an employee's id must stay a separate payee.
+    v = _vendor('CTRL')
+    _posted_employee_cdv_wht(main_branch, cash_account, revenue_account, ana, wt, 10000, 200)
+    _posted_employee_cdv_wht(main_branch, cash_account, revenue_account, ben, wt, 20000, 400)
+    _posted_cdv_wht(main_branch, cash_account, revenue_account, v, wt, 5000, 100)
+
+    certs = {c['vendor_name']: c for c in get_2307_certificates(2025, 3)}
+    assert set(certs) == {ana.full_name, ben.full_name, 'Vendor CTRL'}
+    assert certs[ana.full_name]['vendor_address'] == '1 Mabini St'
+    assert certs[ana.full_name]['total_tax'] == Decimal('200.00')
+    assert certs[ben.full_name]['vendor_address'] == '2 Rizal Ave'
+    assert certs[ben.full_name]['total_tax'] == Decimal('400.00')
+    assert certs['Vendor CTRL']['vendor_id'] == v.id
+    assert certs['Vendor CTRL']['vendor_address'] == '9 Ayala Ave'
+
+    rows = {r['payee_name']: r for r in get_alphalist_of_payees(2025, 3)}
+    assert rows[ana.full_name]['tax_withheld'] == Decimal('200.00')
+    assert rows[ana.full_name]['payee_address'] == '1 Mabini St'
+    assert rows[ben.full_name]['tax_withheld'] == Decimal('400.00')
+    assert rows['TOTAL']['tax_withheld'] == Decimal('700.00')
+
+    # Summary List of Purchases groups by the same payee key.
+    from app.reports.bir import get_summary_list_of_purchases
+    slp = {r['vendor_name']: r for r in get_summary_list_of_purchases(2025, 8)}
+    assert slp[ana.full_name]['total_purchases'] == Decimal('10000.00')
+    assert slp[ana.full_name]['vendor_address'] == '1 Mabini St'
+    assert slp[ben.full_name]['total_purchases'] == Decimal('20000.00')
+    assert slp[ben.full_name]['vendor_address'] == '2 Rizal Ave'
+
+    # Each employee's certificate prints on its own, through the index link.
+    _login(client)
+    index = client.get('/reports/bir/2307?year=2025&quarter=3').get_data(as_text=True)
+    link = f'payee_type=employee&amp;payee_id={ben.id}'
+    assert link in index
+    resp = client.get(f'/reports/bir/2307/print?year=2025&quarter=3'
+                      f'&payee_type=employee&payee_id={ben.id}')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert ben.full_name in body and '2 Rizal Ave' in body
+    assert ana.full_name not in body

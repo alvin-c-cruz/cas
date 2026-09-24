@@ -126,6 +126,28 @@ def get_summary_list_of_purchases(year, month, branch_id=None):
     return summary
 
 
+def _payee_addresses(keys):
+    """{(payee_type, id): address} for payor-side WHT partner keys.
+
+    A vendor's address comes from Vendor, an employee's from Employee -- one
+    query per kind present, never per line. Unknown ids resolve to ''.
+    """
+    from app.employees.models import Employee
+    from app.vendors.models import Vendor
+    by_kind = {}
+    for kind, pid in keys:
+        if pid:
+            by_kind.setdefault(kind, set()).add(pid)
+    addr = {}
+    for kind, model in (('vendor', Vendor), ('employee', Employee)):
+        ids = by_kind.get(kind)
+        if ids:
+            for rid, a in (db.session.query(model.id, model.address)
+                           .filter(model.id.in_(ids)).all()):
+                addr[(kind, rid)] = a or ''
+    return addr
+
+
 _MONTH_ABBR = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
                7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'}
 
@@ -141,19 +163,14 @@ def get_alphalist_of_payees(year, quarter, branch_id=None):
     """
     from app.reports.wht_lines import wht_lines
     from app.vat_settlement.service import quarter_bounds
-    from app.vendors.models import Vendor
 
     qstart, qend = quarter_bounds(year, quarter)
     lines = [l for l in wht_lines(qstart, qend, 'payor', tax_type='expanded',
                                   branch_id=branch_id)
              if l.tax_withheld and l.tax_withheld > 0]
 
-    # WhtLine carries no address; join it once per vendor in the reporting layer.
-    ids = {l.partner_id for l in lines if l.partner_id}
-    addr = {}
-    if ids:
-        addr = {v.id: (v.address or '') for v in
-                db.session.query(Vendor).filter(Vendor.id.in_(ids)).all()}
+    # WhtLine carries no address; join it once per payee in the reporting layer.
+    addr = _payee_addresses(l.partner_id for l in lines)
 
     groups = {}
     for l in lines:
@@ -184,32 +201,32 @@ def get_alphalist_of_payees(year, quarter, branch_id=None):
 
 
 def get_2307_certificates(year, quarter, branch_id=None):
-    """BIR 2307 (Certificate of Creditable Tax Withheld) issued to each vendor.
+    """BIR 2307 (Certificate of Creditable Tax Withheld) issued to each payee.
 
-    One entry per vendor; within it, one row per ATC with the quarter's three-month
+    One entry per payee (vendor or employee); within it, one row per ATC with the quarter's three-month
     income-payment breakdown (m1/m2/m3) and totals. Folds creditable (expanded) WHT
     from wht_lines(side='payor'). Income payment is net of VAT (the WHT base).
     """
     from app.reports.wht_lines import wht_lines
     from app.vat_settlement.service import quarter_bounds
-    from app.vendors.models import Vendor
 
     qstart, qend = quarter_bounds(year, quarter)
     lines = [l for l in wht_lines(qstart, qend, 'payor', tax_type='expanded',
                                   branch_id=branch_id)
              if l.tax_withheld and l.tax_withheld > 0]
 
-    ids = {l.partner_id for l in lines if l.partner_id}
-    addr = {}
-    if ids:
-        addr = {v.id: (v.address or '') for v in
-                db.session.query(Vendor).filter(Vendor.id.in_(ids)).all()}
+    addr = _payee_addresses(l.partner_id for l in lines)
 
-    # vendor_id -> {header + atc_code -> row}
+    # (payee_type, payee_id) -> {header + atc_code -> row}. vendor_id stays the
+    # vendor's id for a vendor payee (None for an employee); payee_type/payee_id
+    # identify either kind for the print link.
     vendors = {}
     for l in lines:
+        kind, pid = l.partner_id
         v = vendors.setdefault(l.partner_id, {
-            'vendor_id': l.partner_id, 'vendor_name': l.partner_name,
+            'vendor_id': pid if kind == 'vendor' else None,
+            'payee_type': kind, 'payee_id': pid,
+            'vendor_name': l.partner_name,
             'vendor_tin': l.partner_tin, 'vendor_address': addr.get(l.partner_id, ''),
             '_atc': {}})
         row = v['_atc'].setdefault(l.atc_code, {

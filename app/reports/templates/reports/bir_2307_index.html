@@ -46,7 +46,7 @@
         <td style="text-align:right;">{{ '{:,.2f}'.format(c.total_income) }}</td>
         <td style="text-align:right;">{{ '{:,.2f}'.format(c.total_tax) }}</td>
         <td><a class="btn btn-secondary btn-sm" target="_blank"
-               href="{{ url_for('reports.bir_2307_print', year=year, quarter=quarter, vendor_id=c.vendor_id) }}">Print 2307</a></td>
+               href="{% if c.payee_type == 'employee' %}{{ url_for('reports.bir_2307_print', year=year, quarter=quarter, payee_type='employee', payee_id=c.payee_id) }}{% else %}{{ url_for('reports.bir_2307_print', year=year, quarter=quarter, vendor_id=c.vendor_id) }}{% endif %}">Print 2307</a></td>
       </tr>
       {% else %}
       <tr><td colspan="5" style="color:var(--color-text-muted,#555);">No creditable withholding for {{ quarter_name }} {{ year }}.</td></tr>
