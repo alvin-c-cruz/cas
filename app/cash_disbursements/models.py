@@ -25,7 +25,14 @@ class CashDisbursementVoucher(RowVersioned, db.Model):
     cdv_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
     cdv_date = db.Column(db.Date, nullable=False, index=True)
 
-    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False, index=True)
+    # Payee reference (polymorphic: vendor OR employee) -- the APV's shape, since
+    # 2026-09-24. vendor_id is set for a vendor payee and NULL for an employee;
+    # vendor_name / vendor_tin are the snapshot for EITHER kind (kept under their
+    # old names: every template and report reads them).
+    payee_type = db.Column(db.String(20), nullable=False, default='vendor',
+                           server_default='vendor', index=True)
+    payee_id = db.Column(db.Integer, nullable=False, default=0)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=True, index=True)
     vendor = db.relationship('Vendor', backref='cash_disbursements')
     vendor_name = db.Column(db.String(200), nullable=False)
     vendor_tin = db.Column(db.String(20))
@@ -42,6 +49,22 @@ class CashDisbursementVoucher(RowVersioned, db.Model):
     @property
     def pays_by_deposit(self):
         return self.payment_method in self.DEPOSIT_METHODS
+
+    @property
+    def payee(self):
+        """Resolve the polymorphic payee to its Vendor or Employee row (or None)."""
+        if self.payee_type == 'employee':
+            from app.employees.models import Employee
+            return db.session.get(Employee, self.payee_id) if self.payee_id else None
+        from app.vendors.models import Vendor
+        return db.session.get(Vendor, self.payee_id) if self.payee_id else None
+
+    @property
+    def payee_display_name(self):
+        p = self.payee
+        if p is None:
+            return self.vendor_name          # historical snapshot fallback
+        return p.full_name if self.payee_type == 'employee' else p.name
 
     cash_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=False)
     cash_account = db.relationship('Account', foreign_keys=[cash_account_id])
@@ -119,6 +142,8 @@ class CashDisbursementVoucher(RowVersioned, db.Model):
             'cdv_number': self.cdv_number,
             'cdv_date': self.cdv_date.isoformat() if self.cdv_date else None,
             'vendor_id': self.vendor_id,
+            'payee_type': self.payee_type,
+            'payee_id': self.payee_id,
             'vendor_name': self.vendor_name,
             'payment_method': self.payment_method,
             'total_ap_applied': float(self.total_ap_applied),
