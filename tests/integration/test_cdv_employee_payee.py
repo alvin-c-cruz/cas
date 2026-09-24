@@ -185,3 +185,71 @@ class TestVendorPathUnchanged:
         assert resp.status_code == 200
         cdv = CashDisbursementVoucher.query.filter_by(cdv_number='LEG-0001').one()
         assert (cdv.payee_type, cdv.payee_id, cdv.vendor_id) == ('vendor', vendor.id, vendor.id)
+
+
+class TestSectionB:
+
+    def test_payee_defaults_for_an_employee_offers_every_active_wht_code(self, client, db_session,
+                                                                        admin_user, main_branch,
+                                                                        employees, accounts):
+        from app.withholding_tax.models import WithholdingTax
+        for code, rate in (('WC010', '1.00'), ('WC020', '2.00')):
+            db_session.add(WithholdingTax(code=code, name=code, rate=Decimal(rate), is_active=True))
+        db_session.add(WithholdingTax(code='WC-OFF', name='off', rate=Decimal('5'), is_active=False))
+        db_session.commit()
+        corp, _ = employees
+        _open(client, main_branch)
+        d = client.get(f'/cash-disbursements/payee-defaults?payee=employee:{corp.id}').get_json()
+        assert [w['code'] for w in d['withholding_taxes']] == ['WC010', 'WC020']
+        assert d['last_cash_account_id'] is None and d['last_expense_account_id'] is None
+
+    def test_payee_defaults_for_a_vendor_is_its_assigned_subset(self, client, db_session, admin_user,
+                                                                main_branch, accounts):
+        """CONTROL: the vendor payload is what /vendors/<id>/defaults gives today."""
+        from app.withholding_tax.models import WithholdingTax
+        w1 = WithholdingTax(code='WC010', name='a', rate=Decimal('1'), is_active=True)
+        w2 = WithholdingTax(code='WC020', name='b', rate=Decimal('2'), is_active=True)
+        db_session.add_all([w1, w2]); db_session.commit()
+        vendor = make_vendor(db_session); vendor.withholding_taxes.append(w1); db_session.commit()
+        _open(client, main_branch)
+        d = client.get(f'/cash-disbursements/payee-defaults?payee=vendor:{vendor.id}').get_json()
+        assert [w['code'] for w in d['withholding_taxes']] == ['WC010']
+
+    def test_an_employee_expense_cv_with_vat_and_wht_posts(self, client, db_session, admin_user,
+                                                           main_branch, employees, accounts):
+        from app.withholding_tax.models import WithholdingTax
+        from app.vat_categories.models import VATCategory
+        from app.accounts.models import Account
+        wt = WithholdingTax(code='WC010', name='a', rate=Decimal('1'), is_active=True)
+        db_session.add(wt)
+        vat_cat = VATCategory.query.filter_by(code='V12DG').first()
+        if not vat_cat:
+            from tests.integration.test_vendor_views import make_vat_category
+            vat_cat = make_vat_category(db_session)
+        if not vat_cat.input_vat_account_id:
+            # make_vat_category() doesn't wire an Input Tax account (it only
+            # exists so the vendor form has an active category to pick); the
+            # CDV posting path needs one to book the input VAT leg.
+            input_vat_acct = Account(code='10502', name='Input VAT', account_type='Asset',
+                                     normal_balance='debit', is_active=True)
+            db_session.add(input_vat_acct); db_session.commit()
+            vat_cat.input_vat_account_id = input_vat_acct.id
+        db_session.commit()
+        corp, _ = employees
+        _open(client, main_branch)
+        resp = _post_cdv(client, f'employee:{corp.id}', accounts['cash'], number='EMP-0002',
+                         expense_lines=[{'description': 'Liquidated supplies', 'amount': 1120.0,
+                                         'vat_category': 'V12DG', 'account_id': accounts['exp'].id,
+                                         'wt_id': wt.id}])
+        assert resp.status_code == 200
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='EMP-0002').one()
+        assert cdv.payee_type == 'employee'
+        assert cdv.expense_lines[0].wt_id == wt.id
+        assert cdv.expense_lines[0].vat_amount > 0
+
+    def test_the_form_calls_payee_defaults_not_vendor_defaults(self, client, db_session, admin_user,
+                                                               main_branch, accounts):
+        _open(client, main_branch)
+        html = client.get('/cash-disbursements/create').get_data(as_text=True)
+        assert '/cash-disbursements/payee-defaults' in html
+        assert re.search(r'/vendors/\$\{[a-zA-Z]+\}/defaults', html) is None

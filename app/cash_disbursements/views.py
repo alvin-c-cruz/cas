@@ -1043,6 +1043,46 @@ def next_check():
     return jsonify(next_check_for_account(request.args.get('account_id', type=int)))
 
 
+@cash_disbursements_bp.route('/cash-disbursements/payee-defaults')
+@login_required
+def payee_defaults():
+    """JSON for the CV form when the payee changes: WHT codes to offer on Section B
+    lines, and the cash/bank + expense accounts the payee used last.
+
+    Vendor: exactly what /vendors/<id>/defaults returned (assigned codes; last
+    posted CDV's accounts). Employee: EVERY active WHT code -- an employee has no
+    assigned subset, and the owner chose 'both VAT and WHT, like a vendor'
+    (design decision 2, 2026-09-24) -- plus the same 'last' lookups by payee.
+    """
+    payee_type, payee_id = _payee_from_request()
+    payee = resolve_payee(payee_type, payee_id)
+    if payee is None:
+        return jsonify({'withholding_taxes': [], 'last_cash_account_id': None,
+                        'last_expense_account_id': None})
+    if payee_type == 'vendor':
+        whts = [w for w in payee.withholding_taxes if w.is_active]
+    else:
+        whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+    last_cdv = (CashDisbursementVoucher.query
+                .filter_by(payee_type=payee_type, payee_id=payee_id, status='posted')
+                .order_by(CashDisbursementVoucher.cdv_date.desc(), CashDisbursementVoucher.id.desc())
+                .first())
+    last_exp = (CDVExpenseLine.query.join(CashDisbursementVoucher)
+                .filter(CashDisbursementVoucher.payee_type == payee_type,
+                        CashDisbursementVoucher.payee_id == payee_id,
+                        CashDisbursementVoucher.status == 'posted',
+                        CDVExpenseLine.account_id.isnot(None))
+                .order_by(CashDisbursementVoucher.cdv_date.desc(), CashDisbursementVoucher.id.desc(),
+                          CDVExpenseLine.line_number.asc())
+                .first())
+    return jsonify({
+        'withholding_taxes': [{'id': w.id, 'code': w.code, 'name': w.name, 'rate': float(w.rate)}
+                              for w in whts],
+        'last_cash_account_id': last_cdv.cash_account_id if last_cdv else None,
+        'last_expense_account_id': last_exp.account_id if last_exp else None,
+    })
+
+
 @cash_disbursements_bp.route('/cash-disbursements/create', methods=['GET', 'POST'])
 @login_required
 @staff_or_above_required

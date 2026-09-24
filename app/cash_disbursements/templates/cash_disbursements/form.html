@@ -377,9 +377,9 @@ let apLines      = [];
 let expenseLines = [];
 let expenseCounter = 0;
 let expenseChoices = {};
-// Direct-expense WT is scoped to the selected vendor's codes (mirrors APV):
-// seeded synchronously for edit/bounce; refreshed via /vendors/<id>/defaults on
-// vendor change.
+// Direct-expense WT is scoped to the selected payee's codes (mirrors APV):
+// seeded synchronously for edit/bounce; refreshed via /cash-disbursements/payee-defaults
+// on payee change.
 let currentVendorWHTs = {{ vendor_whts | default([], true) | tojson }};
 let openBills = [];
 let autoVat = 0, autoWt = 0;
@@ -534,11 +534,11 @@ function onVendorChange(vendorId) {
     document.getElementById('cdvLocked').style.display = 'none';
     document.getElementById('cdvSections').style.display = '';
 
-    // Load this vendor's withholding codes, then re-scope the expense WT selects;
-    // also pre-fill the Cash/Bank account + Section B expense account from the
-    // vendor's most recent posted CDV (defaults only — the user can still override).
-    // TODO(Task 4): employee payees. For now an 'employee:<id>' 404s into .catch.
-    fetch(`/vendors/${vendorId.replace(/^vendor:/, '')}/defaults`)
+    // Load this payee's withholding codes (a vendor's assigned ones; every active
+    // code for an employee), then re-scope the expense WT selects; also pre-fill
+    // the Cash/Bank account + Section B expense account from the payee's most
+    // recent posted CDV (defaults only — the user can still override).
+    fetch(`/cash-disbursements/payee-defaults?payee=${encodeURIComponent(vendorId)}`)
         .then(r => r.json())
         .then(d => {
             currentVendorWHTs = d.withholding_taxes || [];
@@ -1360,7 +1360,7 @@ if (savedVendorId) {
         .then(bills => { openBills = bills; refreshBillPicker(); });
     // Remember the vendor's last-used expense account for any NEW lines added on edit
     // (keep the saved Cash/Bank account untouched).
-    fetch(`/vendors/${savedVendorId.replace(/^vendor:/, '')}/defaults`)
+    fetch(`/cash-disbursements/payee-defaults?payee=${encodeURIComponent(savedVendorId)}`)
         .then(r => r.json())
         .then(d => { defaultExpenseAccountId = d.last_expense_account_id || null; })
         .catch(() => {});
