@@ -15,7 +15,7 @@ import pytest
 pytestmark = [pytest.mark.e2e, pytest.mark.cash_disbursements]
 
 CDV_CREATE = '/cash-disbursements/create'
-VENDOR_SCOPE = '.choices:has(#vendor_id)'
+VENDOR_SCOPE = '.choices:has(#payee)'
 
 
 def _pick_in_choices(page, scope_selector, text):
@@ -47,7 +47,7 @@ def _remove_first_ap_row(page):
 def test_notes_autofills_with_one_bill(logged_in_page, e2e_server):
     page = logged_in_page
     page.goto(e2e_server + CDV_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
     page.wait_for_selector('#cdvSections', state='visible')
 
@@ -58,7 +58,7 @@ def test_notes_autofills_with_one_bill(logged_in_page, e2e_server):
 def test_notes_autofills_comma_joined_with_two_bills(logged_in_page, e2e_server):
     page = logged_in_page
     page.goto(e2e_server + CDV_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
     page.wait_for_selector('#cdvSections', state='visible')
 
@@ -70,7 +70,7 @@ def test_notes_autofills_comma_joined_with_two_bills(logged_in_page, e2e_server)
 def test_notes_updates_when_bill_removed(logged_in_page, e2e_server):
     page = logged_in_page
     page.goto(e2e_server + CDV_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
     page.wait_for_selector('#cdvSections', state='visible')
 
@@ -90,7 +90,7 @@ def test_custom_notes_survive_bill_add_and_remove(logged_in_page, e2e_server):
     adding/removing a settlement doc afterwards must NOT clobber the user's text."""
     page = logged_in_page
     page.goto(e2e_server + CDV_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
     page.wait_for_selector('#cdvSections', state='visible')
 

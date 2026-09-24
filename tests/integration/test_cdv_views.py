@@ -364,7 +364,7 @@ class TestCDVLineValidation:
                      'original_balance': 5000.0, 'amount_applied': 1000.0}]
         resp = create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)  # CDV is for `vendor`
         assert resp.status_code == 200
-        assert b'not available for this vendor' in resp.data
+        assert b'not available for this payee' in resp.data
         assert CashDisbursementVoucher.query.count() == 0
 
     def test_rejects_overpayment(self, client, db_session, admin_user, main_branch):

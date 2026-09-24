@@ -160,17 +160,21 @@
         <div class="right-col">
           <div id="vendorCard" class="vendor-step-card{% if cdv %} vendor-step-card--done{% endif %}">
             <div class="vendor-step-label" id="vendorCardLabel">
-              {% if cdv %}✓ {{ cdv.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
+              {% if cdv %}✓ {{ cdv.vendor_name }}{% else %}Step 1 — Select Payee{% endif %}
             </div>
-            <select name="vendor_id" id="vendor_id" class="form-control" required
+            <select name="payee" id="payee" class="form-control" required
                     {% if not cdv %}autofocus{% endif %}>
-              <option value="">Search or select a vendor…</option>
-              {% for choice in form.vendor_id.choices %}
-              <option value="{{ choice[0] }}"
-                {% if (cdv and cdv.vendor_id == choice[0]) or ((restore_ap_lines or restore_expense_lines) and form.vendor_id.data == choice[0]) %}selected{% endif %}>{{ choice[1] }}</option>
+              <option value="">Search or select a payee…</option>
+              {% for v in vendors %}
+              <option value="vendor:{{ v.id }}"
+                {% if current_payee == 'vendor:' ~ v.id %}selected{% endif %}>{{ v.code }} : {{ v.name }} [Vendor]</option>
+              {% endfor %}
+              {% for e in employees %}
+              <option value="employee:{{ e.id }}"
+                {% if current_payee == 'employee:' ~ e.id %}selected{% endif %}>{{ e.employee_no }} : {{ e.full_name }} [Employee]</option>
               {% endfor %}
             </select>
-            {% if form.vendor_id.errors %}<div class="form-error">{{ form.vendor_id.errors[0] }}</div>{% endif %}
+            {% if form.payee.errors %}<div class="form-error">{{ form.payee.errors[0] }}</div>{% endif %}
           </div>
         </div>
 
@@ -188,10 +192,10 @@
            {% if cdv %}style="display:none"{% endif %}>
         <div style="font-size: 28px; margin-bottom: 10px;">🔒</div>
         <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
-          Select a vendor above to add lines
+          Select a payee above to add lines
         </div>
         <div style="font-size: 12px; color: var(--text-2); margin-top: 6px;">
-          Open bills and expense lines will load for the chosen vendor.
+          Open bills and expense lines will load for the chosen payee.
         </div>
       </div>
 
@@ -385,11 +389,12 @@ let vatOverrideActive = false, wtOverrideActive = false;
 let defaultExpenseAccountId = null;
 
 // ── Vendor Choices.js ─────────────────────────────────────────────────────────
-const vendorSel = document.getElementById('vendor_id');
+const vendorSel = document.getElementById('payee');
 vendorSel.addEventListener('change', () => onVendorChange(vendorSel.value));
 // The shared search-select (via initVendorQuickAdd) creates the Choices
 // instance and wires typeahead + the "Add Vendor" action.
-initVendorQuickAdd({ selectEl: vendorSel });
+// Quick-add inserts 'vendor:<id>' so the new vendor's option matches the payee shape.
+initVendorQuickAdd({ selectEl: vendorSel, valuePrefix: 'vendor:' });
 if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
 if (uomMasterOn    && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
 
@@ -514,7 +519,7 @@ function onVendorChange(vendorId) {
     renderApEmpty();
     setBillChoices([]);
 
-    const sel = document.getElementById('vendor_id');
+    const sel = document.getElementById('payee');
     const vendorName = (sel.options[sel.selectedIndex] || {}).text || '';
 
     if (!vendorId) {
@@ -532,7 +537,8 @@ function onVendorChange(vendorId) {
     // Load this vendor's withholding codes, then re-scope the expense WT selects;
     // also pre-fill the Cash/Bank account + Section B expense account from the
     // vendor's most recent posted CDV (defaults only — the user can still override).
-    fetch(`/vendors/${vendorId}/defaults`)
+    // TODO(Task 4): employee payees. For now an 'employee:<id>' 404s into .catch.
+    fetch(`/vendors/${vendorId.replace(/^vendor:/, '')}/defaults`)
         .then(r => r.json())
         .then(d => {
             currentVendorWHTs = d.withholding_taxes || [];
@@ -545,7 +551,7 @@ function onVendorChange(vendorId) {
         .finally(() => rebuildAllExpenseWhtSelects());
 
     setBillPickerLoading(true);
-    fetch(`{{ url_for('cash_disbursements.open_bills') }}?vendor_id=${vendorId}`)
+    fetch(`{{ url_for('cash_disbursements.open_bills') }}?payee=${encodeURIComponent(vendorId)}`)
         .then(r => r.json())
         .then(bills => {
             openBills = bills;
@@ -1347,14 +1353,14 @@ renderApEmpty();
 recalculate();
 updateNotesAutofill();   // no-op if notes already had content (notesUserEdited set above)
 
-const savedVendorId = document.getElementById('vendor_id').value;
+const savedVendorId = document.getElementById('payee').value;
 if (savedVendorId) {
-    fetch(`{{ url_for('cash_disbursements.open_bills') }}?vendor_id=${savedVendorId}`)
+    fetch(`{{ url_for('cash_disbursements.open_bills') }}?payee=${encodeURIComponent(savedVendorId)}`)
         .then(r => r.json())
         .then(bills => { openBills = bills; refreshBillPicker(); });
     // Remember the vendor's last-used expense account for any NEW lines added on edit
     // (keep the saved Cash/Bank account untouched).
-    fetch(`/vendors/${savedVendorId}/defaults`)
+    fetch(`/vendors/${savedVendorId.replace(/^vendor:/, '')}/defaults`)
         .then(r => r.json())
         .then(d => { defaultExpenseAccountId = d.last_expense_account_id || null; })
         .catch(() => {});
@@ -1364,7 +1370,7 @@ if (savedVendorId) {
 {% if restore_ap_lines or restore_expense_lines %}
 // Create POST bounced (validation error) — re-hydrate the typed lines and unlock.
 (function () {
-    const sel = document.getElementById('vendor_id');
+    const sel = document.getElementById('payee');
     const vendorId = sel.value;
     const vendorName = (sel.options[sel.selectedIndex] || {}).text || '';
     if (vendorId) {
@@ -1383,7 +1389,7 @@ if (savedVendorId) {
     let _apToRestore = [];
     try { _apToRestore = JSON.parse({{ restore_ap_lines | tojson }}); } catch (e) { _apToRestore = []; }
     if (vendorId) {
-        fetch(`{{ url_for('cash_disbursements.open_bills') }}?vendor_id=${vendorId}`)
+        fetch(`{{ url_for('cash_disbursements.open_bills') }}?payee=${encodeURIComponent(vendorId)}`)
             .then(r => r.json())
             .then(bills => {
                 openBills = bills;

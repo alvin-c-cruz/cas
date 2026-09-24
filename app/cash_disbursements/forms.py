@@ -19,9 +19,9 @@ class CashDisbursementForm(RowVersionFormMixin, FlaskForm):
         DataRequired(message='CDV date is required.')
     ], format='%Y-%m-%d', default=date.today)
 
-    vendor_id = SelectField('Vendor', validators=[
-        DataRequired(message='Vendor is required.')
-    ], coerce=int)
+    # 'vendor:<id>' | 'employee:<id>' -- the APV's payee shape (2026-09-24).
+    # Parsed and resolved in the view (app.common.payee); the picker fills it.
+    payee = StringField('Payee', validators=[DataRequired(message='Payee is required.')])
 
     payment_method = SelectField('Payment Method', choices=[
         ('cash', 'Cash'),

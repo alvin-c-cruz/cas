@@ -26,7 +26,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.cash_disbursements]
 CDV_CREATE = '/cash-disbursements/create'
 DESC_SENTINEL = 'ZZTOPDESC_must_not_appear_in_account_title'
 
-VENDOR_SCOPE = '.choices:has(#vendor_id)'
+VENDOR_SCOPE = '.choices:has(#payee)'
 CASH_SCOPE = '.choices:has(#cash_account_id)'
 ACCT_SCOPE = '.choices:has(select.acct-sel)'
 
@@ -61,7 +61,7 @@ def _add_expense_line(page, amount='1000', account_code='50226'):
 def test_sections_unlock_when_vendor_selected(logged_in_page, e2e_server):
     page = logged_in_page
     page.goto(e2e_server + CDV_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
     # Locked before a vendor is chosen.
     assert page.locator('#cdvSections').is_hidden()
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
@@ -73,7 +73,7 @@ def test_entry_preview_shows_account_name_not_description(logged_in_page, e2e_se
     never the typed line description, and debits must equal credits (BUG-15 class)."""
     page = logged_in_page
     page.goto(e2e_server + CDV_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
     page.wait_for_selector('#cdvSections', state='visible')
     # Cr Cash needs a cash/bank account for the disbursement entry to balance.

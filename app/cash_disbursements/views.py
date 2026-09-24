@@ -15,6 +15,7 @@ from app.vendors.utils import populate_vat_category_choices, generate_next_vendo
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
+from app.common.payee import parse_payee, employee_payee_query, resolve_payee
 from app.common.vat_nature import resolve_purchase_nature
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.attachments.registry import get_target
@@ -262,18 +263,60 @@ def list_cdvs():
                            pm_filter=pm_filter)
 
 
+def _payee_from_request(form=None):
+    """(payee_type, payee_id) from the POSTed `payee`, or from a legacy `vendor_id`
+    field (anything that still posts the pre-2026-09-24 name keeps working)."""
+    raw = request.form.get('payee') or request.args.get('payee')
+    if raw:
+        return parse_payee(raw)
+    legacy = request.form.get('vendor_id') or request.args.get('vendor_id')
+    if legacy:
+        return parse_payee(f'vendor:{legacy}')
+    return None, None
+
+
+def _bills_of_payee(payee_type, payee_id):
+    """Filter criteria for the APVs owed to this payee.
+
+    A vendor's bills are matched on vendor_id, exactly as before 2026-09-24:
+    that column is set on every vendor APV, while payee_id is left at its
+    default 0 by APVs not built through the APV form (seeds, test fixtures).
+    An employee's bills have no vendor_id and are matched on payee_type/payee_id."""
+    if payee_type == 'vendor':
+        return [AccountsPayable.vendor_id == payee_id]
+    return [AccountsPayable.payee_type == payee_type, AccountsPayable.payee_id == payee_id]
+
+
+# Header fields a CDV create/update audit row records (before/after on update).
+_CDV_AUDIT_FIELDS = ['cdv_number', 'cdv_date', 'payee_type', 'payee_id', 'vendor_name',
+                     'payment_method', 'total_amount', 'status']
+
+
+def _sync_payee_field(form):
+    """Mirror the request's payee into form.payee on a POST.
+
+    The picker posts `payee`; a pre-2026-09-24 client posts `vendor_id`. Without
+    this, the legacy field would fail the form's DataRequired before the view
+    ever reached _payee_from_request -- and on edit, CashDisbursementForm(obj=cdv)
+    would leave the cdv.payee MODEL in the field instead of the posted value."""
+    if request.method == 'POST':
+        payee_type, payee_id = _payee_from_request()
+        form.payee.data = f'{payee_type}:{payee_id}' if payee_id else ''
+
+
 @cash_disbursements_bp.route('/cash-disbursements/open-bills')
 @login_required
 @staff_or_above_required
 def open_bills():
-    """Return JSON list of open APV bills for the given vendor in the current branch."""
-    vendor_id = request.args.get('vendor_id', type=int)
-    if not vendor_id:
+    """Return JSON list of open APV bills for the given PAYEE in the current branch.
+    ?payee=vendor:12 | employee:3 (also ?vendor_id=12, the pre-2026-09-24 form)."""
+    payee_type, payee_id = _payee_from_request()
+    if not payee_id:
         return jsonify([])
     branch_id = session.get('selected_branch_id')
     bills = AccountsPayable.query.filter(
         AccountsPayable.branch_id == branch_id,
-        AccountsPayable.vendor_id == vendor_id,
+        *_bills_of_payee(payee_type, payee_id),
         AccountsPayable.status.in_(['posted', 'partially_paid']),
         AccountsPayable.balance > 0
     ).order_by(AccountsPayable.ap_date).all()
@@ -834,11 +877,11 @@ def _parse_line_items(cdv):
 
     Every client-supplied reference is re-validated server-side — the AJAX bill
     loader (open_bills) is only a UI convenience, not the trust boundary:
-      * AP bills must belong to THIS CDV's branch and vendor;
+      * AP bills must belong to THIS CDV's branch and payee;
       * amount_applied must be within 0 < x <= the bill's open balance;
       * expense accounts must be active, postable (leaf) accounts.
     Raises CDVLineError (user-facing message) on any invalid line. Requires
-    cdv.branch_id and cdv.vendor_id to already be set on the passed-in cdv.
+    cdv.branch_id, cdv.payee_type and cdv.payee_id to already be set on the passed-in cdv.
     """
     ap_lines_data = request.form.getlist('ap_lines')
     ap_lines = json.loads(ap_lines_data[0]) if ap_lines_data and ap_lines_data[0] else []
@@ -848,12 +891,13 @@ def _parse_line_items(cdv):
             amount_applied = Decimal(str(item['amount_applied']))
         except (KeyError, ValueError, TypeError, InvalidOperation):
             raise CDVLineError('A payable line is malformed — please re-select the bill and try again.')
-        # F-001: re-scope the bill to this branch + vendor; never trust the raw id.
-        bill = AccountsPayable.query.filter_by(
-            id=bill_id, branch_id=cdv.branch_id, vendor_id=cdv.vendor_id
+        # F-001: re-scope the bill to this branch + payee; never trust the raw id.
+        bill = AccountsPayable.query.filter(
+            AccountsPayable.id == bill_id, AccountsPayable.branch_id == cdv.branch_id,
+            *_bills_of_payee(cdv.payee_type, cdv.payee_id)
         ).first()
         if not bill:
-            raise CDVLineError('A selected bill is not available for this vendor and branch.')
+            raise CDVLineError('A selected bill is not available for this payee and branch.')
         # F-005: amount must be positive and within the open balance.
         if amount_applied <= 0 or amount_applied > bill.balance:
             raise CDVLineError(
@@ -873,13 +917,14 @@ def _parse_line_items(cdv):
     _parse_and_attach_expense_lines(cdv, exp_lines_json)
 
 
-def _form_context(all_accounts=None, selected_vendor_id=None):
+def _form_context(all_accounts=None, selected_payee=None):
     """Shared context for create/edit form rendering.
 
     Pass the already-built `all_accounts` list (callers need it for the cash /
     expense account selects) so the hierarchy isn't recomputed a second time.
     """
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+    employees = employee_payee_query().all()
     if all_accounts is None:
         all_accounts = _get_all_accounts_for_select()
     vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
@@ -894,15 +939,21 @@ def _form_context(all_accounts=None, selected_vendor_id=None):
     quick_add_form.is_active.data = '1'
     quick_add_form.payment_terms.data = 'Net 30'
     quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
-    # The selected vendor's assigned WHT codes drive the direct-expense WT
-    # dropdown (mirrors APV). Empty on create; the vendor's codes on edit/bounce
-    # so the synchronous line-restore builds correctly-scoped selects.
+    # WHT codes seeded for a re-render (edit / failed POST) so the synchronous
+    # line-restore builds correctly-scoped selects. A vendor gets its assigned
+    # codes (mirrors APV); an employee gets every active code (design decision 2).
     vendor_whts = []
-    if selected_vendor_id:
-        _v = db.session.get(Vendor, selected_vendor_id)
-        if _v:
-            vendor_whts = [w.to_dict() for w in _v.withholding_taxes if w.is_active]
-    return dict(vendors=vendors, all_accounts=all_accounts,
+    if selected_payee and selected_payee[1]:
+        payee_type, payee_id = selected_payee
+        if payee_type == 'vendor':
+            _v = db.session.get(Vendor, payee_id)
+            if _v:
+                vendor_whts = [w.to_dict() for w in _v.withholding_taxes if w.is_active]
+        elif payee_type == 'employee':
+            vendor_whts = [w.to_dict() for w in
+                           WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()]
+    current_payee = f'{selected_payee[0]}:{selected_payee[1]}' if selected_payee and selected_payee[1] else ''
+    return dict(vendors=vendors, employees=employees, current_payee=current_payee, all_accounts=all_accounts,
                 vat_categories=vat_categories,
                 vendor_whts=vendor_whts,
                 gl_accounts=gl_accounts,
@@ -997,8 +1048,7 @@ def next_check():
 @staff_or_above_required
 def create():
     form = CashDisbursementForm()
-    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
-    form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
+    _sync_payee_field(form)
     all_accounts = _get_all_accounts_for_select()
     from app.bank_accounts.service import cash_bank_account_choices
     form.cash_account_id.choices = [(0, '-- Select Account --')] + cash_bank_account_choices(
@@ -1012,7 +1062,7 @@ def create():
                                restore_ap_lines=request.form.get('ap_lines', '') if is_post else '',
                                restore_expense_lines=request.form.get('expense_lines', '') if is_post else '',
                                **_form_context(all_accounts=all_accounts,
-                                               selected_vendor_id=(form.vendor_id.data if is_post else None)))
+                                               selected_payee=(_payee_from_request() if is_post else None)))
 
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
@@ -1031,18 +1081,22 @@ def create():
                   f'({fresh}) has been suggested below -- review and Save again.', 'error')
             return _render_form()
         try:
-            vendor = db.session.get(Vendor, form.vendor_id.data)
-            if not vendor:
-                flash('Selected vendor not found.', 'error')
+            payee_type, payee_id = _payee_from_request(form)
+            payee = resolve_payee(payee_type, payee_id)
+            if not payee:
+                flash('Selected payee not found.', 'error')
                 return _render_form()
+            is_vendor = payee_type == 'vendor'
 
             cdv = CashDisbursementVoucher(
                 branch_id=session.get('selected_branch_id'),
                 cdv_number=cdv_number,
                 cdv_date=form.cdv_date.data,
-                vendor_id=vendor.id,
-                vendor_name=vendor.name,
-                vendor_tin=vendor.tin,
+                payee_type=payee_type,
+                payee_id=payee_id,
+                vendor_id=(payee.id if is_vendor else None),
+                vendor_name=(payee.name if is_vendor else payee.full_name),
+                vendor_tin=payee.tin,
                 payment_method=form.payment_method.data,
                 check_number=form.check_number.data or None,
                 check_date=form.check_date.data or None,
@@ -1086,8 +1140,7 @@ def create():
                 module='cash_disbursement',
                 record_id=cdv.id,
                 record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
-                new_values=model_to_dict(cdv, ['cdv_number', 'cdv_date', 'vendor_name',
-                                               'payment_method', 'total_amount', 'status'])
+                new_values=model_to_dict(cdv, _CDV_AUDIT_FIELDS)
             )
             skipped = save_queued_attachments(get_target('cash_disbursements'), cdv,
                                               request.files.getlist('attachments'), current_user)
@@ -1130,8 +1183,7 @@ def edit(id):
         return redirect(url_for('cash_disbursements.view', id=id))
 
     form = CashDisbursementForm(obj=cdv)
-    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
-    form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
+    _sync_payee_field(form)
     all_accounts = _get_all_accounts_for_select()
     from app.bank_accounts.service import cash_bank_account_choices
     form.cash_account_id.choices = cash_bank_account_choices(session.get('selected_branch_id'))
@@ -1150,7 +1202,10 @@ def edit(id):
         lists whenever a restore payload is present.
         """
         ctx = _form_context(all_accounts=all_accounts,
-                            selected_vendor_id=form.vendor_id.data)
+                            selected_payee=(_payee_from_request() if request.method == 'POST'
+                                            # payee_id is 0 on a vendor CDV not built by
+                                            # this view (seed/fixture); vendor_id is the same id.
+                                            else (cdv.payee_type, cdv.payee_id or cdv.vendor_id)))
         if request.method == 'POST':
             return render_template(
                 'cash_disbursements/form.html', form=form, cdv=cdv,
@@ -1177,10 +1232,13 @@ def edit(id):
                   'Enter a unique CD number.', 'error')
             return _render_edit_form()
         try:
-            vendor = db.session.get(Vendor, form.vendor_id.data)
-            if not vendor:
-                flash('Selected vendor not found.', 'error')
+            payee_type, payee_id = _payee_from_request(form)
+            payee = resolve_payee(payee_type, payee_id)
+            if not payee:
+                flash('Selected payee not found.', 'error')
                 return _render_edit_form()
+            is_vendor = payee_type == 'vendor'
+            old_values = model_to_dict(cdv, _CDV_AUDIT_FIELDS)
 
             # Lost-update guard. First write of the request: everything above is
             # read-only, everything below deletes the AP/expense lines and the
@@ -1193,9 +1251,11 @@ def edit(id):
 
             cdv.cdv_number = edit_cdv_number
             cdv.cdv_date = form.cdv_date.data
-            cdv.vendor_id = vendor.id
-            cdv.vendor_name = vendor.name
-            cdv.vendor_tin = vendor.tin
+            cdv.payee_type = payee_type
+            cdv.payee_id = payee_id
+            cdv.vendor_id = payee.id if is_vendor else None
+            cdv.vendor_name = payee.name if is_vendor else payee.full_name
+            cdv.vendor_tin = payee.tin
             cdv.payment_method = form.payment_method.data
             cdv.check_number = (form.check_number.data or '').strip() or None
             cdv.check_date = form.check_date.data or None
@@ -1245,7 +1305,8 @@ def edit(id):
                 module='cash_disbursement',
                 record_id=cdv.id,
                 record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
-                old_values={}, new_values={}
+                old_values=old_values,
+                new_values=model_to_dict(cdv, _CDV_AUDIT_FIELDS)
             )
             flash(f'CDV "{cdv.cdv_number}" updated successfully!', 'success')
             return redirect(url_for('cash_disbursements.view', id=cdv.id))
