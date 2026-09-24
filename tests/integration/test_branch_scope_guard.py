@@ -83,48 +83,70 @@ def _login_at(client, user, branch):
 
 
 class TestABranchTheUserCanReach:
-    """admin_user has full access, so every branch is reachable."""
+    """admin_user has full access, so every branch is reachable.
 
-    def test_it_redirects_instead_of_404ing(
+    2026-09-24, owner: "remove this notification." The first cut named the branch
+    and redirected to the module list; the owner wants the record. So the guard
+    now SWITCHES the session to the record's branch and lets the page load --
+    a real switch, logged like the sidebar's, not a peek."""
+
+    def test_it_opens_the_record_instead_of_404ing(
             self, client, db_session, admin_user, main_branch, other_branch, customer):
-        so = _so_in(db_session, other_branch, customer, 'BSC-REDIR')
+        so = _so_in(db_session, other_branch, customer, 'BSC-OPEN')
         _login_at(client, admin_user, main_branch)
 
         resp = client.get(f'/sales-orders/{so.id}')
 
-        assert resp.status_code == 302, 'a reachable other branch must not 404'
+        assert resp.status_code == 200, 'a reachable other branch must open, not 404'
+        assert b'BSC-OPEN' in resp.data
 
-    def test_it_lands_on_the_modules_own_list(
+    def test_it_switches_the_selected_branch(
             self, client, db_session, admin_user, main_branch, other_branch, customer):
-        """Not the dashboard: the user stays in the module they were working in."""
-        so = _so_in(db_session, other_branch, customer, 'BSC-LIST')
+        """A real switch: the next page the user opens is in that branch too."""
+        so = _so_in(db_session, other_branch, customer, 'BSC-SWITCH')
         _login_at(client, admin_user, main_branch)
 
-        resp = client.get(f'/sales-orders/{so.id}')
+        client.get(f'/sales-orders/{so.id}')
 
-        assert resp.headers['Location'].endswith('/sales-orders')
+        with client.session_transaction() as sess:
+            assert sess['selected_branch_id'] == other_branch.id
 
-    def test_it_names_the_branch_to_switch_to(
+    def test_the_switch_is_audited_like_the_sidebars(
             self, client, db_session, admin_user, main_branch, other_branch, customer):
-        """The whole point -- a 404 said nothing. Naming the branch is what turns
-        a dead end into an instruction."""
-        so = _so_in(db_session, other_branch, customer, 'BSC-NAME')
+        from app.audit.models import AuditLog
+        so = _so_in(db_session, other_branch, customer, 'BSC-AUDIT')
+        _login_at(client, admin_user, main_branch)
+        before = AuditLog.query.filter_by(action='branch_selected').count()
+
+        client.get(f'/sales-orders/{so.id}')
+
+        rows = AuditLog.query.filter_by(action='branch_selected').order_by(AuditLog.id).all()
+        assert len(rows) == before + 1
+        assert 'OTHER BRANCH' in (rows[-1].notes or '')
+
+    def test_no_notice_is_shown(
+            self, client, db_session, admin_user, main_branch, other_branch, customer):
+        so = _so_in(db_session, other_branch, customer, 'BSC-QUIET')
         _login_at(client, admin_user, main_branch)
 
-        body = client.get(f'/sales-orders/{so.id}', follow_redirects=True).data.decode()
+        body = client.get(f'/sales-orders/{so.id}').data.decode()
 
-        assert 'OTHER BRANCH' in body
-        assert 'Switch to' in body
+        assert 'Switch to' not in body
+        assert 'is not the one you have selected' not in body
 
     def test_the_same_holds_for_an_action_route_not_just_the_detail_page(
             self, client, db_session, admin_user, main_branch, other_branch, customer):
+        """The action runs in the record's branch instead of bouncing to the list."""
         so = _so_in(db_session, other_branch, customer, 'BSC-POST')
         _login_at(client, admin_user, main_branch)
 
         resp = client.post(f'/sales-orders/{so.id}/confirm')
 
         assert resp.status_code == 302
-        assert resp.headers['Location'].endswith('/sales-orders')
+        assert not resp.headers['Location'].endswith('/sales-orders'), \
+            'bounced to the list instead of running the action'
+        with client.session_transaction() as sess:
+            assert sess['selected_branch_id'] == other_branch.id
 
 
 class TestABranchTheUserCannotReach:

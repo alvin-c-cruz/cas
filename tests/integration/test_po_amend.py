@@ -345,13 +345,18 @@ class TestPoAmend:
         assert resp.request.path == '/purchase-orders'
         assert b'You do not have permission to perform this action.' in resp.data
 
-    def test_a_po_in_another_branch_is_404(self, client, admin_user, main_branch, approved_po):
+    def test_a_po_in_another_branch_switches_the_admin_into_it(self, client, admin_user,
+                                                                 main_branch, approved_po):
+        """Admin can reach every branch, so the guard switches the session to the
+        PO's branch and the amend RUNS there (owner, 2026-09-24) -- the 404 half of
+        the split is pinned by the viewer test above, whose user cannot reach it."""
         _login(client, admin_user, main_branch)
         resp = client.post(f'/purchase-orders/{approved_po.id}/amend', data={})
-        # 302, not 404: the refusal now names the branch (2026-09-23). What the
-        # test is actually for is the line below -- no amendment was written.
-        assert resp.status_code == 302
-        assert _revs(approved_po) and len(_revs(approved_po)) == 1
+        # 200: the amend route RAN (an empty POST fails validation and re-renders
+        # the form). A bounce to the list would be a 302 with that Location.
+        assert resp.status_code == 200
+        with client.session_transaction() as sess:
+            assert sess['selected_branch_id'] == approved_po.branch_id
 
     def test_the_amendment_is_audited_under_the_amend_action(
             self, client, admin_user, approved_po):

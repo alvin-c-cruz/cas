@@ -481,7 +481,7 @@ class TestCRVRoleGating:
 class TestCRVBranchScoping:
     """A CRV in another branch is invisible (404) from the current branch session."""
 
-    def test_cross_branch_detail_returns_404(self, client, db_session, admin_user,
+    def test_cross_branch_detail_switches_admin_into_that_branch(self, client, db_session, admin_user,
                                              main_branch, branch_manila):
         login(client)
         with client.session_transaction() as sess:
@@ -497,16 +497,17 @@ class TestCRVBranchScoping:
         resp = client.get(f'/cash-receipts/{crv.id}')
         assert resp.status_code == 200
 
-        # Re-point the session to a different branch -- the same CRV must be
-        # refused. Since 2026-09-23 that refusal NAMES the branch and redirects to
-        # the CRV list rather than 404ing; admin holds full access, so the other
-        # branch is reachable. A user who cannot reach it still gets 404 --
-        # pinned in tests/integration/test_branch_scope_guard.py.
+        # Re-point the session to a different branch. Admin holds full access, so
+        # the other branch is reachable and the guard SWITCHES the session into it
+        # and opens the CRV (owner, 2026-09-24; it named the branch and redirected
+        # before that). A user who cannot reach it still gets 404 -- pinned in
+        # tests/integration/test_branch_scope_guard.py.
         with client.session_transaction() as sess:
             sess['selected_branch_id'] = branch_manila.id
         resp = client.get(f'/cash-receipts/{crv.id}')
-        assert resp.status_code == 302
-        assert resp.headers['Location'].endswith('/cash-receipts')
+        assert resp.status_code == 200
+        with client.session_transaction() as sess:
+            assert sess['selected_branch_id'] == main_branch.id
 
 
 class TestCRVTOCTOU:

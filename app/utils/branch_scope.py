@@ -15,31 +15,38 @@ is what that route runs.
 
 THE RULE
 --------
-Wrong branch, and the user CAN reach that branch -> name the branch and send them
-to the module's own list, where the document they want is one branch-switch away.
-Wrong branch, and the user CANNOT reach that branch -> the bare 404 stays.
+Wrong branch, and the user CAN reach that branch -> SWITCH the session to that
+branch and let the page load. Wrong branch, and the user CANNOT reach that branch
+-> the bare 404 stays.
 
-That split is the point. A message naming the branch is friendlier but it confirms
-the record exists, so it is shown only to users who can already see that branch
-exists. Nobody learns about a branch they have no access to. Do not "simplify" this
-by dropping the accessibility test.
+The first cut (2026-09-22) named the branch and redirected to the module's list.
+Owner, 2026-09-24, on meeting that notice: "remove this notification." They want
+the record, not an instruction to go and get it, so the guard now does the switch
+itself. It is a REAL switch -- the sidebar shows the new branch from then on and
+it is audited exactly as the sidebar switcher's is -- not a one-page peek, so the
+user is never silently reading one branch while the session says another.
 
-A JSON request keeps the 404 as well: an XHR expecting data cannot do anything
-sensible with a 302 to an HTML list, and would silently parse the redirect target.
+The split is still the point. Switching into a branch confirms the record exists
+there, so it happens only for users who can already reach that branch. Nobody
+learns about a branch they have no access to. Do not "simplify" this by dropping
+the accessibility test.
+
+A JSON request keeps the 404 as well: an XHR is a background call from a page the
+user is already on, and switching their whole session underneath that page would
+be a surprise, not a convenience.
 """
-from flask import abort, flash, redirect, request, session, url_for
+from flask import abort, request, session
 from flask_login import current_user
 
-#: blueprint name -> the module's collection route. The destination for a
-#: wrong-branch redirect, chosen over the dashboard because it keeps the user in
-#: the module they were working in.
+#: blueprint name -> the module's collection route. Kept from the redirect era:
+#: `list_endpoint` is still accepted by require_same_branch for the two memo
+#: blueprints, and `tests/unit/test_branch_scope_registry.py` still asserts every
+#: guarded blueprint has an entry here or passes one, so nothing rots quietly if a
+#: redirect is ever wanted again.
 #:
 #: Blueprints with more than ONE collection route are deliberately absent --
 #: purchase_memos and sales_memos each serve a debit list and a credit list, and
 #: only the caller knows which. They pass `list_endpoint` explicitly.
-#:
-#: `tests/unit/test_branch_scope_registry.py` asserts every blueprint that guards a
-#: branch has a usable entry here or passes one, so this table cannot rot quietly.
 BRANCH_LIST_ENDPOINTS = {
     'accounts_payable': 'accounts_payable.list_ap',
     'cash_disbursements': 'cash_disbursements.list_cdvs',
@@ -87,7 +94,8 @@ def _reachable_branch(branch_id):
 
 
 def require_same_branch(obj, list_endpoint=None):
-    """Guard a document route. Returns normally, or raises the right refusal.
+    """Guard a document route. Returns normally -- switching the session's branch
+    to the record's when the user may reach it -- or raises a 404.
 
     Replaces the two-line `if obj.branch_id != session.get(...): abort(404)` that
     every document route carried. Call it straight after the record is loaded:
@@ -95,26 +103,27 @@ def require_same_branch(obj, list_endpoint=None):
         so = db.get_or_404(SalesOrder, id)
         require_same_branch(so)
 
-    `list_endpoint` overrides BRANCH_LIST_ENDPOINTS, for the two memo blueprints
-    whose debit and credit lists share one blueprint.
+    `list_endpoint` is accepted for the two memo blueprints whose debit and credit
+    lists share one blueprint; it is unused now that the guard switches instead of
+    redirecting, and kept so the call sites and the registry test stay as they are.
 
-    Raises rather than returning a response so the call site stays one line --
-    `abort()` accepts a Response, and a 302 raised this way behaves exactly like
-    the `abort(404)` it replaces.
+    The switch is written to the session and audited as `branch_selected`, the
+    same record the sidebar switcher writes, so the audit trail shows every branch
+    change however it happened.
     """
     if obj is None:
         return
-    if getattr(obj, 'branch_id', None) == session.get('selected_branch_id'):
+    target = getattr(obj, 'branch_id', None)
+    if target == session.get('selected_branch_id'):
         return
 
-    branch = _reachable_branch(getattr(obj, 'branch_id', None))
+    branch = _reachable_branch(target)
     if branch is None or _wants_json():
         abort(404)
 
-    endpoint = (list_endpoint
-                or BRANCH_LIST_ENDPOINTS.get(request.blueprint)
-                or FALLBACK_ENDPOINT)
-    flash('That record belongs to the %s branch, which is not the one you have '
-          'selected. Switch to %s to open it.' % (branch.name, branch.name),
-          'warning')
-    abort(redirect(url_for(endpoint)))
+    session['selected_branch_id'] = branch.id
+    from app.audit.utils import log_audit
+    log_audit(module='auth', action='branch_selected', record_id=current_user.id,
+              record_identifier=current_user.username,
+              notes=f'Selected branch: {branch.name} (ID: {branch.id}) -- switched '
+                    f'by opening {request.path}')

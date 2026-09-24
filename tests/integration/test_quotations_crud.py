@@ -108,7 +108,9 @@ def test_view_is_branch_scoped(client, db_session, admin_user, main_branch, bran
     q = Quotation.query.first()
     assert client.get(f'/quotations/{q.id}').status_code == 200
     with client.session_transaction() as s: s['selected_branch_id'] = branch_manila.id
-    assert client.get(f'/quotations/{q.id}').status_code == 302
+    # 200: admin can reach main_branch, so the guard switches the session to the record's branch and opens it (owner, 2026-09-24).
+    assert client.get(f'/quotations/{q.id}').status_code == 200
+    with client.session_transaction() as s: assert s['selected_branch_id'] == main_branch.id
 
 
 def test_print_renders_summary_and_has_no_peso_glyph(client, db_session, admin_user, main_branch):
@@ -147,7 +149,7 @@ def test_print_is_branch_scoped(client, db_session, admin_user, main_branch, bra
         follow_redirects=True)
     q = Quotation.query.first()
     with client.session_transaction() as s: s['selected_branch_id'] = branch_manila.id
-    assert client.get(f'/quotations/{q.id}/print').status_code == 302
+    assert client.get(f'/quotations/{q.id}/print').status_code == 200   # switched, see above
 
 
 def test_edit_draft_updates_treatment_and_lines(client, db_session, admin_user, main_branch):
