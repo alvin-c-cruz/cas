@@ -76,10 +76,10 @@ def test_aggregates_capture_counts_and_tb(db_session, main_branch):
 def test_compare_aggregates_flags_delta(db_session, main_branch):
     _je(db_session, main_branch, '100', '100')
     before = compute_aggregates(db_session)
-    _je(db_session, main_branch, '50', '50')          # a migration that changed data
+    _je(db_session, main_branch, '50', '50')          # POSTED: the TB moves
     after = compute_aggregates(db_session)
     findings = compare_aggregates(before, after)
-    assert any(f['ok'] is False for f in findings)
+    assert _find(findings, 'aggregate_tb_debit')['ok'] is False
 
 
 def test_compare_aggregates_identical_ok(db_session, main_branch):
@@ -137,19 +137,95 @@ def test_a_dropped_table_is_still_drift():
         assert f['ok'] is False, 'dropping a %d-row table was not flagged' % count
 
 
-def test_an_existing_table_changing_count_is_still_drift():
-    """CONTROL: the original purpose of the check is untouched."""
-    before = _aggs({'users': 2})
-    after = _aggs({'users': 3})
+def test_an_existing_table_shrinking_is_still_drift():
+    """CONTROL, narrowed 2026-09-24: SHRINKING is still drift. Users cannot
+    hard-delete posted documents, so fewer rows means a migration removed data.
+    Growth is a note now -- see the block below."""
+    before = _aggs({'users': 3})
+    after = _aggs({'users': 2})
     assert _row_counts_finding(compare_aggregates(before, after))['ok'] is False
 
 
 def test_a_new_empty_table_alongside_real_drift_still_fails():
     """CONTROL: the exemption is per-table, not a blanket pass for the finding."""
-    before = _aggs({'users': 2})
-    after = _aggs({'users': 3, 'pr_amendment_requests': 0})
+    before = _aggs({'users': 3})
+    after = _aggs({'users': 2, 'pr_amendment_requests': 0})
     f = _row_counts_finding(compare_aggregates(before, after))
     assert f['ok'] is False
     assert 'users' in f['detail']
     assert 'pr_amendment_requests' not in f['detail'], \
         'the exempt table should not be listed as drift'
+
+
+# --- live-site drift: growth is a NOTE, not a failure --------------------------
+#
+# Three deploys in a row (2026-08-20, 09-22, 09-24) had `--compare-aggregates`
+# report INTEGRITY FAILED on a green migration because a user was entering a
+# document between the snapshot and the compare. The check assumed a quiescent
+# database; production is not one. Twice the drift was in a FINANCIAL table and
+# the runbook called that a rollback, and twice the operator overrode it after
+# working out by hand that the new rows were DRAFTS -- outside the trial
+# balance, which is why the TB totals had not moved.
+#
+# So the tiers are now: the TB totals, a table appearing WITH rows, a table
+# vanishing, and a count SHRINKING stay hard (a migration that creates or
+# deletes data). A count GROWING is reported as a note that names the new rows
+# (identifier, status, created_at, user) so the operator reads the attribution
+# instead of doing it in sqlite3 -- and if any of them were posted, the TB
+# check has already failed on its own.
+
+def test_growth_in_an_existing_table_is_a_note_not_drift():
+    before = _aggs({'journal_entries': 43})
+    after = _aggs({'journal_entries': 44})
+    findings = compare_aggregates(before, after)
+    assert _row_counts_finding(findings)['ok'] is True
+    growth = _find(findings, 'aggregate_row_growth')
+    assert growth['ok'] is True and growth['level'] == 'note'
+    assert 'journal_entries:43->44' in growth['detail']
+
+
+def test_a_finding_carries_a_level():
+    """The CLI prints and exits on `level`; every finding must have one."""
+    findings = compare_aggregates(_aggs({'users': 2}), _aggs({'users': 2}))
+    assert all(f['level'] in ('ok', 'bad', 'note') for f in findings)
+    assert _row_counts_finding(findings)['level'] == 'ok'
+    assert _row_counts_finding(compare_aggregates(_aggs({'users': 2}),
+                                                  _aggs({'users': 1})))['level'] == 'bad'
+
+
+def test_growth_is_attributed_to_the_new_rows(db_session, main_branch):
+    """The investigation the operator did by hand on 2026-09-24, automated: the
+    note names the rows added since the snapshot, with their status."""
+    _je(db_session, main_branch, '100', '100')
+    before = compute_aggregates(db_session)
+    je = _je(db_session, main_branch, '50', '50', status='draft')   # a user, mid-deploy
+    after = compute_aggregates(db_session)
+    findings = compare_aggregates(before, after, session=db_session)
+    assert _find(findings, 'aggregate_tb_debit')['ok'] is True       # draft: TB untouched
+    assert _row_counts_finding(findings)['ok'] is True
+    detail = _find(findings, 'aggregate_row_growth')['detail']
+    assert je.entry_number in detail and 'draft' in detail
+    assert 'journal_entry_lines:2->4' in detail
+
+
+def test_posted_growth_still_fails_on_the_tb_tier(db_session, main_branch):
+    """CONTROL: a posted document between snapshots moves the TB, and that
+    tier is untouched -- growth being a note does not weaken it."""
+    _je(db_session, main_branch, '100', '100')
+    before = compute_aggregates(db_session)
+    _je(db_session, main_branch, '50', '50', status='posted')
+    after = compute_aggregates(db_session)
+    findings = compare_aggregates(before, after, session=db_session)
+    assert _find(findings, 'aggregate_tb_debit')['ok'] is False
+
+
+def test_a_snapshot_without_max_ids_still_compares(db_session, main_branch):
+    """A baseline dumped by the previous version has no `table_max_ids`. It must
+    still compare -- unattributed growth, not a crash mid-deploy."""
+    _je(db_session, main_branch, '100', '100')
+    before = compute_aggregates(db_session)
+    before.pop('table_max_ids')
+    _je(db_session, main_branch, '50', '50', status='draft')
+    findings = compare_aggregates(before, compute_aggregates(db_session), session=db_session)
+    growth = _find(findings, 'aggregate_row_growth')
+    assert growth['ok'] is True and 'journal_entries:1->2' in growth['detail']

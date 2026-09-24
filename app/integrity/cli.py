@@ -32,12 +32,13 @@ def integrity_check_cmd(as_json, dump_path, compare_path):
     if compare_path:
         with open(compare_path, encoding='utf-8') as fh:
             before = _json.load(fh)
-        findings += compare_aggregates(before, compute_aggregates(session))
+        findings += compare_aggregates(before, compute_aggregates(session), session=session)
     ok = all(f['ok'] for f in findings)
     if as_json:
         click.echo(_json.dumps({'ok': ok, 'findings': findings}, indent=2))
     else:
+        tag = {'ok': 'OK ', 'bad': 'BAD', 'note': 'NOTE'}
         for f in findings:
-            click.echo(f"[{'OK ' if f['ok'] else 'BAD'}] {f['check']}: {f['detail']}")
+            click.echo(f"[{tag[f['level']]}] {f['check']}: {f['detail']}")
         click.echo('INTEGRITY OK' if ok else 'INTEGRITY FAILED')
     raise SystemExit(0 if ok else 1)
