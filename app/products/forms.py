@@ -38,6 +38,37 @@ class ProductForm(FlaskForm):
                                  validators=[Optional(), NumberRange(min=0)])
     is_active = SelectField('Status', choices=[('1', 'Active'), ('0', 'Inactive')])
 
+    def __init__(self, *args, editing=None, **kwargs):
+        """`editing` is the Product being edited (None on create), so the duplicate-name
+        check can tell 'kept its own name' from 'took another product's name'."""
+        super().__init__(*args, **kwargs)
+        self._editing = editing
+
+    def validate_name(self, field):
+        """Refuse a name another product already has. Owner, 2026-09-25: BLOCK, no override.
+
+        `EPSON LQ-310 DOT MATRIX PRINTER` was entered twice, 55 minutes apart, because
+        nothing said it existed. Compared case-insensitively with whitespace collapsed,
+        against active AND inactive products -- an inactive twin should be reactivated,
+        not re-entered. On edit the check runs only when the name actually changes, so a
+        duplicate that predates this rule stays editable without a forced rename.
+        """
+        wanted = normalize_product_name(field.data)
+        if not wanted:
+            return
+        if self._editing is not None and normalize_product_name(self._editing.name) == wanted:
+            return
+        from app.products.models import Product
+        q = Product.query.with_entities(Product.id, Product.name, Product.is_active)
+        if self._editing is not None:
+            q = q.filter(Product.id != self._editing.id)
+        for _id, name, active in q:
+            if normalize_product_name(name) == wanted:
+                raise ValidationError(
+                    f'A product named "{name}" already exists'
+                    f'{" (inactive -- reactivate it instead)" if not active else ""}.')
+
+
     def validate_track_inventory(self, field):
         """When inventory tracking is on, a costing method + cost basis are required.
         When off, the other three fields are left alone -- no validation error, and no
@@ -52,3 +83,8 @@ class ProductForm(FlaskForm):
         if missing:
             raise ValidationError(
                 f"{' and '.join(missing).capitalize()} required when Track Inventory is checked.")
+
+
+def normalize_product_name(name):
+    """Comparison form of a product name: case-folded, surrounding and repeated spaces collapsed."""
+    return ' '.join((name or '').split()).casefold()

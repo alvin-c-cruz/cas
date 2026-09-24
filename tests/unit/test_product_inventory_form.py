@@ -21,27 +21,27 @@ def _form(**overrides):
     return form
 
 
-def test_track_inventory_unchecked_allows_blank_costing_fields(app):
+def test_track_inventory_unchecked_allows_blank_costing_fields(app, db_session):  # db_session: the form checks for a duplicate name (2026-09-25)
     with app.test_request_context(method='POST', data=_base_data()):
         form = _form()
         assert form.validate() is True
 
 
-def test_track_inventory_checked_requires_costing_method_and_cost(app):
+def test_track_inventory_checked_requires_costing_method_and_cost(app, db_session):  # db_session: the form checks for a duplicate name (2026-09-25)
     with app.test_request_context(method='POST', data=_base_data(track_inventory='y')):
         form = _form()
         assert form.validate() is False
         assert form.track_inventory.errors
 
 
-def test_track_inventory_checked_with_costing_method_and_cost_passes(app):
+def test_track_inventory_checked_with_costing_method_and_cost_passes(app, db_session):  # db_session: the form checks for a duplicate name (2026-09-25)
     with app.test_request_context(method='POST', data=_base_data(
             track_inventory='y', costing_method='moving_average', standard_cost='150.00')):
         form = _form()
         assert form.validate() is True
 
 
-def test_costing_method_rejects_unknown_value(app):
+def test_costing_method_rejects_unknown_value(app, db_session):  # db_session: the form checks for a duplicate name (2026-09-25)
     with app.test_request_context(method='POST', data=_base_data(
             track_inventory='y', costing_method='bogus_method', standard_cost='150.00')):
         form = _form()

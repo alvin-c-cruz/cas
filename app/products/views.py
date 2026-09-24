@@ -112,7 +112,7 @@ def edit(id):
         flash('You do not have permission to manage products.', 'error')
         return redirect(url_for('products.list'))
     p = db.get_or_404(Product, id)
-    form = ProductForm(obj=p)
+    form = ProductForm(obj=p, editing=p)
     _populate_choices(form)
     if request.method == 'GET':
         form.is_active.data = '1' if p.is_active else '0'
