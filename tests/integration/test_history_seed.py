@@ -212,6 +212,12 @@ class TestGenerator:
         assert summary['paid'] >= 1
         # status variety tail exists
         assert summary['draft'] >= 1
+        # Seeded vouchers name their payee (list filter / export / payee-defaults
+        # match on payee_type/payee_id, never vendor_id alone).
+        from app.accounts_payable.models import AccountsPayable
+        from app.cash_disbursements.models import CashDisbursementVoucher
+        for doc in AccountsPayable.query.all() + CashDisbursementVoucher.query.all():
+            assert (doc.payee_type, doc.payee_id) == ('vendor', doc.vendor_id), doc
 
     def test_deterministic(self, base_db):
         admin = _admin()

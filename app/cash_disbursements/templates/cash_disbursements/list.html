@@ -79,7 +79,7 @@
 
 <!-- Filter bar -->
 <form method="GET" action="{{ url_for('cash_disbursements.list_cdvs') }}" class="cdv-filter-bar">
-    <input type="text" name="q" value="{{ q }}" placeholder="Search CDV # or vendor"
+    <input type="text" name="q" value="{{ q }}" placeholder="Search CDV # or payee"
            class="form-control form-control-sm cdv-filter-search">
     <select name="status" class="form-control form-control-sm">
         <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>

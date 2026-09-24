@@ -265,7 +265,7 @@ def list_cdvs():
                            pm_filter=pm_filter)
 
 
-def _payee_from_request(form=None):
+def _payee_from_request():
     """(payee_type, payee_id) from the POSTed `payee`, or from a legacy `vendor_id`
     field (anything that still posts the pre-2026-09-24 name keeps working)."""
     raw = request.form.get('payee') or request.args.get('payee')
@@ -1123,7 +1123,7 @@ def create():
                   f'({fresh}) has been suggested below -- review and Save again.', 'error')
             return _render_form()
         try:
-            payee_type, payee_id = _payee_from_request(form)
+            payee_type, payee_id = _payee_from_request()
             payee = resolve_payee(payee_type, payee_id)
             if not payee:
                 flash('Selected payee not found.', 'error')
@@ -1274,7 +1274,7 @@ def edit(id):
                   'Enter a unique CD number.', 'error')
             return _render_edit_form()
         try:
-            payee_type, payee_id = _payee_from_request(form)
+            payee_type, payee_id = _payee_from_request()
             payee = resolve_payee(payee_type, payee_id)
             if not payee:
                 flash('Selected payee not found.', 'error')

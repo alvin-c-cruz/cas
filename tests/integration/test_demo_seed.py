@@ -236,6 +236,10 @@ def test_run_seed_demo_full_balances(db_session):
     assert AccountsPayable.query.count() >= 8
     assert CashReceiptVoucher.query.count() >= 6
     assert CashDisbursementVoucher.query.count() >= 6
+    # Seeded vouchers name their payee: the CV/APV list filter, export and
+    # payee-defaults all match on payee_type/payee_id, never vendor_id alone.
+    for doc in AccountsPayable.query.all() + CashDisbursementVoucher.query.all():
+        assert (doc.payee_type, doc.payee_id) == ('vendor', doc.vendor_id), doc
     # Trial balance: total posted debits == total posted credits
     tot_d = tot_c = Decimal('0')
     for je in JournalEntry.query.filter_by(status='posted').all():

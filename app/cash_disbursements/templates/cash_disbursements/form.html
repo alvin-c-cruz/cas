@@ -506,7 +506,7 @@ function setVendorCardState(selected, vendorName) {
         document.querySelectorAll('.header-fields').forEach(el => el.classList.add('header-fields--active'));
     } else {
         card.classList.remove('vendor-step-card--done');
-        label.textContent = 'Step 1 — Select Vendor';
+        label.textContent = 'Step 1 — Select Payee';
         document.querySelectorAll('.header-fields').forEach(el => el.classList.remove('header-fields--active'));
     }
 }

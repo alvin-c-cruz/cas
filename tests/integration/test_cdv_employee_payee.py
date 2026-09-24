@@ -167,6 +167,23 @@ class TestSectionA:
         audit = AuditLog.query.filter_by(module='cash_disbursement', action='create', record_id=cdv.id).first()
         assert audit is not None and '"employee"' in (audit.new_values or '')
 
+    def test_a_vendor_cv_cannot_settle_an_employee_bill_and_vice_versa(self, client, db_session,
+                                                                      admin_user, main_branch,
+                                                                      employees, accounts):
+        corp, _ = employees
+        vendor = make_vendor(db_session)
+        from tests.integration.test_accounts_payable_views import make_ap
+        vbill = make_ap(db_session, vendor, main_branch, 'V-X-1')      # payee_id stays 0 (seeded shape)
+        ebill = _employee_apv(db_session, corp, main_branch, 'E-X-1')
+        _open(client, main_branch)
+        r = _post_cdv(client, f'vendor:{vendor.id}', accounts['cash'], number='X-1',
+                      ap_lines=[{'bill_id': ebill.id, 'amount_applied': 1.0}])
+        assert b'not available for this payee' in r.data
+        r = _post_cdv(client, f'employee:{corp.id}', accounts['cash'], number='X-2',
+                      ap_lines=[{'bill_id': vbill.id, 'amount_applied': 1.0}])
+        assert b'not available for this payee' in r.data
+        assert CashDisbursementVoucher.query.count() == 0
+
 
 class TestVendorPathUnchanged:
 
@@ -301,3 +318,91 @@ class TestPrintoutsAndLists:
             rows, columns, headers = _cdv_export_data(main_branch.id)
         assert 'Payee Type' in headers
         assert any(r['Payee Type'] == 'employee' for r in rows)
+
+
+def _edit_cdv(client, cdv, payee, cash, expense_lines, **extra):
+    data = {
+        'cdv_number': cdv.cdv_number, 'cdv_date': '2026-09-24', 'payee': payee,
+        'payment_method': 'cash', 'cash_account_id': cash.id, 'notes': 'edited',
+        'row_version': cdv.row_version,
+        'ap_lines': json.dumps([]), 'expense_lines': json.dumps(list(expense_lines)),
+        'vat_override': '0', 'vat_override_value': '0', 'wt_override': '0', 'wt_override_value': '0',
+    }
+    data.update(extra)
+    return client.post(f'/cash-disbursements/{cdv.id}/edit', data=data, follow_redirects=True)
+
+
+class TestEmployeeEdit:
+    """The EDIT path of an employee-payee CV, through the real route."""
+
+    def test_edit_preselects_rebounds_and_audits_the_employee(self, client, db_session, admin_user,
+                                                              main_branch, branch_manila,
+                                                              employees, accounts):
+        corp, other = employees
+        from app.withholding_tax.models import WithholdingTax
+        db_session.add(WithholdingTax(code='WC010', name='a', rate=Decimal('1'), is_active=True))
+        db_session.commit()
+        _open(client, main_branch)
+        line = {'description': 'x', 'amount': 10.0, 'vat_category': '',
+                'account_id': accounts['exp'].id, 'wt_id': None}
+        _post_cdv(client, f'employee:{corp.id}', accounts['cash'], number='EMP-ED',
+                  expense_lines=[line])
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='EMP-ED').one()
+        assert cdv.status == 'draft'
+
+        # GET edit preselects the employee and seeds every active WHT code.
+        html = client.get(f'/cash-disbursements/{cdv.id}/edit').get_data(as_text=True)
+        assert re.search(rf'value="employee:{corp.id}"\s+selected', html)
+        assert '"WC010"' in html
+        assert '✓ Anissa Tang' in html
+
+        # A failed POST (bad line) re-renders with the POSTED payee selected; nothing saved.
+        bad = dict(line, account_id=999999)
+        resp = _edit_cdv(client, cdv, f'employee:{other.id}', accounts['cash'], [bad])
+        assert resp.status_code == 200
+        assert re.search(rf'value="employee:{other.id}"\s+selected', resp.get_data(as_text=True))
+        db_session.expire_all()
+        cdv = db_session.get(CashDisbursementVoucher, cdv.id)
+        assert cdv.payee_id == corp.id and cdv.vendor_name == 'Anissa Tang'
+
+        # Employee -> other employee: saved, and the update audit carries before/after.
+        resp = _edit_cdv(client, cdv, f'employee:{other.id}', accounts['cash'], [line])
+        assert resp.status_code == 200 and b'updated successfully' in resp.data
+        db_session.expire_all()
+        cdv = db_session.get(CashDisbursementVoucher, cdv.id)
+        assert (cdv.payee_type, cdv.payee_id, cdv.vendor_id, cdv.vendor_name) ==             ('employee', other.id, None, 'Lawrence Kiok')
+        audit = (AuditLog.query.filter_by(module='cash_disbursement', action='update',
+                                          record_id=cdv.id)
+                 .order_by(AuditLog.id.desc()).first())
+        assert audit is not None
+        assert str(corp.id) in (audit.old_values or '')
+        assert str(other.id) in (audit.new_values or '')
+
+        # Employee -> vendor sets vendor_id again.
+        vendor = make_vendor(db_session)
+        resp = _edit_cdv(client, cdv, f'vendor:{vendor.id}', accounts['cash'], [line])
+        assert b'updated successfully' in resp.data
+        db_session.expire_all()
+        cdv = db_session.get(CashDisbursementVoucher, cdv.id)
+        assert (cdv.payee_type, cdv.payee_id, cdv.vendor_id) == ('vendor', vendor.id, vendor.id)
+
+        # A legacy vendor_id POST on edit (empty `payee`) still works.
+        resp = _edit_cdv(client, cdv, '', accounts['cash'], [line], vendor_id=vendor.id)
+        assert b'updated successfully' in resp.data
+
+    def test_a_scoped_user_cannot_move_a_cv_to_an_unreachable_employee(self, client, db_session,
+                                                                      admin_user, staff_user,
+                                                                      main_branch, branch_manila,
+                                                                      employees, accounts):
+        corp, other = employees
+        staff_user.set_branches([main_branch]); db_session.commit()
+        _open(client, main_branch, 'staff', 'staff123')
+        line = {'description': 'x', 'amount': 10.0, 'vat_category': '',
+                'account_id': accounts['exp'].id, 'wt_id': None}
+        _post_cdv(client, f'employee:{corp.id}', accounts['cash'], number='EMP-SC',
+                  expense_lines=[line])
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='EMP-SC').one()
+        resp = _edit_cdv(client, cdv, f'employee:{other.id}', accounts['cash'], [line])
+        assert b'Selected payee not found.' in resp.data
+        db_session.expire_all()
+        assert db_session.get(CashDisbursementVoucher, cdv.id).payee_id == corp.id
