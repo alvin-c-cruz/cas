@@ -1,7 +1,7 @@
 # CV employee payee — design
 
 **Date:** 2026-09-24
-**Status:** approved by the owner in conversation, 2026-09-24; awaiting the implementation plan
+**Status:** implemented 2026-09-24 (commits f1ff706b..b04ddbb4 + this task); see the plan beside this file
 **Owner's words:** "I cant access the employee names from CV extra. they should be available for both branches."
 
 ## The problem, as found

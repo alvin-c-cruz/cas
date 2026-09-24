@@ -70,7 +70,7 @@ return 404 for *every* role, admin included, so the route appears not to exist.
 | Area | Core | Optional |
 |---|---|---|
 | Sales | Sales Invoices, Cash Receipts | Quotations, Sales Orders, Job Order Slips, Delivery Receipts, Credit Memos, Debit Notes |
-| Purchases | Accounts Payable, Cash Disbursements | Purchase Requisitions, Purchase Orders, Receiving Reports, Vendor Debit Memos, Vendor Credit Memos |
+| Purchases | Accounts Payable, Cash Disbursements (payee: vendor or employee, since 2026-09-24) | Purchase Requisitions, Purchase Orders, Receiving Reports, Vendor Debit Memos, Vendor Credit Memos |
 | Accounting | Journal Voucher | — |
 | Banking | — | Bank Accounts, Bank Transfers, Petty Cash, Bank Reconciliation |
 | Payroll | — | Payroll |
