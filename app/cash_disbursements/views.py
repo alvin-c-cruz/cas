@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session, abort, current_app
 from flask_login import login_required, current_user
+import re
 from functools import wraps
 from sqlalchemy.orm import selectinload
 from app import db
@@ -95,6 +96,57 @@ def generate_cdv_number():
     else:
         next_num = 1
     return f'{prefix}{next_num:04d}'
+
+
+# A pad number: digits, then an optional non-digit marker ('01644', '1656', '0009E').
+# Same shape the PO pad uses; anything else (the generated 'CD-2026-09-0001') is a
+# legacy or foreign number and is ignored rather than allowed to perturb the pad.
+_CDV_PAD_RE = re.compile(r'^(\d+)(\D*)$')
+
+
+def next_cdv_number_for(branch_id):
+    """Suggest the next number off THIS branch's own pre-printed CV pad.
+
+    Owner, 2026-09-24: "the CV number should increment based on what the user
+    entered before ... See SO for corp and extra." Philgen's CVs are pad numbers
+    typed off the paper ('01644', '1656'); generate_cdv_number()'s
+    CD-YYYY-MM-NNNN is a shape the client never uses, so every entry meant
+    retyping the number by hand.
+
+    PER BRANCH, as SO numbering is (CORP plain, EXTRA with its marker) -- the
+    owner's choice over the PO pad's per-purchaser series. The digit part is
+    incremented as a NUMBER while the zero-padded width and the marker survive
+    verbatim: '01644' -> '01645', '0009E' -> '0010E', '9999' -> '10000'. The
+    numeric max wins, not the latest string: '1656' beats '01644'.
+
+    Falls back to generate_cdv_number() when the branch has no pad number yet,
+    so the demo and RIC instances keep the generated shape. Only ever a
+    SUGGESTION: cdv_number stays typed, editable and unique. Because it is
+    unique company-wide, a candidate another branch already holds is skipped
+    by walking this branch's own series past it -- never offer a number the
+    save will refuse (the PO pad's collision lesson).
+    """
+    if not branch_id:
+        return generate_cdv_number()
+    rows = (db.session.query(CashDisbursementVoucher.cdv_number)
+            .filter(CashDisbursementVoucher.branch_id == branch_id).all())
+    best = None
+    for (number,) in rows:
+        m = _CDV_PAD_RE.match(number) if number else None
+        if not m:
+            continue
+        digits, marker = m.group(1), m.group(2)
+        value = int(digits)
+        if best is None or value > best[0]:
+            best = (value, len(digits), marker)
+    if best is None:
+        return generate_cdv_number()
+    value, width, marker = best
+    taken = {n for (n,) in db.session.query(CashDisbursementVoucher.cdv_number).all() if n}
+    candidate = value + 1
+    while f'{candidate:0{width}d}{marker}' in taken:
+        candidate += 1
+    return f'{candidate:0{width}d}{marker}'
 
 
 def _get_cdv_or_404(id):
@@ -908,8 +960,11 @@ def create():
         # Uniqueness check: the user-typed (or pre-filled) CD number must not
         # already be in use by any other CDV (regardless of status).
         cdv_number = (form.cdv_number.data or '').strip()
+        # A fresh number after a collision comes off the same branch pad the
+        # suggestion did, not the generated series.
+        next_on_pad = lambda: next_cdv_number_for(session.get('selected_branch_id'))
         fresh = fresh_number_if_collision(CashDisbursementVoucher, 'cdv_number',
-                                           cdv_number, generate_cdv_number)
+                                           cdv_number, next_on_pad)
         if fresh is not None:
             form.cdv_number.data = fresh
             flash(f'CD number "{cdv_number}" is already in use. A new number '
@@ -955,7 +1010,7 @@ def create():
             # check_number-per-cash-account, is unrelated and must not be misdiagnosed as
             # this numbering race; see flush_or_suggest_fresh_number's docstring.)
             fresh = flush_or_suggest_fresh_number(cdv, CashDisbursementVoucher, 'cdv_number',
-                                                   generate_cdv_number)
+                                                   next_on_pad)
             if fresh:
                 form.cdv_number.data = fresh
                 flash(f'CD number "{cdv_number}" was just taken by another entry (concurrent '
@@ -998,7 +1053,8 @@ def create():
                   'again; if it persists, contact your administrator.', 'error')
 
     if request.method == 'GET':
-        form.cdv_number.data = generate_cdv_number()
+        # The branch's own pad, not the generated series -- see next_cdv_number_for.
+        form.cdv_number.data = next_cdv_number_for(session.get('selected_branch_id'))
         form.cdv_date.data = ph_now().date()
 
     return _render_form()
