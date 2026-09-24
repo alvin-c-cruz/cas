@@ -253,3 +253,51 @@ class TestSectionB:
         html = client.get('/cash-disbursements/create').get_data(as_text=True)
         assert '/cash-disbursements/payee-defaults' in html
         assert re.search(r'/vendors/\$\{[a-zA-Z]+\}/defaults', html) is None
+
+
+class TestPrintoutsAndLists:
+
+    def _employee_check_cv(self, client, db_session, main_branch, employees, accounts):
+        corp, _ = employees
+        apv = _employee_apv(db_session, corp, main_branch, 'E-APV-9', total='300.00')
+        _open(client, main_branch)
+        _post_cdv(client, f'employee:{corp.id}', accounts['cash'], number='EMP-CHK',
+                  method='check', ap_lines=[{'bill_id': apv.id, 'amount_applied': 300.0}])
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='EMP-CHK').one()
+        cdv.check_number = 'CHK-9001'; cdv.status = 'posted'; db_session.commit()
+        return cdv
+
+    def test_the_check_names_the_employee(self, client, db_session, admin_user, main_branch,
+                                          employees, accounts):
+        cdv = self._employee_check_cv(client, db_session, main_branch, employees, accounts)
+        html = client.get(f'/cash-disbursements/{cdv.id}/print-check').get_data(as_text=True)
+        m = re.search(r'data-el="payee"[^>]*>([^<]*)</div>', html)
+        assert m and m.group(1) == 'Anissa Tang'
+
+    def test_detail_and_print_show_the_employee_and_no_deposit_block(self, client, db_session,
+                                                                     admin_user, main_branch,
+                                                                     employees, accounts):
+        cdv = self._employee_check_cv(client, db_session, main_branch, employees, accounts)
+        cdv.payment_method = 'bank_transfer'; db_session.commit()
+        for url in (f'/cash-disbursements/{cdv.id}', f'/cash-disbursements/{cdv.id}/print'):
+            html = client.get(url).get_data(as_text=True)
+            assert 'Anissa Tang' in html
+            assert 'data-deposit-to' not in html, url
+
+    def test_the_list_filters_by_employee(self, client, db_session, admin_user, main_branch,
+                                          employees, accounts):
+        corp, _ = employees
+        cdv = self._employee_check_cv(client, db_session, main_branch, employees, accounts)
+        html = client.get(f'/cash-disbursements?payee=employee:{corp.id}').get_data(as_text=True)
+        assert 'EMP-CHK' in html
+        assert f'<option value="employee:{corp.id}"' in html
+
+    def test_the_export_carries_the_payee_type(self, client, db_session, admin_user, main_branch,
+                                               employees, accounts):
+        self._employee_check_cv(client, db_session, main_branch, employees, accounts)
+        from app.cash_disbursements.views import _cdv_export_data
+        with client.application.test_request_context('/cash-disbursements/export/csv'):
+            from flask import session as s; s['selected_branch_id'] = main_branch.id
+            rows, columns, headers = _cdv_export_data(main_branch.id)
+        assert 'Payee Type' in headers
+        assert any(r['Payee Type'] == 'employee' for r in rows)

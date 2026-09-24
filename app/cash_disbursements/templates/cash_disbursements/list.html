@@ -88,10 +88,13 @@
         <option value="voided" {% if status_filter == 'voided' %}selected{% endif %}>Voided</option>
         <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
     </select>
-    <select name="vendor" id="vendor-filter" class="form-control form-control-sm">
-        <option value="all">All Vendors</option>
+    <select name="payee" id="vendor-filter" class="form-control form-control-sm">
+        <option value="all">All Payees</option>
         {% for v in vendors %}
-        <option value="{{ v.id }}" {% if vendor_filter == v.id|string %}selected{% endif %}>{{ v.name }}</option>
+        <option value="vendor:{{ v.id }}" {% if payee_filter == 'vendor:' ~ v.id %}selected{% endif %}>{{ v.name }} [Vendor]</option>
+        {% endfor %}
+        {% for e in employees %}
+        <option value="employee:{{ e.id }}" {% if payee_filter == 'employee:' ~ e.id %}selected{% endif %}>{{ e.full_name }} [Employee]</option>
         {% endfor %}
     </select>
     <select name="payment_method" class="form-control form-control-sm">
@@ -180,7 +183,7 @@
         </table>
         </div>
         {% else %}
-        {% set filters_active = q or status_filter != 'all' or vendor_filter != 'all' or pm_filter != 'all' or date_from or date_to %}
+        {% set filters_active = q or status_filter != 'all' or payee_filter != 'all' or pm_filter != 'all' or date_from or date_to %}
         <div class="empty-state">
             {% if filters_active %}
             <p>No CDVs match your filters.</p>
@@ -203,11 +206,11 @@
         </div>
         <div style="display:flex;gap:8px">
             {% if pagination.has_prev %}
-            <a href="{{ url_for('cash_disbursements.list_cdvs', page=pagination.prev_num, status=status_filter, vendor=vendor_filter, payment_method=pm_filter, q=q, date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('cash_disbursements.list_cdvs', page=pagination.prev_num, status=status_filter, payee=payee_filter, payment_method=pm_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">&#8592; Previous</a>
             {% endif %}
             {% if pagination.has_next %}
-            <a href="{{ url_for('cash_disbursements.list_cdvs', page=pagination.next_num, status=status_filter, vendor=vendor_filter, payment_method=pm_filter, q=q, date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('cash_disbursements.list_cdvs', page=pagination.next_num, status=status_filter, payee=payee_filter, payment_method=pm_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">Next &#8594;</a>
             {% endif %}
         </div>

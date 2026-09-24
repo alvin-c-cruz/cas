@@ -204,12 +204,12 @@ def list_cdvs():
     if status_filter in VALID_CDV_STATUSES:
         query = query.filter_by(status=status_filter)
 
-    vendor_filter = request.args.get('vendor', 'all')
-    if vendor_filter != 'all':
-        try:
-            query = query.filter_by(vendor_id=int(vendor_filter))
-        except ValueError:
-            pass
+    payee_filter = request.args.get('payee') or (
+        f"vendor:{request.args.get('vendor')}" if request.args.get('vendor', 'all') != 'all' else 'all')
+    if payee_filter != 'all':
+        p_type, p_id = parse_payee(payee_filter)
+        if p_id:
+            query = query.filter_by(payee_type=p_type, payee_id=p_id)
 
     q = request.args.get('q', '').strip()
     if q:
@@ -248,15 +248,17 @@ def list_cdvs():
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     summary = compute_cdv_summary(branch_id)
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+    employees = employee_payee_query().all()
 
     return render_template('cash_disbursements/list.html',
                            cdvs=pagination.items,
                            pagination=pagination,
                            vendors=vendors,
+                           employees=employees,
                            summary=summary,
                            today=ph_now().date(),
                            status_filter=status_filter,
-                           vendor_filter=vendor_filter,
+                           payee_filter=payee_filter,
                            q=q,
                            date_from=date_from,
                            date_to=date_to,
@@ -1704,12 +1706,13 @@ def _build_check_values(cdv, layout):
     except (ValueError, TypeError, InvalidOperation):
         return None, 'The disbursement amount cannot be spelled onto a check.'
     date_fmt = DATE_FORMATS[layout['dateFormat']]
-    # Who the cheque is made out to: the vendor's Check Payee Name when set, else its
-    # name. Read LIVE from the vendor, as the voucher overlay's check_payee is -- the
-    # owner ruled 2026-09-06 that this name needs no snapshot (see the note in
-    # print_preprinted.html). Until 2026-09-23 only the voucher printed it.
-    payee = ((cdv.vendor.check_payee_name or '').strip() if cdv.vendor else '') or \
-        (cdv.vendor.name if cdv.vendor else cdv.vendor_name)
+    # Who the cheque is made out to. A VENDOR may carry a Check Payee Name alias
+    # (2026-09-23); an EMPLOYEE has none, so the snapshot -- the full name -- is
+    # the payee. Read live from the vendor, no snapshot (owner ruling 2026-09-06).
+    alias = ''
+    if cdv.payee_type == 'vendor' and cdv.vendor:
+        alias = (cdv.vendor.check_payee_name or '').strip()
+    payee = alias or cdv.vendor_name
     values = {
         'payee': payee or '',
         'check_date': cdv.check_date.strftime(date_fmt) if cdv.check_date else '',
@@ -1793,25 +1796,25 @@ def print_check(id):
 def _cdv_export_data(branch_id):
     """Return (data_dicts, columns, headers) for CDV list export.
 
-    Applies the same filters as list_cdvs (status, vendor, payment_method,
+    Applies the same filters as list_cdvs (status, payee, payment_method,
     date_from, date_to).  Returns pre-built dicts so that export_to_excel /
     export_to_csv can consume them via the dict path.
     """
     q = CashDisbursementVoucher.query.filter_by(branch_id=branch_id)
 
     status = request.args.get('status', '')
-    vendor_id = request.args.get('vendor', '')
+    payee_filter = request.args.get('payee') or (
+        f"vendor:{request.args.get('vendor')}" if request.args.get('vendor', 'all') != 'all' else 'all')
     payment_method = request.args.get('payment_method', '')
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
 
     if status and status != 'all':
         q = q.filter(CashDisbursementVoucher.status == status)
-    if vendor_id and vendor_id != 'all':
-        try:
-            q = q.filter(CashDisbursementVoucher.vendor_id == int(vendor_id))
-        except ValueError:
-            pass
+    if payee_filter != 'all':
+        p_type, p_id = parse_payee(payee_filter)
+        if p_id:
+            q = q.filter_by(payee_type=p_type, payee_id=p_id)
     if payment_method and payment_method != 'all':
         q = q.filter(CashDisbursementVoucher.payment_method == payment_method)
     if date_from:
@@ -1829,7 +1832,7 @@ def _cdv_export_data(branch_id):
                       CashDisbursementVoucher.cdv_number.desc()).all()
 
     columns = [
-        'CDV Number', 'Date', 'Vendor', 'Payment Method',
+        'CDV Number', 'Date', 'Vendor', 'Payee Type', 'Payment Method',
         'Check #', 'Check Date', 'Cash/Bank Account',
         'AP Applied', 'Direct Expenses', 'Input VAT', 'WHT',
         'Net Disbursed', 'Status',
@@ -1840,6 +1843,7 @@ def _cdv_export_data(branch_id):
             'CDV Number': cdv.cdv_number,
             'Date': cdv.cdv_date.strftime('%Y-%m-%d') if cdv.cdv_date else '',
             'Vendor': cdv.vendor_name,
+            'Payee Type': cdv.payee_type,
             'Payment Method': (cdv.payment_method.replace('_', ' ').title()
                                if cdv.payment_method else ''),
             'Check #': cdv.check_number or '',
