@@ -932,6 +932,66 @@ def _check_serial_error(cdv):
             f'cash/bank account.') if conflict else None
 
 
+def next_check_for_account(account_id):
+    """{'check_number', 'bank'} to suggest for a check drawn on `account_id`.
+
+    Owner, 2026-09-24: "can we also auto increment check number field?" and "the
+    two bank fields should also autofill." A checkbook belongs to a bank ACCOUNT,
+    so the series is per cash/bank account -- the same key the serial-uniqueness
+    guard above uses, so the suggestion and the save agree: the account's highest
+    live check serial plus one, width kept ('0012345' -> '0012346'), walked past
+    any serial a live CDV on that account still holds. A voided serial is free to
+    reuse, exactly as _check_serial_error allows. Only check CDVs count; a stray
+    serial on a cash CDV is noise.
+
+    The bank is the account's own bank_name from Bank Accounts when it has one,
+    else the bank typed on that account's most recent check. Both are suggestions
+    the form fills only into an empty box. Empty strings, never None, so the JSON
+    is always the same shape.
+    """
+    empty = {'check_number': '', 'bank': ''}
+    if not account_id:
+        return empty
+    rows = (db.session.query(CashDisbursementVoucher.check_number,
+                             CashDisbursementVoucher.check_bank,
+                             CashDisbursementVoucher.status)
+            .filter(CashDisbursementVoucher.cash_account_id == account_id,
+                    CashDisbursementVoucher.payment_method == 'check')
+            .order_by(CashDisbursementVoucher.id).all())
+    best, live, last_bank = None, set(), ''
+    for number, bank, status in rows:
+        num = (number or '').strip()
+        if bank and (bank or '').strip():
+            last_bank = bank.strip()
+        if status in ('voided', 'cancelled') or not num:
+            continue
+        live.add(num)
+        m = _CDV_PAD_RE.match(num)
+        if not m:
+            continue
+        value, width, marker = int(m.group(1)), len(m.group(1)), m.group(2)
+        if best is None or value > best[0]:
+            best = (value, width, marker)
+    check_number = ''
+    if best is not None:
+        value, width, marker = best
+        candidate = value + 1
+        while f'{candidate:0{width}d}{marker}' in live:
+            candidate += 1
+        check_number = f'{candidate:0{width}d}{marker}'
+    from app.bank_accounts.models import BankAccount
+    account = BankAccount.query.filter_by(account_id=account_id).first()
+    bank = (account.bank_name or '').strip() if account and account.bank_name else last_bank
+    return {'check_number': check_number, 'bank': bank}
+
+
+@cash_disbursements_bp.route('/cash-disbursements/next-check')
+@login_required
+def next_check():
+    """JSON for the CV form: the next check serial and bank for ?account_id=."""
+    return jsonify(next_check_for_account(request.args.get('account_id', type=int)))
+
+
 @cash_disbursements_bp.route('/cash-disbursements/create', methods=['GET', 'POST'])
 @login_required
 @staff_or_above_required

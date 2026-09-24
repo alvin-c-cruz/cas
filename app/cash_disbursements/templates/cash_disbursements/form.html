@@ -434,6 +434,38 @@ if (pmSel) {
     toggleCheckFields();
 }
 
+// ── Check autofill: serial, bank and date for the chosen cash/bank account ────
+// The checkbook belongs to the ACCOUNT, so the next serial and the bank come from
+// /cash-disbursements/next-check for the selected account. Only an EMPTY box is
+// filled, or one still holding our own previous suggestion -- a typed value is
+// never overwritten. Check Date defaults to the CDV date.
+const checkNoInput   = document.getElementById('check_number');
+const checkBankInput = document.getElementById('check_bank');
+const checkDateInput = document.getElementById('check_date');
+const cdvDateInput   = document.getElementById('cdv_date');
+let lastCheckSuggestion = { check_number: '', bank: '' };
+function fillCheckDefaults() {
+    if (!pmSel || pmSel.value !== 'check' || !cashAccSel || !cashAccSel.value) return;
+    if (checkDateInput && !checkDateInput.value && cdvDateInput && cdvDateInput.value) {
+        checkDateInput.value = cdvDateInput.value;
+    }
+    fetch(`/cash-disbursements/next-check?account_id=${encodeURIComponent(cashAccSel.value)}`)
+        .then(r => r.json())
+        .then(d => {
+            if (checkNoInput && (!checkNoInput.value || checkNoInput.value === lastCheckSuggestion.check_number)) {
+                checkNoInput.value = d.check_number || '';
+            }
+            if (checkBankInput && (!checkBankInput.value || checkBankInput.value === lastCheckSuggestion.bank)) {
+                checkBankInput.value = d.bank || '';
+            }
+            lastCheckSuggestion = d;
+        })
+        .catch(() => {});
+}
+if (pmSel) pmSel.addEventListener('change', fillCheckDefaults);
+if (cashAccSel) cashAccSel.addEventListener('change', fillCheckDefaults);
+{% if not cdv %}fillCheckDefaults();{% endif %}
+
 // Notes are required — re-validate the save button as the user types.
 const notesField = document.querySelector('textarea[name="notes"]');
 if (notesField) notesField.addEventListener('input', validateForm);
