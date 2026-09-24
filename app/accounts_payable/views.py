@@ -1399,7 +1399,13 @@ def post(id):
     if not validate_transaction_date_with_flash(ap.ap_date, 'AP Voucher'):
         return redirect(url_for('accounts_payable.view', id=id))
 
-    needs_invoice = ap.vat_amount > 0 or ap.withholding_tax_amount > 0
+    # An ADVANCE has no invoice yet by definition -- the vendor bills after the
+    # money moves -- so Payment Terms = "Advance Payment" waives the invoice
+    # requirement at post. Owner, 2026-09-24, on APV 40: it "should be processed
+    # with a check because its advanced payment and therefore no invoice from
+    # vendor has been issued." A bill on any other terms is still refused.
+    is_advance = (ap.payment_terms or '').strip().lower() == 'advance payment'
+    needs_invoice = (ap.vat_amount > 0 or ap.withholding_tax_amount > 0) and not is_advance
     if needs_invoice:
         missing = []
         if not ap.vendor_invoice_number:
