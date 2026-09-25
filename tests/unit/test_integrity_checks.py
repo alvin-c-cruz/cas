@@ -229,3 +229,28 @@ def test_a_snapshot_without_max_ids_still_compares(db_session, main_branch):
     findings = compare_aggregates(before, compute_aggregates(db_session), session=db_session)
     growth = _find(findings, 'aggregate_row_growth')
     assert growth['ok'] is True and 'journal_entries:1->2' in growth['detail']
+
+
+def test_growth_names_a_row_by_its_first_identifier_that_is_set(db_session, main_branch):
+    """Deploy 2026-09-25: two new products were noted as 'None' -- `code` comes before
+    `name` in the identifier list and products no longer carry a code. An identifier
+    that is empty on the row is skipped, per row, so the note shows the name."""
+    from app.products.models import Product
+    db_session.add(Product(name='FLOUR 25KG', is_active=True)); db_session.commit()
+    before = compute_aggregates(db_session)
+    db_session.add(Product(name='MARGARINE 5KG', is_active=True)); db_session.commit()
+    findings = compare_aggregates(before, compute_aggregates(db_session), session=db_session)
+    detail = _find(findings, 'aggregate_row_growth')['detail']
+    assert 'MARGARINE 5KG' in detail
+    assert 'None' not in detail
+
+
+def test_growth_in_a_table_that_was_empty_is_still_named(db_session, main_branch):
+    """An empty table's high-water mark is NULL; that means 'every row is new', not
+    'no snapshot to compare with' (the old-baseline case above, where the key is absent)."""
+    from app.products.models import Product
+    before = compute_aggregates(db_session)
+    assert before['table_counts']['products'] == 0
+    db_session.add(Product(name='MARGARINE 5KG', is_active=True)); db_session.commit()
+    findings = compare_aggregates(before, compute_aggregates(db_session), session=db_session)
+    assert 'MARGARINE 5KG' in _find(findings, 'aggregate_row_growth')['detail']

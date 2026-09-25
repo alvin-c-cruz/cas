@@ -105,7 +105,7 @@ def compute_aggregates(session):
 
 
 # Attributes tried, in order, to name a new row in the growth note. Not a per-table
-# list: whatever model maps the table supplies the first one it has.
+# list: each row is named by the first of these its model has AND the row has set.
 _IDENT_ATTRS = ('entry_number', 'cdv_number', 'crv_number', 'ap_number', 'po_number',
                 'pr_number', 'rr_number', 'so_number', 'si_number', 'dr_number',
                 'reference', 'number', 'code', 'username', 'name')
@@ -126,10 +126,13 @@ def _describe_new_rows(session, table, since_id):
     if Model is None or not hasattr(Model, 'id'):
         return ''
     rows = session.query(Model).filter(Model.id > since_id).order_by(Model.id).limit(_GROWTH_ROWS_SHOWN + 1).all()
-    ident = next((a for a in _IDENT_ATTRS if hasattr(Model, a)), None)
+    idents = [a for a in _IDENT_ATTRS if hasattr(Model, a)]
     out = []
     for r in rows[:_GROWTH_ROWS_SHOWN]:
-        bits = [str(getattr(r, ident)) if ident else f'id {r.id}']
+        # Per row, the first identifier that is SET: products keep a retired `code`
+        # column that is NULL, and printing it named new products "None".
+        label = next((str(v) for v in (getattr(r, a) for a in idents) if v not in (None, '')), None)
+        bits = [label or f'id {r.id}']
         for attr, fmt in (('status', '{}'), ('created_at', '{:%Y-%m-%d %H:%M:%S}'),
                           ('created_by_id', 'user {}'), ('user_id', 'user {}')):
             v = getattr(r, attr, None)
@@ -169,7 +172,10 @@ def compare_aggregates(before, after, session=None):
         if b == a:
             continue
         if b is not None and a is not None and a > b:
-            since = before.get('table_max_ids', {}).get(t)
+            # A table that was empty has MAX(id) NULL: every row is new. Only a missing
+            # key (a baseline from before max ids were dumped) leaves growth unnamed.
+            max_ids = before.get('table_max_ids', {})
+            since = (max_ids[t] or 0) if t in max_ids else None
             who = _describe_new_rows(session, t, since) if session is not None and since is not None else ''
             growth.append(f'{t}:{b}->{a}' + (f' [{who}]' if who else ''))
             continue
