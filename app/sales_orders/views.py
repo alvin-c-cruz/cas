@@ -4,6 +4,7 @@ Operational module only: posts NO journal entry, has NO GL account, NO WHT, NO p
 Mirrors sales_invoices.views create/edit with all accounting stripped.
 """
 import json
+import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -312,6 +313,51 @@ def generate_so_number(branch, order_date):
     return f'{yyyymm}{next_seq:04d}{suffix}'
 
 
+# A pad number: digits, then an optional marker ('00002E', '00041'). The CV pad rule.
+_SO_PAD_RE = re.compile(r'^(\d+)(\D*)$')
+
+
+def _is_generated_so_number(digits):
+    """True for generate_so_number's own YYYYMMnnnn shape. Those are all digits too, and
+    read as a pad number '2026090001' would win every max -- so they are left out."""
+    return len(digits) == 10 and digits[:2] == '20' and 1 <= int(digits[4:6]) <= 12
+
+
+def next_so_number_for(branch, order_date):
+    """Suggest the next number of THIS branch's own SO series.
+
+    Owner, 2026-09-25: "Check the SO# for Corp and Extra, they should increment based of
+    the last number on record." Philgen's SOs are 00001E, 00002E -- typed off the pad --
+    which generate_so_number's YYYYMMnnnn shape never recognised, so the form suggested a
+    number from a different series. This is the CV rule (next_cdv_number_for,
+    2026-09-24): per branch, the numeric max of the branch's pad-shaped numbers plus one,
+    zero-padding and marker kept ('00002E' -> '00003E', '99999' -> '100000'); a number
+    held anywhere (so_number is unique) is skipped. A branch with no pad number on record
+    falls back to generate_so_number, so a fresh branch still gets a sensible number.
+    Only a suggestion: the field stays typed and editable.
+    """
+    if branch is None:
+        return generate_so_number(branch, order_date)
+    rows = (db.session.query(SalesOrder.so_number)
+            .filter(SalesOrder.branch_id == branch.id).all())
+    best = None
+    for (number,) in rows:
+        m = _SO_PAD_RE.match((number or '').strip())
+        if not m or _is_generated_so_number(m.group(1)):
+            continue
+        value = int(m.group(1))
+        if best is None or value > best[0]:
+            best = (value, len(m.group(1)), m.group(2))
+    if best is None:
+        return generate_so_number(branch, order_date)
+    value, width, marker = best
+    taken = {n for (n,) in db.session.query(SalesOrder.so_number).all() if n}
+    candidate = value + 1
+    while f'{candidate:0{width}d}{marker}' in taken:
+        candidate += 1
+    return f'{candidate:0{width}d}{marker}'
+
+
 # ── role gate ────────────────────────────────────────────────────────────────
 
 def _role_gate():
@@ -325,12 +371,28 @@ def _role_gate():
 # ── form context helper ───────────────────────────────────────────────────────
 
 def _salesperson_choices(branch_id):
-    """(0,'-- None --') + active, branch-scoped employees — only when the Employees module is on."""
+    """(0, 'Company Account') + active salespeople of every branch the user can REACH --
+    only when the Employees module is on.
+
+    Owner, 2026-09-25: "it only show Company Account in Extra but should be Lawrence
+    Kiok" -- a CORP employee. This filtered on EQUALITY with the selected branch, so an
+    EXTRA order offered nobody. Set membership over the accessible branches is the rule
+    the CV payee picker uses (app/common/payee.py), so a user assigned only to EXTRA still
+    sees only EXTRA's salespeople. `branch_id` stays the "no branch selected -> nobody"
+    guard. Shared by the SO, DR, quotation, SI and sales-memo forms.
+    """
     from app.users.module_access import module_enabled
     from app.employees.models import Employee
+    from app.common.payee import accessible_branch_ids
     choices = [(0, 'Company Account')]   # null salesperson = house/company account
     if module_enabled('employees') and branch_id:
-        emps = (Employee.query.filter_by(is_active=True, is_salesperson=True, branch_id=branch_id)
+        # No signed-in user (a background caller) has no "reachable" set: fall back to
+        # the one branch asked about, which is what this function always returned.
+        branch_ids = (accessible_branch_ids()
+                      if getattr(current_user, 'is_authenticated', False) else {branch_id})
+        emps = (Employee.query.filter(Employee.is_active.is_(True),
+                                      Employee.is_salesperson.is_(True),
+                                      Employee.branch_id.in_(branch_ids))
                 .order_by(Employee.last_name, Employee.first_name).all())
         choices += [(e.id, f'{e.employee_no} - {e.full_name}') for e in emps]
     return choices
@@ -575,7 +637,7 @@ def create():
     if request.method == 'GET':
         form.order_date.data = ph_now().date()
         branch = db.session.get(Branch, session.get('selected_branch_id'))
-        form.so_number.data = generate_so_number(branch, form.order_date.data)
+        form.so_number.data = next_so_number_for(branch, form.order_date.data)
         # Carried forward from THIS user's own last order (see
         # next_so_signatories_for) -- a suggestion, not a lock: editing one
         # here changes this order only. Left blank, the printout shows an
