@@ -654,7 +654,13 @@ def view(id):
     created_by_user = (db.session.get(User, po.created_by_id) if po.created_by_id else None)
     approved_by_user = (db.session.get(User, po.approved_by_id) if po.approved_by_id else None)
     cancelled_by_user = (db.session.get(User, po.cancelled_by_id) if po.cancelled_by_id else None)
+    from app.receiving_reports.views import RECEIVABLE_PO_STATUSES, RR_EDIT_ROLES
+    from app.users.module_access import module_enabled
+    can_receive = (po.status in RECEIVABLE_PO_STATUSES
+                   and current_user.role in RR_EDIT_ROLES
+                   and module_enabled('receiving_reports'))
     return render_template('purchase_orders/detail.html', po=po,
+                           can_receive=can_receive,
                            created_by_user=created_by_user,
                            approved_by_user=approved_by_user,
                            cancelled_by_user=cancelled_by_user,

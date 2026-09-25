@@ -35,6 +35,14 @@
     {% if can_approve and po.status in po.AMEND_STATUSES %}
     <a href="{{ url_for('purchase_orders.amend', id=po.id) }}" class="btn btn-primary btn-sm">Amend</a>
     {% endif %}
+    {# Receive (owner, 2026-09-25): opens a new Receiving Report with this PO's vendor and
+       every OPEN line pre-filled. Gated on the same three things receiving_reports.create
+       checks -- the module, the role (RR_EDIT_ROLES) and a receivable status
+       (RECEIVABLE_PO_STATUSES) -- all passed in from the view, so the button and the
+       route read one definition each and cannot drift apart. #}
+    {% if can_receive %}
+    <a href="{{ url_for('receiving_reports.create', po_id=po.id) }}" class="btn btn-primary btn-sm">Receive</a>
+    {% endif %}
   </div>
 </div>
 

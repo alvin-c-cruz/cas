@@ -295,7 +295,39 @@ def _submitted_existing_lines():
     return out
 
 
-def _render_create(form, eligible):
+def _receive_po_prefill(form, branch_id):
+    """For GET /receiving-reports/create?po_id=N: select that PO's vendor and return
+    `(eligible, existing)` with every OPEN line pre-filled at its outstanding quantity.
+    Returns None when there is no usable po_id.
+
+    Owner, 2026-09-25: the PO detail page's Receive button lands here. A PO is received
+    partially and repeatedly, so the pre-fill is each line's OPEN quantity (ordered less
+    what other receipts took) and a fully received line is left out. It is only a
+    starting point -- the receiver edits it down to what arrived, and the save
+    re-measures every ceiling whatever the page offered.
+
+    The branch is the SESSION's, never the query string's (the open-lines route's
+    rule): a PO of another branch, or one not in RECEIVABLE_PO_STATUSES, is refused
+    with a notice that names no other branch's order.
+    """
+    po_id = request.args.get('po_id', type=int)
+    if not po_id:
+        return None
+    po = db.session.get(PurchaseOrder, po_id)
+    if po is None or po.branch_id != branch_id or po.status not in RECEIVABLE_PO_STATUSES:
+        flash('That purchase order cannot be received here -- it is not an open order '
+              'in this branch. Choose the vendor below instead.', 'warning')
+        return None
+    form.vendor_id.data = po.vendor_id
+    eligible = _eligible_purchase_orders(branch_id, po.vendor_id)
+    existing = {}
+    for row in _po_lines_payload([po]).get(po.id, []):
+        if row['open'] > 0:
+            existing[row['purchase_order_item_id']] = row['open']
+    return eligible, existing
+
+
+def _render_create(form, eligible, prefill=None):
     """Render the create form, carrying the receiver's own typed quantities back on a
     bounce.
 
@@ -304,8 +336,12 @@ def _render_create(form, eligible):
     could raise was "Add at least one received line", where there was nothing typed
     to lose. Re-seeding from `{}` would silently empty the whole grid because one
     quantity was mistyped. Mirrors _render_edit.
+
+    `prefill` is the Receive button's `{purchase_order_item_id: open_qty}` on a GET;
+    it rides the same EXISTING map a bounce uses.
     """
-    existing = _submitted_existing_lines() if request.method == 'POST' else {}
+    existing = (_submitted_existing_lines() if request.method == 'POST'
+                else (prefill or {}))
     existing_direct = (_submitted_existing_direct_lines()
                        if request.method == 'POST' else [])
     return render_template('receiving_reports/form.html', form=form, rr=None,
@@ -841,10 +877,14 @@ def create():
             flash(f'Receiving Report "{rr.rr_number}" created.', 'success')
             return redirect(url_for('receiving_reports.edit', id=rr.id))
 
+    prefill = None
     if request.method == 'GET':
         form.rr_number.data = generate_rr_number(branch_id)
         form.receipt_date.data = ph_now().date()
-    return _render_create(form, eligible)
+        received = _receive_po_prefill(form, branch_id)
+        if received is not None:
+            eligible, prefill = received
+    return _render_create(form, eligible, prefill)
 
 
 @receiving_reports_bp.route('/receiving-reports/<int:id>')
