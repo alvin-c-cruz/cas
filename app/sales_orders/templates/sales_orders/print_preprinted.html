@@ -6,6 +6,8 @@
 <title>Sales Order {{ so.so_number }} — Pre-printed</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/so_preprinted_designer.css') }}?v=1">
 <style>
+  /* SO number in red on the printout (owner, 2026-09-25); kept when printing. */
+  [data-el="so_no"] { color: #c00; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { color: #111; background: #eee; }  /* font-family is on the <body> tag: an attribute decodes autoescaped quotes, a <style> block does not */
   /* Canvas size is paper-driven (set inline; JS updates it live on paper change). */

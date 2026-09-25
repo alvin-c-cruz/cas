@@ -8,6 +8,8 @@
 {% endblock %}
 
 {% block content %}
+{# The SO number reads in red everywhere it appears (owner, 2026-09-25). #}
+<style>.so-number { color: var(--red); font-weight: 600; }</style>
 {% from "macros.html" import render_field %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=5">
@@ -30,10 +32,10 @@
                     {% if amend_mode %}
                     <div class="form-group">
                         {{ form.so_number.label(class='form-label') }}
-                        {{ form.so_number(class='form-control', readonly=true) }}
+                        {{ form.so_number(class='form-control so-number', readonly=true, style='color:var(--red); font-weight:600;') }}
                     </div>
                     {% else %}
-                    {{ render_field(form.so_number) }}
+                    {{ render_field(form.so_number, input_class='form-control so-number') }}
                     {% endif %}
                     {{ render_field(form.order_date) }}
                     {{ render_field(form.expected_delivery_date) }}

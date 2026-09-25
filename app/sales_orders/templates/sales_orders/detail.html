@@ -41,7 +41,7 @@
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Cancel this Sales Order?</h3>
         <p style="color:var(--text-2); margin-bottom:20px;">
-            <strong>{{ so.so_number }}</strong> will be marked as cancelled. This cannot be undone.
+            <strong class="so-number" style="color:var(--red);">{{ so.so_number }}</strong> will be marked as cancelled. This cannot be undone.
         </p>
         <form method="POST" action="{{ url_for('sales_orders.cancel', id=so.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -100,7 +100,7 @@
 <div class="card page-sales-order">
     <div class="card-header">
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            <span style="font-size:20px; font-weight:700;">{{ so.so_number }}</span>
+            <span class="so-number" style="font-size:20px; font-weight:700; color:var(--red);">{{ so.so_number }}</span>
             <span class="badge badge-{{ 'secondary' if so.status=='draft'
                                         else 'success' if so.status=='confirmed'
                                         else 'danger' if so.status=='cancelled'
@@ -170,7 +170,7 @@
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700;
                                  text-transform:uppercase; letter-spacing:0.04em;">SO #</span>
-                    <span style="font-weight:600; font-family:var(--mono);">{{ so.so_number }}</span>
+                    <span class="so-number" style="font-weight:600; font-family:var(--mono); color:var(--red);">{{ so.so_number }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700;

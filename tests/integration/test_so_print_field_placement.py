@@ -100,7 +100,7 @@ def test_the_values_travelled_with_their_labels(printed):
                          ('SO No.', 'SO-PLACE-1'),
                          ('Order Date', '31 August 2026')):
         pat = (r'<td class="label">' + re.escape(label) +
-               r'</td>\s*<td>(?:<strong>)?' + re.escape(value))
+               r'</td>\s*<td>(?:<strong[^>]*>)?' + re.escape(value))
         assert re.search(pat, html), f'{label} is not paired with {value!r}'
 
 

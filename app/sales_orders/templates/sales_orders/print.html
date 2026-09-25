@@ -240,7 +240,7 @@
          UNCONDITIONAL fields in this block, so this column can no longer render
          empty for a customer with no TIN / address / PO -- the left one is the
          sparse one now. #}
-      <tr><td class="label">SO No.</td><td><strong>{{ so.so_number }}</strong></td></tr>
+      <tr><td class="label">SO No.</td><td><strong class="so-number" style="color:#c00; -webkit-print-color-adjust:exact; print-color-adjust:exact;">{{ so.so_number }}</strong></td></tr>
       <tr><td class="label">Order Date</td><td>{{ so.order_date.strftime('%d %B %Y') }}</td></tr>
     </table>
   </div>
