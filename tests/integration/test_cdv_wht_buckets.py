@@ -9,7 +9,7 @@ from app.vendors.models import Vendor
 from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
 from app.cash_disbursements.views import _cdv_wht_payable_buckets
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.cash_disbursements]
 
 
 def _acct(code, name):

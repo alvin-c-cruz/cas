@@ -14,7 +14,7 @@ from app.vendors.models import Vendor
 from app.cash_disbursements.models import CashDisbursementVoucher
 from app.utils import ph_now
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.cash_disbursements]
 
 
 def login(client):

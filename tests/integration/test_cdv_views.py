@@ -13,7 +13,7 @@ from app.journal_entries.models import JournalEntry
 from app.audit.models import AuditLog
 from app.utils import ph_now
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.cash_disbursements]
 
 
 def login(client):

@@ -9,7 +9,7 @@ from app.branches.models import Branch
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.users.models import User
 
-pytestmark = [pytest.mark.journals, pytest.mark.integration]
+pytestmark = [pytest.mark.journals, pytest.mark.integration, pytest.mark.cash_disbursements]
 
 
 # ---------------------------------------------------------------------------

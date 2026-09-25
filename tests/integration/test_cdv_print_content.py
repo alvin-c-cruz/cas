@@ -7,7 +7,7 @@ from app.vendors.models import Vendor
 from app.accounts.models import Account
 from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.cash_disbursements]
 
 
 def login(client, username='admin', password='admin123'):

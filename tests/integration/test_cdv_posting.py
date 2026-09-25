@@ -11,7 +11,7 @@ from app.vat_categories.models import VATCategory
 from app.accounts_payable.models import AccountsPayable
 from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine, CDVApLine
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.cash_disbursements]
 
 
 def make_account(db_session, code, name, account_type='Asset',

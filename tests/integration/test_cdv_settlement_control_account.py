@@ -13,7 +13,7 @@ from app.accounts_payable.models import AccountsPayable
 from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
 from tests.conftest import assign_control_accounts
 
-pytestmark = [pytest.mark.integration, pytest.mark.control_accounts]
+pytestmark = [pytest.mark.integration, pytest.mark.control_accounts, pytest.mark.cash_disbursements]
 
 
 def _account(code, name, atype, nb):
