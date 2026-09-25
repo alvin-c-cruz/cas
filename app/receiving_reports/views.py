@@ -26,6 +26,7 @@ from app.receiving_reports.preprinted_layout import (
 from app.common.preprinted_base import (
     DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+from app.accounts_payable.models import AccountsPayable
 from app.vendors.models import Vendor
 from app.products.models import Product
 from app.units_of_measure.models import UnitOfMeasure
@@ -54,6 +55,24 @@ VALID_RR_STATUSES = {'draft', 'approved', 'billed', 'cancelled'}
 # tests/unit/test_lifecycle_tuples_are_classified.py; that pin now asserts the
 # divergence instead. Widen billing only on purpose, never to make a test agree.
 RECEIVABLE_PO_STATUSES = ('submitted', 'approved', 'partially_received')
+
+
+def po_billed_before_receipt(po):
+    """True when the PO is closed BECAUSE a bill is linked to it -- billed ahead of receipt.
+
+    Billing a PO directly closes it (purchase_billing._bill_purchase_sources). The goods
+    can still be on their way: RR 00740 against PO 01134 was in draft when APV 00019
+    billed the PO (2026-09-22), and approving it then refused the closed order. Owner,
+    2026-09-25: "Approving the RR at this stage should be allowed." A PO closed any other
+    way (no bill linked) is not this case.
+    """
+    return po.status == 'closed' and po.accounts_payable_id is not None
+
+
+def po_is_receivable(po):
+    """One rule for every place that asks: the save/approve guard, the PO picker, the
+    Receive pre-fill and the PO page's Receive button."""
+    return po.status in RECEIVABLE_PO_STATUSES or po_billed_before_receipt(po)
 
 
 # -- gates ---------------------------------------------------------------------
@@ -131,7 +150,9 @@ def _eligible_purchase_orders(branch_id, vendor_id):
     pos = (PurchaseOrder.query
            .filter(PurchaseOrder.branch_id == branch_id,
                    PurchaseOrder.vendor_id == vendor_id,
-                   PurchaseOrder.status.in_(RECEIVABLE_PO_STATUSES))
+                   db.or_(PurchaseOrder.status.in_(RECEIVABLE_PO_STATUSES),
+                          db.and_(PurchaseOrder.status == 'closed',
+                                  PurchaseOrder.accounts_payable_id.isnot(None))))
            .order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc()).all())
     return [po for po in pos if any(po_line_open_qty(li) > 0 for li in po.line_items)]
 
@@ -314,7 +335,7 @@ def _receive_po_prefill(form, branch_id):
     if not po_id:
         return None
     po = db.session.get(PurchaseOrder, po_id)
-    if po is None or po.branch_id != branch_id or po.status not in RECEIVABLE_PO_STATUSES:
+    if po is None or po.branch_id != branch_id or not po_is_receivable(po):
         flash('That purchase order cannot be received here -- it is not an open order '
               'in this branch. Choose the vendor below instead.', 'warning')
         return None
@@ -492,7 +513,7 @@ def assert_payload_within_open_qty(pairs, exclude_rr_id=None, vendor_id=None,
             raise ValueError(
                 f'{_line_prefix(idxs)}{po.po_number} belongs to another branch. '
                 f'A Receiving Report covers one branch.')
-        if po.status not in RECEIVABLE_PO_STATUSES:
+        if not po_is_receivable(po):
             raise ValueError(
                 f'{_line_prefix(idxs)}{po.po_number} is {po.status} and can no '
                 f'longer be received against.')
@@ -1130,9 +1151,20 @@ def approve(id):
     except ValueError as e:
         flash(str(e), 'error')
         return redirect(url_for('receiving_reports.view', id=id))
+    # A receipt against a PO that was BILLED FIRST (2026-09-25) is billed by that same
+    # bill on approval -- otherwise it would be offered for billing and the goods billed
+    # twice. Only when EVERY PO line agrees on one bill: a mix of billed-first and unbilled
+    # orders, or two different bills, is refused rather than guessed.
+    billed_by, mixed = _bill_of_billed_first_receipt(rr)
+    if mixed:
+        flash(mixed, 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
     rr.status = 'approved'
     rr.approved_by_id = current_user.id
     rr.approved_at = ph_now()
+    if billed_by is not None:
+        rr.status = 'billed'
+        rr.accounts_payable_id = billed_by.id
     # Mirrors submit()'s clear, for the same reason: a return-to-draft memo describes
     # ONE correction cycle. approve() also accepts 'submitted' (and 'draft', which can
     # follow a return-to-draft), so approving without going back through submit() first
@@ -1170,7 +1202,47 @@ def approve(id):
         log_audit(module='receiving_reports', action='approve', record_id=rr.id,
                   record_identifier=rr.rr_number, notes='Approved')
         flash(f'Receiving Report "{rr.rr_number}" approved.', 'success')
+    if billed_by is not None:
+        no_po = sum(1 for li in rr.line_items if li.purchase_order_item_id is None)
+        note = (f'Billed by APV {billed_by.ap_number}: its purchase order was billed before '
+                f'the goods were received, so this receipt is covered by that bill.')
+        if no_po:
+            note += (f' It includes {no_po} no-PO line{"s" if no_po != 1 else ""}, treated as '
+                     f'billed by the same voucher -- check APV {billed_by.ap_number} covers '
+                     f'{"them" if no_po != 1 else "it"}.')
+        log_audit(module='receiving_reports', action='billed', record_id=rr.id,
+                  record_identifier=rr.rr_number, new_values={'status': 'billed',
+                  'accounts_payable_id': billed_by.id}, notes=note)
+        flash(note, 'info')
     return redirect(url_for('receiving_reports.view', id=id))
+
+
+def _bill_of_billed_first_receipt(rr):
+    """`(bill, None)` when every PO line of *rr* belongs to POs billed before receipt by the
+    same bill; `(None, None)` when none does; `(None, message)` for a mix that must be split.
+    """
+    bills, plain = {}, []
+    for idx, li in enumerate(rr.line_items, start=1):
+        poi = li.purchase_order_item
+        if poi is None or poi.order is None:
+            continue
+        po = poi.order
+        if po_billed_before_receipt(po):
+            bills.setdefault(po.accounts_payable_id, []).append((idx, po.po_number))
+        else:
+            plain.append((idx, po.po_number))
+    if not bills:
+        return None, None
+    if len(bills) == 1 and not plain:
+        return db.session.get(AccountsPayable, next(iter(bills))), None
+    billed_pos = sorted({num for rows in bills.values() for _i, num in rows})
+    ap_numbers = sorted(filter(None, (getattr(db.session.get(AccountsPayable, ap_id), 'ap_number', None)
+                                      for ap_id in bills)))
+    return None, (f'{", ".join(billed_pos)} {"was" if len(billed_pos) == 1 else "were"} billed '
+                  f'before receipt (APV {", ".join(ap_numbers)}) and cannot share a receipt with '
+                  + ('another bill\'s order' if not plain else
+                     'an unbilled order (' + ', '.join(sorted({n for _i, n in plain})) + ')')
+                  + '. Receive them on separate Receiving Reports.')
 
 
 @receiving_reports_bp.route('/receiving-reports/<int:id>/cancel', methods=['POST'])
