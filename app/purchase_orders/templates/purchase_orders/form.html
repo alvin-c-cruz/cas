@@ -216,6 +216,7 @@
 
 {# Quick-add modals, exactly as AP/SI/PR include them. Each partial is
    self-contained (its own overlay, form and error box) and posts by XHR. #}
+{% include "vendors/_quick_add_modal.html" %}
 {% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}
 {% if module_enabled('units_of_measure') %}{% include "units_of_measure/_quick_add_modal.html" %}{% endif %}
 
@@ -225,6 +226,8 @@
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='search-select.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='vendor-form-widgets.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='vendor-quick-add.js') }}?v=3"></script>
 {% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=2"></script>{% endif %}
 {% if module_enabled('units_of_measure') %}<script src="{{ url_for('static', filename='uom-quick-add.js') }}?v=1"></script>{% endif %}
 <script>
@@ -559,11 +562,17 @@
   if (uomMasterOn     && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
 
   // The vendor picker gets the same treatment as the line pickers -- a plain
-  // <select> against 150 vendors is unusable. No addAction: creating a vendor
-  // mid-order needs more fields than a quick-add modal carries.
+  // <select> against 150 vendors is unusable -- and, like the AP and CDV
+  // forms, it carries the "Add Vendor" action (owner, 2026-09-28: "the vendor
+  // field is missing the Add Vendor feature"). initVendorQuickAdd builds the
+  // search-select itself and opens the inline modal, which embeds the FULL
+  // vendor form, so a vendor created mid-order is complete, not a stub.
   if (typeof initSearchSelect === 'function') {
     const vSel = document.getElementById('vendorSelect');
-    if (vSel && !vSel.closest('.choices')) initSearchSelect(vSel);
+    if (vSel && !vSel.closest('.choices')) {
+      if (typeof initVendorQuickAdd === 'function') initVendorQuickAdd({ selectEl: vSel });
+      else initSearchSelect(vSel);
+    }
     // An order with no vendor yet -- which is every order just converted from a
     // requisition -- opens with the cursor in the vendor picker, so the buyer
     // can type straight away instead of hunting for the field (owner,

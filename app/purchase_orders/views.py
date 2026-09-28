@@ -409,8 +409,28 @@ def _active_vendors():
     return Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
 
 
+def _vendor_quick_add_ctx():
+    """Context the inline "Add Vendor" modal (vendors/_quick_add_modal.html)
+    requires -- the same seed the AP and CDV forms give it. Owner, 2026-09-28:
+    "the vendor field is missing the Add Vendor feature" on the PO form."""
+    from app.vendors.forms import VendorForm
+    from app.vendors.utils import populate_vat_category_choices, generate_next_vendor_code
+    from app.withholding_tax.models import WithholdingTax
+    quick_add_form = VendorForm()
+    populate_vat_category_choices(quick_add_form)
+    quick_add_form.code.data = generate_next_vendor_code()
+    quick_add_form.is_active.data = '1'
+    quick_add_form.payment_terms.data = 'Net 30'
+    return {
+        'vendor_quick_add_form': quick_add_form,
+        'vendor_quick_add_whts': (WithholdingTax.query.filter_by(is_active=True)
+                                  .order_by(WithholdingTax.code).all()),
+    }
+
+
 def _common_form_ctx():
     return {
+        **_vendor_quick_add_ctx(),
         'units': [u.to_dict() for u in get_active_units()],
         'products': [p.to_dict() for p in get_active_products()],
         'vat_categories': [v.to_dict() for v in get_vat_categories()],
