@@ -8,9 +8,13 @@ This is not cosmetic. Every list below PAGINATES (50 per page), and an unstable
 sort lets tied rows reorder between queries -- so a row can appear on two pages
 or on neither, which reads as data loss.
 
-Ordering by the document NUMBER would be wrong twice over: it is a string, so
-'9999' sorts above '10000', and the numbers are user-typed following the
-client's own sequences, so they are not reliably monotonic.
+Ordering by the document NUMBER as a STRING would be wrong twice over: '9999'
+sorts above '10000', and the numbers are user-typed following the client's own
+sequences, so they are not reliably monotonic.
+
+Update 2026-09-28: the AP list now leads with the NUMERIC value of the AP#
+(owner reads it as a numbered register); the id DESC tiebreaker asserted below
+is unchanged. See test_ap_list_orders_by_number.py.
 """
 from datetime import date
 from decimal import Decimal

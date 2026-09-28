@@ -632,13 +632,18 @@ def list_ap():
     page = request.args.get('page', 1, type=int)
     per_page = 50
 
-    # id DESC is a TIEBREAKER, not decoration: the list paginates, and an
+    # Owner, 2026-09-28: the list is a numbered register, arrange it by AP#
+    # (highest first). NOT by the raw string -- Philgen's series changes width
+    # mid-run ('0009' then '00010') and '0009' > '00010' as text -- but by its
+    # NUMERIC value: SQLite's CAST reads the leading digits ('00010' -> 10,
+    # '0012E' -> 12) and gives 0 for a letter-led number such as
+    # 'AP-2026-06-0001', which then falls through to the tiebreaker.
+    # id DESC is that TIEBREAKER, not decoration: the list paginates, and an
     # unstable sort lets tied rows reorder between queries, so a row can
-    # appear on two pages or on neither. Never order by the document
-    # NUMBER -- it is a user-typed string, and '9999' sorts above '10000'.
-    # Matches the PO/PR/SO/DR/memo lists, which already do this.
+    # appear on two pages or on neither. See
+    # tests/integration/test_ap_list_orders_by_number.py.
     query = (_filtered_ap_query()
-             .order_by(AccountsPayable.ap_date.desc(),
+             .order_by(db.cast(AccountsPayable.ap_number, db.Integer).desc(),
                        AccountsPayable.id.desc()))
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
