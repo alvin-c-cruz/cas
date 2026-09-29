@@ -139,7 +139,10 @@ class TestTheAPVFace:
     def test_the_other_account_still_prints(self, apv_face):
         """Control: merging must not swallow a different account."""
         html, _, payable = apv_face
-        assert f'<td>{payable.code}</td>' in _band(html, 'combined')
+        # `>code</td>` rather than `<td>code</td>`: a credit row's code cell carries
+        # class="pp-je-cr" (the indent, 2026-09-29), and this test is about the
+        # account surviving the merge, not about the cell's attributes.
+        assert f'>{payable.code}</td>' in _band(html, 'combined')
 
     def test_the_face_still_ties(self, apv_face):
         """Merging is per side, so the entry that balanced before still

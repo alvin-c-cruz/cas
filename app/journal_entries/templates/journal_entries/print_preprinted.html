@@ -26,6 +26,11 @@
   /* A column with no rows is empty -> show its label while editing so it stays grabbable. */
   .pp-canvas.pp-editing .pp-col:empty::before { content: attr(data-label); color: #bbb; font-style: italic; }
   .pp-col-hidden { display: none; }
+  /* Credit legs are INDENTED, as a journal entry is written by hand (owner, 2026-09-29):
+     the account code/title cells of a credit row shift right by 2em of the band's own
+     font size; amount columns and row heights are untouched. Same class as the APV/CDV
+     JE faces so all three print alike. */
+  .pp-je-cr { text-indent: 2em; }
   /* Hidden fields: gone in view/print; shown greyed while editing so they can be restored. */
   .pp-field-hidden { display: none; }
   .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
@@ -126,7 +131,7 @@
          data-col="{{ col.key }}" data-label="{{ column_labels[col.key] }}"
          style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
       {%- for line in lines %}
-      <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
+      <div class="pp-cell{{ ' pp-je-cr' if col.key in ('account_code', 'account_title') and line.credit_amount and not line.debit_amount else '' }}" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ loop.index }}
         {%- elif col.key == 'account_code' -%}{{ line.account.code if line.account else '' }}
         {%- elif col.key == 'account_title' -%}{{ line.account.name if line.account else '' }}

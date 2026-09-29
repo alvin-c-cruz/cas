@@ -71,6 +71,11 @@
   .pp-je-table { border-collapse: collapse; width: 100%; }
   .pp-je-table td { padding: 0 6px; white-space: nowrap; }
   .pp-je-amt { text-align: right; }
+  /* Credit legs are INDENTED, as a journal entry is written by hand (owner, 2026-09-29):
+     the account code/title cells of a credit row shift right by 2em of the face's own
+     font size, so the amount columns and the row heights are untouched. Applied on the
+     column face and the combined grid; the separated credit band is its own box. */
+  .pp-je-cr { text-indent: 2em; }
   .pp-je-total { font-weight: bold; }
   /* Inactive mode's band(s): gone in view/print; greyed while editing so they stay draggable. */
   .pp-je-inactive { display: none; }
@@ -254,7 +259,7 @@
            data-jecol="{{ col.key }}" data-label="{{ je_col_labels[col.key] }}"
            style="left:{{ col.x }}px;top:{{ je.combined.y }}px;width:{{ col.width }}px;font-size:{{ je.fontSize }}px;">
         {%- for l in je_lines %}
-        <div class="pp-cell" style="height:{{ je.rowHeight }}px;line-height:{{ je.rowHeight }}px;">
+        <div class="pp-cell{{ ' pp-je-cr' if col.key in ('account_code', 'account_title') and l.credit_amount and not l.debit_amount else '' }}" style="height:{{ je.rowHeight }}px;line-height:{{ je.rowHeight }}px;">
           {%- if col.key == 'account_code' -%}{{ l.account.code }}
           {%- elif col.key == 'account_title' -%}{{ l.account.name }}
           {%- elif col.key == 'debit' -%}{% if l.debit_amount %}{{ '{:,.2f}'.format(l.debit_amount) }}{% endif %}
@@ -271,7 +276,7 @@
     <div class="pp-el pp-je{{ ' pp-je-inactive' if je.columnsEnabled or je.mode != 'combined' else '' }}" data-je="combined"
          style="left:{{ je.combined.x }}px;top:{{ je.combined.y }}px;width:{{ je.combined.width }}px;font-size:{{ je.fontSize }}px;">
       <table class="pp-je-table">
-        {% for l in je_lines %}<tr style="height:{{ je.rowHeight }}px;"><td>{{ l.account.code }}</td><td>{{ l.account.name }}</td><td class="pp-je-amt">{% if l.debit_amount %}{{ '{:,.2f}'.format(l.debit_amount) }}{% endif %}</td><td class="pp-je-amt">{% if l.credit_amount %}{{ '{:,.2f}'.format(l.credit_amount) }}{% endif %}</td></tr>{% endfor %}
+        {% for l in je_lines %}{% set cr = ' class="pp-je-cr"' if l.credit_amount and not l.debit_amount else '' %}<tr style="height:{{ je.rowHeight }}px;"><td{{ cr|safe }}>{{ l.account.code }}</td><td{{ cr|safe }}>{{ l.account.name }}</td><td class="pp-je-amt">{% if l.debit_amount %}{{ '{:,.2f}'.format(l.debit_amount) }}{% endif %}</td><td class="pp-je-amt">{% if l.credit_amount %}{{ '{:,.2f}'.format(l.credit_amount) }}{% endif %}</td></tr>{% endfor %}
       </table>
     </div>
     {# Separated: a debit band + a credit band, each code | account | amount. #}
