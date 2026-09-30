@@ -615,6 +615,14 @@ def create():
                 record_identifier=f'{so.so_number} - {so.customer_name}',
                 new_values=model_to_dict(so, SO_AUDIT_FIELDS)
             )
+            # Files queued on the create form (customer PO, signed copies, other).
+            from app.attachments.registry import get_target
+            from app.attachments.service import save_queued_attachments
+            skipped = save_queued_attachments(get_target('sales_orders'), so,
+                                              request.files.getlist('attachments'), current_user)
+            if skipped:
+                flash('Some files were not attached and were skipped: '
+                      + ', '.join(skipped), 'warning')
             flash(f'Sales Order "{so.so_number}" created successfully!', 'success')
             # Land on the new order's OWN EDIT FORM, not the list (owner,
             # 2026-08-31: "saving the SO should redirect to the form ... so user
@@ -1143,18 +1151,30 @@ def confirm(id):
     # Rev 0 -- the baseline every later amendment is measured against, and the
     # snapshot that reproduces the job order slip issued to production.
     write_revision(so, current_user.id)
+    # Soft gate: snapshot the required attachment slots still empty at confirm,
+    # in this same transaction. Never blocks confirmation (same as PO approve).
+    from app.attachments.service import record_approval_completeness, missing_slot_labels
+    _missing = record_approval_completeness('sales_orders', so)
     db.session.commit()
 
+    note = 'Confirmed'
+    if _missing:
+        note = ('Confirmed with required files missing: '
+                + ', '.join(missing_slot_labels('sales_orders', _missing)))
     log_update(
         module='sales_orders',
         record_id=so.id,
         record_identifier=so.so_number,
         old_values=old_values,
         new_values=model_to_dict(so, ['status']),
-        notes='Confirmed',
+        notes=note,
     )
 
-    flash(f'Sales Order "{so.so_number}" has been confirmed.', 'success')
+    if _missing:
+        flash(f'Sales Order "{so.so_number}" confirmed. Note: required files still missing — '
+              + ', '.join(missing_slot_labels('sales_orders', _missing)) + '.', 'warning')
+    else:
+        flash(f'Sales Order "{so.so_number}" has been confirmed.', 'success')
     return redirect(url_for('sales_orders.view', id=id))
 
 

@@ -224,7 +224,7 @@ def panel_context(target, doc, user, next_url=None):
         closed_note = ('Uploads are closed for this document. An approver can '
                        'add further files through Amend.')
     else:
-        closed_note = 'Uploads are closed: this document has been approved.'
+        closed_note = f'Uploads are closed: this document has been {target.approved_word}.'
 
     return {
         'document_type': target.document_type,
@@ -235,6 +235,7 @@ def panel_context(target, doc, user, next_url=None):
         'missing_required_count': sum(1 for r in slot_rows if r['required'] and not r['filled']),
         'missing_required_labels': [r['label'] for r in slot_rows if r['required'] and not r['filled']],
         'approved_incomplete_count': len(approved_incomplete(target.document_type, doc)),
+        'approved_word': target.approved_word,
         'can_upload': upload_ok,
         'deletable_ids': deletable,
         'closed_note': closed_note,

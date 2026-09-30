@@ -96,7 +96,11 @@ def test_confirm_so_sets_status_and_audit(client, db_session, main_branch,
         module='sales_orders', action='update', record_id=so.id
     ).first()
     assert audit is not None, 'Audit row must exist after confirm'
-    assert audit.notes == 'Confirmed'
+    # Since 2026-09-30 an SO has required attachments (Customer PO, Signed SO,
+    # Signed JO); this order has none, so the note carries the soft-gate list
+    # ("Confirmed with required files missing: ..."), covered exactly in
+    # test_sales_order_attachments.py. Here only the confirm audit matters.
+    assert audit.notes.startswith('Confirmed')
 
 
 def test_confirm_creates_no_journal_entry(client, db_session, main_branch,

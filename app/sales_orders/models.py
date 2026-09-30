@@ -53,6 +53,11 @@ class SalesOrder(RowVersioned, db.Model):
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
     confirmed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     confirmed_at = db.Column(db.DateTime)
+    # JSON list of required attachment slots still empty when the order was
+    # CONFIRMED (the SO's approval step), or NULL when complete. Written in the
+    # confirm transaction; drives the "confirmed with N required files missing"
+    # badge. Same marker PR/PO/RR/AP/CDV carry (migration soatt_0001).
+    approved_incomplete_slots = db.Column(db.Text, nullable=True)
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     cancelled_at = db.Column(db.DateTime)
     cancel_reason = db.Column(db.String(500), nullable=True)

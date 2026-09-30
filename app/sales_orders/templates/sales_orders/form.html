@@ -18,7 +18,7 @@
 
 <div class="card page-sales-invoice page-sales-order">
     <div class="card-body">
-        <form method="POST" novalidate id="soForm">
+        <form method="POST" novalidate id="soForm" enctype="multipart/form-data">
             {{ form.hidden_tag() }}
 
             {# ── Header grid: left fields | customer card | notes ── #}
@@ -161,6 +161,8 @@
                 </div>
                 {% endif %}
 
+                {% if not so %}{% include 'attachments/_create_queue.html' %}{% endif %}
+
                 <div class="form-actions" style="margin-top: 32px;">
                     <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
                         {% if so %}Update{% else %}Save{% endif %}
@@ -177,6 +179,15 @@
         </form>
     </div>
 </div>
+
+{% if so %}
+{# Attachments live OUTSIDE the main form: the panel carries its own upload form
+   and nested forms are not HTML. next_url brings the user back here. #}
+{% set att = attachment_panel('sales_orders', so, next_url=request.path) %}
+{% include 'attachments/_panel.html' %}
+{% else %}
+<script src="{{ url_for('static', filename='js/attachment_queue.js') }}?v=1"></script>
+{% endif %}
 
 {% include "customers/_quick_add_modal.html" %}
 {% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}

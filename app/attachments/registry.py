@@ -83,6 +83,10 @@ class AttachmentTarget:
     #: PR/PO leave this empty -- their amend path already allows post-approval
     #: uploads. RR and CV use it because they have no amendment path.
     late_complete_statuses: tuple = ()
+    #: How the document's approval step reads in the "Incomplete -- <word> with N
+    #: required files missing" badge and the advisory dialog. A Sales Order is
+    #: CONFIRMED, not approved.
+    approved_word: str = 'approved'
 
     def model(self):
         module_name, _, class_name = self.model_path.partition(':')
@@ -177,6 +181,26 @@ TARGETS = {
             Slot('check_copy', 'Check copy', required=True, applies_when=_paid_by_check),
         ),
         late_complete_statuses=('posted',),
+    ),
+    # Owner request 2026-09-30: the customer's PO, the signed SO and the signed JO
+    # belong on the order. The signed copies only exist AFTER confirmation (the SO
+    # is printed and signed once confirmed), so a confirmed order stays open to
+    # approve-level users through the amend path -- the PO shape, since the SO also
+    # has a post-confirm amendment. Cancelled and closed orders are frozen.
+    'sales_orders': AttachmentTarget(
+        document_type='sales_orders',
+        model_path='app.sales_orders.models:SalesOrder',
+        number_attr='so_number',
+        view_endpoint='sales_orders.view',
+        open_statuses=('draft',),
+        amend_statuses=('confirmed',),
+        amend_level=_approve_level,
+        approved_word='confirmed',
+        slots=(
+            Slot('customer_po', 'Customer PO', required=True),
+            Slot('signed_so', 'Signed SO', required=True),
+            Slot('signed_jo', 'Signed JO', required=True),
+        ),
     ),
 }
 

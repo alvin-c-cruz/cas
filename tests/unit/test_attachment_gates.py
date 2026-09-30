@@ -49,13 +49,14 @@ def test_amend_statuses_track_the_models():
 def test_every_target_is_registered():
     """The four buy-side documents, plus vendors (master data, added
     2026-09-22 so a supplier's BIR 2303, SEC registration and Business Permit
-    have somewhere to live).
+    have somewhere to live), plus sales_orders (added 2026-09-30: the customer's
+    PO, the signed SO and the signed JO).
 
     accounts_payable stays absent on purpose: it predates this module and keeps
     its own table and routes, which is why slots_for special-cases it."""
     assert set(TARGETS) == {'purchase_requests', 'purchase_orders',
                             'receiving_reports', 'cash_disbursements',
-                            'vendors'}
+                            'vendors', 'sales_orders'}
     assert get_target('accounts_payable') is None
 
 

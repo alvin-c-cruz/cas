@@ -357,6 +357,12 @@
     </div>
 </div>
 
+{# Attachments: the customer's PO, the signed SO, the signed JO, other supporting
+   files. Shown for every status; upload open while draft (edit roles) and, once
+   confirmed, to approvers through the amend path. #}
+{% set att = attachment_panel('sales_orders', so) %}
+{% include 'attachments/_panel.html' %}
+
 {% if revisions %}
 <div class="card">
     <div class="card-header"><h3>Revision history</h3></div>
