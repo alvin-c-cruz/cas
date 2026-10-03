@@ -1284,6 +1284,75 @@ def cancel(id):
     return redirect(url_for('receiving_reports.view', id=id))
 
 
+# -- settled outside AP (rrsettle_0001) -----------------------------------------
+
+def _settle_audit_values(rr):
+    return {'status': rr.status,
+            'settled_cdv': rr.settled_cdv.cdv_number if rr.settled_cdv else None,
+            'settle_reason': rr.settle_reason}
+
+
+@receiving_reports_bp.route('/receiving-reports/<int:id>/settle', methods=['POST'])
+@login_required
+def settle(id):
+    """Close an approved, unbilled receipt against the CDV that paid it, outside AP.
+
+    Administrator only (owner, 2026-10-03). For receipts no AP bill can ever exist for --
+    August receipts paid by legacy cash vouchers, before the AP module started.
+    """
+    rr = _rr_or_404(id)
+    if not current_user.is_admin:
+        flash('Only the administrator can settle a Receiving Report by a CDV.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    from app.purchase_billing import settle_rr_by_cdv
+    number = (request.form.get('cdv_number') or '').strip()
+    cdv = (CashDisbursementVoucher.query.filter_by(cdv_number=number).first()
+           if number else None)
+    before = _settle_audit_values(rr)
+    try:
+        settle_rr_by_cdv(rr, cdv, request.form.get('settle_reason'), current_user)
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    db.session.commit()
+    log_audit(module='receiving_reports', action='settle', record_id=rr.id,
+              record_identifier=rr.rr_number, old_values=before,
+              new_values=_settle_audit_values(rr),
+              notes=f'Settled outside AP by CDV {cdv.cdv_number}: {rr.settle_reason}')
+    flash(f'Receiving Report "{rr.rr_number}" settled by CDV {cdv.cdv_number}.', 'success')
+    return redirect(url_for('receiving_reports.view', id=id))
+
+
+@receiving_reports_bp.route('/receiving-reports/<int:id>/reopen-settlement', methods=['POST'])
+@login_required
+def reopen_settlement(id):
+    """Undo a CDV settlement: the receipt is approved and unbilled again. Administrator only."""
+    rr = _rr_or_404(id)
+    if not current_user.is_admin:
+        flash('Only the administrator can reopen a settled Receiving Report.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    if rr.settled_cdv_id is None:
+        flash('This Receiving Report was not settled by a CDV.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    reason = (request.form.get('reopen_reason') or '').strip()
+    if len(reason) < 10:
+        flash('A reason (at least 10 characters) is required to reopen.', 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
+    from app.purchase_billing import reopen_settled_rr
+    before = _settle_audit_values(rr)
+    cdv_number = before['settled_cdv']
+    reopen_settled_rr(rr)
+    db.session.commit()
+    log_audit(module='receiving_reports', action='reopen_settlement', record_id=rr.id,
+              record_identifier=rr.rr_number, old_values=before,
+              new_values=_settle_audit_values(rr),
+              notes=f'Settlement by CDV {cdv_number} reopened: {reason}')
+    flash(f'Receiving Report "{rr.rr_number}" reopened; it is unbilled again.', 'warning')
+    return redirect(url_for('receiving_reports.view', id=id))
+
+
 # -- print ---------------------------------------------------------------------
 
 @receiving_reports_bp.route('/receiving-reports/<int:id>/print')

@@ -40,7 +40,41 @@
   {% if rr.return_reason %}
   <p class="record-memo record-memo--returned"><strong>Returned to draft:</strong> {{ rr.return_reason }}</p>
   {% endif %}
+  {# Settled outside AP (rrsettle_0001): shown to everyone, so a reader of a 'billed'
+     receipt with no AP voucher can see what paid it. #}
+  {% if rr.settled_cdv %}
+  <p class="record-memo rr-settled-memo"><strong>Settled outside AP by CDV
+    <a href="{{ url_for('cash_disbursements.view', id=rr.settled_cdv.id) }}">{{ rr.settled_cdv.cdv_number }}</a></strong>
+    ({{ rr.settled_cdv.cdv_date.strftime('%b %d, %Y') if rr.settled_cdv.cdv_date else '' }}){% if rr.settle_reason %}: {{ rr.settle_reason }}{% endif %}</p>
+  {% endif %}
 </div></div>
+
+{# Administrator only (owner, 2026-10-03) -- the routes check the role too. #}
+{% if current_user.is_admin and rr.status == 'approved' and not rr.accounts_payable_id and not rr.settled_cdv_id %}
+<div class="card"><div class="card-body">
+  <h3>Settle by CDV (outside AP)</h3>
+  <p class="text-muted" style="font-size:13px;">For a receipt no AP voucher will ever bill &mdash; paid
+    directly by a posted cash disbursement voucher to this vendor. The receipt leaves the unbilled list.</p>
+  <form method="POST" action="{{ url_for('receiving_reports.settle', id=rr.id) }}" class="rr-settle-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group"><label>CDV number</label>
+      <input type="text" name="cdv_number" class="form-control" required style="max-width:200px"></div>
+    <div class="form-group"><label>Reason (at least 10 characters)</label>
+      <textarea name="settle_reason" class="form-control" rows="2" required minlength="10"></textarea></div>
+    <button type="submit" class="btn btn-primary">Settle by CDV</button>
+  </form>
+</div></div>
+{% endif %}
+{% if current_user.is_admin and rr.settled_cdv_id %}
+<div class="card"><div class="card-body">
+  <form method="POST" action="{{ url_for('receiving_reports.reopen_settlement', id=rr.id) }}" class="rr-reopen-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group"><label>Reopen settlement &mdash; reason (at least 10 characters)</label>
+      <textarea name="reopen_reason" class="form-control" rows="2" required minlength="10"></textarea></div>
+    <button type="submit" class="btn btn-secondary">Reopen settlement</button>
+  </form>
+</div></div>
+{% endif %}
 
 <div class="card"><div class="card-body">
   <h3>Received Items</h3>

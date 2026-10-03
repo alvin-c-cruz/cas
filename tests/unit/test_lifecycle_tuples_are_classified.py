@@ -47,7 +47,7 @@ from app.purchase_requests.views import RETURNABLE_STATUSES
 from app.receiving_reports.models import COMMITTED_STATUSES as RR_COMMITTED
 from app.receiving_reports.models import ReceivingReport
 from app.receiving_reports.views import RECEIVABLE_PO_STATUSES
-from app.purchase_billing import _RECEIVABLE_PO
+from app.purchase_billing import _RECEIVABLE_PO, SETTLING_CDV_STATUSES
 
 pytestmark = [pytest.mark.unit, pytest.mark.purchase_requests]
 
@@ -74,6 +74,10 @@ DOCUMENTS = {
                                     'partially_converted'}),
     'receiving report': ('rr', {'draft', 'submitted', 'approved', 'cancelled',
                                 'billed'}),
+    # Not a purchase-area document, but purchase_billing gates a receipt's
+    # settlement on it (rrsettle_0001), so its lifecycle is checked here too.
+    'cash disbursement voucher': ('cdv', {'draft', 'posted', 'voided',
+                                          'cancelled'}),
 }
 
 #: Statuses that appear in a registered tuple but that NOTHING in the app ever
@@ -399,6 +403,23 @@ REGISTRY = [
                 'a cancelled receipt has released its order-line quantity and '
                 'reversed any stock. Re-opening it would resurrect a document '
                 'the ledger has already let go',
+        }),
+
+    # -- cash disbursement voucher (settling a receipt outside AP) ------------
+    Tuple_(
+        'purchase_billing.SETTLING_CDV_STATUSES', SETTLING_CDV_STATUSES,
+        'cash disbursement voucher',
+        'may this voucher settle a receiving report outside AP (rrsettle_0001)?',
+        {
+            'draft':
+                'not yet paid -- a draft can still be edited or voided, so a '
+                'receipt closed against it would be closed by a payment that may '
+                'never be made',
+            'voided':
+                'a voided draft never paid anything',
+            'cancelled':
+                'its payment was reversed. CDV cancel reopens every receipt the '
+                'voucher settled, so admitting it here would undo that',
         }),
 ]
 

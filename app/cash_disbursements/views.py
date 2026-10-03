@@ -1565,6 +1565,10 @@ def cancel(id):
         return redirect(url_for('cash_disbursements.view', id=id))
     try:
         _reverse_ap_payments(cdv)
+        # A receipt this voucher settled outside AP (rrsettle_0001) is unpaid again
+        # once the payment is reversed -- reopen it in the same transaction.
+        from app.purchase_billing import reopen_rrs_settled_by
+        reopened = reopen_rrs_settled_by(cdv)
         _create_cdv_reversal_je(cdv, reversal_date, current_user.id)
         cdv.status = 'cancelled'
         cdv.cancelled_at = ph_now()
@@ -1576,7 +1580,16 @@ def cancel(id):
             record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
             notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}'
         )
+        for rr in reopened:
+            log_audit(module='receiving_reports', action='reopen_settlement',
+                      record_id=rr.id, record_identifier=rr.rr_number,
+                      old_values={'status': 'billed', 'settled_cdv': cdv.cdv_number},
+                      new_values={'status': 'approved', 'settled_cdv': None},
+                      notes=f'CDV {cdv.cdv_number} cancelled -- its settlement reopened.')
         flash(f'CDV "{cdv.cdv_number}" cancelled. Reversal JE created.', 'success')
+        if reopened:
+            flash('Reopened as unbilled: Receiving Report '
+                  + ', '.join(rr.rr_number for rr in reopened) + '.', 'warning')
     except ValueError as e:
         db.session.rollback()
         flash(str(e), 'error')

@@ -44,6 +44,18 @@ class ReceivingReport(RowVersioned, db.Model):
     # Billing seam (Phase 3): set when a Bill is cut against this RR. Null until billed.
     accounts_payable_id = db.Column(db.Integer, db.ForeignKey('accounts_payable.id'),
                                     nullable=True, index=True)
+    # Settled OUTSIDE AP (rrsettle_0001): an administrator closed this receipt against the
+    # cash voucher that paid it, because no AP bill can ever exist for it (owner, 2026-10-03:
+    # the AP module started in September, so August receipts were paid by legacy CVs).
+    # Status becomes 'billed' -- the state that already keeps a receipt off every billable
+    # list and out of cancel() -- and these columns say it was a CDV, not an AP bill.
+    # Plain integers in the migration; the ForeignKey lives here (batch add_column rule).
+    settled_cdv_id = db.Column(db.Integer, db.ForeignKey('cash_disbursement_vouchers.id'),
+                               nullable=True, index=True)
+    settled_cdv = db.relationship('CashDisbursementVoucher', foreign_keys=[settled_cdv_id])
+    settled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    settled_at = db.Column(db.DateTime)
+    settle_reason = db.Column(db.Text)
     # Accrual seam (deferred): a future GRNI / period-end reversing JE attaches here. Inert in v1.
     journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
     journal_entry = db.relationship('JournalEntry', foreign_keys=[journal_entry_id])

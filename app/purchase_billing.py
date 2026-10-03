@@ -214,3 +214,77 @@ def billable_rrs_for(branch_id, vendor_id):
                     'purchase_order_number': rr.po_number_display or None,
                     'lines': lines})
     return out
+
+
+# -- settled outside AP (rrsettle_0001) ----------------------------------------
+#
+# Owner, 2026-10-03: the AP module started in September, so a receipt paid in August by a
+# legacy cash voucher can never be billed and would sit 'approved, unbilled' for good. An
+# administrator may close such a receipt against the CDV that paid it. The receipt goes to
+# 'billed' -- the state that already keeps it off every billable list and out of cancel() --
+# and settled_cdv_id records that the payment was a CDV, not an AP bill.
+
+#: Only a POSTED voucher settles a receipt. A draft can still be voided or changed, and a
+#: receipt closed against it would be closed by a payment that may never be made.
+SETTLING_CDV_STATUSES = ('posted',)
+
+
+def _cdv_vendor_id(cdv):
+    """The vendor a CDV paid, or None when its payee is not a vendor (an employee)."""
+    if (cdv.payee_type or 'vendor') != 'vendor':
+        return None
+    return cdv.vendor_id or cdv.payee_id or None
+
+
+def settle_rr_by_cdv(rr, cdv, reason, user):
+    """Close an approved, unbilled receipt against the cash voucher that paid it.
+
+    Raises ValueError with a user-facing message and changes nothing when the receipt or
+    the voucher does not qualify. The caller commits and writes the audit row.
+
+    The voucher may belong to another branch: purchasing documents live in CORP while the
+    payment is made from whichever branch pays (philgen's EXTRA vouchers pay CORP receipts).
+    """
+    if rr.status != 'approved' or rr.accounts_payable_id is not None or rr.settled_cdv_id is not None:
+        raise ValueError('Only an approved Receiving Report that no AP voucher has billed '
+                         'can be settled by a CDV.')
+    if cdv is None:
+        raise ValueError('No Cash Disbursement Voucher has that number.')
+    if cdv.status not in SETTLING_CDV_STATUSES:
+        raise ValueError(f'CDV {cdv.cdv_number} is {cdv.status}; only a posted CDV can '
+                         f'settle a Receiving Report.')
+    if _cdv_vendor_id(cdv) != rr.vendor_id:
+        # Parenthesised so a name ending in a period ("... INC.") does not read "INC..".
+        raise ValueError(f"CDV {cdv.cdv_number} paid {cdv.vendor_name}, not the receipt's "
+                         f"vendor ({rr.vendor_name}).")
+    reason = (reason or '').strip()
+    if len(reason) < 10:
+        raise ValueError('A reason (at least 10 characters) is required.')
+    from app.utils import ph_now
+    rr.status = 'billed'
+    rr.settled_cdv_id = cdv.id
+    rr.settled_by_id = user.id
+    rr.settled_at = ph_now()
+    rr.settle_reason = reason
+
+
+def reopen_settled_rr(rr):
+    """Undo settle_rr_by_cdv: the receipt is approved and unbilled again. Caller commits."""
+    rr.status = 'approved'
+    rr.settled_cdv_id = None
+    rr.settled_by_id = None
+    rr.settled_at = None
+    rr.settle_reason = None
+
+
+def reopen_rrs_settled_by(cdv):
+    """Reopen every receipt *cdv* settled -- its payment is being reversed (CDV cancel).
+
+    Returns the reopened receipts so the caller can name them; caller commits.
+    """
+    from app.receiving_reports.models import ReceivingReport
+    rrs = (ReceivingReport.query.filter_by(settled_cdv_id=cdv.id)
+           .order_by(ReceivingReport.id).all())
+    for rr in rrs:
+        reopen_settled_rr(rr)
+    return rrs
