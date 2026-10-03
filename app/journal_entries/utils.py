@@ -10,21 +10,26 @@ from datetime import datetime
 
 
 def next_sequence_number(prefix):
-    """Next `{prefix}NNNN` across ALL branches, from the highest existing number."""
+    """Next `{prefix}NNNN` across ALL branches: one more than the NUMERIC max suffix.
+
+    Never the lexicographically-last row: as strings 'JV-2026-08-9999' sorts after
+    'JV-2026-08-10000', and taking it would hand out 10000 a second time
+    (CAS-DEVELOPMENT.md, "Document numbering").
+    """
     from app.journal_entries.models import JournalEntry
 
-    latest = JournalEntry.query.filter(
+    numbers = JournalEntry.query.with_entities(JournalEntry.entry_number).filter(
         JournalEntry.entry_number.like(f'{prefix}%')
-    ).order_by(JournalEntry.entry_number.desc()).first()
+    ).all()
 
-    next_num = 1
-    if latest:
+    highest = 0
+    for (number,) in numbers:
         try:
-            next_num = int(latest.entry_number.split('-')[-1]) + 1
-        except (ValueError, IndexError):
-            next_num = 1
+            highest = max(highest, int(number[len(prefix):]))
+        except (ValueError, TypeError):
+            continue
 
-    return f'{prefix}{next_num:04d}'
+    return f'{prefix}{highest + 1:04d}'
 
 
 def generate_entry_number(branch_id=None):
@@ -32,8 +37,18 @@ def generate_entry_number(branch_id=None):
     return next_sequence_number(f'JE-{datetime.now().year}-')
 
 
-def generate_jv_number(branch_id=None):
-    """Next JV number: JV-YYYY-MM-NNNN. Company-wide sequence, resets each month."""
-    from app.utils import ph_now
-    now = ph_now()
-    return next_sequence_number(f'JV-{now.year}-{now.month:02d}-')
+def jv_prefix(entry_date=None):
+    """`JV-YYYY-MM-` for the month the voucher is DATED in (today when no date)."""
+    if entry_date is None:
+        from app.utils import ph_now
+        entry_date = ph_now().date()
+    return f'JV-{entry_date.year}-{entry_date.month:02d}-'
+
+
+def generate_jv_number(branch_id=None, entry_date=None):
+    """Next JV number: JV-YYYY-MM-NNNN. Company-wide sequence, resets each month.
+
+    The month is the ENTRY DATE's, not today's (owner, 2026-10-01): a JV dated
+    31 Aug entered on 1 Oct is JV-2026-08-xxxx. With no date it falls back to today.
+    """
+    return next_sequence_number(jv_prefix(entry_date))

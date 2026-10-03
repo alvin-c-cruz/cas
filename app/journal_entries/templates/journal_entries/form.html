@@ -354,9 +354,17 @@ document.addEventListener('DOMContentLoaded', function() {
         addLine();
     });
 
-    // Add initial lines (at least 2)
-    addLine();
-    addLine();
+    // Edit: rebuild the saved lines; create: start with two blank lines.
+    const existingLines = {{ (existing_lines or []) | tojson }};
+    if (existingLines.length) {
+        // addLine() writes the description into a value="..." attribute: escape it.
+        const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        existingLines.forEach(l => addLine(l.account_id, esc(l.description),
+                                           l.debit || '', l.credit || ''));
+    } else {
+        addLine();
+        addLine();
+    }
 
     // Form submission validation
     form.addEventListener('submit', function(e) {

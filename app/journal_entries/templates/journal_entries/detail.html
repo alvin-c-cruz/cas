@@ -10,6 +10,7 @@
     <div class="card-header">
         <div class="card-header-actions">
             {% if entry.status == 'draft' and may_manage %}
+            <a href="{{ url_for('journal_entries.edit', id=entry.id) }}" class="btn btn-secondary">✏️ Edit</a>
             <form method="POST" action="{{ url_for('journal_entries.post', id=entry.id) }}" style="display: inline;" data-confirm="Post this journal entry? It will become final and cannot be edited.">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-success">

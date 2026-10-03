@@ -226,3 +226,46 @@ def test_year_end_close_numbers_do_not_collide_across_branches(app_ctx):
 
         assert minted == ['JV-2025-12-0001', 'JV-2025-12-0002']
         assert len(set(minted)) == 2
+
+
+# ----------------------------------------------------------------------------------
+# Numbering follows the ENTRY DATE (owner, 2026-10-01: a JV dated 31 Aug entered on
+# 1 Oct must be JV-2026-08-xxxx), and the sequence is the numeric max, not the
+# lexicographic last (CAS-DEVELOPMENT.md "Document numbering").
+
+def test_generate_jv_number_uses_the_entry_date_month(app_ctx):
+    from datetime import date
+    with app_ctx.app_context():
+        branch = Branch(name='Main', code='MAIN')
+        db.session.add(branch)
+        db.session.commit()
+        assert generate_jv_number(branch.id, entry_date=date(2026, 8, 31)) == 'JV-2026-08-0001'
+
+
+def test_generate_jv_number_months_are_independent(app_ctx):
+    from datetime import date
+    with app_ctx.app_context():
+        branch = Branch(name='Main', code='MAIN')
+        user = _mk_user()
+        db.session.add_all([branch, user])
+        db.session.commit()
+        db.session.add_all([_mk_je('JV-2026-10-0005', branch.id, user.id),
+                            _mk_je('JV-2026-08-0001', branch.id, user.id)])
+        db.session.commit()
+        assert generate_jv_number(branch.id, entry_date=date(2026, 8, 15)) == 'JV-2026-08-0002'
+        assert generate_jv_number(branch.id, entry_date=date(2026, 9, 1)) == 'JV-2026-09-0001'
+
+
+def test_generate_jv_number_takes_the_numeric_max_across_a_digit_width(app_ctx):
+    """'JV-2026-08-9999' sorts AFTER 'JV-2026-08-10000' as a string; the next number
+    must still be 10001, not a collision with 10000."""
+    from datetime import date
+    with app_ctx.app_context():
+        branch = Branch(name='Main', code='MAIN')
+        user = _mk_user()
+        db.session.add_all([branch, user])
+        db.session.commit()
+        db.session.add_all([_mk_je('JV-2026-08-9999', branch.id, user.id),
+                            _mk_je('JV-2026-08-10000', branch.id, user.id)])
+        db.session.commit()
+        assert generate_jv_number(branch.id, entry_date=date(2026, 8, 1)) == 'JV-2026-08-10001'

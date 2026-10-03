@@ -11,7 +11,7 @@ from app.accounts.models import Account
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.periods.utils import validate_transaction_date_with_flash
-from app.journal_entries.utils import generate_entry_number, generate_jv_number
+from app.journal_entries.utils import generate_entry_number, generate_jv_number, jv_prefix
 from app.utils.concurrency import commit_with_renumber_retry
 from app.settings import AppSettings
 from app.journal_entries.preprinted_layout import get_layout, save_layout
@@ -57,6 +57,73 @@ def _get_entry_or_404(id):
     entry = db.get_or_404(JournalEntry, id)
     require_same_branch(entry)
     return entry
+
+
+def _number_for_date(submitted, entry_date, branch_id):
+    """The JV number to save for a voucher dated `entry_date`.
+
+    The form suggests a number for TODAY's month; a voucher dated in another month
+    must not keep it (owner, 2026-10-01: "the numbering should be for August"). A
+    number already in the entry date's month -- typed, or the voucher's own on an
+    edit -- is kept; anything else is replaced by the next number for that month.
+    """
+    submitted = (submitted or '').strip()
+    if submitted.startswith(jv_prefix(entry_date)):
+        return submitted
+    return generate_jv_number(branch_id, entry_date=entry_date)
+
+
+def _lines_from_payload(raw):
+    """Parse and validate the posted `lines` JSON for an edit.
+
+    Returns (line_dicts, error). Mirrors create()'s rules: at least two lines, no line
+    carrying both a debit and a credit, empty lines skipped, debits equal credits.
+    """
+    if not raw:
+        return None, 'Please add at least two journal entry lines (debit and credit).'
+    try:
+        lines = json.loads(raw)
+    except (ValueError, TypeError):
+        return None, 'The journal entry lines could not be read. Please try again.'
+    if not isinstance(lines, list) or len(lines) < 2:
+        return None, 'Journal entry must have at least two lines.'
+
+    kept, total_debit, total_credit = [], Decimal('0.00'), Decimal('0.00')
+    for idx, line in enumerate(lines, start=1):
+        debit = Decimal(str(line.get('debit') or 0))
+        credit = Decimal(str(line.get('credit') or 0))
+        if debit > 0 and credit > 0:
+            return None, f'Line {idx}: Cannot have both debit and credit amounts.'
+        if debit == 0 and credit == 0:
+            continue
+        kept.append({'account_id': int(line.get('account_id')),
+                     'description': line.get('description', ''),
+                     'debit': debit, 'credit': credit})
+        total_debit += debit
+        total_credit += credit
+
+    if len(kept) < 2:
+        return None, 'Journal entry must have at least two lines.'
+    if total_debit != total_credit:
+        return None, (f'Entry is not balanced! Debits: ₱{total_debit:,.2f}, Credits: '
+                      f'₱{total_credit:,.2f}. Difference: '
+                      f'₱{abs(total_debit - total_credit):,.2f}')
+    return kept, None
+
+
+def _lines_summary(lines):
+    """One comparable string per voucher's lines, for the audit diff."""
+    return '; '.join(f"{l['account_id']}:{Decimal(str(l['debit'])):.2f}/{Decimal(str(l['credit'])):.2f}"
+                     for l in lines)
+
+
+def _safe_json(raw):
+    """The lines the user just submitted, so a refused save re-renders them."""
+    try:
+        data = json.loads(raw or '[]')
+        return data if isinstance(data, list) else []
+    except (ValueError, TypeError):
+        return []
 
 
 @journal_entries_bp.route('/journal-entries')
@@ -113,7 +180,8 @@ def create():
 
             # Create journal entry
             entry = JournalEntry(
-                entry_number=form.entry_number.data,
+                entry_number=_number_for_date(form.entry_number.data, form.entry_date.data,
+                                              current_branch_id),
                 entry_date=form.entry_date.data,
                 description=form.description.data,
                 reference=form.reference.data,
@@ -154,7 +222,8 @@ def create():
 
             db.session.add(entry)
             commit_with_renumber_retry(entry, 'entry_number',
-                                        lambda: generate_jv_number(current_branch_id))
+                                        lambda: generate_jv_number(current_branch_id,
+                                                                   entry_date=entry.entry_date))
 
             log_create(
                 module='journal_entry',
@@ -189,8 +258,9 @@ def create():
             flash('Please select a branch before creating journal entries.', 'error')
             return redirect(url_for('users.select_branch', next=request.url))
 
-        form.entry_number.data = generate_jv_number(current_branch_id)
-        form.entry_date.data = date.today()
+        form.entry_date.data = ph_now().date()
+        form.entry_number.data = generate_jv_number(current_branch_id,
+                                                    entry_date=form.entry_date.data)
 
     return render_template('journal_entries/form.html', form=form, entry=None, accounts=_accounts_for_select())
 
@@ -210,6 +280,107 @@ def view(id):
     return render_template('journal_entries/detail.html', entry=entry,
                            jv_print_form=AppSettings.get_setting('jv_print_form', 'current'),
                            fixed_asset_tags=fixed_asset_tags)
+
+
+@journal_entries_bp.route('/journal-entries/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@accountant_or_admin_required
+def edit(id):
+    """Edit a DRAFT journal entry (owner, 2026-10-01: "Draft should be editable").
+
+    A draft is not in the books, so changing it is ordinary data entry. Posted and
+    cancelled entries keep BIR permanence: no edit, correct them with a reversing
+    entry (CAS-DEVELOPMENT.md). Drafts carry no fixed-asset tags -- only posted JV
+    lines can be capitalized -- so replacing the lines orphans nothing.
+    """
+    entry = _get_entry_or_404(id)
+    if entry.status != 'draft':
+        flash('Only draft journal entries can be edited. Correct a posted entry with a '
+              'reversing entry.', 'error')
+        return redirect(url_for('journal_entries.view', id=id))
+
+    form = JournalEntryForm(obj=entry)
+
+    def _render(lines=None):
+        if lines is None:
+            lines = [{'account_id': l.account_id, 'description': l.description or '',
+                      'debit': float(l.debit_amount or 0), 'credit': float(l.credit_amount or 0)}
+                     for l in entry.lines]
+        return render_template('journal_entries/form.html', form=form, entry=entry,
+                               accounts=_accounts_for_select(), existing_lines=lines)
+
+    if request.method == 'GET':
+        return _render()
+
+    if not form.validate_on_submit():
+        return _render(_safe_json(request.form.get('lines')))
+    if not validate_transaction_date_with_flash(form.entry_date.data, 'journal entry'):
+        return _render(_safe_json(request.form.get('lines')))
+
+    lines, error = _lines_from_payload(request.form.get('lines'))
+    if error:
+        flash(error, 'error')
+        return _render(_safe_json(request.form.get('lines')))
+
+    try:
+        from app.audit.utils import get_changes
+        total = sum((l['debit'] for l in lines), Decimal('0.00'))
+        new_number = _number_for_date(entry.entry_number, form.entry_date.data, entry.branch_id)
+        fields = ['entry_number', 'entry_date', 'description', 'reference', 'entry_type',
+                  'total_debit', 'total_credit']
+        new_data = {'entry_number': new_number, 'entry_date': form.entry_date.data,
+                    'description': form.description.data, 'reference': form.reference.data,
+                    'entry_type': form.entry_type.data,
+                    'total_debit': f'{total:.2f}', 'total_credit': f'{total:.2f}'}
+        old_values, new_values = get_changes(entry, new_data, fields)
+        old_lines = _lines_summary([{'account_id': l.account_id, 'debit': l.debit_amount,
+                                     'credit': l.credit_amount} for l in entry.lines])
+        new_lines = _lines_summary(lines)
+        if old_lines != new_lines:
+            old_values['lines'], new_values['lines'] = old_lines, new_lines
+        renumbered = new_number != entry.entry_number
+
+        entry.entry_number = new_number
+        entry.entry_date = form.entry_date.data
+        entry.description = form.description.data
+        entry.reference = form.reference.data
+        entry.entry_type = form.entry_type.data
+        entry.is_reversing = form.is_reversing.data
+        entry.reversal_date = form.reversal_date.data if form.is_reversing.data else None
+
+        for old in entry.lines.all():
+            db.session.delete(old)
+        db.session.flush()
+        for idx, l in enumerate(lines, start=1):
+            entry.lines.append(JournalEntryLine(
+                line_number=idx, account_id=l['account_id'], description=l['description'],
+                debit_amount=l['debit'], credit_amount=l['credit']))
+        db.session.flush()
+        entry.calculate_totals()
+
+        if renumbered:
+            commit_with_renumber_retry(entry, 'entry_number',
+                                       lambda: generate_jv_number(entry.branch_id,
+                                                                  entry_date=entry.entry_date))
+            new_values['entry_number'] = entry.entry_number
+        else:
+            db.session.commit()
+
+        log_update(module='journal_entry', record_id=entry.id,
+                   record_identifier=f'{entry.entry_number} - {entry.description}',
+                   old_values=old_values, new_values=new_values)
+
+        flash(f'Journal Entry "{entry.entry_number}" updated.', 'success')
+        return redirect(url_for('journal_entries.view', id=entry.id))
+
+    except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error('Error editing journal entry', exc_info=True)
+        log_exception(e, severity='ERROR', module='journal_entries.edit')
+        db.session.rollback()
+        flash('An error occurred while saving the journal entry. Please try again.', 'error')
+        return redirect(url_for('journal_entries.edit', id=id))
 
 
 @journal_entries_bp.route('/journal-entries/<int:id>/print')
