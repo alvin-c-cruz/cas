@@ -87,6 +87,9 @@ class AttachmentTarget:
     #: required files missing" badge and the advisory dialog. A Sales Order is
     #: CONFIRMED, not approved.
     approved_word: str = 'approved'
+    #: The administrator may attach, replace and delete files in ANY status -- set on a
+    #: document once it adopts the admin override (app/common/admin_override.py).
+    admin_override: bool = False
 
     def model(self):
         module_name, _, class_name = self.model_path.partition(':')
@@ -181,6 +184,7 @@ TARGETS = {
             Slot('check_copy', 'Check copy', required=True, applies_when=_paid_by_check),
         ),
         late_complete_statuses=('posted',),
+        admin_override=True,
     ),
     # Owner request 2026-09-30: the customer's PO, the signed SO and the signed JO
     # belong on the order. The signed copies only exist AFTER confirmation (the SO
@@ -229,6 +233,10 @@ def slots_for(document_type):
 
 def can_upload(target, doc, user):
     """May *user* attach a file to *doc* right now?"""
+    if target.admin_override:
+        from app.common.admin_override import is_override_user
+        if is_override_user(user):
+            return True
     if user.role in target.edit_roles and doc.status in target.open_statuses:
         return True
     if target.amend_statuses and doc.status in target.amend_statuses:

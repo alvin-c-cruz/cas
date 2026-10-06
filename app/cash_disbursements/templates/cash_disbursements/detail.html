@@ -65,6 +65,31 @@
 </div>
 {% endif %}
 
+<!-- Administrator delete modal (owner, 2026-10-06) -->
+{% if admin_override and admin_deletable %}
+<div id="adminDeleteModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:520px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Delete {{ cdv.cdv_number }}?</h3>
+    <p style="color:var(--text-2);margin-bottom:20px;">This removes the voucher, its lines,
+      {% if cdv.journal_entry %}its journal entry,{% endif %} and its attachments from the books.
+      {% if cdv.status == 'posted' %}The bills it paid reopen, and any receiving report it settled
+      reopens.{% endif %} The CD number and cheque number become free. A full copy is kept in the
+      audit log. This cannot be undone.</p>
+    <form method="POST" action="{{ url_for('cash_disbursements.delete', id=cdv.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+        <textarea name="delete_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('adminDeleteModal').style.display='none'">Keep CDV</button>
+        <button type="submit" class="btn btn-danger">Delete CDV</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
   <div class="card-header">
     <div style="display:flex;align-items:center;gap:12px;">
@@ -92,6 +117,14 @@
       {% endif %}
       {% if (current_user.has_full_access or current_user.role == 'accountant') and cdv.status == 'posted' %}
       <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel CDV</button>
+      {% endif %}
+      {% if admin_override and cdv.status == 'posted' %}
+      <a href="{{ url_for('cash_disbursements.edit', id=cdv.id) }}" class="btn btn-primary"
+         title="Administrator: edit this posted voucher in place">Edit (admin)</a>
+      {% endif %}
+      {% if admin_override and admin_deletable %}
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('adminDeleteModal').style.display='flex'"
+              title="Administrator: delete this voucher and its journal entry">Delete</button>
       {% endif %}
       <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary">← Back</a>
     </div>

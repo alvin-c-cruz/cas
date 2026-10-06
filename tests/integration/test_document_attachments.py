@@ -21,7 +21,8 @@ from app.vendors.models import Vendor
 
 pytestmark = [pytest.mark.integration, pytest.mark.attachments]
 
-PASSWORDS = {'admin': 'admin123', 'staff': 'staff123', 'accountant': 'accountant123'}
+PASSWORDS = {'admin': 'admin123', 'staff': 'staff123', 'accountant': 'accountant123',
+             'chief': 'chief123'}
 
 
 @pytest.fixture(autouse=True)
@@ -179,13 +180,30 @@ def test_accountant_uploads_through_amend_path_after_approval(client, db_session
     assert len(rows) == 1 and rows[0].mime_type == 'image/png'
 
 
-@pytest.mark.parametrize('doc_type', ['receiving_reports', 'cash_disbursements'])
+@pytest.mark.parametrize('doc_type', ['receiving_reports'])
 def test_no_amend_path_means_frozen_even_for_admin(client, db_session, admin_user,
                                                    main_branch, doc_type):
     doc = make_doc(db_session, main_branch, doc_type, status=APPROVED[doc_type])
     _login(client, 'admin', main_branch)
     _upload(client, doc_type, doc.id)
     assert _rows(doc_type, doc.id) == []
+
+
+def test_a_posted_cv_is_open_to_the_administrator(client, db_session, admin_user, main_branch):
+    """Owner, 2026-10-06: the administrator's override reaches a posted CV's files too."""
+    doc = make_doc(db_session, main_branch, 'cash_disbursements', status='posted')
+    _login(client, 'admin', main_branch)
+    _upload(client, 'cash_disbursements', doc.id)
+    assert len(_rows('cash_disbursements', doc.id)) == 1
+
+
+def test_a_posted_cv_stays_frozen_for_a_chief_accountant(client, db_session,
+                                                          chief_accountant_user, main_branch):
+    """Full accounting reach is not the override: only the administrator has it."""
+    doc = make_doc(db_session, main_branch, 'cash_disbursements', status='posted')
+    _login(client, 'chief', main_branch)
+    _upload(client, 'cash_disbursements', doc.id)
+    assert _rows('cash_disbursements', doc.id) == []
 
 
 def test_multiple_files_in_one_request_all_saved(client, db_session, admin_user, main_branch):

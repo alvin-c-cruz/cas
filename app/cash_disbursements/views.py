@@ -28,7 +28,10 @@ from app.utils.concurrency import (claim_version, conflict_message, submitted_ve
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.settings import AppSettings
-from app.periods.utils import validate_transaction_date_with_flash
+from app.periods.utils import validate_transaction_date, validate_transaction_date_with_flash
+from app.common.admin_override import (RECONCILED, REASON_REQUIRED, clean_reason,
+                                       is_override_user, journal_entry_snapshot, log_override,
+                                       reconciled_line_count)
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.posting.buckets import group_tax_buckets, reconcile_buckets_to_total
 from app.utils.branch_scope import require_same_branch
@@ -292,6 +295,70 @@ def _bills_of_payee(payee_type, payee_id):
 # Header fields a CDV create/update audit row records (before/after on update).
 _CDV_AUDIT_FIELDS = ['cdv_number', 'cdv_date', 'payee_type', 'payee_id', 'vendor_name',
                      'payment_method', 'total_amount', 'status']
+
+#: Statuses the administrator may hard-delete (owner, 2026-10-06). A cancelled voucher
+#: is not among them: its reversal JE is already part of the books.
+ADMIN_DELETABLE_STATUSES = ('draft', 'posted', 'voided')
+
+
+def _admin_override_refusal(cdv):
+    """Why the administrator may NOT edit or delete this posted voucher, or None.
+    A closed period, a bank-reconciled line and a fixed-asset tag all still refuse."""
+    ok, period_msg = validate_transaction_date(cdv.cdv_date, 'Cash Disbursement Voucher')
+    if not ok:
+        return period_msg
+    if reconciled_line_count(cdv.journal_entry_id):
+        return RECONCILED
+    from app.fixed_assets.services import get_tags_for_document
+    tagged = get_tags_for_document('cdv', cdv.id)
+    if tagged:
+        return (f'Linked to fixed asset(s) {", ".join(a.code for a in tagged)}. Delete the '
+                'fixed asset(s) first.')
+    return None
+
+
+def _cdv_audit_state(cdv):
+    """The fields an administrator's edit of a posted voucher can change, for its audit
+    diff -- wider than _CDV_AUDIT_FIELDS, so a particulars or line correction shows."""
+    state = model_to_dict(cdv, _CDV_AUDIT_FIELDS + ['notes', 'check_number', 'check_date',
+                                                    'cash_account_id'])
+    state['lines'] = '; '.join(
+        [f'{l.ap_number} {l.amount_applied}' for l in cdv.ap_lines]
+        + [f'{l.account.code if l.account else l.account_id} {l.line_total}'
+           for l in cdv.expense_lines])
+    return state
+
+
+def _cdv_snapshot(cdv):
+    """Everything a hard delete removes, JSON-safe, for its audit row."""
+    from app.attachments.models import DocumentAttachment
+    attachments = DocumentAttachment.query.filter_by(document_type='cash_disbursements',
+                                                     document_id=cdv.id).all()
+    return {
+        'cdv_number': cdv.cdv_number,
+        'cdv_date': cdv.cdv_date.isoformat() if cdv.cdv_date else None,
+        'branch_id': cdv.branch_id,
+        'status': cdv.status,
+        'payee_type': cdv.payee_type,
+        'payee_id': cdv.payee_id,
+        'vendor_name': cdv.vendor_name,
+        'payment_method': cdv.payment_method,
+        'check_number': cdv.check_number,
+        'check_date': cdv.check_date.isoformat() if cdv.check_date else None,
+        'cash_account': cdv.cash_account.code if cdv.cash_account else None,
+        'notes': cdv.notes,
+        'total_amount': str(cdv.total_amount or 0),
+        'ap_lines': [{'ap_number': l.ap_number, 'original_balance': str(l.original_balance),
+                      'amount_applied': str(l.amount_applied)} for l in cdv.ap_lines],
+        'expense_lines': [{'description': l.description,
+                           'account': l.account.code if l.account else l.account_id,
+                           'line_total': str(l.line_total or 0),
+                           'vat_amount': str(l.vat_amount or 0),
+                           'wt_amount': str(l.wt_amount or 0)} for l in cdv.expense_lines],
+        'journal_entry': journal_entry_snapshot(cdv.journal_entry),
+        'attachments': [{'kind': a.kind, 'original_filename': a.original_filename}
+                        for a in attachments],
+    }
 
 
 def _sync_payee_field(form):
@@ -1220,9 +1287,17 @@ def create():
 @staff_or_above_required
 def edit(id):
     cdv = _get_cdv_or_404(id)
-    if cdv.status != 'draft':
+    # The administrator may edit a POSTED voucher in place (owner, 2026-10-06); everyone
+    # else, and every other status, keeps the draft-only rule.
+    admin_posted = cdv.status == 'posted' and is_override_user(current_user)
+    if cdv.status != 'draft' and not admin_posted:
         flash('Only draft CDVs can be edited.', 'error')
         return redirect(url_for('cash_disbursements.view', id=id))
+    if admin_posted:
+        refusal = _admin_override_refusal(cdv)
+        if refusal:
+            flash(f'Cannot edit posted CDV {cdv.cdv_number}: {refusal}', 'error')
+            return redirect(url_for('cash_disbursements.view', id=id))
 
     form = CashDisbursementForm(obj=cdv)
     _sync_payee_field(form)
@@ -1248,12 +1323,14 @@ def edit(id):
                                             # payee_id is 0 on a vendor CDV not built by
                                             # this view (seed/fixture); vendor_id is the same id.
                                             else (cdv.payee_type, cdv.payee_id or cdv.vendor_id)))
+        ctx['admin_posted_edit'] = admin_posted
         if request.method == 'POST':
             return render_template(
                 'cash_disbursements/form.html', form=form, cdv=cdv,
                 ap_lines=[], expense_lines=[],
                 restore_ap_lines=request.form.get('ap_lines', ''),
                 restore_expense_lines=request.form.get('expense_lines', ''),
+                admin_reason=request.form.get('admin_reason', ''),
                 **ctx)
         return render_template(
             'cash_disbursements/form.html', form=form, cdv=cdv,
@@ -1262,6 +1339,12 @@ def edit(id):
             **ctx)
 
     if form.validate_on_submit():
+        admin_reason = None
+        if admin_posted:
+            admin_reason = clean_reason(request.form.get('admin_reason'))
+            if not admin_reason:
+                flash(REASON_REQUIRED, 'error')
+                return _render_edit_form()
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
             return _render_edit_form()
         # Uniqueness check: the edited CD number must not conflict with any OTHER
@@ -1280,7 +1363,9 @@ def edit(id):
                 flash('Selected payee not found.', 'error')
                 return _render_edit_form()
             is_vendor = payee_type == 'vendor'
-            old_values = model_to_dict(cdv, _CDV_AUDIT_FIELDS)
+            old_values = (_cdv_audit_state(cdv) if admin_posted
+                          else model_to_dict(cdv, _CDV_AUDIT_FIELDS))
+            old_payee = (cdv.payee_type, cdv.payee_id or cdv.vendor_id)
 
             # Lost-update guard. First write of the request: everything above is
             # read-only, everything below deletes the AP/expense lines and the
@@ -1313,6 +1398,13 @@ def edit(id):
                 # it here raised NameError (HTTP 500) on this path.
                 return _render_edit_form()
 
+            # A posted voucher's payments are already on its bills. Take them off first,
+            # so the edited lines validate against the bills' balances before this
+            # voucher -- otherwise every unchanged amount reads as an overpayment.
+            if admin_posted:
+                _reverse_ap_payments(cdv)
+                db.session.flush()
+
             # Delete old line items and rebuild
             for ap in list(cdv.ap_lines):
                 db.session.delete(ap)
@@ -1328,10 +1420,16 @@ def edit(id):
             if err:
                 return err
 
-            # Delete old JE and recreate
+            # Delete old JE and recreate. A posted voucher's entry keeps its number and
+            # its original posting stamp: the edit corrects the entry, it does not
+            # post a new one.
+            kept_stamp = None
             if cdv.journal_entry_id:
                 from app.journal_entries.models import JournalEntry as _JE
                 old_je = db.session.get(_JE, cdv.journal_entry_id)
+                if admin_posted and old_je:
+                    kept_stamp = (old_je.entry_number, old_je.created_by_id,
+                                  old_je.posted_by_id, old_je.posted_at)
                 cdv.journal_entry_id = None
                 cdv.journal_entry = None
                 db.session.flush()
@@ -1340,17 +1438,45 @@ def edit(id):
                 db.session.flush()
 
             je = _post_cdv_je(cdv, current_user.id)
+            if kept_stamp:
+                (je.entry_number, je.created_by_id, je.posted_by_id,
+                 je.posted_at) = kept_stamp
             cdv.journal_entry_id = je.id
+
+            reopened = []
+            if admin_posted:
+                _apply_ap_payments(cdv)
+                # A receipt this voucher settled outside AP belongs to the old payee.
+                if (payee_type, payee_id) != old_payee:
+                    from app.purchase_billing import reopen_rrs_settled_by
+                    reopened = reopen_rrs_settled_by(cdv)
             db.session.commit()
 
-            log_update(
-                module='cash_disbursement',
-                record_id=cdv.id,
-                record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
-                old_values=old_values,
-                new_values=model_to_dict(cdv, _CDV_AUDIT_FIELDS)
-            )
+            identifier = f'{cdv.cdv_number} - {cdv.vendor_name}'
+            new_values = (_cdv_audit_state(cdv) if admin_posted
+                          else model_to_dict(cdv, _CDV_AUDIT_FIELDS))
+            if admin_posted:
+                log_override('cash_disbursement', 'admin_edit_posted', cdv.id, identifier,
+                             admin_reason, old_values=old_values, new_values=new_values)
+                for rr in reopened:
+                    log_audit(module='receiving_reports', action='reopen_settlement',
+                              record_id=rr.id, record_identifier=rr.rr_number,
+                              old_values={'status': 'billed', 'settled_cdv': cdv.cdv_number},
+                              new_values={'status': 'approved', 'settled_cdv': None},
+                              notes=f'CDV {cdv.cdv_number} payee changed by the administrator '
+                                    '-- its settlement reopened.')
+            else:
+                log_update(
+                    module='cash_disbursement',
+                    record_id=cdv.id,
+                    record_identifier=identifier,
+                    old_values=old_values,
+                    new_values=new_values
+                )
             flash(f'CDV "{cdv.cdv_number}" updated successfully!', 'success')
+            if reopened:
+                flash('Reopened as unbilled: Receiving Report '
+                      + ', '.join(rr.rr_number for rr in reopened) + '.', 'warning')
             return redirect(url_for('cash_disbursements.view', id=cdv.id))
 
         except CDVLineError as ce:
@@ -1400,7 +1526,9 @@ def view(id):
                            cdv=cdv, je_entries=je_entries, now=ph_now(),
                            cd_print_access=cd_print_access, cd_print_form=cd_print_form,
                            check_printable=check_printable,
-                           fixed_asset_tags=fixed_asset_tags)
+                           fixed_asset_tags=fixed_asset_tags,
+                           admin_override=is_override_user(current_user),
+                           admin_deletable=cdv.status in ADMIN_DELETABLE_STATUSES)
 
 
 def _apply_ap_payments(cdv):
@@ -1600,6 +1728,88 @@ def cancel(id):
         flash('An unexpected error occurred while cancelling the CDV. Please try '
               'again; if it persists, contact your administrator.', 'error')
     return redirect(url_for('cash_disbursements.view', id=id))
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/delete', methods=['POST'])
+@login_required
+def delete(id):
+    """Hard-delete a voucher -- administrator only (owner, 2026-10-06).
+
+    The voucher, its lines, its JE and its attachments leave the books; the bills it
+    paid and the receipts it settled reopen; its number is free again. The audit row
+    keeps a full snapshot of what was removed.
+    """
+    if not is_override_user(current_user):
+        abort(403)
+    cdv = _get_cdv_or_404(id)
+    if cdv.status not in ADMIN_DELETABLE_STATUSES:
+        flash(f'A {cdv.status} CDV cannot be deleted: its reversal entry is already part '
+              'of the books.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    reason = clean_reason(request.form.get('delete_reason'))
+    if not reason:
+        flash(REASON_REQUIRED, 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    if cdv.status == 'posted':
+        refusal = _admin_override_refusal(cdv)
+        if refusal:
+            flash(f'Cannot delete posted CDV {cdv.cdv_number}: {refusal}', 'error')
+            return redirect(url_for('cash_disbursements.view', id=id))
+
+    from app.attachments.models import DocumentAttachment
+    from app.attachments.service import file_path
+    from app.purchase_billing import reopen_rrs_settled_by
+    import os
+    cdv_id, number, payee = cdv.id, cdv.cdv_number, cdv.vendor_name
+    try:
+        snapshot = _cdv_snapshot(cdv)
+        if cdv.status == 'posted':
+            _reverse_ap_payments(cdv)
+        reopened = reopen_rrs_settled_by(cdv)
+        je = cdv.journal_entry
+        cdv.journal_entry_id = None
+        cdv.journal_entry = None
+        db.session.flush()
+        if je is not None:
+            db.session.delete(je)
+        attachments = DocumentAttachment.query.filter_by(document_type='cash_disbursements',
+                                                         document_id=cdv_id).all()
+        paths = [file_path(a) for a in attachments]
+        for a in attachments:
+            db.session.delete(a)
+        db.session.delete(cdv)
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error deleting CDV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_disbursements.delete')
+        flash('An unexpected error occurred while deleting the CDV. Nothing was changed.',
+              'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+
+    for path in paths:  # the rows are the record; a file that will not go is only logged
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            current_app.logger.warning('Could not remove attachment file: %s', path)
+    log_override('cash_disbursement', 'admin_delete', cdv_id, f'{number} - {payee}', reason,
+                 old_values=snapshot)
+    for rr in reopened:
+        log_audit(module='receiving_reports', action='reopen_settlement',
+                  record_id=rr.id, record_identifier=rr.rr_number,
+                  old_values={'status': 'billed', 'settled_cdv': number},
+                  new_values={'status': 'approved', 'settled_cdv': None},
+                  notes=f'CDV {number} deleted by the administrator -- its settlement reopened.')
+    flash(f'CDV "{number}" deleted. Its number is free again.', 'warning')
+    if reopened:
+        flash('Reopened as unbilled: Receiving Report '
+              + ', '.join(rr.rr_number for rr in reopened) + '.', 'warning')
+    return redirect(url_for('cash_disbursements.list_cdvs'))
 
 
 @cash_disbursements_bp.route('/cash-disbursements/<int:id>/print')
