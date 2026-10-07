@@ -24,7 +24,10 @@ from app.settings import AppSettings
 from app.sales_invoices.preprinted_layout import (
     get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
     DATE_FORMATS, FIELD_LABELS, TEXT_KEYS)
-from app.periods.utils import validate_transaction_date_with_flash
+from app.periods.utils import validate_transaction_date, validate_transaction_date_with_flash
+from app.common.admin_override import (RECONCILED, REASON_REQUIRED, clean_reason,
+                                       is_override_user, journal_entry_snapshot, log_override,
+                                       reconciled_line_count)
 from app.posting.sales_vat import output_vat_buckets
 from app.utils.branch_scope import require_same_branch
 from datetime import date, timedelta
@@ -71,6 +74,97 @@ def accountant_or_admin_required(f):
 
 
 VALID_INVOICE_STATUSES = {'draft', 'posted', 'partially_paid', 'paid', 'voided', 'cancelled'}
+
+# ---------------------------------------------------------------------------
+# Administrator override (owner, 2026-10-06/07): edit or delete after posting
+# ---------------------------------------------------------------------------
+
+#: Statuses the administrator may edit in place. They all carry a posted JE.
+ADMIN_EDITABLE_STATUSES = ('posted', 'partially_paid', 'paid')
+
+#: Statuses the administrator may hard-delete. A cancelled invoice is not among them:
+#: its reversal JE is already part of the books. A paid one passes the status test but
+#: is refused by its receipts (_documents_on), which must go first.
+ADMIN_DELETABLE_STATUSES = ('draft', 'posted', 'partially_paid', 'paid', 'voided')
+
+_SI_AUDIT_FIELDS = ['invoice_number', 'invoice_date', 'due_date', 'customer_name',
+                    'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status']
+
+
+def _admin_override_refusal(invoice):
+    """Why the administrator may NOT edit or delete this posted invoice, or None.
+    A closed period and a bank-reconciled JE line still refuse."""
+    ok, period_msg = validate_transaction_date(invoice.invoice_date, 'Sales Invoice')
+    if not ok:
+        return period_msg
+    if reconciled_line_count(invoice.journal_entry_id):
+        return RECONCILED
+    return None
+
+
+def _documents_on(invoice):
+    """Numbers of the live documents that point at this invoice: draft or posted cash
+    receipts applied to it, and any sales memo raised against it. Deleting the invoice
+    out from under them would leave a receipt crediting nothing, so they go first. A
+    voided or cancelled receipt keeps only the invoice NUMBER on its line, and every page
+    that shows it already copes with the invoice being gone."""
+    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+    from app.sales_memos.models import SalesMemo
+    receipts = (CashReceiptVoucher.query.join(CRVArLine, CRVArLine.crv_id == CashReceiptVoucher.id)
+                .filter(CRVArLine.invoice_id == invoice.id,
+                        CashReceiptVoucher.status.in_(('draft', 'posted')))
+                .order_by(CashReceiptVoucher.crv_number).all())
+    memos = (SalesMemo.query.filter_by(sales_invoice_id=invoice.id)
+             .order_by(SalesMemo.memo_number).all())
+    return ([f'cash receipt {r.crv_number}' for r in dict.fromkeys(receipts)]
+            + [f'sales memo {m.memo_number}' for m in memos])
+
+
+def _paid_status(invoice):
+    """The status a posted invoice reads after an edit, from what is already collected."""
+    paid = Decimal(str(invoice.amount_paid or 0))
+    if paid <= 0:
+        return 'posted'
+    return 'paid' if Decimal(str(invoice.balance or 0)) <= 0 else 'partially_paid'
+
+
+def _si_audit_state(invoice):
+    """The fields an administrator's edit can change, for its audit diff -- wider than
+    _SI_AUDIT_FIELDS, so a particulars or line correction shows."""
+    state = model_to_dict(invoice, _SI_AUDIT_FIELDS + ['customer_id', 'notes', 'reference',
+                                                       'payment_terms', 'amount_paid', 'balance'])
+    state['lines'] = '; '.join(
+        f'{l.account.code if l.account else l.account_id} {l.description or ""} {l.line_total}'
+        for l in invoice.line_items)
+    return state
+
+
+def _si_snapshot(invoice):
+    """Everything a hard delete removes, JSON-safe, for its audit row."""
+    return {
+        'invoice_number': invoice.invoice_number,
+        'invoice_date': invoice.invoice_date.isoformat() if invoice.invoice_date else None,
+        'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
+        'branch_id': invoice.branch_id,
+        'status': invoice.status,
+        'customer_id': invoice.customer_id,
+        'customer_name': invoice.customer_name,
+        'reference': invoice.reference,
+        'notes': invoice.notes,
+        'subtotal': str(invoice.subtotal or 0),
+        'vat_amount': str(invoice.vat_amount or 0),
+        'withholding_tax_amount': str(invoice.withholding_tax_amount or 0),
+        'total_amount': str(invoice.total_amount or 0),
+        'amount_paid': str(invoice.amount_paid or 0),
+        'lines': [{'description': l.description,
+                   'account': l.account.code if l.account else l.account_id,
+                   'quantity': str(l.quantity) if l.quantity is not None else None,
+                   'unit_price': str(l.unit_price) if l.unit_price is not None else None,
+                   'vat_category': l.vat_category,
+                   'line_total': str(l.line_total or 0)} for l in invoice.line_items],
+        'attachments': [a.original_filename for a in invoice.attachments],
+        'journal_entry': journal_entry_snapshot(invoice.journal_entry),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -893,12 +987,20 @@ def create():
 @staff_or_above_required
 def edit(id):
     invoice = _get_invoice_or_404(id)
-    if invoice.status != 'draft':
+    # The administrator may edit a POSTED invoice in place (owner, 2026-10-07); everyone
+    # else, and every other status, keeps the draft-only rule.
+    admin_posted = invoice.status in ADMIN_EDITABLE_STATUSES and is_override_user(current_user)
+    if invoice.status != 'draft' and not admin_posted:
         flash('Only draft Sales Invoices can be edited.', 'error')
         try:
             return redirect(url_for('sales_invoices.view', id=id))
         except Exception:
             return redirect(url_for('sales_invoices.list_invoices'))
+    if admin_posted:
+        refusal = _admin_override_refusal(invoice)
+        if refusal:
+            flash(f'Cannot edit posted Sales Invoice {invoice.invoice_number}: {refusal}', 'error')
+            return redirect(url_for('sales_invoices.view', id=id))
 
     form = SalesInvoiceForm(obj=invoice)
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
@@ -918,50 +1020,48 @@ def edit(id):
     restore_items = (_submitted_line_items() if request.method == 'POST'
                      else [item.to_dict() for item in invoice.line_items])
 
+    def _render_edit_form():
+        return render_template('sales_invoices/form.html', form=form, invoice=invoice,
+                               vat_categories=_vat_categories_for_form(),
+                               all_accounts=_get_all_accounts_for_select(),
+                               line_items=restore_items,
+                               gl_accounts=_gl_accounts_dict(),
+                               wht_codes=_wht_codes_for_form(),
+                               units=_units_for_form(),
+                               products=_products_for_form(),
+                               customer_quick_add_form=build_customer_quick_add_form(),
+                               customer_quick_add_whts=_customer_quick_add_whts(),
+                               admin_posted_edit=admin_posted,
+                               admin_reason=request.form.get('admin_reason', ''))
+
     if form.validate_on_submit():
+        admin_reason = None
+        if admin_posted:
+            admin_reason = clean_reason(request.form.get('admin_reason'))
+            if not admin_reason:
+                flash(REASON_REQUIRED, 'error')
+                return _render_edit_form()
         if not validate_transaction_date_with_flash(form.invoice_date.data, 'Sales Invoice'):
-            return render_template('sales_invoices/form.html', form=form, invoice=invoice,
-                                   vat_categories=_vat_categories_for_form(),
-                                   all_accounts=_get_all_accounts_for_select(),
-                                   line_items=restore_items,
-                                   gl_accounts=_gl_accounts_dict(),
-                                   wht_codes=_wht_codes_for_form(),
-                                   units=_units_for_form(),
-                                   products=_products_for_form(),
-                                   customer_quick_add_form=build_customer_quick_add_form(),
-                                   customer_quick_add_whts=_customer_quick_add_whts())
+            return _render_edit_form()
         try:
-            old_values = model_to_dict(invoice, [
-                'invoice_number', 'invoice_date', 'due_date', 'customer_name',
-                'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+            old_values = (_si_audit_state(invoice) if admin_posted
+                          else model_to_dict(invoice, _SI_AUDIT_FIELDS))
 
             cust = db.session.get(Customer, form.customer_id.data)
             if not cust:
                 flash('Selected customer not found.', 'error')
-                return render_template('sales_invoices/form.html', form=form, invoice=invoice,
-                                       vat_categories=_vat_categories_for_form(),
-                                       all_accounts=_get_all_accounts_for_select(),
-                                       line_items=restore_items,
-                                       gl_accounts=_gl_accounts_dict(),
-                                       wht_codes=_wht_codes_for_form(),
-                                       units=_units_for_form(),
-                                       products=_products_for_form(),
-                                       customer_quick_add_form=build_customer_quick_add_form(),
-                                       customer_quick_add_whts=_customer_quick_add_whts())
+                return _render_edit_form()
+            # The receipts on a paid invoice were taken from THIS customer.
+            if (admin_posted and Decimal(str(invoice.amount_paid or 0)) > 0
+                    and cust.id != invoice.customer_id):
+                flash(f'Sales Invoice {invoice.invoice_number} has collections applied, so it '
+                      'cannot be moved to another customer. Remove the receipts first.', 'error')
+                return _render_edit_form()
 
             line_err = _line_items_error(request.form.get('line_items', '[]'))
             if line_err:
                 flash(line_err, 'error')
-                return render_template('sales_invoices/form.html', form=form, invoice=invoice,
-                                       vat_categories=_vat_categories_for_form(),
-                                       all_accounts=_get_all_accounts_for_select(),
-                                       line_items=restore_items,
-                                       gl_accounts=_gl_accounts_dict(),
-                                       wht_codes=_wht_codes_for_form(),
-                                       units=_units_for_form(),
-                                       products=_products_for_form(),
-                                       customer_quick_add_form=build_customer_quick_add_form(),
-                                       customer_quick_add_whts=_customer_quick_add_whts())
+                return _render_edit_form()
 
             # Lost-update guard: the first write, before the line teardown below.
             # The check IS the write (conditional UPDATE) -- a read-then-compare
@@ -969,16 +1069,7 @@ def edit(id):
             if not claim_version(SalesInvoice, invoice.id, submitted_version()):
                 db.session.rollback()
                 flash(conflict_message('sales_invoice', invoice.id), 'error')
-                return render_template('sales_invoices/form.html', form=form, invoice=invoice,
-                                       vat_categories=_vat_categories_for_form(),
-                                       all_accounts=_get_all_accounts_for_select(),
-                                       line_items=restore_items,
-                                       gl_accounts=_gl_accounts_dict(),
-                                       wht_codes=_wht_codes_for_form(),
-                                       units=_units_for_form(),
-                                       products=_products_for_form(),
-                                       customer_quick_add_form=build_customer_quick_add_form(),
-                                       customer_quick_add_whts=_customer_quick_add_whts())
+                return _render_edit_form()
 
             invoice.invoice_number = form.invoice_number.data
             invoice.invoice_date = form.invoice_date.data
@@ -1012,27 +1103,54 @@ def edit(id):
             if err:
                 return err
 
+            if admin_posted:
+                # What is already collected stays collected: the total may not fall below it.
+                collected = Decimal(str(invoice.amount_paid or 0))
+                if Decimal(str(invoice.total_amount or 0)) < collected:
+                    db.session.rollback()
+                    flash(f'The new total is below the {collected:,.2f} already collected on '
+                          f'this invoice. Reduce the receipts first.', 'error')
+                    return _render_edit_form()
+                invoice.status = _paid_status(invoice)
+
+            # Delete old JE and recreate. A posted invoice's entry keeps its number and
+            # its original posting stamp: the edit corrects the entry, it does not post a
+            # new one.
+            kept_stamp = None
             if invoice.journal_entry_id:
                 from app.journal_entries.models import JournalEntry as _JE
                 old_je_id = invoice.journal_entry_id
+                old_je = db.session.get(_JE, old_je_id)
+                if admin_posted and old_je:
+                    kept_stamp = (old_je.entry_number, old_je.created_by_id,
+                                  old_je.posted_by_id, old_je.posted_at)
                 invoice.journal_entry_id = None
                 invoice.journal_entry = None
                 db.session.flush()
-                old_je = db.session.get(_JE, old_je_id)
                 if old_je:
                     db.session.delete(old_je)
                 db.session.flush()
 
             je = _post_invoice_je(invoice, current_user.id)
+            if admin_posted:
+                # _post_invoice_je posts only a 'posted' invoice's entry; a part-paid or
+                # paid invoice's entry is just as posted.
+                je.status = 'posted'
+                if kept_stamp:
+                    (je.entry_number, je.created_by_id, je.posted_by_id,
+                     je.posted_at) = kept_stamp
             invoice.journal_entry_id = je.id
             db.session.commit()
 
-            new_values = model_to_dict(invoice, [
-                'invoice_number', 'invoice_date', 'due_date', 'customer_name',
-                'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
-            log_update(module='sales_invoice', record_id=invoice.id,
-                       record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
-                       old_values=old_values, new_values=new_values)
+            identifier = f'{invoice.invoice_number} - {invoice.customer_name}'
+            if admin_posted:
+                log_override('sales_invoice', 'admin_edit_posted', invoice.id, identifier,
+                             admin_reason, old_values=old_values,
+                             new_values=_si_audit_state(invoice))
+            else:
+                log_update(module='sales_invoice', record_id=invoice.id,
+                           record_identifier=identifier, old_values=old_values,
+                           new_values=model_to_dict(invoice, _SI_AUDIT_FIELDS))
 
             flash(f'Sales Invoice "{invoice.invoice_number}" saved successfully!', 'success')
             # Redirect to detail view; falls back to list if view route not yet registered
@@ -1051,16 +1169,7 @@ def edit(id):
     if request.method == 'GET':
         form.customer_id.data = invoice.customer_id
 
-    return render_template('sales_invoices/form.html', form=form, invoice=invoice,
-                           vat_categories=_vat_categories_for_form(),
-                           all_accounts=_get_all_accounts_for_select(),
-                           line_items=restore_items,
-                           gl_accounts=_gl_accounts_dict(),
-                           wht_codes=_wht_codes_for_form(),
-                           units=_units_for_form(),
-                           products=_products_for_form(),
-                           customer_quick_add_form=build_customer_quick_add_form(),
-                           customer_quick_add_whts=_customer_quick_add_whts())
+    return _render_edit_form()
 
 
 # ── helpers called by create() and edit() ───────────────────────────────────
@@ -1247,7 +1356,10 @@ def view(id):
     return render_template('sales_invoices/detail.html', invoice=invoice,
                            je_entries=je_entries, sv_print_access=sv_print_access,
                            sv_print_form=sv_print_form, payments=payments,
-                           source_drs=source_drs, can_modify=can_modify)
+                           source_drs=source_drs, can_modify=can_modify,
+                           admin_override=is_override_user(current_user) and can_modify,
+                           admin_editable=invoice.status in ADMIN_EDITABLE_STATUSES,
+                           admin_deletable=invoice.status in ADMIN_DELETABLE_STATUSES)
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
@@ -1383,6 +1495,79 @@ def void(id):
     return redirect(url_for('sales_invoices.view', id=id))
 
 
+@sales_invoices_bp.route('/sales-invoices/<int:id>/delete', methods=['POST'])
+@login_required
+def delete(id):
+    """Hard-delete an invoice -- administrator only (owner, 2026-10-07).
+
+    The invoice, its lines, its JE and its attachments leave the books; the delivery
+    receipts it billed reopen; its number is free again. The audit row keeps a full
+    snapshot of what was removed. An invoice a live receipt or a sales memo points at
+    is refused: those documents go first.
+    """
+    if not is_override_user(current_user):
+        abort(403)
+    invoice = _get_invoice_or_404(id)
+    if invoice.status not in ADMIN_DELETABLE_STATUSES:
+        flash(f'A {invoice.status} Sales Invoice cannot be deleted: its reversal entry is '
+              'already part of the books.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    reason = clean_reason(request.form.get('delete_reason'))
+    if not reason:
+        flash(REASON_REQUIRED, 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    if invoice.status in ADMIN_EDITABLE_STATUSES:
+        refusal = _admin_override_refusal(invoice)
+        if refusal:
+            flash(f'Cannot delete posted Sales Invoice {invoice.invoice_number}: {refusal}',
+                  'error')
+            return redirect(url_for('sales_invoices.view', id=id))
+    linked = _documents_on(invoice)
+    if linked:
+        flash(f'Cannot delete Sales Invoice {invoice.invoice_number}: {", ".join(linked)} '
+              f'{"refers" if len(linked) == 1 else "refer"} to it. Delete or edit '
+              f'{"that document" if len(linked) == 1 else "those documents"} first.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    from app.sales_orders.models import SalesOrder
+    si_id, number, customer = invoice.id, invoice.invoice_number, invoice.customer_name
+    try:
+        snapshot = _si_snapshot(invoice)
+        _unbill_drs(invoice)
+        # The SO billing hook (P-60) is not written today; clear it should it ever be.
+        for so in SalesOrder.query.filter_by(sales_invoice_id=si_id).all():
+            so.sales_invoice_id = None
+        je = invoice.journal_entry
+        invoice.journal_entry_id = None
+        invoice.journal_entry = None
+        db.session.flush()
+        if je is not None:
+            db.session.delete(je)
+        paths = [os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
+                              str(si_id), a.stored_filename) for a in invoice.attachments]
+        db.session.delete(invoice)   # lines and attachment rows go with it (cascade)
+        db.session.commit()
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error deleting sales invoice', exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_invoices.delete')
+        flash('An unexpected error occurred while deleting the Sales Invoice. Nothing was '
+              'changed.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    for path in paths:  # the rows are the record; a file that will not go is only logged
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            current_app.logger.warning('Could not remove attachment file: %s', path)
+    log_override('sales_invoice', 'admin_delete', si_id, f'{number} - {customer}', reason,
+                 old_values=snapshot)
+    flash(f'Sales Invoice "{number}" deleted. Its number is free again.', 'warning')
+    return redirect(url_for('sales_invoices.list_invoices'))
+
+
 # ---------------------------------------------------------------------------
 # Print + Attachment routes (Task 13)
 # ---------------------------------------------------------------------------
@@ -1488,7 +1673,8 @@ def save_print_layout():
 @staff_or_above_required
 def upload_attachment(id):
     invoice = _get_invoice_or_404(id)
-    if invoice.status != 'draft':
+    # The administrator may attach to a posted invoice too (owner, 2026-10-07).
+    if invoice.status != 'draft' and not is_override_user(current_user):
         flash('Attachments can only be uploaded while the Sales Invoice is in draft status.', 'error')
         return redirect(url_for('sales_invoices.edit', id=id))
     uploaded_file = request.files.get('attachment')
@@ -1573,7 +1759,7 @@ def preview_attachment(attachment_id):
 def delete_attachment(attachment_id):
     attachment = db.get_or_404(SalesInvoiceAttachment, attachment_id)
     invoice = _get_invoice_or_404(attachment.invoice_id)
-    if invoice.status != 'draft':
+    if invoice.status != 'draft' and not is_override_user(current_user):
         flash('Attachments can only be deleted while the Sales Invoice is in draft status.', 'error')
         return redirect(url_for('sales_invoices.edit', id=invoice.id))
     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',

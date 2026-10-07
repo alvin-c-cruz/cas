@@ -92,6 +92,30 @@
 </div>
 {% endif %}
 
+{# ── Administrator delete modal (owner, 2026-10-07) ─────────────────────── #}
+{% if admin_override and admin_deletable %}
+<div id="adminDeleteModal" style="display:none; position:fixed; inset:0; background:var(--backdrop); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:520px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Delete {{ invoice.invoice_number }}?</h3>
+        <p style="color:var(--text-2); margin-bottom:20px;">This removes the invoice, its lines,
+            {% if invoice.journal_entry %}its journal entry,{% endif %} and its attachments from the books.
+            Any delivery receipt it billed reopens. The invoice number becomes free. A full copy is
+            kept in the audit log. This cannot be undone.</p>
+        <form method="POST" action="{{ url_for('sales_invoices.delete', id=invoice.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div style="margin-bottom:24px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+                <textarea name="delete_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%; resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('adminDeleteModal').style.display='none'">Keep Invoice</button>
+                <button type="submit" class="btn btn-danger">Delete Invoice</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <div class="card page-sales-invoice">
     <div class="card-header">
         <div style="display:flex; align-items:center; gap:12px;">
@@ -129,6 +153,14 @@
             {# Cancel: accountant/admin, posted + no payments; write actions stay selected-branch-scoped #}
             {% if (current_user.has_full_access or current_user.role == 'accountant') and invoice.status == 'posted' and invoice.amount_paid == 0 and can_modify %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Invoice</button>
+            {% endif %}
+            {% if admin_override and admin_editable %}
+            <a href="{{ url_for('sales_invoices.edit', id=invoice.id) }}" class="btn btn-primary"
+               title="Administrator: edit this posted invoice in place">Edit (admin)</a>
+            {% endif %}
+            {% if admin_override and admin_deletable %}
+            <button type="button" class="btn btn-danger" onclick="document.getElementById('adminDeleteModal').style.display='flex'"
+                    title="Administrator: delete this invoice and its journal entry">Delete</button>
             {% endif %}
             <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary">&#8592; Back to List</a>
         </div>
