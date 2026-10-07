@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Update Draft CRV' if crv else 'Enter CRV' }}{% endblock %}
-{% block page_title %}{{ 'Update Draft CRV' if crv else 'Enter CRV' }}{% endblock %}
+{% block title %}{{ 'Edit Posted CRV (admin)' if admin_posted_edit else ('Update Draft CRV' if crv else 'Enter CRV') }}{% endblock %}
+{% block page_title %}{{ 'Edit Posted CRV (admin)' if admin_posted_edit else ('Update Draft CRV' if crv else 'Enter CRV') }}{% endblock %}
 
 {% block content %}
 {% from "macros.html" import render_field, render_flash_messages %}
@@ -165,6 +165,14 @@
           {{ form.notes.label(class='form-label') }}
           {{ form.notes(class='form-control', style='resize:vertical') }}
           {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
+          {% if admin_posted_edit %}
+          <div class="admin-override-reason" style="margin-top:12px;padding:10px 12px;border:1px solid var(--red);border-radius:6px;">
+            <label class="form-label" for="admin_reason">Reason for editing this POSTED receipt <span style="color:var(--red);">*</span></label>
+            <textarea id="admin_reason" name="admin_reason" class="form-control" rows="2" required minlength="10"
+                      placeholder="Minimum 10 characters -- kept in the audit log">{{ admin_reason or '' }}</textarea>
+            <div style="font-size:12px;color:var(--text-2);margin-top:4px;">Administrator override: the receipt stays posted; its journal entry is rebuilt under the same number and its collections are re-applied to the invoices.</div>
+          </div>
+          {% endif %}
         </div>
 
       </div>

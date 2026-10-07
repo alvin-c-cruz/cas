@@ -20,7 +20,10 @@ from app.utils.line_mode import validate_line_mode
 from app.utils.wt_labels import wt_label
 from app.utils.cache_helpers import get_active_units, get_active_products
 from app.settings import AppSettings
-from app.periods.utils import validate_transaction_date_with_flash
+from app.periods.utils import validate_transaction_date, validate_transaction_date_with_flash
+from app.common.admin_override import (RECONCILED, REASON_REQUIRED, clean_reason,
+                                       is_override_user, journal_entry_snapshot, log_override,
+                                       reconciled_line_count)
 from app.customers.views import build_customer_quick_add_form
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.posting.buckets import group_tax_buckets, reconcile_buckets_to_total
@@ -585,6 +588,65 @@ def _reverse_ar_collections(crv):
 
 
 # ---------------------------------------------------------------------------
+# Administrator override (owner, 2026-10-06/07): edit or delete after posting
+# ---------------------------------------------------------------------------
+
+#: Statuses the administrator may hard-delete. A cancelled receipt is not among them:
+#: its reversal JE is already part of the books.
+ADMIN_DELETABLE_STATUSES = ('draft', 'posted', 'voided')
+
+_CRV_AUDIT_FIELDS = ['crv_number', 'crv_date', 'customer_name', 'payment_method',
+                     'total_amount', 'status']
+
+
+def _admin_override_refusal(crv):
+    """Why the administrator may NOT edit or delete this posted receipt, or None.
+    A closed period and a bank-reconciled JE line still refuse."""
+    ok, period_msg = validate_transaction_date(crv.crv_date, 'Cash Receipt Voucher')
+    if not ok:
+        return period_msg
+    if reconciled_line_count(crv.journal_entry_id):
+        return RECONCILED
+    return None
+
+
+def _crv_audit_state(crv):
+    """The fields an administrator's edit can change, for its audit diff."""
+    state = model_to_dict(crv, _CRV_AUDIT_FIELDS + ['customer_id', 'notes', 'check_number',
+                                                    'check_date', 'cash_account_id'])
+    state['lines'] = '; '.join(
+        [f'{l.invoice_number} {l.amount_applied}' for l in crv.ar_lines]
+        + [f'{l.account.code if l.account else l.account_id} {l.line_total}'
+           for l in crv.revenue_lines])
+    return state
+
+
+def _crv_snapshot(crv):
+    """Everything a hard delete removes, JSON-safe, for its audit row."""
+    return {
+        'crv_number': crv.crv_number,
+        'crv_date': crv.crv_date.isoformat() if crv.crv_date else None,
+        'branch_id': crv.branch_id,
+        'status': crv.status,
+        'customer_id': crv.customer_id,
+        'customer_name': crv.customer_name,
+        'payment_method': crv.payment_method,
+        'check_number': crv.check_number,
+        'check_date': crv.check_date.isoformat() if crv.check_date else None,
+        'cash_account': crv.cash_account.code if crv.cash_account else None,
+        'notes': crv.notes,
+        'total_amount': str(crv.total_amount or 0),
+        'ar_lines': [{'invoice_number': l.invoice_number,
+                      'original_balance': str(l.original_balance),
+                      'amount_applied': str(l.amount_applied)} for l in crv.ar_lines],
+        'revenue_lines': [{'description': l.description,
+                           'account': l.account.code if l.account else l.account_id,
+                           'line_total': str(l.line_total or 0)} for l in crv.revenue_lines],
+        'journal_entry': journal_entry_snapshot(crv.journal_entry),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Open invoices JSON endpoint
 # ---------------------------------------------------------------------------
 
@@ -1019,9 +1081,17 @@ def create():
 @staff_or_above_required
 def edit(id):
     crv = _get_crv_or_404(id)
-    if crv.status != 'draft':
+    # The administrator may edit a POSTED receipt in place (owner, 2026-10-07); everyone
+    # else, and every other status, keeps the draft-only rule.
+    admin_posted = crv.status == 'posted' and is_override_user(current_user)
+    if crv.status != 'draft' and not admin_posted:
         flash('Only draft CRVs can be edited.', 'error')
         return redirect(url_for('cash_receipts.view', id=id))
+    if admin_posted:
+        refusal = _admin_override_refusal(crv)
+        if refusal:
+            flash(f'Cannot edit posted CRV {crv.crv_number}: {refusal}', 'error')
+            return redirect(url_for('cash_receipts.view', id=id))
 
     form = CashReceiptForm(obj=crv)
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.code).all()
@@ -1043,12 +1113,14 @@ def edit(id):
         payload is present.
         """
         ctx = _form_context(all_accounts=all_accounts)
+        ctx['admin_posted_edit'] = admin_posted
         if request.method == 'POST':
             return render_template(
                 'cash_receipts/form.html', form=form, crv=crv,
                 ar_lines=[], revenue_lines=[],
                 restore_ar_lines=request.form.get('ar_lines', ''),
                 restore_revenue_lines=request.form.get('revenue_lines', ''),
+                admin_reason=request.form.get('admin_reason', ''),
                 **ctx)
         return render_template(
             'cash_receipts/form.html', form=form, crv=crv,
@@ -1057,6 +1129,12 @@ def edit(id):
             **ctx)
 
     if form.validate_on_submit():
+        admin_reason = None
+        if admin_posted:
+            admin_reason = clean_reason(request.form.get('admin_reason'))
+            if not admin_reason:
+                flash(REASON_REQUIRED, 'error')
+                return _render_edit_form()
         if not validate_transaction_date_with_flash(form.crv_date.data, 'Cash Receipt Voucher'):
             return _render_edit_form()
         if CashReceiptVoucher.query.filter(
@@ -1070,6 +1148,7 @@ def edit(id):
             if not customer:
                 flash('Selected customer not found.', 'error')
                 return _render_edit_form()
+            old_values = _crv_audit_state(crv) if admin_posted else {}
 
             # Lost-update guard. First write of the request: everything above is
             # read-only, everything below deletes the AR/revenue lines and the
@@ -1092,6 +1171,13 @@ def edit(id):
             crv.cash_account_id = form.cash_account_id.data
             crv.notes = form.notes.data
 
+            # A posted receipt's collections are already on its invoices. Take them off
+            # first, so the edited lines validate against the balances before this receipt
+            # -- otherwise every unchanged amount reads as more than the open balance.
+            if admin_posted:
+                _reverse_ar_collections(crv)
+                db.session.flush()
+
             for ar in list(crv.ar_lines):
                 db.session.delete(ar)
             for rev in list(crv.revenue_lines):
@@ -1106,9 +1192,15 @@ def edit(id):
             if err:
                 return err
 
+            # A posted receipt's entry keeps its number and its original posting stamp:
+            # the edit corrects the entry, it does not post a new one.
+            kept_stamp = None
             if crv.journal_entry_id:
                 from app.journal_entries.models import JournalEntry as _JE
                 old_je = db.session.get(_JE, crv.journal_entry_id)
+                if admin_posted and old_je:
+                    kept_stamp = (old_je.entry_number, old_je.created_by_id,
+                                  old_je.posted_by_id, old_je.posted_at)
                 crv.journal_entry_id = None
                 crv.journal_entry = None
                 db.session.flush()
@@ -1117,15 +1209,26 @@ def edit(id):
                 db.session.flush()
 
             je = _post_crv_je(crv, current_user.id)
+            if kept_stamp:
+                (je.entry_number, je.created_by_id, je.posted_by_id,
+                 je.posted_at) = kept_stamp
             crv.journal_entry_id = je.id
+            if admin_posted:
+                _apply_ar_collections(crv)
             db.session.commit()
 
-            log_update(
-                module='cash_receipt',
-                record_id=crv.id,
-                record_identifier=f'{crv.crv_number} - {crv.customer_name}',
-                old_values={}, new_values={}
-            )
+            identifier = f'{crv.crv_number} - {crv.customer_name}'
+            if admin_posted:
+                log_override('cash_receipt', 'admin_edit_posted', crv.id, identifier,
+                             admin_reason, old_values=old_values,
+                             new_values=_crv_audit_state(crv))
+            else:
+                log_update(
+                    module='cash_receipt',
+                    record_id=crv.id,
+                    record_identifier=identifier,
+                    old_values={}, new_values={}
+                )
             flash(f'CRV "{crv.crv_number}" updated successfully!', 'success')
             return redirect(url_for('cash_receipts.view', id=crv.id))
 
@@ -1160,7 +1263,9 @@ def view(id):
     cr_print_form = AppSettings.get_setting('cr_print_form', 'current')
     return render_template('cash_receipts/detail.html',
                            crv=crv, je_entries=je_entries, now=ph_now(),
-                           cr_print_access=cr_print_access, cr_print_form=cr_print_form)
+                           cr_print_access=cr_print_access, cr_print_form=cr_print_form,
+                           admin_override=is_override_user(current_user),
+                           admin_deletable=crv.status in ADMIN_DELETABLE_STATUSES)
 
 
 # ---------------------------------------------------------------------------
@@ -1300,6 +1405,63 @@ def cancel(id):
         flash('An unexpected error occurred while cancelling the CRV. Please try '
               'again; if it persists, contact your administrator.', 'error')
     return redirect(url_for('cash_receipts.view', id=id))
+
+
+@cash_receipts_bp.route('/cash-receipts/<int:id>/delete', methods=['POST'])
+@login_required
+def delete(id):
+    """Hard-delete a receipt -- administrator only (owner, 2026-10-07).
+
+    The receipt, its lines and its JE leave the books; the invoices and debit notes it
+    collected reopen; its number is free again. The audit row keeps a full snapshot of
+    what was removed.
+    """
+    if not is_override_user(current_user):
+        abort(403)
+    crv = _get_crv_or_404(id)
+    if crv.status not in ADMIN_DELETABLE_STATUSES:
+        flash(f'A {crv.status} CRV cannot be deleted: its reversal entry is already part '
+              'of the books.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+    reason = clean_reason(request.form.get('delete_reason'))
+    if not reason:
+        flash(REASON_REQUIRED, 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+    if crv.status == 'posted':
+        refusal = _admin_override_refusal(crv)
+        if refusal:
+            flash(f'Cannot delete posted CRV {crv.crv_number}: {refusal}', 'error')
+            return redirect(url_for('cash_receipts.view', id=id))
+
+    crv_id, number, customer = crv.id, crv.crv_number, crv.customer_name
+    try:
+        snapshot = _crv_snapshot(crv)
+        if crv.status == 'posted':
+            _reverse_ar_collections(crv)
+        je = crv.journal_entry
+        crv.journal_entry_id = None
+        crv.journal_entry = None
+        db.session.flush()
+        if je is not None:
+            db.session.delete(je)
+        db.session.delete(crv)   # AR and revenue lines go with it (cascade)
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error deleting CRV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_receipts.delete')
+        flash('An unexpected error occurred while deleting the CRV. Nothing was changed.',
+              'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+
+    log_override('cash_receipt', 'admin_delete', crv_id, f'{number} - {customer}', reason,
+                 old_values=snapshot)
+    flash(f'CRV "{number}" deleted. Its number is free again.', 'warning')
+    return redirect(url_for('cash_receipts.list_crvs'))
 
 
 # ---------------------------------------------------------------------------
