@@ -4,7 +4,17 @@ app-docs/superpowers/specs/2026-10-15-bug-reports-design.md beside the checkout.
 import base64
 import binascii
 import json
+import os
 import re
+import subprocess
+import uuid
+
+from flask import current_app, session
+
+from app import db
+from app.audit.utils import log_audit
+from app.bug_reports.models import BugReport, BugReportImage
+from app.utils import ph_now
 
 LIMITS = {
     'body_bytes': 2_000_000,
@@ -15,6 +25,7 @@ LIMITS = {
     'per_day': 10,
     'keep_pictures_days': 90,
 }
+EXTENSIONS = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}
 _BASE64 = re.compile(r'[A-Za-z0-9+/]+={0,2}')
 
 
@@ -87,3 +98,101 @@ def parse_report(body):
             raise ReportRejected('bad_image')
         images.append((im['kind'], mime, decoded))
     return message, context, images
+
+
+def _write_file(path, data):
+    with open(path, 'wb') as f:
+        f.write(data)
+
+
+def report_dir(report_id):
+    """Where a report's pictures live, beside the attachments (app/attachments/service.py)."""
+    return os.path.join(current_app.config['UPLOAD_FOLDER'], 'bug_reports', str(report_id))
+
+
+def reports_since(user_id, since):
+    """How many reports this user has sent since `since` -- the daily limit."""
+    return BugReport.query.filter(BugReport.user_id == user_id, BugReport.created_at >= since).count()
+
+
+_VERSION = None
+
+
+def app_version():
+    """The git commit the server runs, asked once and cached; '' when git cannot say. With several
+    clients on different commits, this is what identifies the code a report was sent from."""
+    global _VERSION
+    if _VERSION is None:
+        try:
+            out = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=os.path.dirname(current_app.root_path),
+                                 capture_output=True, text=True, timeout=5)
+            sha = out.stdout.strip()
+            _VERSION = sha if out.returncode == 0 and re.fullmatch(r'[0-9a-f]{40}', sha) else ''
+        except (OSError, subprocess.SubprocessError):
+            _VERSION = ''
+    return _VERSION
+
+
+def server_context(user):
+    """What the server knows and the browser cannot be trusted to say. Needs a request: the
+    branch is the session's."""
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+
+    branch_id = session.get('selected_branch_id')
+    branch = db.session.get(Branch, branch_id) if branch_id else None
+    return {
+        'user': {'id': user.id, 'username': user.username, 'full_name': user.full_name, 'role': user.role},
+        'branch': {'id': branch.id, 'name': branch.name} if branch else None,
+        'company': AppSettings.get_setting('company_name') or '',
+        'version': app_version(),
+        'receivedAt': ph_now().isoformat(),
+    }
+
+
+def create_report(user, message, context, images, now):
+    """Store a report, its pictures and one notification per active admin in ONE commit, then
+    audit it. `images` is parse_report's list of (kind, mime, bytes). On any failure nothing stays
+    behind: the session is rolled back and every file already written is deleted, so there is never
+    a row whose file is missing or a file with no row. Returns the report id."""
+    from app.notifications.models import Notification
+    from app.users.models import User
+
+    written, folder = [], None
+    try:
+        report = BugReport(user_id=user.id, message=message, created_at=now,
+                           context=json.dumps(context, ensure_ascii=False))
+        db.session.add(report)
+        db.session.flush()
+        if images:
+            folder = report_dir(report.id)
+            os.makedirs(folder, exist_ok=True)
+        for kind, mime, data in images:
+            name = f'{uuid.uuid4().hex}.{EXTENSIONS[mime]}'
+            path = os.path.join(folder, name)
+            written.append(path)
+            _write_file(path, data)
+            db.session.add(BugReportImage(report_id=report.id, kind=kind, mime=mime, stored_name=name,
+                                          size_bytes=len(data), created_at=now))
+        # CAS sends no email and shows no notifications yet; the rows wait for a notifications page.
+        for admin in User.query.filter_by(role='admin', is_active=True).all():
+            db.session.add(Notification(user_id=admin.id, title='Bug report',
+                                        message=f'{user.full_name}: {first_words(message)}',
+                                        category='info', related_type='bug_report', related_id=report.id))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        for path in written:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        if folder:
+            try:
+                os.rmdir(folder)
+            except OSError:
+                pass
+        raise
+    log_audit('bug_report', 'create', report.id, record_identifier=f'Bug report #{report.id}',
+              new_values={'message': first_words(message), 'images': len(images)}, user_id=user.id)
+    return report.id
