@@ -425,6 +425,8 @@ def create_app(config_name=None):
 
     from app.backup.views import backup_bp
     app.register_blueprint(backup_bp)
+    from app.bug_reports.views import bug_reports_bp
+    app.register_blueprint(bug_reports_bp)
     from app.backup.cli import (backup_run_cmd, backup_verify_cmd, backup_restore_cmd,
                                 backup_mint_token_cmd)
     app.cli.add_command(backup_run_cmd)
@@ -631,11 +633,14 @@ def create_app(config_name=None):
         # A forced-password-change admin must reach change-password even before a
         # branch is selected, or the two before_request gates deadlock.
         'users.change_password',
+        # A bug report answers in JSON; a redirect to the branch picker would read as "Sent".
+        'bug_reports.create',
     }
 
     # Endpoints a user forced to change the default password may still reach.
     PW_ROTATION_EXEMPT = {
         'users.change_password', 'users.logout', 'users.login', 'static',
+        'bug_reports.create',  # JSON only: a redirect would read as "Sent" in the browser
     }
 
     @app.before_request
