@@ -25,6 +25,8 @@ def test_the_script_keeps_the_cas_specific_changes(app):
     assert '"x-csrftoken": csrfToken()' in src
     assert 'sessionStorage' in src           # the click and page record spans full page loads
     assert 'font: false' in src              # Google Fonts are out of the library's reach under CSP
+    assert src.count('"bad_csrf"') >= 2      # the sheet path queues it, and the flush path keeps it queued
+    assert 'res.status === 401' in src       # a signed-out reply stays queued too
     assert '.board' not in src               # Sanay's chess-board tracking is not ported
     for forbidden in ('alert(', 'confirm(', 'prompt('):
         assert forbidden not in src

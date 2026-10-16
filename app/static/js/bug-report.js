@@ -301,8 +301,9 @@
     flushing = runFlush().then(function (r) { flushing = null; return r; }, function (e) { flushing = null; throw e; });
     return flushing;
   }
-  /** Kept on network errors (a redirect counts as one), 5xx, 408 and 429 (with tries + 1); dropped when sent (201),
-      refused for good, too old or tried too many times. A network error stops the pass; the rest stay queued. */
+  /** Kept (requeued with tries + 1) on network errors (a redirect counts as one), 5xx, 408, 429, 401 (signed out)
+      and 400 bad_csrf (stale token); dropped when sent (201), refused for good by any other 4xx, too old or tried
+      too many times. A network error, a 401 or a bad_csrf stops the pass; the rest stay queued untouched. */
   function runFlush() {
     var me = userId();
     if (!me || !window.indexedDB) return Promise.resolve();
@@ -330,11 +331,17 @@
         chain = chain.then(function () {
           return send(it.value.payload).then(
             function (res) {
-              if (res.status === 201 || (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429)) {
-                drop(r.db, it.key);
-              } else {
-                requeue(r.db, it.key, { user: it.value.user, payload: it.value.payload, at: it.value.at, tries: tries + 1 });
+              var again = function () { requeue(r.db, it.key, { user: it.value.user, payload: it.value.payload, at: it.value.at, tries: tries + 1 }); };
+              if (res.status === 201) { drop(r.db, it.key); return; }
+              if (res.status === 401) { again(); throw new Error("signed out"); }
+              if (res.status === 400) {
+                return res.json().catch(function () { return {}; }).then(function (b) {
+                  if (b && b.error === "bad_csrf") { again(); throw new Error("stale token"); }
+                  drop(r.db, it.key);
+                });
               }
+              if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) drop(r.db, it.key);
+              else again();
             },
             function (err) {
               requeue(r.db, it.key, { user: it.value.user, payload: it.value.payload, at: it.value.at, tries: tries + 1 });
