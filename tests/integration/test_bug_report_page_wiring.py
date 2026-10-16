@@ -64,3 +64,17 @@ def test_non_admins_get_no_link(client, accountant_user, chief_accountant_user, 
         html = _page(c)
         assert 'href="/admin/bug-reports"' not in html
         assert 'nav-bug-report-badge' not in html
+
+
+def test_a_failing_badge_count_is_logged_and_the_page_still_renders(
+        client, admin_user, main_branch, uploads, monkeypatch, caplog):
+    def boom():
+        raise RuntimeError('boom')
+
+    monkeypatch.setattr(service, 'new_report_count', boom)
+    login(client, admin_user, 'admin123', main_branch)
+    with caplog.at_level('ERROR'):
+        html = _page(client)
+    assert 'href="/admin/bug-reports"' in html
+    assert 'id="nav-bug-report-badge"' not in html
+    assert 'could not count New reports for the sidebar badge' in caplog.text

@@ -117,5 +117,6 @@ def inject_bug_reports_new_count():
     try:
         return {'bug_reports_new_count': service.new_report_count()}
     except Exception:  # an unmigrated database must not take every admin page down with it
+        current_app.logger.exception('bug reports: could not count New reports for the sidebar badge')
         db.session.rollback()
         return {'bug_reports_new_count': 0}
