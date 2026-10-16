@@ -107,3 +107,15 @@ def image(report_id, image_id):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
     return response
+
+
+@bug_reports_bp.app_context_processor
+def inject_bug_reports_new_count():
+    """The sidebar badge: New reports, counted only for the system administrator."""
+    if not (current_user.is_authenticated and current_user.is_admin):
+        return {'bug_reports_new_count': 0}
+    try:
+        return {'bug_reports_new_count': service.new_report_count()}
+    except Exception:  # an unmigrated database must not take every admin page down with it
+        db.session.rollback()
+        return {'bug_reports_new_count': 0}
