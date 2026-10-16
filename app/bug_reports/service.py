@@ -8,12 +8,14 @@ import os
 import re
 import subprocess
 import uuid
+from datetime import timedelta
 
 from flask import current_app, session
 
 from app import db
-from app.audit.utils import log_audit
+from app.audit.utils import log_audit, log_update
 from app.bug_reports.models import BugReport, BugReportImage
+from app.bug_reports.statuses import CLOSED_STATUSES, OPEN_STATUSES, is_closed
 from app.utils import ph_now
 
 LIMITS = {
@@ -196,3 +198,80 @@ def create_report(user, message, context, images, now):
     log_audit('bug_report', 'create', report.id, record_identifier=f'Bug report #{report.id}',
               new_values={'message': first_words(message), 'images': len(images)}, user_id=user.id)
     return report.id
+
+
+def new_report_count():
+    """The sidebar badge."""
+    return BugReport.query.filter_by(status='new').count()
+
+
+def report_counts():
+    open_n = BugReport.query.filter(BugReport.status.in_(OPEN_STATUSES)).count()
+    closed_n = BugReport.query.filter(BugReport.status.in_(CLOSED_STATUSES)).count()
+    return {'open': open_n, 'closed': closed_n, 'all': open_n + closed_n}
+
+
+def reports_for(view):
+    """Newest first (insertion order), 200 at most as in Sanay. `view` is open, closed or all."""
+    query = BugReport.query
+    if view == 'open':
+        query = query.filter(BugReport.status.in_(OPEN_STATUSES))
+    elif view == 'closed':
+        query = query.filter(BugReport.status.in_(CLOSED_STATUSES))
+    return query.order_by(BugReport.id.desc()).limit(200).all()
+
+
+def related_errors(report):
+    """Server errors for the same user from 30 minutes before the report to 1 minute after: a form
+    that fails on save shows only the error page, so the stack trace is the evidence."""
+    from app.errors.models import ErrorLog
+
+    return (ErrorLog.query
+            .filter(ErrorLog.user_id == report.user_id,
+                    ErrorLog.timestamp >= report.created_at - timedelta(minutes=30),
+                    ErrorLog.timestamp <= report.created_at + timedelta(minutes=1))
+            .order_by(ErrorLog.timestamp.desc())
+            .all())
+
+
+def set_status(report, status, now):
+    """A closed status keeps the first closing time; an open one clears it. Audited. The same
+    status again changes nothing and returns False."""
+    old = report.status
+    if status == old:
+        return False
+    report.status = status
+    report.closed_at = (report.closed_at or now) if is_closed(status) else None
+    db.session.commit()
+    log_update('bug_report', report.id, f'Bug report #{report.id}', {'status': old}, {'status': status})
+    return True
+
+
+def purge_old_pictures(now):
+    """Delete the pictures of reports closed more than 90 days before `now`; the report stays.
+    A file already gone is fine; a file that cannot be deleted keeps its row for the next try."""
+    cutoff = now - timedelta(days=LIMITS['keep_pictures_days'])
+    old = (BugReport.query
+           .filter(BugReport.closed_at.isnot(None), BugReport.closed_at < cutoff, BugReport.images.any())
+           .all())
+    removed = 0
+    for report in old:
+        folder = report_dir(report.id)
+        for image in list(report.images):
+            path = os.path.join(folder, image.stored_name)
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                current_app.logger.warning('bug report %s: could not delete %s: %s', report.id, path, e)
+                continue
+            report.images.remove(image)  # delete-orphan deletes the row
+            removed += 1
+        try:
+            os.rmdir(folder)
+        except OSError:
+            pass
+    if removed:
+        db.session.commit()
+    return removed

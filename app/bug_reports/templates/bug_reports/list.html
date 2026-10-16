@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Bug Reports - {{ company_name }}{% endblock %}
+{% block page_title %}Bug Reports{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Bug Reports</h1>
+</div>
+
+<nav class="bug-report-tabs" aria-label="Which reports">
+    {% for key, label in [('open', 'Open'), ('closed', 'Closed'), ('all', 'All')] %}
+    <a href="{{ url_for('bug_reports.list_reports') if key == 'open' else url_for('bug_reports.list_reports', show=key) }}"
+       class="btn {{ 'btn-primary' if key == view else 'btn-secondary' }}"{% if key == view %} aria-current="page"{% endif %}>{{ label }} · {{ counts[key] }}</a>
+    {% endfor %}
+</nav>
+
+<table class="data-table" style="margin-top: 16px;">
+    <thead>
+        <tr><th>Received</th><th>Status</th><th>From</th><th>Page</th><th>Message</th></tr>
+    </thead>
+    <tbody>
+        {% for r in reports %}
+        <tr>
+            <td>{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td><span class="badge badge-{{ 'inactive' if is_closed(r.status) else 'active' }}">{{ STATUS_LABEL.get(r.status, r.status) }}</span></td>
+            <td>{{ r.user.full_name if r.user else '—' }}</td>
+            <td>{{ r.page_path or '' }}</td>
+            <td><a href="{{ url_for('bug_reports.view_report', report_id=r.id) }}">{{ r.message[:120] }}</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">{{ {'open': 'No open reports.', 'closed': 'No closed reports.', 'all': 'No reports yet.'}[view] }}</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<style>
+.bug-report-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+</style>
+{% endblock %}

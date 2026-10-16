@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Bug Report #{{ report.id }} - {{ company_name }}{% endblock %}
+{% block page_title %}Bug Report #{{ report.id }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Bug Report #{{ report.id }}</h1>
+    <div class="page-actions">
+        <a href="{{ url_for('bug_reports.list_reports') }}" class="btn btn-secondary">Back to Bug Reports</a>
+    </div>
+</div>
+
+<p class="form-hint">
+    {% if report.user %}{{ report.user.full_name }} ({{ report.user.username }}){% else %}Unknown user{% endif %}
+    · received {{ report.created_at.strftime('%Y-%m-%d %H:%M') }}
+    {% if report.closed_at %}· closed {{ report.closed_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+    {% if report.page_path %}· {{ report.page_path }}{% endif %}
+</p>
+
+<div class="card bug-report-message">{{ report.message }}</div>
+
+{% for title, group in [('Open', OPEN_STATUSES), ('Closed', CLOSED_STATUSES)] %}
+<div class="bug-report-status-group" role="group" aria-label="{{ title }}">
+    <span class="bug-report-status-title">{{ title }}</span>
+    {% for s in group %}
+    <form method="POST" action="{{ url_for('bug_reports.set_status', report_id=report.id) }}" class="bug-report-status-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="{{ s }}">
+        <button type="submit" class="btn {{ 'btn-primary' if s == report.status else 'btn-secondary' }}"
+                aria-pressed="{{ 'true' if s == report.status else 'false' }}">{{ STATUS_LABEL[s] }}</button>
+    </form>
+    {% endfor %}
+</div>
+{% endfor %}
+
+{% for im in report.images %}
+<p class="bug-report-picture-row">
+    <img src="{{ url_for('bug_reports.image', report_id=report.id, image_id=im.id) }}"
+         alt="{{ 'Picture of the page' if im.kind == 'page' else 'The user’s own screenshot' }}"
+         class="bug-report-picture">
+</p>
+{% endfor %}
+
+{% if errors %}
+<h2 class="bug-report-heading">Server errors around this report</h2>
+<table class="data-table">
+    <thead><tr><th>When</th><th>Type</th><th>Message</th><th>Request</th></tr></thead>
+    <tbody>
+        {% for e in errors %}
+        <tr>
+            <td><a href="{{ url_for('errors.view_error', id=e.id) }}">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</a></td>
+            <td>{{ e.error_type or '' }}</td>
+            <td>{{ (e.error_message or '')[:200] }}</td>
+            <td>{{ e.request_method or '' }} {{ e.request_url or '' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<h2 class="bug-report-heading">Details</h2>
+<pre class="card bug-report-context">{{ context_json }}</pre>
+
+<style>
+.bug-report-message { white-space: pre-wrap; padding: 16px; margin: 12px 0 16px; }
+.bug-report-status-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.bug-report-status-title { min-width: 56px; color: var(--text-2); font-size: 13px; font-weight: 600; }
+.bug-report-status-form { display: inline; }
+.bug-report-picture-row { margin: 16px 0; }
+.bug-report-picture { max-width: 100%; border-radius: var(--radius); border: 1px solid var(--border); }
+.bug-report-heading { font-size: 16px; margin: 24px 0 8px; }
+.bug-report-context { font-size: 11px; white-space: pre-wrap; word-break: break-word; padding: 12px; }
+</style>
+{% endblock %}
