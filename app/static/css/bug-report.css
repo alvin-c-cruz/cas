@@ -1,0 +1,29 @@
+/* The "Report a problem" button and sheet (app/static/js/bug-report.js), after Sanay's .sheet rules. */
+.topbar-report {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; margin-right: 12px; padding: 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--card); color: var(--text-2); cursor: pointer;
+}
+.topbar-report:hover { color: var(--text); border-color: var(--form-border); }
+
+.cas-report-back { position: fixed; inset: 0; z-index: 2000; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.cas-report-wait { color: var(--text); background: var(--card); padding: 16px 24px; border-radius: var(--radius); margin: auto; }
+.cas-report-sheet { width: 100%; max-width: 560px; max-height: 92vh; overflow: auto; background: var(--card); color: var(--text); border-radius: var(--radius); box-shadow: var(--shadow-md); padding: 20px; font-family: var(--font); }
+.cas-report-sheet h2 { margin: 0 0 8px; font-size: 18px; }
+.cas-report-sheet p { margin: 0 0 12px; color: var(--text-2); }
+.cas-report-field { display: grid; gap: 6px; margin-bottom: 12px; font-weight: 600; color: var(--form-label); }
+.cas-report-field textarea { resize: vertical; font: inherit; font-weight: 400; padding: 8px; border: 1px solid var(--form-border); border-radius: var(--radius); }
+.cas-report-picture { margin: 8px 0; }
+.cas-report-shot { display: block; max-width: 100%; max-height: 220px; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--border); cursor: zoom-in; }
+.cas-report-shot.big { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100vh; max-height: none; border: 0; border-radius: 0; cursor: zoom-out; object-fit: contain; background: #000; z-index: 2010; }
+.cas-report-check { display: flex; gap: 8px; align-items: center; margin: 8px 0 12px; }
+.cas-report-own { display: grid; gap: 8px; justify-items: start; margin-top: 10px; }
+.cas-report-own:empty { display: none; }
+.cas-report-muted { color: var(--text-3); }
+.cas-report-sheet details { margin-top: 14px; }
+.cas-report-sheet summary { cursor: pointer; color: var(--text-2); font-size: 14px; }
+.cas-report-sheet pre { font-size: 11px; white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow: auto; background: var(--bg); padding: 8px; border-radius: var(--radius); }
+.cas-report-status { min-height: 1.4em; margin: 8px 0; }
+.cas-report-status.bad { color: var(--red); }
+.cas-report-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
