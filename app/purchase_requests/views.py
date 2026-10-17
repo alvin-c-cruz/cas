@@ -217,6 +217,31 @@ def _apply_amended_pr_lines(pr, items):
             db.session.delete(item)
 
 
+def _read_posted_lines():
+    """Parse the hidden `line_items` payload ONCE -> (lines, error message or None).
+
+    Shared by edit, amend and request_amendment, which post the same form.
+      * BLANK or ABSENT: the lines never arrived. form.html starts the field
+        empty and its serialiser fills it on submit, so a save clicked before the
+        page's script has run posts "" -- which must not read as "the user deleted
+        every row". It did, while the field started as "[]": Philgen PR 01021
+        (2026-10-16) lost both lines to one Update.
+      * UNPARSEABLE or NOT A LIST: json.loads raises, or iterating a scalar does,
+        either way a 500 where the contract promises messages.
+    """
+    raw = request.form.get('line_items')
+    if not raw:
+        return [], ('The line items did not reach the server. '
+                    'Reload the page and try again.')
+    try:
+        lines = json.loads(raw)
+    except ValueError:  # json.JSONDecodeError subclasses ValueError
+        lines = None
+    if not isinstance(lines, list):
+        return [], 'The line items could not be read. Reload the page and try again.'
+    return lines, None
+
+
 def _parse_and_attach_pr_lines(pr, lines_json):
     """Attach requisition lines. A line needs a Product OR a free-text description; no pricing.
 
@@ -501,8 +526,20 @@ def edit(id):
         flash('Only a draft Purchase Requisition can be edited.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     form = PurchaseRequestForm(obj=pr)
-    restore = ([li.to_dict() for li in pr.line_items] if request.method == 'GET'
-               else json.loads(request.form.get('line_items', '[]') or '[]'))
+    submitted_lines, line_items_error = [], None
+    if request.method == 'POST':
+        submitted_lines, line_items_error = _read_posted_lines()
+    # A refusal re-renders the RAW submission so the user keeps their edits --
+    # except when that submission is the thing being refused, where the stored
+    # lines are the only usable starting point. An empty grid on screen is what
+    # invites the next empty Update.
+    restore = ([li.to_dict() for li in pr.line_items]
+               if request.method == 'GET' or line_items_error else submitted_lines)
+
+    if line_items_error:
+        flash(line_items_error, 'error')
+        return render_template('purchase_requests/form.html', form=form, pr=pr,
+                               line_items=restore, **_common_form_ctx())
 
     if form.validate_on_submit():
         old = model_to_dict(pr, ['pr_number', 'request_date', 'date_needed', 'date_needed_asap', 'status'])
@@ -557,7 +594,6 @@ def edit(id):
             # below what is already ordered against it (consumed_qty). Without
             # it, preserving ids would only move the defect -- the order would
             # point at a line claiming less than it ordered.
-            submitted_lines = json.loads(request.form.get('line_items', '[]') or '[]')
             line_errors = validate_amendment(pr, submitted_lines, 'pr_item_id')
             if line_errors:
                 db.session.rollback()
@@ -567,6 +603,15 @@ def edit(id):
                                        pr=pr, line_items=restore,
                                        **_common_form_ctx())
             _apply_amended_pr_lines(pr, submitted_lines)
+            db.session.flush()
+            # Judge the APPLIED RESULT, as amend() does -- the applier enforces no
+            # minimum by design. Missing here until 2026-10-17, so an Update that
+            # carried no lines deleted them all and still flashed "updated".
+            # Raising routes this through the ValueError handler below, whose
+            # rollback undoes the line changes, the header and claim_version.
+            if not pr.has_requested_line():
+                raise ValueError('A Purchase Requisition must keep at least one item '
+                                 'with a product or a description.')
             db.session.commit()
             log_update(module='purchase_requests', record_id=pr.id, record_identifier=pr.pr_number,
                        old_values=old, new_values=model_to_dict(pr, ['pr_number', 'request_date', 'date_needed', 'date_needed_asap', 'status']))
@@ -617,28 +662,10 @@ def amend(id):
 
     # Parse the payload ONCE and hand the parsed list to both the validator and
     # the applier, so the two can never disagree about what was submitted.
-    #   * ABSENT key: `.get('line_items', '[]')` cannot tell "the hidden field
-    #     never reached the server" from "the user deleted every row" -- that
-    #     conflation has already shipped in this codebase.
-    #   * UNPARSEABLE or NOT A LIST: json.loads raises, or iterating a scalar
-    #     does, either way a 500 where the contract promises messages.
-    submitted_lines = []
-    line_items_error = None
+    # _read_posted_lines refuses a blank, absent or unreadable field.
+    submitted_lines, line_items_error = [], None
     if request.method == 'POST':
-        if 'line_items' not in request.form:
-            line_items_error = ('The line items did not reach the server. '
-                                'Reload the page and try again.')
-        else:
-            try:
-                submitted_lines = json.loads(request.form.get('line_items') or '[]')
-            except ValueError:  # json.JSONDecodeError subclasses ValueError
-                line_items_error = ('The line items could not be read. '
-                                    'Reload the page and try again.')
-            else:
-                if not isinstance(submitted_lines, list):
-                    line_items_error = ('The line items could not be read. '
-                                        'Reload the page and try again.')
-                    submitted_lines = []
+        submitted_lines, line_items_error = _read_posted_lines()
 
     # On a refusal re-render the RAW submission so the user keeps their edits --
     # except when that submission is the thing being refused, where the stored
@@ -765,6 +792,13 @@ def submit(id):
         return gate
     if pr.status != 'draft':
         flash('Only a draft Purchase Requisition can be submitted.', 'error')
+        return redirect(url_for('purchase_requests.view', id=id))
+    # create, edit and amend all refuse to leave a requisition empty, but one
+    # emptied before that rule reached edit() (Philgen PR 01021) is still a draft
+    # somewhere. Same predicate, so the rule cannot drift between the routes.
+    if not pr.has_requested_line():
+        flash('A Purchase Requisition needs at least one item with a product or a '
+              'description before it can be submitted.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
     pr.status = 'submitted'
     pr.submitted_by_id = current_user.id
@@ -1196,25 +1230,11 @@ def request_amendment(id):
 
     form = PurchaseRequestAmendmentRequestForm(obj=pr)
 
-    # Parse the payload ONCE, exactly as `amend` does, so an absent hidden field
-    # is never confused with "the user deleted every row".
-    submitted_lines = []
-    line_items_error = None
+    # Parse the payload ONCE, exactly as `amend` does, so a blank or absent
+    # hidden field is never confused with "the user deleted every row".
+    submitted_lines, line_items_error = [], None
     if request.method == 'POST':
-        if 'line_items' not in request.form:
-            line_items_error = ('The line items did not reach the server. '
-                                'Reload the page and try again.')
-        else:
-            try:
-                submitted_lines = json.loads(request.form.get('line_items') or '[]')
-            except ValueError:
-                line_items_error = ('The line items could not be read. '
-                                    'Reload the page and try again.')
-            else:
-                if not isinstance(submitted_lines, list):
-                    line_items_error = ('The line items could not be read. '
-                                        'Reload the page and try again.')
-                    submitted_lines = []
+        submitted_lines, line_items_error = _read_posted_lines()
 
     restore = (current_lines(pr)
                if request.method == 'GET' or line_items_error else submitted_lines)

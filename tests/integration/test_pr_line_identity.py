@@ -254,7 +254,7 @@ class TestLineIdentityExecuted:
     def test_the_serialiser_writes_into_the_rendered_hidden_input(
             self, client, accountant_user, main_branch, db_session, tmp_path):
         # Pins the JS handle against the RENDERED id. A rename on one side only
-        # leaves the form posting its static value="[]".
+        # leaves the form posting its static empty value.
         _login(client, accountant_user, main_branch)
         pr = _pr(db_session, main_branch, 'PR-2026-08-0005', status='draft')
         html = _edit_get(client, pr)

@@ -37,7 +37,12 @@
 <form method="POST" id="prForm" enctype="multipart/form-data"{% if amend_mode or request_mode %} novalidate{% endif %}
       action="{% if request_mode %}{{ url_for('purchase_requests.request_amendment', id=pr.id) }}{% elif amend_mode %}{{ url_for('purchase_requests.amend', id=pr.id) }}{% elif pr %}{{ url_for('purchase_requests.edit', id=pr.id) }}{% else %}{{ url_for('purchase_requests.create') }}{% endif %}">
   {{ form.hidden_tag() }}
-  <input type="hidden" name="line_items" id="prLinesJson" value="[]">
+  {# Starts EMPTY, not "[]". The submit serialiser at the bottom of the page fills
+     it, but that script waits for the whole product list; a save clicked before
+     it runs used to post "[]", which reads as "every row deleted" -- Philgen PR
+     01021 lost both lines that way (2026-10-16). Empty is refused server-side as
+     "the line items did not reach the server". #}
+  <input type="hidden" name="line_items" id="prLinesJson" value="">
 
   <div class="card"><div class="card-body">
     {# form-row-2, NOT form-grid: `.form-grid` is not defined in style.css at all,

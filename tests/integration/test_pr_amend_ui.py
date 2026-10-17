@@ -83,8 +83,8 @@ class TestAmendFormRendersItsFields:
         html = _amend_get(client, approved_pr)
         # The NAME is what the server reads; the ID is what the submit handler
         # writes to. Pinning only the name leaves the form posting its static
-        # value="[]" after an id rename -- which amend() then refuses as
-        # "would leave none", so a real browser could never amend at all.
+        # empty value after an id rename -- which amend() then refuses as "did
+        # not reach the server", so a real browser could never amend at all.
         assert 'name="line_items"' in html
         assert 'id="prLinesJson"' in html
 

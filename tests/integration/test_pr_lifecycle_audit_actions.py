@@ -54,8 +54,13 @@ def _actions_for(pr):
 class TestLifecycleAuditActions:
 
     def test_submit_logs_submit(self, client, db_session, admin_user, main_branch):
+        from app.purchase_requests.models import PurchaseRequestItem
         _enable(db_session)
         pr = _pr(db_session, main_branch, admin_user)
+        # A line, or submit refuses the empty requisition and logs nothing
+        # (test_pr_refuses_empty_lines.py) -- this test is about the action name.
+        pr.line_items.append(PurchaseRequestItem(line_number=1, description='Bolt'))
+        db_session.commit()
         _login(client, admin_user, main_branch)
 
         client.post(f'/purchase-requests/{pr.id}/submit')
