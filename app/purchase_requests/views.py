@@ -847,6 +847,14 @@ def approve(id):
     if not pr.awaiting_approval:
         flash('This Purchase Requisition is not awaiting approval.', 'error')
         return redirect(url_for('purchase_requests.view', id=id))
+    # Philgen PR 01021 sits submitted with no lines. Approving it would write
+    # Rev 0 -- the baseline every amendment is measured against -- as an empty
+    # requisition. Return to Draft is the way out, and the message says so.
+    if not pr.has_requested_line():
+        flash('A Purchase Requisition needs at least one item with a product or a '
+              'description before it can be approved. Return it to draft so its '
+              'items can be added.', 'error')
+        return redirect(url_for('purchase_requests.view', id=id))
     pr.status = 'approved'
     pr.approved_by_id = current_user.id
     pr.approved_at = ph_now()

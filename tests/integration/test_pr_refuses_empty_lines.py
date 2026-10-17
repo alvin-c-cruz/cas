@@ -18,7 +18,7 @@ Three holes lined up:
     while the page is still loading posts "[]", which reads exactly like "the
     user deleted every row". Reproduced in a browser on a copy of the 16 Oct
     books (2026-10-17): 2 lines -> 0, flashed "updated".
-  * submit() checked nothing, so the empty requisition moved on.
+  * submit() and approve() checked nothing, so the empty requisition moved on.
 
 The field now starts empty, and an empty or absent field is refused as "did not
 reach the server" -- on edit, and on the two amendment screens that share the
@@ -31,6 +31,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.amendments.models import DocumentRevision
 from app.audit.models import AuditLog
 from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
 
@@ -214,6 +215,33 @@ class TestSubmitNeedsALine:
         client.post(f'/purchase-requests/{pr.id}/submit', follow_redirects=True)
         db_session.refresh(pr)
         assert pr.status == 'submitted'
+
+
+class TestApproveNeedsALine:
+    """PR 01021 is live and submitted with no lines. Nothing stopped it being
+    approved, and approval writes Rev 0 -- the baseline every amendment is
+    measured against -- as an empty requisition."""
+
+    def test_approving_with_no_lines_is_refused(self, client, accountant_user,
+                                                main_branch, db_session):
+        pr = _pr(db_session, main_branch, 'EMPTY-APPROVE-1', status='submitted',
+                 lines=())
+        _login(client, accountant_user, main_branch)
+        resp = client.post(f'/purchase-requests/{pr.id}/approve', follow_redirects=True)
+        assert b'needs at least one item' in resp.data
+        db_session.refresh(pr)
+        assert pr.status == 'submitted'
+        assert DocumentRevision.query.filter_by(
+            document_type='purchase_requests', document_id=pr.id).count() == 0
+
+    def test_approving_with_a_line_still_works(self, client, accountant_user,
+                                               main_branch, db_session):
+        """CONTROL."""
+        pr = _pr(db_session, main_branch, 'EMPTY-APPROVE-2', status='submitted')
+        _login(client, accountant_user, main_branch)
+        client.post(f'/purchase-requests/{pr.id}/approve', follow_redirects=True)
+        db_session.refresh(pr)
+        assert pr.status == 'approved'
 
 
 class TestTheAmendmentScreensReadABlankFieldTheSameWay:
