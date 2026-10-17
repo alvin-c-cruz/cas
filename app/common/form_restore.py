@@ -26,6 +26,37 @@ Applying it there would invent a key the renderer never looks at.
 """
 import json
 
+LINES_DID_NOT_ARRIVE = ('The line items did not reach the server. '
+                        'Reload the page and try again.')
+LINES_UNREADABLE = 'The line items could not be read. Reload the page and try again.'
+
+
+def read_posted_lines(form, key='line_items'):
+    """Parse a hidden line payload ONCE -> (lines, error message or None).
+
+    Shared by the Purchase Requisition and Purchase Order screens, whose forms
+    both start the field EMPTY and fill it from a submit serialiser.
+      * BLANK or ABSENT: the lines never arrived. The serialiser runs only once
+        the script at the bottom of the page has -- after the whole product list
+        -- so a save clicked earlier posts "", which must not read as "the user
+        deleted every row". It did, while the field started as "[]": Philgen PR
+        01021 (2026-10-16) lost both lines to one Update.
+      * UNPARSEABLE or NOT A LIST: json.loads raises, or iterating a scalar does,
+        either way a 500 where the contract promises messages.
+    An explicit "[]" is NOT refused here: it is a real submission, and the
+    minimum-line rule belongs to the caller, judged on what it would keep.
+    """
+    raw = form.get(key)
+    if not raw:
+        return [], LINES_DID_NOT_ARRIVE
+    try:
+        lines = json.loads(raw)
+    except ValueError:  # json.JSONDecodeError subclasses ValueError
+        lines = None
+    if not isinstance(lines, list):
+        return [], LINES_UNREADABLE
+    return lines, None
+
 
 def restore_posted_lines(raw, normalise_uom=True):
     """Parse a POSTed line payload into the shape the row renderer reads back.

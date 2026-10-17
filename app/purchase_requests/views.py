@@ -14,7 +14,7 @@ from app import db
 from app.purchase_requests.models import (
     PurchaseRequest, PurchaseRequestItem, generate_pr_number,
     SIGNATORY_FIELDS, SIGNATORY_ROLES)
-from app.common.form_restore import restore_posted_lines
+from app.common.form_restore import read_posted_lines, restore_posted_lines
 from app.common.signatories import (assign as assign_signatories, prefill_form,
                                     prefill_form_from_last)
 from app.purchase_requests.forms import PurchaseRequestForm, PurchaseRequestAmendForm, PurchaseRequestAmendmentRequestForm
@@ -218,28 +218,8 @@ def _apply_amended_pr_lines(pr, items):
 
 
 def _read_posted_lines():
-    """Parse the hidden `line_items` payload ONCE -> (lines, error message or None).
-
-    Shared by edit, amend and request_amendment, which post the same form.
-      * BLANK or ABSENT: the lines never arrived. form.html starts the field
-        empty and its serialiser fills it on submit, so a save clicked before the
-        page's script has run posts "" -- which must not read as "the user deleted
-        every row". It did, while the field started as "[]": Philgen PR 01021
-        (2026-10-16) lost both lines to one Update.
-      * UNPARSEABLE or NOT A LIST: json.loads raises, or iterating a scalar does,
-        either way a 500 where the contract promises messages.
-    """
-    raw = request.form.get('line_items')
-    if not raw:
-        return [], ('The line items did not reach the server. '
-                    'Reload the page and try again.')
-    try:
-        lines = json.loads(raw)
-    except ValueError:  # json.JSONDecodeError subclasses ValueError
-        lines = None
-    if not isinstance(lines, list):
-        return [], 'The line items could not be read. Reload the page and try again.'
-    return lines, None
+    """edit, amend and request_amendment post the same form; see read_posted_lines."""
+    return read_posted_lines(request.form)
 
 
 def _parse_and_attach_pr_lines(pr, lines_json):

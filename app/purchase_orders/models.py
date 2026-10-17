@@ -207,9 +207,10 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
     def has_approvable_line(self):
         """True when at least one line carries BOTH a unit price and an amount.
 
-        approve()'s precondition -- and, since an amendment rewrites an already
-        approved order, its postcondition too. Amend must not be able to leave a
-        Purchase Order in a shape approve() would have refused: deleting every row
+        approve()'s precondition (and submit()'s, since 2026-10-17) -- and, since an
+        amendment rewrites an already approved order, its postcondition too. Amend
+        must not be able to leave a Purchase Order in a shape approve() would have
+        refused: deleting every row
         in the amend form posts an explicit `[]`, which validate_amendment allows
         when nothing has been received (removing an untouched line is legal), and
         that left an APPROVED order with zero lines and a 0.00 total -- still

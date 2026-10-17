@@ -19,7 +19,7 @@ from app.purchase_orders.models import (
 from app.purchase_orders.forms import PurchaseOrderForm, PurchaseOrderAmendForm
 from app.purchase_orders.preprinted_layout import (
     COLUMN_LABELS, FIELD_LABELS, get_layout, save_layout, sanitize_layout)
-from app.common.form_restore import restore_posted_lines
+from app.common.form_restore import read_posted_lines, restore_posted_lines
 from app.common.preprinted_base import (
     DATE_FORMATS, FONT_GROUPS, PAPER_LABELS, PAPER_SIZES, TEXT_KEYS)
 from app.print_layouts.models import PrintLayout, PrintLayoutDevicePref
@@ -236,10 +236,12 @@ def _refresh_source_requisitions(po):
         recompute_pr_status(pr)
 
 
-def _parse_and_attach_po_lines(po, lines_json, branch_id=None, exclude_po_id=None):
-    """Parse hidden-JSON line array and attach PurchaseOrderItem objects to *po*.
-    A line needs a Product (goods) OR a free-text description (services)."""
-    items = json.loads(lines_json) if lines_json else []
+def _parse_and_attach_po_lines(po, items, branch_id=None, exclude_po_id=None):
+    """Attach PurchaseOrderItem objects to *po* from the ALREADY-PARSED submitted
+    array (read_posted_lines). A line needs a Product (goods) OR a free-text
+    description (services), and the order needs at least one line.
+
+    REBUILD path -- create and draft edit only; amend uses _apply_amended_po_lines."""
     # Whole-payload allocation ceiling FIRST, before any line is attached.
     _assert_payload_allocations(items, exclude_po_id=exclude_po_id)
     kept = 0
@@ -251,6 +253,14 @@ def _parse_and_attach_po_lines(po, lines_json, branch_id=None, exclude_po_id=Non
         kept += 1
         li.line_number = kept
         po.line_items.append(li)
+    # Both callers build the order's lines from nothing, so `kept` IS the result.
+    # Missing until 2026-10-17: a draft Update that kept no line deleted every
+    # row and still flashed "updated" (the PO twin of Philgen PR 01021). Raised,
+    # so the caller's rollback also undoes edit()'s bulk DELETE. Unpriced is
+    # allowed -- submit() and approve() judge pricing (owner, 2026-10-17).
+    if not kept:
+        raise ValueError('A Purchase Order needs at least one line with a product '
+                         'or a description.')
 
 
 def _apply_amended_po_lines(po, items, branch_id=None, exclude_po_id=None):
@@ -570,6 +580,17 @@ def create():
     # could tell it from its absence, and a branch nothing can pin is a branch that
     # breaks silently. edit() needs that guard only because ITS GET must load the
     # saved lines off the order -- create has no order to load.
+    #
+    # Lines that never arrived or cannot be read are refused first: there is
+    # nothing of them to hand back, and restore_posted_lines would 500 on the
+    # unreadable ones. Only a POST carries a field to judge.
+    submitted_lines, line_items_error = [], None
+    if request.method == 'POST':
+        submitted_lines, line_items_error = read_posted_lines(request.form)
+    if line_items_error:
+        flash(line_items_error, 'error')
+        return render_template('purchase_orders/form.html', form=form, po=None,
+                               line_items=[], vendors=vendors, **_common_form_ctx())
     restore_items = restore_posted_lines(request.form.get('line_items', '[]'))
 
     if form.validate_on_submit():
@@ -610,7 +631,7 @@ def create():
                 status='draft',
                 created_by_id=current_user.id,
             )
-            _parse_and_attach_po_lines(po, request.form.get('line_items', '[]'),
+            _parse_and_attach_po_lines(po, submitted_lines,
                                        branch_id=session.get('selected_branch_id'))
             po.calculate_totals()
             db.session.add(po)
@@ -709,9 +730,21 @@ def edit(id):
     vendors = _active_vendors()
     form.set_vendor_choices(vendors)
 
+    submitted_lines, line_items_error = [], None
+    if request.method == 'POST':
+        submitted_lines, line_items_error = read_posted_lines(request.form)
+    # A refusal re-renders the RAW submission so the buyer keeps her edits --
+    # except when that submission is the thing being refused, where the stored
+    # lines are the only usable starting point. An empty grid on screen is what
+    # invites the next empty Update.
     restore_items = ([li.to_dict() for li in po.line_items]
-                     if request.method == 'GET'
-                     else restore_posted_lines(request.form.get('line_items', '[]')))
+                     if request.method == 'GET' or line_items_error
+                     else restore_posted_lines(request.form['line_items']))
+
+    if line_items_error:
+        flash(line_items_error, 'error')
+        return render_template('purchase_orders/form.html', form=form, po=po,
+                               line_items=restore_items, vendors=vendors, **_common_form_ctx())
 
     if form.validate_on_submit():
         po_number = (form.po_number.data or '').strip()
@@ -759,7 +792,7 @@ def edit(id):
                                .where(PurchaseOrderItem.purchase_order_id == po.id))
             # exclude_po_id: without it this order's own lines count against
             # itself and an unchanged save fails the ceiling check.
-            _parse_and_attach_po_lines(po, request.form.get('line_items', '[]'),
+            _parse_and_attach_po_lines(po, submitted_lines,
                                        branch_id=session.get('selected_branch_id'),
                                        exclude_po_id=po.id)
             db.session.flush()
@@ -822,12 +855,14 @@ def amend(id):
     # Parse the submitted line array ONCE, here, and refuse the three shapes that
     # must never reach the applier:
     #
-    #  * key ABSENT. `request.form.get('line_items', '[]')` cannot tell "the
-    #    field never arrived" from "the user deleted every line", so a POST that
-    #    dropped the hidden input -- the BUG-DR-EDIT-FALSE-CONFLICT class, which
-    #    has already shipped in this codebase once -- reads as a full clear-out
-    #    and leaves an APPROVED PO with zero lines and a 0.00 total, a state
-    #    approve() itself refuses, reported as a success.
+    #  * key ABSENT or BLANK. `request.form.get('line_items', '[]')` cannot tell
+    #    "the field never arrived" from "the user deleted every line", so a POST
+    #    that dropped the hidden input -- the BUG-DR-EDIT-FALSE-CONFLICT class,
+    #    which has already shipped in this codebase once -- reads as a full
+    #    clear-out and leaves an APPROVED PO with zero lines and a 0.00 total, a
+    #    state approve() itself refuses, reported as a success. BLANK is what the
+    #    form posts when it is saved before its script has run (the field starts
+    #    empty since 2026-10-17).
     #  * not JSON. json.loads raises out of the view (an unhandled 500), which
     #    contradicts app/amendments/validation.py's contract that a crafted POST
     #    produces messages, not a 500 -- the crafted POST never reaches it.
@@ -843,26 +878,13 @@ def amend(id):
     # (the user removed every row) and belongs to validate_amendment, which judges
     # it per line, and then to has_approvable_line(), which judges the RESULT.
     #
-    # (edit() and sales_orders.amend() share the same holes; fixing them is a
-    # separate change and deliberately out of scope here.)
+    # read_posted_lines is the one reader, shared with create() and edit() (since
+    # 2026-10-17) and with the requisition screens. sales_orders.amend() still
+    # has its own holes; fixing it is a separate change.
     stored_items = [li.to_dict() for li in po.line_items]
-    submitted_lines = []
-    line_items_error = None
-    unreadable = ('The line items could not be read. '
-                  'Reload the page and try again.')
+    submitted_lines, line_items_error = [], None
     if request.method == 'POST':
-        if 'line_items' not in request.form:
-            line_items_error = ('The line items did not reach the server. '
-                                'Reload the page and try again.')
-        else:
-            try:
-                submitted_lines = json.loads(request.form.get('line_items') or '[]')
-            except ValueError:  # json.JSONDecodeError subclasses ValueError
-                line_items_error = unreadable
-            else:
-                if not isinstance(submitted_lines, list):
-                    submitted_lines = []
-                    line_items_error = unreadable
+        submitted_lines, line_items_error = read_posted_lines(request.form)
 
     # On a refusal the form re-renders the RAW submission so the user does not
     # lose their edits -- except when that submission is the thing being refused,
@@ -1017,6 +1039,12 @@ def submit(id):
         return redirect(url_for('purchase_orders.view', id=id))
     if po.vendor_id is None:
         flash('Set a vendor before submitting this Purchase Order.', 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
+    # approve()'s own predicate (owner, 2026-10-17). A submitted order can already
+    # be received against (RECEIVABLE_PO_STATUSES) and has no way back to draft,
+    # so handing over one approve() would refuse left it received and stuck.
+    if not po.has_approvable_line():
+        flash('Add a line with a unit price before submitting this Purchase Order.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
     po.status = 'submitted'
     po.submitted_by_id = current_user.id
