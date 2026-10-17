@@ -3,9 +3,10 @@
    app-docs/superpowers/specs/2026-10-15-bug-reports-design.md beside the checkout.
    From the moment a page opens it records the last clicks (what was clicked, never what was typed), page changes,
    errors, and failed or slow requests to this site. The record lives in sessionStorage, so it spans the tab's page
-   loads: CAS loads a whole page on every save. CasReport.open() takes a picture of the page, then shows a sheet for
-   the user's message. A report that cannot be sent waits in IndexedDB and goes out when a CAS page next opens, or
-   the browser comes back online, for the same user. */
+   loads (CAS loads a whole page on every save); it belongs to the signed-in user and ends when they sign out.
+   CasReport.open() takes a picture of the page (not on a very long one), then shows a sheet for the user's message.
+   A report that cannot be sent waits in IndexedDB and goes out when a CAS page next opens, or the browser comes back
+   online, for the same user. */
 (function () {
   "use strict";
   if (window.CasReport) return;
@@ -18,17 +19,36 @@
   var SLOW_MS = 3000;
   var MAX_SIDE = 1600;
   var MAX_PICTURE = 300 * 1024;
+  /* Past either size the automatic picture is skipped: the library copies the whole page before cropping it to the
+     screen, and on a long page that freezes the tab for seconds (the 10 s timeout cannot fire while it runs).
+     Calibrated 2026-10-17 on copies of Philgen's pages in Chromium: about 1.3-2 ms per element, so a page just under
+     1,500 elements takes about 2 s (the cash disbursements list, 1,391, took 1.9-2.3 s). */
+  var MAX_PAGE_HEIGHT = 10000;   // CSS px, document.documentElement.scrollHeight
+  var MAX_ELEMENTS = 1500;       // document.getElementsByTagName("*").length
+  var TOO_LONG = "This page is too long for an automatic picture. You can add your own screenshot (Windows: Win+Shift+S).";
   var LOG_KEY = "cas.report.log";
+  var LOGOUT = /\/logout$/;
   var log = { taps: [], pages: [], errors: [], requests: [], sizes: [] };
 
-  /* The tab's earlier pages left their record in sessionStorage; without storage it starts fresh on each page. */
+  /* The tab's earlier pages left their record in sessionStorage, with the user signed in then. A record left by another
+     user (signed out, then someone else signed in on this tab) is thrown away: a report carries only its sender's own
+     steps. Without storage the record starts fresh on each page. The topbar button is parsed before this script. */
+  var me = userId();
+  var signedOut = false;
   try {
     var saved = JSON.parse(window.sessionStorage.getItem(LOG_KEY) || "null");
-    if (saved && typeof saved === "object") {
+    if (saved && typeof saved === "object" && saved.user === me) {
       Object.keys(log).forEach(function (k) { if (Array.isArray(saved[k])) log[k] = saved[k].slice(-LIMIT[k]); });
+    } else {
+      window.sessionStorage.removeItem(LOG_KEY);
     }
   } catch (e) {}
-  function save() { try { window.sessionStorage.setItem(LOG_KEY, JSON.stringify(log)); } catch (e) {} }
+  function save() {
+    if (signedOut) return;
+    try {
+      window.sessionStorage.setItem(LOG_KEY, JSON.stringify({ user: me, taps: log.taps, pages: log.pages, errors: log.errors, requests: log.requests, sizes: log.sizes }));
+    } catch (e) {}
+  }
 
   function stamp() { return new Date().toISOString(); }
   function keep(list, item, max) { list.push(item); while (list.length > max) list.shift(); save(); }
@@ -55,6 +75,14 @@
     var t = e && e.target;
     var el = t && t.closest ? t.closest("button,a,input,select,textarea,label,[role=button],[data-f],[id]") : null;
     if (el) keep(log.taps, { t: stamp(), what: describe(el) }, LIMIT.taps);
+    /* Signing out ends this user's record, after the tap above is written; nothing is saved again on this page. */
+    var a = t && t.closest ? t.closest("a[href]") : null;
+    var u = null;
+    try { u = a ? new URL(a.href, location.href) : null; } catch (x) {}
+    if (u && u.origin === location.origin && LOGOUT.test(u.pathname)) {
+      signedOut = true;
+      try { window.sessionStorage.removeItem(LOG_KEY); } catch (x) {}
+    }
   }, true);
 
   function page() { keep(log.pages, { t: stamp(), path: here() }, LIMIT.pages); }
@@ -185,6 +213,18 @@
     return Promise.race([p, new Promise(function (_, fail) { setTimeout(function () { fail(new Error("it took too long")); }, ms); })]);
   }
   function bytesOf(dataUrl) { return Math.floor((dataUrl.length - dataUrl.indexOf(",") - 1) * 3 / 4); }
+  /** True when the page is past MAX_PAGE_HEIGHT or MAX_ELEMENTS: too long to picture without freezing the tab. */
+  function tooLong() {
+    return document.documentElement.scrollHeight > MAX_PAGE_HEIGHT || document.getElementsByTagName("*").length > MAX_ELEMENTS;
+  }
+  /** Resolves after the browser has painted once, so "Taking a picture of the page…" shows before the capture runs. */
+  function afterPaint() {
+    return new Promise(function (ok) {
+      var go = function () { setTimeout(ok, 0); };
+      if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(go);
+      else go();
+    });
+  }
 
   /** A JPEG of at most about 300 KB: lower quality first, then a smaller picture. */
   function toJpeg(canvas) {
@@ -321,13 +361,16 @@
       var chain = Promise.resolve();
       var now = Date.now();
       r.items.forEach(function (it) {
-        if (!it.value || it.value.user !== me) return;
+        if (!it.value) return;
         var tries = it.value.tries || 0;
         var age = now - Date.parse(it.value.at);
+        /* Too old or tried too often is dropped whoever queued it, so a shared PC does not keep another user's
+           report (picture included) for ever; only then are other users' reports left alone. */
         if (tries >= MAX_TRIES || (isFinite(age) && age > MAX_AGE_MS)) {
           drop(r.db, it.key);
           return;
         }
+        if (it.value.user !== me) return;
         chain = chain.then(function () {
           return send(it.value.payload).then(
             function (res) {
@@ -382,13 +425,21 @@
   function open() {
     if (busy) return;
     busy = true;
+    var ctx = context();
+    /* Measured before the overlay is added, and before the picture library is loaded. */
+    if (tooLong()) {
+      var sheetOnly = h("div", { className: "cas-report-back" });
+      document.body.appendChild(sheetOnly);
+      show(sheetOnly, ctx, null, "", TOO_LONG);
+      return;
+    }
     var back = h("div", { className: "cas-report-back" }, [h("p", { className: "cas-report-wait", text: "Taking a picture of the page…" })]);
     document.body.appendChild(back);
-    var ctx = context();
-    capturePage().then(function (url) { show(back, ctx, url, ""); }, function (e) { show(back, ctx, null, short(e && e.message || e, 120)); });
+    afterPaint().then(capturePage).then(function (url) { show(back, ctx, url, ""); }, function (e) { show(back, ctx, null, short(e && e.message || e, 120)); });
   }
 
-  function show(back, ctx, picture, pictureError) {
+  /** note, when given, replaces the "could not be taken" line: the picture was skipped on purpose. */
+  function show(back, ctx, picture, pictureError, note) {
     var own = null;
     function close() { back.remove(); busy = false; }
     var message = h("textarea", { name: "message", maxlength: "5000", required: "required", rows: "5" });
@@ -410,7 +461,7 @@
           h("img", { src: picture, alt: "Picture of the page", className: "cas-report-shot", title: "Click to see it full size", onclick: function (e) { e.currentTarget.classList.toggle("big"); } }),
           h("label", { className: "cas-report-check" }, [usePicture, document.createTextNode("Include this picture of the page")]),
         ])
-      : h("p", { className: "cas-report-muted", text: "The page picture could not be taken (" + pictureError + "). You can add your own screenshot." });
+      : h("p", { className: "cas-report-muted", text: note || "The page picture could not be taken (" + pictureError + "). You can add your own screenshot." });
     var sendButton = h("button", { type: "submit", className: "btn btn-primary", text: "Send" });
     var form = h("form", { className: "cas-report-sheet", "aria-label": "Report a problem" }, [
       h("h2", { text: "Report a problem" }),
