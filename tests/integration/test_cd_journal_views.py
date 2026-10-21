@@ -219,13 +219,47 @@ class TestCDVListDownloadJournal:
         assert (b'/journals/cd/export?mode=custom&amp;date_from=2026-10-01&amp;date_to=2026-10-31'
                 in resp.data)
 
-    def test_link_carries_the_default_dates_the_boxes_show(self, client, accountant, branch):
+    @staticmethod
+    def _this_month():
+        import calendar
         from app.utils import ph_now
-        year = ph_now().year
+        today = ph_now().date()
+        last = calendar.monthrange(today.year, today.month)[1]
+        return today.replace(day=1).isoformat(), today.replace(day=last).isoformat()
+
+    def test_boxes_default_to_the_first_and_last_day_of_this_month(self, client, accountant, branch):
+        """Owner, 22 Oct 2026: the From / To boxes open on BOM and EOM, not the whole year."""
+        bom, eom = self._this_month()
+        _login(client, 'acc_cd')
+        form = self._filter_form(client.get('/cash-disbursements').get_data(as_text=True))
+        assert f'name="date_from" value="{bom}"' in form
+        assert f'name="date_to" value="{eom}"' in form
+
+    def test_link_carries_the_default_dates_the_boxes_show(self, client, accountant, branch):
+        bom, eom = self._this_month()
         _login(client, 'acc_cd')
         resp = client.get('/cash-disbursements')
-        assert (f'/journals/cd/export?mode=custom&amp;date_from={year}-01-01&amp;date_to={year}-12-31'
+        assert (f'/journals/cd/export?mode=custom&amp;date_from={bom}&amp;date_to={eom}'
                 .encode() in resp.data)
+
+    def test_default_list_leaves_out_an_earlier_month(self, client, accountant, branch,
+                                                      cash_acct, db_session):
+        from datetime import timedelta
+        from app.cash_disbursements.models import CashDisbursementVoucher
+        bom, _ = self._this_month()
+        earlier = date.fromisoformat(bom) - timedelta(days=1)
+        for number, when in (('CDV-THIS-MONTH', date.fromisoformat(bom)), ('CDV-LAST-MONTH', earlier)):
+            db.session.add(CashDisbursementVoucher(
+                cdv_number=number, cdv_date=when, branch_id=branch.id, cash_account_id=cash_acct.id,
+                vendor_name='Test Payee', payment_method='cash', status='draft'))
+        db.session.commit()
+        _login(client, 'acc_cd')
+        html = client.get('/cash-disbursements').get_data(as_text=True)
+        assert 'CDV-THIS-MONTH' in html
+        assert 'CDV-LAST-MONTH' not in html
+        # An explicit range still reaches back.
+        html = client.get(f'/cash-disbursements?date_from={earlier.isoformat()}&date_to={bom}').get_data(as_text=True)
+        assert 'CDV-LAST-MONTH' in html
 
     def test_button_sits_right_after_the_to_date(self, client, accountant, branch):
         import re

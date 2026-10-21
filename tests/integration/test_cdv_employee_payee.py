@@ -305,7 +305,9 @@ class TestPrintoutsAndLists:
                                           employees, accounts):
         corp, _ = employees
         cdv = self._employee_check_cv(client, db_session, main_branch, employees, accounts)
-        html = client.get(f'/cash-disbursements?payee=employee:{corp.id}').get_data(as_text=True)
+        # The CV is dated 2026-09-24; the list's default range is only the current month.
+        html = client.get(f'/cash-disbursements?payee=employee:{corp.id}'
+                          '&date_from=2026-09-01&date_to=2026-09-30').get_data(as_text=True)
         assert 'EMP-CHK' in html
         assert f'<option value="employee:{corp.id}"' in html
 

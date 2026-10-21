@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session, abort, current_app
 from flask_login import login_required, current_user
+import calendar
 import re
 from functools import wraps
 from sqlalchemy.orm import selectinload
@@ -222,15 +223,18 @@ def list_cdvs():
             CashDisbursementVoucher.vendor_name.ilike(like)
         ))
 
-    year = ph_now().year
-    date_from = request.args.get('date_from', f'{year}-01-01')
+    # From / To open on the current month, first day to last (owner, 22 Oct 2026).
+    today = ph_now().date()
+    bom = today.replace(day=1)
+    eom = today.replace(day=calendar.monthrange(today.year, today.month)[1])
+    date_from = request.args.get('date_from', bom.isoformat())
     if date_from:
         try:
             query = query.filter(CashDisbursementVoucher.cdv_date >= date.fromisoformat(date_from))
         except ValueError:
             pass
 
-    date_to = request.args.get('date_to', f'{year}-12-31')
+    date_to = request.args.get('date_to', eom.isoformat())
     if date_to:
         try:
             query = query.filter(CashDisbursementVoucher.cdv_date <= date.fromisoformat(date_to))
