@@ -113,7 +113,7 @@
         <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
     </label>
     <a href="{{ url_for('journals.cd_journal_export', mode='custom', date_from=date_from, date_to=date_to) }}"
-       id="cdv-journal-download" class="btn btn-success btn-sm">Download Journal</a>
+       id="cdv-journal-download" class="btn btn-sm cdv-journal-download">Download Journal</a>
     <button type="submit" class="btn btn-primary btn-sm">Filter</button>
     <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary btn-sm">Clear</a>
 </form>
@@ -258,6 +258,13 @@
 .cdv-filter-bar select.form-control { width: 160px; }
 .cdv-filter-bar input[type="date"].form-control { width: 150px; }
 .cdv-filter-search { flex: 1 1 200px; min-width: 180px; }
+.cdv-filter-bar .cdv-journal-download {
+    background: #0d9488;
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(13, 148, 136, .35);
+}
+.cdv-filter-bar .cdv-journal-download:hover { background: #0f766e; }
 .btn-action {
     padding: 4px 8px;
     border-radius: 4px;
