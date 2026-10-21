@@ -242,6 +242,15 @@ class TestCDVListDownloadJournal:
         assert (f'/journals/cd/export?mode=custom&amp;date_from={bom}&amp;date_to={eom}'
                 .encode() in resp.data)
 
+    def test_list_offers_no_excel_or_csv_export(self, client, accountant, branch):
+        """Owner, 22 Oct 2026: Export Excel / CSV are redundant for now and come off
+        the list. The routes stay so the buttons can come back."""
+        _login(client, 'acc_cd')
+        html = client.get('/cash-disbursements').get_data(as_text=True)
+        assert '/cash-disbursements/export/' not in html
+        assert 'Export Excel' not in html
+        assert 'Export CSV' not in html
+
     def test_default_list_leaves_out_an_earlier_month(self, client, accountant, branch,
                                                       cash_acct, db_session):
         from datetime import timedelta
