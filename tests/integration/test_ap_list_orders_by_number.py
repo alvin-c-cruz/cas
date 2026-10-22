@@ -34,7 +34,8 @@ def _ap(main_branch, number, when):
 
 
 def _rendered_order(client, numbers):
-    html = client.get('/accounts-payable').data.decode()
+    # The bills are dated September 2026; the list's default range is only the current month.
+    html = client.get('/accounts-payable?date_from=2026-09-01&date_to=2026-09-30').data.decode()
     for n in numbers:
         assert n in html, 'voucher %s did not render' % n
     return sorted(numbers, key=html.index)

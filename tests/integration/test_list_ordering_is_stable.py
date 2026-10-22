@@ -50,7 +50,8 @@ class TestTheAPList:
         with client.session_transaction() as sess:
             sess['selected_branch_id'] = main_branch.id
 
-        html = client.get('/accounts-payable').data.decode()
+        # Dated September 2026; the list's default range is only the current month.
+        html = client.get('/accounts-payable?date_from=2026-09-01&date_to=2026-09-30').data.decode()
         # Control: the rows rendered at all, so the ordering below is real.
         for n in ('0001', '0002', '0003'):
             assert n in html, 'voucher %s did not render' % n
