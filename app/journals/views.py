@@ -119,8 +119,10 @@ def _entry_identity(entry, ap_map):
     )
 
 
-def _cd_journal_context(branch_id):
-    """Build the columnar CD journal data for a branch + period from request.args."""
+def _cd_journal_context(branch_id, draft_amounts=False):
+    """Build the columnar CD journal data for a branch + period from request.args.
+
+    draft_amounts=True (the .xlsx download) gives draft rows their amounts."""
     from app.cash_disbursements.models import CashDisbursementVoucher
     period = resolve_period(request.args, today=ph_now().date())
 
@@ -142,7 +144,7 @@ def _cd_journal_context(branch_id):
 
     ap_id, wt_id, vat_ids = _gl_account_ids()
     matrix = build_columnar_cd(posted, drafts, ap_id, wt_id, vat_ids,
-                               cancelled_refs=cancelled_refs)
+                               cancelled_refs=cancelled_refs, draft_amounts=draft_amounts)
     return period, matrix, cdv_map
 
 
@@ -503,8 +505,9 @@ def cd_journal_export():
 
     from app.branches.models import Branch
     from app.settings import AppSettings
+    from app.bank_accounts.service import cash_bank_leaf_account_choices
     from app.journals.cd_journal_data import build_cd_journal_xlsx
-    period, matrix, cdv_map = _cd_journal_context(branch_id)
+    period, matrix, cdv_map = _cd_journal_context(branch_id, draft_amounts=True)
 
     branch = db.session.get(Branch, branch_id)
     branch_count = Branch.query.count()
@@ -517,10 +520,11 @@ def cd_journal_export():
         filename = f"CD-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
 
     return build_cd_journal_xlsx(
-        columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
-        period_label=period['label'], company_name=company_name,
+        columns=matrix['columns'], rows=matrix['rows'],
+        date_from=period['date_from'], date_to=period['date_to'], company_name=company_name,
         branch_name=branch_name, filename=filename,
-        identity=lambda e: _cd_entry_identity(e, cdv_map))
+        identity=lambda e: _cd_entry_identity(e, cdv_map),
+        cash_account_ids={aid for aid, _ in cash_bank_leaf_account_choices()})
 
 
 @journals_bp.route('/journals/cd/print')

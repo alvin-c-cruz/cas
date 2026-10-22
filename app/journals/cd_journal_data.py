@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from flask import make_response
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
 
 
@@ -37,12 +37,14 @@ def _col_key(account, ap_account_id, wt_account_id, input_vat_account_ids, total
 
 
 def build_columnar_cd(posted_entries, draft_entries, ap_account_id,
-                      wt_account_id, input_vat_account_ids, cancelled_refs=None):
+                      wt_account_id, input_vat_account_ids, cancelled_refs=None,
+                      draft_amounts=False):
     """Pivot disbursement journal-entry lines into a columnar matrix.
 
     Columns are built only from POSTED entries' accounts. Cancelled CDVs
     (whose JEs remain posted) are included in totals but flagged is_cancelled=True
-    for visual display (strikethrough + badge). Draft rows carry no amounts.
+    for visual display (strikethrough + badge). Draft rows carry no amounts unless
+    draft_amounts=True (the .xlsx download), which pivots them like posted rows.
 
     cancelled_refs: set of CDV numbers (entry.reference) that are cancelled.
 
@@ -55,7 +57,7 @@ def build_columnar_cd(posted_entries, draft_entries, ap_account_id,
     totals = {}
     rows = []
 
-    for je in posted_entries:
+    def pivot(je):
         cells = {}
         for line in je.lines.all():
             acct = line.account
@@ -63,11 +65,15 @@ def build_columnar_cd(posted_entries, draft_entries, ap_account_id,
             signed = (line.debit_amount or Decimal('0')) - (line.credit_amount or Decimal('0'))
             cells[acct.id] = cells.get(acct.id, Decimal('0')) + signed
             totals[acct.id] = totals.get(acct.id, Decimal('0')) + signed
+        return cells
+
+    for je in posted_entries:
         is_cancelled = je.reference in cancelled_refs
-        rows.append({'entry': je, 'cells': cells, 'is_draft': False, 'is_cancelled': is_cancelled})
+        rows.append({'entry': je, 'cells': pivot(je), 'is_draft': False, 'is_cancelled': is_cancelled})
 
     for je in draft_entries:
-        rows.append({'entry': je, 'cells': {}, 'is_draft': True, 'is_cancelled': False})
+        cells = pivot(je) if draft_amounts else {}
+        rows.append({'entry': je, 'cells': cells, 'is_draft': True, 'is_cancelled': False})
 
     ordered = sorted(
         accounts_by_id.values(),
@@ -101,99 +107,103 @@ def _fmt(value):
     return f'{value:,.2f}'
 
 
-def build_cd_journal_xlsx(columns, rows, totals, period_label, company_name,
-                          branch_name, filename, identity):
-    """Build the columnar CD Journal as an .xlsx Flask response.
+# The download copies the legacy RIC app's Disbursement Journal cell for cell
+# (alvinltv accounting/blueprints/disbursements/extentions.py): an Excel template
+# reads the account titles in row 5 and the "Total" row (owner, 22 Oct 2026).
+# Spec: app-docs/superpowers/specs/2026-10-22-cd-journal-xlsx-layout-design.md
+_HEADER_ROW = 5
+_FIXED = ('Date', 'No.', 'Check Number', 'Vendor', 'Particulars')
+_THIN = Side(style='thin')
+_BOX = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
+_DOUBLE_BOTTOM = Border(bottom=Side(style='double'))
+_AMOUNT_FMT = '#,##0.00; (#,##0.00)'
+_AMOUNT_ALIGN = Alignment(horizontal='right', vertical='top')
+_AMOUNT_WIDTH = 14
+_ALIGN = {
+    'Date': Alignment(horizontal='center', vertical='top'),
+    'No.': Alignment(horizontal='center', vertical='top'),
+    'Check Number': Alignment(horizontal='center', vertical='top'),
+    'Vendor': Alignment(horizontal='left', vertical='top', wrap_text=True),
+    'Particulars': Alignment(horizontal='left', vertical='top', wrap_text=True),
+    'Posted': Alignment(horizontal='center', vertical='center', wrap_text=True),
+}
+_WIDTH = {'Date': 12, 'No.': 10, 'Check Number': 12, 'Vendor': 20, 'Particulars': 25, 'Posted': 7}
 
-    branch_name=None skips the branch row.
+
+def period_range_label(date_from, date_to):
+    """Word a date range as the legacy app does: 'From September 01 to 30, 2026'."""
+    if date_from.year != date_to.year:
+        return f"From {date_from.strftime('%B %d, %Y')} to {date_to.strftime('%B %d, %Y')}"
+    if date_from.month != date_to.month:
+        return f"From {date_from.strftime('%B %d')} to {date_to.strftime('%B %d, %Y')}"
+    if date_from == date_to:
+        return f"For {date_from.strftime('%B %d, %Y')}"
+    return f"From {date_from.strftime('%B %d')} to {date_to.strftime('%d, %Y')}"
+
+
+def build_cd_journal_xlsx(columns, rows, date_from, date_to, company_name,
+                          branch_name, filename, identity, cash_account_ids=()):
+    """Build the columnar CD Journal as an .xlsx Flask response, in the legacy layout.
+
+    branch_name=None leaves A2 as plain 'Disbursement Journal'.
     identity(entry) -> (cd_no, check_no, vendor, particulars)
+    cash_account_ids: the Cash & Bank accounts; their columns come first, as the
+    legacy app puts "Cash and Cash Equivalents" first. Then every account by code.
     """
     wb = Workbook()
     ws = wb.active
-    ws.title = 'CD Journal'
+    ws.title = 'CDJ'
 
-    right = Alignment(horizontal='right')
-    center_wrap = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    num_fmt = '#,##0.00;(#,##0.00)'
+    ws['A1'] = company_name
+    ws['A1'].font = Font(size=14, bold=True)
+    ws['A2'] = 'Disbursement Journal' + (f' - {branch_name}' if branch_name else '')
+    ws['A2'].font = Font(size=10, bold=True)
+    ws['A3'] = period_range_label(date_from, date_to)
+    ws['A3'].font = Font(size=10, bold=True)
 
-    thin = Side(style='thin')
-    double_s = Side(style='double')
-    cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    total_border = Border(bottom=double_s)
-    draft_fill     = PatternFill(fill_type='solid', fgColor='FFF9C4')  # light yellow
-    cancelled_fill = PatternFill(fill_type='solid', fgColor='FFCDD2')  # light red
+    cash_ids = set(cash_account_ids)
+    columns = sorted(columns, key=lambda c: (c['account_id'] not in cash_ids, c['code']))
+    kinds = list(_FIXED) + [None] * len(columns) + ['Posted']   # None = an account column
+    header = list(_FIXED) + [c['name'] for c in columns] + ['Posted']
+    for i, (kind, value) in enumerate(zip(kinds, header), 1):
+        cell = ws.cell(row=_HEADER_ROW, column=i, value=value)
+        cell.font = Font(size=10, bold=True)
+        cell.alignment = Alignment(horizontal='center', wrap_text=True)
+        cell.border = _BOX
+        ws.column_dimensions[get_column_letter(i)].width = _WIDTH.get(kind, _AMOUNT_WIDTH)
 
-    ws.append([company_name])
-    ws['A1'].font = Font(bold=True, size=16)
-    if branch_name:
-        ws.append([branch_name])
-        ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=16)
-    ws.append(['Cash Disbursements Journal'])
-    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=14)
-    ws.append([period_label])
-    ws.append([])
-
-    fixed = ['Date', 'CD No.', 'Check No.', 'Vendor', 'Particulars']
-    header = fixed + [c['name'] for c in columns]
-    ws.append(header)
-    hdr_row = ws.max_row
-    ws.row_dimensions[hdr_row].height = 40
-    for cell in ws[hdr_row]:
-        cell.font = Font(bold=True)
-        cell.alignment = center_wrap
-        cell.border = cell_border
-
-    first_data_row = hdr_row + 1
+    row_num = _HEADER_ROW
     for r in rows:
-        e = r['entry']
-        no, check_no, vendor, particulars = identity(e)
+        row_num += 1
+        no, check_no, vendor, particulars = identity(r['entry'])
         if r['is_cancelled']:
             particulars = '[CANCELLED] ' + (particulars or '')
-        elif r['is_draft']:
-            particulars = '[DRAFT] ' + (particulars or '')
-        line = [
-            e.entry_date.strftime('%d-%b-%Y'),
-            no or '',
-            check_no or '',
-            vendor or '',
-            particulars or '',
-        ]
-        for c in columns:
-            if r['is_draft']:
-                line.append(None)
-            else:
-                val = r['cells'].get(c['account_id'])
-                line.append(float(val) if val else None)
-        ws.append(line)
-        cur = ws.max_row
-        fill = cancelled_fill if r['is_cancelled'] else (draft_fill if r['is_draft'] else None)
-        for i, cell in enumerate(ws[cur], 1):
-            cell.border = cell_border
-            if fill:
-                cell.fill = fill
-            if i > len(fixed):
-                cell.number_format = num_fmt
-                cell.alignment = right
+        values = [r['entry'].entry_date.strftime('%d-%b-%Y'),
+                  no or None, check_no or None, vendor or None, particulars or None]
+        values += [float(r['cells'][c['account_id']]) if r['cells'].get(c['account_id']) else None
+                   for c in columns]
+        values.append('No' if r['is_draft'] else 'Yes')
+        for i, (kind, value) in enumerate(zip(kinds, values), 1):
+            cell = ws.cell(row=row_num, column=i, value=value)
+            cell.font = Font(size=10)
+            cell.border = _BOX
+            cell.alignment = _ALIGN.get(kind, _AMOUNT_ALIGN)
+            if kind is None:
+                cell.number_format = _AMOUNT_FMT
+            elif kind == 'Date':
+                cell.number_format = 'yyyy-mmm-dd'
 
-    last_data_row = ws.max_row
-    ws.append([])
-    ws.append(['TOTAL', '', '', '', ''])
-    tot_row = ws.max_row
-    for i in range(1, len(fixed) + 1):
-        ws.cell(row=tot_row, column=i).font = Font(bold=True)
-        ws.cell(row=tot_row, column=i).border = total_border
-    for i, c in enumerate(columns, len(fixed) + 1):
-        col_letter = get_column_letter(i)
-        cell = ws.cell(row=tot_row, column=i)
-        cell.value = f'=SUM({col_letter}{first_data_row}:{col_letter}{last_data_row + 1})'
-        cell.font = Font(bold=True)
-        cell.number_format = num_fmt
-        cell.alignment = right
-        cell.border = total_border
-
-    col_widths = [12, 22, 18, 28, 40] + [20] * len(columns)
-    for i, width in enumerate(col_widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = width
+    # One empty row, then the totals, summed from the header row down to the empty row.
+    empty_row = row_num + 1
+    total_row = row_num + 2
+    ws.cell(row=total_row, column=1, value='Total').font = Font(size=10, bold=True)
+    for i in range(len(_FIXED) + 1, len(_FIXED) + len(columns) + 1):
+        letter = get_column_letter(i)
+        cell = ws.cell(row=total_row, column=i, value=f'=SUM({letter}{_HEADER_ROW}:{letter}{empty_row})')
+        cell.font = Font(size=10)
+        cell.alignment = Alignment(horizontal='right')
+        cell.border = _DOUBLE_BOTTOM
+        cell.number_format = _AMOUNT_FMT
 
     output = io.BytesIO()
     wb.save(output)

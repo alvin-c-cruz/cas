@@ -71,13 +71,13 @@ def _login(client, username, password='pass'):
             s['selected_branch_id'] = branch.id
 
 
-def _disbursement_je(branch_id, entry_date, number, cash_acct, expense_acct, amount):
+def _disbursement_je(branch_id, entry_date, number, cash_acct, expense_acct, amount, status='posted'):
     """Post a disbursement JE: Dr Expense, Cr Cash."""
     je = JournalEntry(
         entry_number=number, entry_date=entry_date,
         description='Test disbursement', reference=number,
         entry_type='disbursement',
-        branch_id=branch_id, status='posted', is_balanced=True,
+        branch_id=branch_id, status=status, is_balanced=True,
         total_debit=Decimal(str(amount)), total_credit=Decimal(str(amount)),
     )
     db.session.add(je)
@@ -190,8 +190,30 @@ class TestCDJournalExport:
         wb = load_workbook(io.BytesIO(resp.data))
         ws = wb.active
         all_text = ' '.join(str(c.value) for row in ws.iter_rows() for c in row if c.value is not None)
-        assert 'Cash Disbursements Journal' in all_text
+        assert 'Disbursement Journal' in all_text
         assert 'CD-2026-06-0001' in all_text
+
+    def test_export_has_the_alvinltv_layout_with_drafts_counted(
+            self, client, accountant, branch, cash_acct, expense_acct, db_session):
+        """Owner, 22 Oct 2026: titles in row 5 (cash first), drafts with amounts and
+        Posted = No, and the Total row the RIC Excel template reads."""
+        from openpyxl import load_workbook
+        import io
+        _disbursement_je(branch.id, date(2026, 6, 5), 'CD-POSTED', cash_acct, expense_acct, 8000)
+        _disbursement_je(branch.id, date(2026, 6, 6), 'CD-DRAFT', cash_acct, expense_acct, 500,
+                         status='draft')
+        _login(client, 'acc_cd')
+        resp = client.get('/journals/cd/export?mode=month&year=2026&month=6')
+        ws = load_workbook(io.BytesIO(resp.data)).active
+        assert ws.title == 'CDJ'
+        assert ws['A2'].value == 'Disbursement Journal'      # one branch: no suffix
+        assert ws['A3'].value == 'From June 01 to 30, 2026'
+        assert [c.value for c in ws[5]] == ['Date', 'No.', 'Check Number', 'Vendor', 'Particulars',
+                                            cash_acct.name, expense_acct.name, 'Posted']
+        assert (ws['B6'].value, ws['F6'].value, ws['G6'].value, ws['H6'].value) == ('CD-POSTED', -8000, 8000, 'Yes')
+        assert (ws['B7'].value, ws['F7'].value, ws['G7'].value, ws['H7'].value) == ('CD-DRAFT', -500, 500, 'No')
+        assert all(c.value is None for c in ws[8])
+        assert (ws['A9'].value, ws['F9'].value, ws['G9'].value) == ('Total', '=SUM(F5:F8)', '=SUM(G5:G8)')
 
     def test_export_empty_period_still_returns_xlsx(self, client, accountant, branch):
         _login(client, 'acc_cd')
@@ -307,6 +329,6 @@ class TestCDVListDownloadJournal:
         assert 'CD-Journal-2026-10-01_2026-10-31.xlsx' in resp.headers['Content-Disposition']
         ws = load_workbook(io.BytesIO(resp.data)).active
         text = ' '.join(str(c.value) for row in ws.iter_rows() for c in row if c.value is not None)
-        assert 'From October 1, 2026 to October 31, 2026' in text
+        assert 'From October 01 to 31, 2026' in text
         assert 'CD-IN-RANGE' in text
         assert 'CD-OUT-OF-RANGE' not in text
