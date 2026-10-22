@@ -9,8 +9,6 @@
         <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
             <a href="{{ url_for('journals.voucher_print', status=status_filter, date_from=date_from, date_to=date_to) }}"
                target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Print</a>
-            <a href="{{ url_for('journals.voucher_export', status=status_filter, date_from=date_from, date_to=date_to) }}"
-               class="btn btn-secondary btn-sm">Download Excel</a>
             {% if (current_user.has_full_access or current_user.role == 'accountant') %}
             <a href="{{ url_for('journal_entries.create') }}" class="btn btn-green">📝 Enter Journal Voucher</a>
             {% endif %}
@@ -27,6 +25,8 @@
                 <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase;">To Date</label>
                 <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
             </div>
+            <a href="{{ url_for('journals.voucher_journal_export', mode='custom', date_from=date_from, date_to=date_to) }}"
+               id="journal-download" data-journal-download class="btn btn-sm btn-journal-download">Download Journal</a>
             <div style="flex: 1; min-width: 120px;">
                 <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase;">Status</label>
                 <select name="status" class="form-control form-control-sm">
@@ -109,4 +109,6 @@
     </div>
     {% endif %}
 </div>
+<script src="{{ url_for('static', filename='js/journal-download.js') }}?v=1"></script>
+
 {% endblock %}

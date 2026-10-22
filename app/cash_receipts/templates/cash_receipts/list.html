@@ -108,6 +108,8 @@
         <span class="crv-date-group__label">To</span>
         <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
     </label>
+    <a href="{{ url_for('journals.cr_journal_export', mode='custom', date_from=date_from, date_to=date_to) }}"
+       id="journal-download" data-journal-download class="btn btn-sm btn-journal-download">Download Journal</a>
     <button type="submit" class="btn btn-primary btn-sm">Filter</button>
     <a href="{{ url_for('cash_receipts.list_crvs') }}" class="btn btn-secondary btn-sm">Clear</a>
 </form>
@@ -117,12 +119,6 @@
         <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
             <a href="{{ url_for('journals.cr_journal', mode='custom', date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">View Journal</a>
-            <a href="{{ url_for('journals.cr_journal_export', mode='custom', date_from=date_from, date_to=date_to) }}"
-               class="btn btn-secondary btn-sm">Download Journal</a>
-            <a href="{{ url_for('cash_receipts.export_excel') }}{{ '?' ~ request.query_string.decode() if request.query_string }}"
-               class="btn btn-secondary crv-export-link" style="font-size:13px;">&#11015; Export Excel</a>
-            <a href="{{ url_for('cash_receipts.export_csv') }}{{ '?' ~ request.query_string.decode() if request.query_string }}"
-               class="btn btn-secondary crv-export-link" style="font-size:13px;">&#11015; Export CSV</a>
             {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <a href="{{ url_for('cash_receipts.create') }}" class="btn btn-green">&#10133; Enter CRV</a>
             {% endif %}
@@ -288,5 +284,7 @@
     }
 })();
 </script>
+
+<script src="{{ url_for('static', filename='js/journal-download.js') }}?v=1"></script>
 
 {% endblock %}

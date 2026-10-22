@@ -1,6 +1,5 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session, abort, current_app
 from flask_login import login_required, current_user
-import calendar
 import re
 from functools import wraps
 from sqlalchemy.orm import selectinload
@@ -22,7 +21,7 @@ from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.attachments.registry import get_target
 from app.attachments.service import save_queued_attachments
 from app.errors.utils import log_exception
-from app.utils import ph_now
+from app.utils import ph_now, this_month_iso
 from app.utils.cache_helpers import get_active_units, get_active_products
 from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
                                     fresh_number_if_collision, flush_or_suggest_fresh_number)
@@ -224,17 +223,15 @@ def list_cdvs():
         ))
 
     # From / To open on the current month, first day to last (owner, 22 Oct 2026).
-    today = ph_now().date()
-    bom = today.replace(day=1)
-    eom = today.replace(day=calendar.monthrange(today.year, today.month)[1])
-    date_from = request.args.get('date_from', bom.isoformat())
+    bom, eom = this_month_iso()
+    date_from = request.args.get('date_from', bom)
     if date_from:
         try:
             query = query.filter(CashDisbursementVoucher.cdv_date >= date.fromisoformat(date_from))
         except ValueError:
             pass
 
-    date_to = request.args.get('date_to', eom.isoformat())
+    date_to = request.args.get('date_to', eom)
     if date_to:
         try:
             query = query.filter(CashDisbursementVoucher.cdv_date <= date.fromisoformat(date_to))

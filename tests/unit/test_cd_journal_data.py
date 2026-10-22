@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 from openpyxl import load_workbook
 import pytest
 
-from app.journals.cd_journal_data import (build_columnar_cd, build_cd_journal_xlsx,
-                                          period_range_label)
+from app.journals.cd_journal_data import build_columnar_cd, build_cd_journal_xlsx
+from app.journals.legacy_xlsx import period_range_label
 
 pytestmark = [pytest.mark.journals, pytest.mark.unit]
 

@@ -298,7 +298,7 @@ class TestCDVListDownloadJournal:
         html = client.get('/cash-disbursements?date_from=2026-10-01&date_to=2026-10-31').get_data(as_text=True)
         form = self._filter_form(html)
         to_box = form.index('name="date_to"')
-        download = re.search(r'<a [^>]*id="cdv-journal-download"', form).start()
+        download = re.search(r'<a [^>]*id="journal-download"', form).start()
         filter_btn = form.index('type="submit"')
         assert to_box < download < filter_btn
         # Nothing else stands between the To box and the button.
@@ -323,7 +323,7 @@ class TestCDVListDownloadJournal:
                          cash_acct, expense_acct, 3400)
         _login(client, 'acc_cd')
         page = client.get('/cash-disbursements?date_from=2026-10-01&date_to=2026-10-31').get_data(as_text=True)
-        href = re.search(r'<a href="([^"]+)"\s+id="cdv-journal-download"', page).group(1)
+        href = re.search(r'<a href="([^"]+)"\s+id="journal-download"', page).group(1)
         resp = client.get(html_lib.unescape(href))
         assert resp.status_code == 200
         assert 'CD-Journal-2026-10-01_2026-10-31.xlsx' in resp.headers['Content-Disposition']

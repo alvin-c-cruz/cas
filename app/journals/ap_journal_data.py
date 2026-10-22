@@ -4,14 +4,12 @@ No Flask request access here — callers pass plain dicts/values so these
 functions are unit-testable in isolation.
 """
 import calendar
-import io
 from datetime import date, datetime
 from decimal import Decimal
 
-from flask import make_response
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
+
+from app.journals.legacy_xlsx import (build_legacy_journal_xlsx, journal_row,
+                                      order_account_columns, posted_flag, text_date)
 
 
 def _parse_iso(value):
@@ -97,14 +95,16 @@ def _group_for(account, ap_account_id, wt_account_id, input_vat_account_ids):
 
 
 def build_columnar(posted_entries, draft_entries, ap_account_id,
-                   wt_account_id, input_vat_account_ids, voided_bills=None):
+                   wt_account_id, input_vat_account_ids, voided_bills=None,
+                   draft_amounts=False):
     """Pivot journal-entry lines into a columnar matrix.
 
     Columns are built only from POSTED entries' accounts, ordered
     credits-first (AP, WHT, Input VAT, then other accounts by code).
     Posted rows carry signed amounts (debit - credit) per account and
     contribute to per-column totals. Draft and voided rows are listed
-    with a flag and no amounts, excluded from totals.
+    with a flag and no amounts, excluded from totals -- except that
+    draft_amounts=True (the .xlsx download) pivots drafts like posted rows.
 
     Returns dict: columns, rows, totals, grand_total, balanced.
     """
@@ -115,7 +115,7 @@ def build_columnar(posted_entries, draft_entries, ap_account_id,
     totals = {}
     rows = []
 
-    for je in posted_entries:
+    def pivot(je):
         cells = {}
         for line in je.lines.all():
             acct = line.account
@@ -123,10 +123,14 @@ def build_columnar(posted_entries, draft_entries, ap_account_id,
             signed = (line.debit_amount or Decimal('0')) - (line.credit_amount or Decimal('0'))
             cells[acct.id] = cells.get(acct.id, Decimal('0')) + signed
             totals[acct.id] = totals.get(acct.id, Decimal('0')) + signed
-        rows.append({'entry': je, 'cells': cells, 'is_draft': False, 'is_voided': False})
+        return cells
+
+    for je in posted_entries:
+        rows.append({'entry': je, 'cells': pivot(je), 'is_draft': False, 'is_voided': False})
 
     for je in draft_entries:
-        rows.append({'entry': je, 'cells': {}, 'is_draft': True, 'is_voided': False})
+        cells = pivot(je) if draft_amounts else {}
+        rows.append({'entry': je, 'cells': cells, 'is_draft': True, 'is_voided': False})
 
     for ap in voided_bills:
         rows.append({'ap': ap, 'entry': None, 'cells': {}, 'is_draft': False, 'is_voided': True})
@@ -168,125 +172,26 @@ def _fmt(value):
     return f'{value:,.2f}'
 
 
-def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
-                          branch_name, filename, identity):
-    """Build the columnar AP Journal as an .xlsx Flask response.
+def build_ap_journal_xlsx(columns, rows, date_from, date_to, company_name,
+                          branch_name, filename, identity, ap_account_ids=()):
+    """Build the AP Journal download in the legacy Accounts Payable Journal layout.
 
-    branch_name=None skips the branch row (caller passes None when only one
-    branch exists). Amount columns use SUM formulas so totals are live in Excel.
+    identity(entry) -> (ap_no, vendor_invoice_no, vendor, particulars)
+    ap_account_ids: the trade payable accounts; their columns come first, as the legacy
+    app puts "Accounts Payable" first. Then every account by code.
+    Voided bills never reached the books: a marked row with no amounts.
     """
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'AP Journal'
-
-    right = Alignment(horizontal='right')
-    center_wrap = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    num_fmt = '#,##0.00;(#,##0.00)'
-
-    thin = Side(style='thin')
-    double_s = Side(style='double')
-    cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    total_border = Border(bottom=double_s)
-    draft_fill  = PatternFill(fill_type='solid', fgColor='FFF9C4')  # light yellow
-    voided_fill = PatternFill(fill_type='solid', fgColor='FFCDD2')  # light red
-
-    # Preamble
-    ws.append([company_name])
-    ws['A1'].font = Font(bold=True, size=16)
-
-    if branch_name:
-        ws.append([branch_name])
-        ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=16)
-
-    ws.append(['Accounts Payable Journal'])
-    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=14)
-    ws.append([period_label])
-    ws.append([])
-
-    # Header row
-    fixed = ['Date', 'AP No.', 'Invoice No.', 'Vendor', 'Particulars']
-    header = fixed + [c['name'] for c in columns]
-    ws.append(header)
-    hdr_row = ws.max_row
-    ws.row_dimensions[hdr_row].height = 40
-    for cell in ws[hdr_row]:
-        cell.font = Font(bold=True)
-        cell.alignment = center_wrap
-        cell.border = cell_border
-
-    # Data rows
-    first_data_row = hdr_row + 1
+    out = []
     for r in rows:
         if r.get('is_voided'):
             b = r['ap']
-            line = [
-                b.ap_date.strftime('%d-%b-%Y'),
-                b.ap_number or '',
-                b.vendor_invoice_number or '',
-                b.vendor_name or '',
-                '[VOIDED] ' + (b.notes or ''),
-            ] + [None] * len(columns)
-            ws.append(line)
-            cur = ws.max_row
-            for cell in ws[cur]:
-                cell.border = cell_border
-                cell.fill = voided_fill
+            out.append(journal_row([text_date(b.ap_date), b.ap_number, b.vendor_invoice_number,
+                                    b.vendor_name, '[VOIDED] ' + (b.notes or '')], {}, [posted_flag(False)]))
             continue
-
-        e = r['entry']
-        no, invoice, vendor, particulars = identity(e)
-        line = [
-            e.entry_date.strftime('%d-%b-%Y'),
-            no or '',
-            invoice or '',
-            vendor or '',
-            ('[DRAFT] ' + (particulars or '')) if r['is_draft'] else (particulars or ''),
-        ]
-        for c in columns:
-            if r['is_draft']:
-                line.append(None)
-            else:
-                val = r['cells'].get(c['account_id'])
-                line.append(float(val) if val is not None else None)
-        ws.append(line)
-        cur = ws.max_row
-        for i, cell in enumerate(ws[cur], 1):
-            cell.border = cell_border
-            if r['is_draft']:
-                cell.fill = draft_fill
-            if i > len(fixed):
-                cell.number_format = num_fmt
-                cell.alignment = right
-
-    last_data_row = ws.max_row
-
-    # Blank separator before total
-    ws.append([])
-
-    # TOTAL row: SUM formulas, double bottom rule only
-    ws.append(['TOTAL', '', '', '', ''])
-    tot_row = ws.max_row
-    for i in range(1, len(fixed) + 1):
-        ws.cell(row=tot_row, column=i).font = Font(bold=True)
-        ws.cell(row=tot_row, column=i).border = total_border
-    for i, c in enumerate(columns, len(fixed) + 1):
-        col_letter = get_column_letter(i)
-        cell = ws.cell(row=tot_row, column=i)
-        cell.value = f'=SUM({col_letter}{first_data_row}:{col_letter}{last_data_row + 1})'
-        cell.font = Font(bold=True)
-        cell.number_format = num_fmt
-        cell.alignment = right
-        cell.border = total_border
-
-    # Column widths
-    col_widths = [12, 22, 22, 28, 40] + [20] * len(columns)
-    for i, width in enumerate(col_widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = width
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    resp = make_response(output.getvalue())
-    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    resp.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return resp
+        no, invoice, vendor, particulars = identity(r['entry'])
+        out.append(journal_row([text_date(r['entry'].entry_date), no, invoice, vendor, particulars],
+                               r['cells'], [posted_flag(not r['is_draft'])]))
+    return build_legacy_journal_xlsx(
+        'APJ', 'Accounts Payable Journal', ('Date', 'No.', 'Invoice Number', 'Vendor', 'Particulars'),
+        order_account_columns(columns, first_ids=ap_account_ids), [('Total', out)],
+        date_from, date_to, company_name, branch_name, filename)

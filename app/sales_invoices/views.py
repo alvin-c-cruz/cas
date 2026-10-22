@@ -12,7 +12,7 @@ from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
 from app.common.vat_nature import resolve_sales_nature
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
-from app.utils import ph_now
+from app.utils import ph_now, this_month_iso
 from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
                                     fresh_number_if_collision, flush_or_suggest_fresh_number)
 from app.utils.export import export_to_excel, export_to_csv
@@ -610,15 +610,16 @@ def _filtered_invoices_query(include_ids=False):
                    SalesInvoice.customer_name.ilike(like))
         )
 
-    year = ph_now().year
-    date_from = request.args.get('date_from', f'{year}-01-01')
+    # From / To open on the current month, first day to last (owner, 22 Oct 2026).
+    bom, eom = this_month_iso()
+    date_from = request.args.get('date_from', bom)
     if date_from:
         try:
             query = query.filter(SalesInvoice.invoice_date >= date.fromisoformat(date_from))
         except ValueError:
             pass
 
-    date_to = request.args.get('date_to', f'{year}-12-31')
+    date_to = request.args.get('date_to', eom)
     if date_to:
         try:
             query = query.filter(SalesInvoice.invoice_date <= date.fromisoformat(date_to))
@@ -654,8 +655,8 @@ def list_invoices():
         status_filter=request.args.get('status', 'all'),
         customer_filter=request.args.get('customer_id', 'all'),
         q=request.args.get('q', ''),
-        date_from=request.args.get('date_from', f'{ph_now().year}-01-01'),
-        date_to=request.args.get('date_to', f'{ph_now().year}-12-31'),
+        date_from=request.args.get('date_from', this_month_iso()[0]),
+        date_to=request.args.get('date_to', this_month_iso()[1]),
     )
 
 
@@ -757,8 +758,8 @@ def print_list():
         today=ph_now().date(),
         printed_at=ph_now(),
         status_filter=request.args.get('status', 'all'),
-        date_from=request.args.get('date_from', f'{ph_now().year}-01-01'),
-        date_to=request.args.get('date_to', f'{ph_now().year}-12-31'),
+        date_from=request.args.get('date_from', this_month_iso()[0]),
+        date_to=request.args.get('date_to', this_month_iso()[1]),
     )
 
 

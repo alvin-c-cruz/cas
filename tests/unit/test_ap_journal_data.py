@@ -89,14 +89,14 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
         'is_draft': False,
         'is_voided': False,
     }]
-    totals = {1: Decimal('-5000'), 2: Decimal('5000')}
     with app.app_context():
         resp = build_ap_journal_xlsx(
-            columns=columns, rows=rows, totals=totals,
-            period_label='For the month of June 2026',
+            columns=columns, rows=rows,
+            date_from=date(2026, 6, 1), date_to=date(2026, 6, 30),
             company_name='ABC Company', branch_name='Main Branch',
             filename='AP-Journal-2026-06.xlsx',
-            identity=lambda e: (e.reference, e._invoice, e._vendor, e._notes))
+            identity=lambda e: (e.reference, e._invoice, e._vendor, e._notes),
+            ap_account_ids={1})
     assert resp.headers['Content-Type'].startswith('application/vnd.openxmlformats')
     assert 'AP-Journal-2026-06.xlsx' in resp.headers['Content-Disposition']
 
@@ -106,21 +106,22 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
     assert 'Accounts Payable Journal' in all_text
     assert 'Accounts Payable - Trade' in all_text
     assert 'Rent Expense' in all_text
-    assert 'TOTAL' in all_text
+    assert 'Total' in all_text
 
-    fixed = ['Date', 'AP No.', 'Invoice No.', 'Vendor', 'Particulars']
-    header = fixed + [c['name'] for c in columns]
-
-    # header row 6 (branch shown in test), data row 7
-    data_row = [ws.cell(row=7, column=i).value for i in range(1, len(header) + 1)]
+    # Legacy RIC layout (owner, 22 Oct 2026): the branch rides in A2, so the header
+    # stays in row 5 and the data starts in row 6.
+    fixed = ['Date', 'No.', 'Invoice Number', 'Vendor', 'Particulars']
+    header = fixed + [c['name'] for c in columns] + ['Posted']
+    assert [ws.cell(row=5, column=i).value for i in range(1, len(header) + 1)] == header
+    data_row = [ws.cell(row=6, column=i).value for i in range(1, len(header) + 1)]
     assert -5000.0 in data_row   # AP column (credit → negative float)
     assert 5000.0 in data_row     # Rent Expense column (debit → positive float)
 
-    # blank row 8, TOTAL row 9 — amounts are SUM formulas (openpyxl stores as strings)
-    total_row = [ws.cell(row=9, column=i).value for i in range(1, len(header) + 1)]
-    assert total_row[0] == 'TOTAL'
-    assert total_row[5] == '=SUM(F7:F8)'   # AP column formula
-    assert total_row[6] == '=SUM(G7:G8)'   # Rent Expense column formula
+    # empty row 7, Total row 8 — sums run from the header row to the empty row
+    total_row = [ws.cell(row=8, column=i).value for i in range(1, len(header) + 1)]
+    assert total_row[0] == 'Total'
+    assert total_row[5] == '=SUM(F5:F7)'   # AP column formula
+    assert total_row[6] == '=SUM(G5:G7)'   # Rent Expense column formula
 
 
 def _mock_bill(ap_number, ap_date, vendor_name='Vendor X',
@@ -175,7 +176,7 @@ def test_build_columnar_voided_rows_sort_with_posted_by_date():
     assert matrix['rows'][1]['is_voided'] is False
 
 
-def test_build_ap_journal_xlsx_voided_row_has_red_fill_and_no_amounts(app):
+def test_build_ap_journal_xlsx_voided_row_is_marked_with_no_amounts_and_no_fill(app):
     from datetime import date
     from decimal import Decimal
     from unittest.mock import MagicMock
@@ -199,8 +200,8 @@ def test_build_ap_journal_xlsx_voided_row_has_red_fill_and_no_amounts(app):
     }]
     with app.app_context():
         resp = build_ap_journal_xlsx(
-            columns=columns, rows=rows, totals={},
-            period_label='For the month of June 2026',
+            columns=columns, rows=rows,
+            date_from=date(2026, 6, 1), date_to=date(2026, 6, 30),
             company_name='ABC Co', branch_name=None,
             filename='test.xlsx',
             identity=lambda e: ('', '', '', ''))
@@ -217,11 +218,10 @@ def test_build_ap_journal_xlsx_voided_row_has_red_fill_and_no_amounts(app):
     data_row_vals = [ws.cell(row=6, column=i).value for i in range(6, 6 + len(columns))]
     assert all(v is None for v in data_row_vals)
 
-    # Verify red fill on all cells of the voided row (data row 6, no branch → header row 5)
-    # 5 fixed columns (Date, AP No., Invoice No., Vendor, Particulars) + N account columns
-    for col_idx in range(1, 5 + len(columns) + 1):
-        cell = ws.cell(row=6, column=col_idx)
-        assert cell.fill.fgColor.rgb.endswith('FFCDD2'), f"col {col_idx}: expected FFCDD2, got {cell.fill.fgColor.rgb}"
+    # Legacy layout: no fill; the marker and Posted = No carry it. 5 fixed + N accounts + Posted.
+    for col_idx in range(1, 5 + len(columns) + 2):
+        assert ws.cell(row=6, column=col_idx).fill.fill_type is None, f"col {col_idx} is filled"
+    assert ws.cell(row=6, column=5 + len(columns) + 1).value == 'No'
 
 
 def test_build_columnar_voided_no_column_contribution():

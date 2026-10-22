@@ -4,7 +4,7 @@ from flask_login import login_required
 from sqlalchemy.orm import joinedload
 from app import db
 from app.journal_entries.models import JournalEntry
-from app.utils import ph_now
+from app.utils import ph_now, this_month_iso
 from app.journals.ap_journal_data import resolve_period, build_columnar, build_ap_journal_xlsx
 from app.journals.cd_journal_data import build_columnar_cd
 from app.journals.cr_journal_data import build_columnar_cr, build_cr_journal_xlsx
@@ -22,8 +22,29 @@ def _branch_id():
 
 
 def _date_defaults():
-    year = ph_now().year
-    return request.args.get('date_from', f'{year}-01-01'), request.args.get('date_to', f'{year}-12-31')
+    """From / To open on the current month, first day to last (owner, 22 Oct 2026)."""
+    bom, eom = this_month_iso()
+    return request.args.get('date_from', bom), request.args.get('date_to', eom)
+
+
+def _cash_bank_account_ids():
+    """The Cash & Bank leaf accounts -- CAS's counterpart of the legacy journals'
+    "Cash and Cash Equivalents" type, whose columns the downloads put first."""
+    from app.bank_accounts.service import cash_bank_leaf_account_choices
+    return {aid for aid, _ in cash_bank_leaf_account_choices()}
+
+
+def _revenue_account_ids():
+    """Sales accounts (Revenue and Contra-Revenue), the legacy SJ/CRJ's last columns."""
+    from app.accounts.models import Account
+    return {a.id for a in Account.query.filter(Account.account_type.in_(('Revenue', 'Contra-Revenue')))}
+
+
+def _branch_name_for_download(branch_id):
+    """The branch name for A2 when the company has more than one branch, else None."""
+    from app.branches.models import Branch
+    branch = db.session.get(Branch, branch_id)
+    return branch.name if (branch and Branch.query.count() > 1) else None
 
 
 def _apply_date_filter(query, date_from, date_to):
@@ -78,8 +99,10 @@ def _si_gl_account_ids():
     return (ar.id if ar else None, wht_recv.id if wht_recv else None, vat_ids)
 
 
-def _ap_journal_context(branch_id):
-    """Build the columnar AP journal data for a branch + period from request.args."""
+def _ap_journal_context(branch_id, draft_amounts=False):
+    """Build the columnar AP journal data for a branch + period from request.args.
+
+    draft_amounts=True (the .xlsx download) gives draft rows their amounts."""
     from app.accounts_payable.models import AccountsPayable
     period = resolve_period(request.args, today=ph_now().date())
 
@@ -100,7 +123,8 @@ def _ap_journal_context(branch_id):
     ).order_by(AccountsPayable.ap_date, AccountsPayable.ap_number).all()
 
     ap_id, wt_id, vat_ids = _gl_account_ids()
-    matrix = build_columnar(posted, drafts, ap_id, wt_id, vat_ids, voided_bills=voided_aps)
+    matrix = build_columnar(posted, drafts, ap_id, wt_id, vat_ids, voided_bills=voided_aps,
+                            draft_amounts=draft_amounts)
 
     refs = [e.reference for e in entries if e.reference]
     aps = AccountsPayable.query.filter(AccountsPayable.ap_number.in_(refs)).all() if refs else []
@@ -169,8 +193,10 @@ def _cr_gl_account_ids():
     return (ar.id if ar else None, wht_recv.id if wht_recv else None, vat_ids)
 
 
-def _cr_journal_context(branch_id):
-    """Build the columnar CR journal data for a branch + period from request.args."""
+def _cr_journal_context(branch_id, draft_amounts=False):
+    """Build the columnar CR journal data for a branch + period from request.args.
+
+    draft_amounts=True (the .xlsx download) gives draft rows their amounts."""
     from app.cash_receipts.models import CashReceiptVoucher
     from app.journals.ap_journal_data import resolve_period
     period = resolve_period(request.args, today=ph_now().date())
@@ -193,22 +219,27 @@ def _cr_journal_context(branch_id):
 
     ar_id, wht_recv_id, vat_ids = _cr_gl_account_ids()
     matrix = build_columnar_cr(posted, drafts, ar_id, wht_recv_id, vat_ids,
-                               cancelled_refs=cancelled_refs)
+                               cancelled_refs=cancelled_refs, draft_amounts=draft_amounts)
     return period, matrix, crv_map
 
 
 def _cr_entry_identity(entry, crv_map):
-    """Return (cr_no, check_no, customer, particulars) for the left identifier columns."""
+    """Return (cr_no, invoice_numbers, customer, particulars) for the download.
+
+    Invoice Number is the invoices and debit notes the receipt settles, joined with "/"
+    as RIC writes several numbers in one field."""
     crv = crv_map.get(entry.reference)
+    lines = sorted(crv.ar_lines, key=lambda line: line.line_number) if crv else []
     return (
         entry.reference or '—',
-        (crv.check_number if crv and crv.check_number else '') or '',
+        '/'.join(line.invoice_number for line in lines if line.invoice_number),
         (crv.customer_name if crv else '') or '—',
         (crv.notes if crv else '') or '',
     )
 
 
-def _si_journal_context(branch_id):
+def _si_journal_context(branch_id, draft_amounts=False):
+    """draft_amounts=True (the .xlsx download) gives draft rows their amounts."""
     from app.sales_invoices.models import SalesInvoice
     period = resolve_period(request.args, today=ph_now().date())
 
@@ -230,7 +261,7 @@ def _si_journal_context(branch_id):
 
     ar_id, wht_recv_id, vat_ids = _si_gl_account_ids()
     matrix = build_columnar_si(posted, drafts, ar_id, wht_recv_id, vat_ids,
-                               voided_invoices=voided_invoices)
+                               voided_invoices=voided_invoices, draft_amounts=draft_amounts)
 
     refs = [e.reference for e in entries if e.reference]
     # No branch filter: invoice_number is UNIQUE and refs come from branch-filtered entries.
@@ -240,12 +271,25 @@ def _si_journal_context(branch_id):
     return period, matrix, invoice_map
 
 
-def _si_entry_identity(entry, invoice_map):
-    """Return (si_no, customer_po, customer_name, notes) for Excel/print identity."""
+def _si_dr_numbers(invoices):
+    """{invoice_number: the Delivery Receipts it bills, joined with "/"}."""
+    from app.delivery_receipts.models import DeliveryReceipt
+    by_id = {inv.id: inv.invoice_number for inv in invoices}
+    drs = DeliveryReceipt.query.filter(DeliveryReceipt.sales_invoice_id.in_(by_id)).order_by(
+        DeliveryReceipt.id).all() if by_id else []
+    out = {}
+    for dr in drs:
+        out.setdefault(by_id[dr.sales_invoice_id], []).append(dr.dr_number)
+    return {number: '/'.join(numbers) for number, numbers in out.items()}
+
+
+def _si_entry_identity(entry, invoice_map, dr_numbers):
+    """Return (si_no, dr_numbers, customer_name, notes) for the download. Invoice Number
+    is the DR the invoice bills, as the legacy Sales Journal carries it."""
     inv = invoice_map.get(entry.reference)
     return (
         entry.reference or '—',
-        (inv.customer_po_number if inv else '') or '',
+        dr_numbers.get(entry.reference, ''),
         (inv.customer_name if inv else '') or '—',
         (inv.notes if inv else '') or '',
     )
@@ -295,13 +339,10 @@ def ap_journal_export():
         flash('Please select a branch to export journal entries.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
 
-    from app.branches.models import Branch
     from app.settings import AppSettings
-    period, matrix, ap_map = _ap_journal_context(branch_id)
-
-    branch = db.session.get(Branch, branch_id)
-    branch_count = Branch.query.count()
-    branch_name = branch.name if (branch and branch_count > 1) else None
+    period, matrix, ap_map = _ap_journal_context(branch_id, draft_amounts=True)
+    ap_id, _, _ = _gl_account_ids()
+    branch_name = _branch_name_for_download(branch_id)
     company_name = AppSettings.get_setting('company_name') or 'Company'
 
     if period['mode'] == 'month':
@@ -310,10 +351,11 @@ def ap_journal_export():
         filename = f"AP-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
 
     return build_ap_journal_xlsx(
-        columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
-        period_label=period['label'], company_name=company_name,
+        columns=matrix['columns'], rows=matrix['rows'],
+        date_from=period['date_from'], date_to=period['date_to'], company_name=company_name,
         branch_name=branch_name, filename=filename,
-        identity=lambda e: _entry_identity(e, ap_map))
+        identity=lambda e: _entry_identity(e, ap_map),
+        ap_account_ids={ap_id} if ap_id else set())
 
 
 @journals_bp.route('/journals/voucher')
@@ -416,6 +458,39 @@ def voucher_export():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
+@journals_bp.route('/journals/voucher/journal')
+@login_required
+def voucher_journal_export():
+    """The General Journal download: every voucher on the JV list for the period, in the
+    legacy General Journal layout, one block per month."""
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch to export journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from app.settings import AppSettings
+    from app.journals.gj_journal_data import build_columnar_gj, build_gj_journal_xlsx
+    period = resolve_period(request.args, today=ph_now().date())
+    entries = JournalEntry.query.filter(
+        JournalEntry.entry_type.in_(VOUCHER_TYPES),
+        JournalEntry.branch_id == branch_id,
+        JournalEntry.entry_date >= period['date_from'],
+        JournalEntry.entry_date <= period['date_to'],
+    ).order_by(JournalEntry.entry_date, JournalEntry.entry_number).all()
+    matrix = build_columnar_gj(entries)
+
+    if period['mode'] == 'month':
+        filename = f"General-Journal-{period['year']}-{period['month']:02d}.xlsx"
+    else:
+        filename = f"General-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
+
+    return build_gj_journal_xlsx(
+        columns=matrix['columns'], rows=matrix['rows'],
+        date_from=period['date_from'], date_to=period['date_to'],
+        company_name=AppSettings.get_setting('company_name') or '',
+        branch_name=_branch_name_for_download(branch_id), filename=filename)
+
+
 @journals_bp.route('/journals/cr')
 @login_required
 def cr_journal():
@@ -437,14 +512,10 @@ def cr_journal_export():
         flash('Please select a branch to export journal entries.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
 
-    from app.branches.models import Branch
     from app.settings import AppSettings
-    from app.journals.ap_journal_data import resolve_period
-    period, matrix, crv_map = _cr_journal_context(branch_id)
-
-    branch = db.session.get(Branch, branch_id)
-    branch_count = Branch.query.count()
-    branch_name = branch.name if (branch and branch_count > 1) else None
+    period, matrix, crv_map = _cr_journal_context(branch_id, draft_amounts=True)
+    ar_id, _, _ = _cr_gl_account_ids()
+    branch_name = _branch_name_for_download(branch_id)
     company_name = AppSettings.get_setting('company_name') or ''
 
     if period['mode'] == 'month':
@@ -453,10 +524,12 @@ def cr_journal_export():
         filename = f"CR-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
 
     return build_cr_journal_xlsx(
-        columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
-        period_label=period['label'], company_name=company_name,
+        columns=matrix['columns'], rows=matrix['rows'],
+        date_from=period['date_from'], date_to=period['date_to'], company_name=company_name,
         branch_name=branch_name, filename=filename,
-        identity=lambda e: _cr_entry_identity(e, crv_map))
+        identity=lambda e: _cr_entry_identity(e, crv_map),
+        first_account_ids=_cash_bank_account_ids() | ({ar_id} if ar_id else set()),
+        revenue_account_ids=_revenue_account_ids())
 
 
 @journals_bp.route('/journals/cr/print')
@@ -503,15 +576,10 @@ def cd_journal_export():
         flash('Please select a branch to export journal entries.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
 
-    from app.branches.models import Branch
     from app.settings import AppSettings
-    from app.bank_accounts.service import cash_bank_leaf_account_choices
     from app.journals.cd_journal_data import build_cd_journal_xlsx
     period, matrix, cdv_map = _cd_journal_context(branch_id, draft_amounts=True)
-
-    branch = db.session.get(Branch, branch_id)
-    branch_count = Branch.query.count()
-    branch_name = branch.name if (branch and branch_count > 1) else None
+    branch_name = _branch_name_for_download(branch_id)
     company_name = AppSettings.get_setting('company_name') or ''
 
     if period['mode'] == 'month':
@@ -524,7 +592,7 @@ def cd_journal_export():
         date_from=period['date_from'], date_to=period['date_to'], company_name=company_name,
         branch_name=branch_name, filename=filename,
         identity=lambda e: _cd_entry_identity(e, cdv_map),
-        cash_account_ids={aid for aid, _ in cash_bank_leaf_account_choices()})
+        cash_account_ids=_cash_bank_account_ids())
 
 
 @journals_bp.route('/journals/cd/print')
@@ -589,19 +657,20 @@ def si_journal_export():
     if not branch_id:
         flash('Please select a branch to export journal entries.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
-    from app.branches.models import Branch
     from app.settings import AppSettings
-    period, matrix, invoice_map = _si_journal_context(branch_id)
-    branch = db.session.get(Branch, branch_id)
-    branch_count = Branch.query.count()
-    branch_name = branch.name if (branch and branch_count > 1) else None
+    period, matrix, invoice_map = _si_journal_context(branch_id, draft_amounts=True)
+    dr_numbers = _si_dr_numbers(invoice_map.values())
+    ar_id, _, _ = _si_gl_account_ids()
+    branch_name = _branch_name_for_download(branch_id)
     company_name = AppSettings.get_setting('company_name') or 'Company'
     if period['mode'] == 'month':
         filename = f"SI-Journal-{period['year']}-{period['month']:02d}.xlsx"
     else:
         filename = f"SI-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
     return build_si_journal_xlsx(
-        columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
-        period_label=period['label'], company_name=company_name,
+        columns=matrix['columns'], rows=matrix['rows'],
+        date_from=period['date_from'], date_to=period['date_to'], company_name=company_name,
         branch_name=branch_name, filename=filename,
-        identity=lambda e: _si_entry_identity(e, invoice_map))
+        identity=lambda e: _si_entry_identity(e, invoice_map, dr_numbers),
+        first_account_ids=_cash_bank_account_ids() | ({ar_id} if ar_id else set()),
+        revenue_account_ids=_revenue_account_ids())

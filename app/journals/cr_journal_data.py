@@ -3,13 +3,11 @@
 No Flask request access here — callers pass plain dicts/values so these
 functions are unit-testable in isolation.
 """
-import io
 from decimal import Decimal
 
-from flask import make_response
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
+
+from app.journals.legacy_xlsx import (build_legacy_journal_xlsx, journal_row,
+                                      order_account_columns, posted_flag, text_date)
 
 # resolve_period is shared — import from the AP data layer
 from app.journals.ap_journal_data import resolve_period  # noqa: F401
@@ -41,12 +39,14 @@ def _col_key(account, ar_account_id, wt_account_id, output_vat_account_ids, tota
 
 
 def build_columnar_cr(posted_entries, draft_entries, ar_account_id,
-                      wt_account_id, output_vat_account_ids, cancelled_refs=None):
+                      wt_account_id, output_vat_account_ids, cancelled_refs=None,
+                      draft_amounts=False):
     """Pivot receipt journal-entry lines into a columnar matrix.
 
     Columns are built only from POSTED entries' accounts. Cancelled CRVs
     (whose JEs remain posted) are included in totals but flagged is_cancelled=True
-    for visual display (strikethrough + badge). Draft rows carry no amounts.
+    for visual display (strikethrough + badge). Draft rows carry no amounts unless
+    draft_amounts=True (the .xlsx download), which pivots them like posted rows.
 
     cancelled_refs: set of CRV numbers (entry.reference) that are cancelled.
 
@@ -61,7 +61,7 @@ def build_columnar_cr(posted_entries, draft_entries, ar_account_id,
     totals = {}
     rows = []
 
-    for je in posted_entries:
+    def pivot(je):
         cells = {}
         for line in je.lines.all():
             acct = line.account
@@ -69,11 +69,15 @@ def build_columnar_cr(posted_entries, draft_entries, ar_account_id,
             signed = (line.debit_amount or Decimal('0')) - (line.credit_amount or Decimal('0'))
             cells[acct.id] = cells.get(acct.id, Decimal('0')) + signed
             totals[acct.id] = totals.get(acct.id, Decimal('0')) + signed
+        return cells
+
+    for je in posted_entries:
         is_cancelled = je.reference in cancelled_refs
-        rows.append({'entry': je, 'cells': cells, 'is_draft': False, 'is_cancelled': is_cancelled})
+        rows.append({'entry': je, 'cells': pivot(je), 'is_draft': False, 'is_cancelled': is_cancelled})
 
     for je in draft_entries:
-        rows.append({'entry': je, 'cells': {}, 'is_draft': True, 'is_cancelled': False})
+        cells = pivot(je) if draft_amounts else {}
+        rows.append({'entry': je, 'cells': cells, 'is_draft': True, 'is_cancelled': False})
 
     ordered = sorted(
         accounts_by_id.values(),
@@ -107,104 +111,22 @@ def _fmt(value):
     return f'{value:,.2f}'
 
 
-def build_cr_journal_xlsx(columns, rows, totals, period_label, company_name,
-                          branch_name, filename, identity):
-    """Build the columnar CR Journal as an .xlsx Flask response.
+def build_cr_journal_xlsx(columns, rows, date_from, date_to, company_name, branch_name,
+                          filename, identity, first_account_ids=(), revenue_account_ids=()):
+    """Build the CR Journal download in the legacy Cash Receipts Journal layout.
 
-    branch_name=None skips the branch row.
-    identity(entry) -> (cr_no, check_no, customer, particulars)
+    identity(entry) -> (cr_no, invoice_numbers, customer, particulars)
+    first_account_ids: the Cash & Bank and trade receivable accounts, first by code;
+    revenue_account_ids: the sales accounts, last by code descending -- the legacy order.
     """
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'CR Journal'
-
-    right = Alignment(horizontal='right')
-    center_wrap = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    num_fmt = '#,##0.00;(#,##0.00)'
-
-    thin = Side(style='thin')
-    double_s = Side(style='double')
-    cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    total_border = Border(bottom=double_s)
-    draft_fill     = PatternFill(fill_type='solid', fgColor='FFF9C4')  # light yellow
-    cancelled_fill = PatternFill(fill_type='solid', fgColor='FFCDD2')  # light red
-
-    ws.append([company_name])
-    ws['A1'].font = Font(bold=True, size=16)
-    if branch_name:
-        ws.append([branch_name])
-        ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=16)
-    ws.append(['Cash Receipts Journal'])
-    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=14)
-    ws.append([period_label])
-    ws.append([])
-
-    fixed = ['Date', 'CR No.', 'Check No.', 'Customer', 'Particulars']
-    header = fixed + [c['name'] for c in columns]
-    ws.append(header)
-    hdr_row = ws.max_row
-    ws.row_dimensions[hdr_row].height = 40
-    for cell in ws[hdr_row]:
-        cell.font = Font(bold=True)
-        cell.alignment = center_wrap
-        cell.border = cell_border
-
-    first_data_row = hdr_row + 1
+    out = []
     for r in rows:
-        e = r['entry']
-        no, receipt_no, customer, particulars = identity(e)
+        no, invoices, customer, particulars = identity(r['entry'])
         if r['is_cancelled']:
             particulars = '[CANCELLED] ' + (particulars or '')
-        elif r['is_draft']:
-            particulars = '[DRAFT] ' + (particulars or '')
-        line = [
-            e.entry_date.strftime('%d-%b-%Y'),
-            no or '',
-            receipt_no or '',
-            customer or '',
-            particulars or '',
-        ]
-        for c in columns:
-            if r['is_draft']:
-                line.append(None)
-            else:
-                val = r['cells'].get(c['account_id'])
-                line.append(float(val) if val else None)
-        ws.append(line)
-        cur = ws.max_row
-        fill = cancelled_fill if r['is_cancelled'] else (draft_fill if r['is_draft'] else None)
-        for i, cell in enumerate(ws[cur], 1):
-            cell.border = cell_border
-            if fill:
-                cell.fill = fill
-            if i > len(fixed):
-                cell.number_format = num_fmt
-                cell.alignment = right
-
-    last_data_row = ws.max_row
-    ws.append([])
-    ws.append(['TOTAL', '', '', '', ''])
-    tot_row = ws.max_row
-    for i in range(1, len(fixed) + 1):
-        ws.cell(row=tot_row, column=i).font = Font(bold=True)
-        ws.cell(row=tot_row, column=i).border = total_border
-    for i, c in enumerate(columns, len(fixed) + 1):
-        col_letter = get_column_letter(i)
-        cell = ws.cell(row=tot_row, column=i)
-        cell.value = f'=SUM({col_letter}{first_data_row}:{col_letter}{last_data_row + 1})'
-        cell.font = Font(bold=True)
-        cell.number_format = num_fmt
-        cell.alignment = right
-        cell.border = total_border
-
-    col_widths = [12, 22, 18, 28, 40] + [20] * len(columns)
-    for i, width in enumerate(col_widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = width
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    resp = make_response(output.getvalue())
-    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    resp.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return resp
+        out.append(journal_row([text_date(r['entry'].entry_date), no, invoices, customer, particulars],
+                               r['cells'], [posted_flag(not r['is_draft'])]))
+    return build_legacy_journal_xlsx(
+        'CRJ', 'Cash Receipts Journal', ('Date', 'No.', 'Invoice Number', 'Customer', 'Particulars'),
+        order_account_columns(columns, first_ids=first_account_ids, last_ids=revenue_account_ids),
+        [('Total', out)], date_from, date_to, company_name, branch_name, filename)

@@ -13,6 +13,13 @@ def end_of_month(d):
     return d.replace(day=calendar.monthrange(d.year, d.month)[1])
 
 
+def this_month_iso():
+    """(first day, last day) of the current PHT month as ISO strings -- the default
+    From / To of the transaction lists (owner, 22 Oct 2026)."""
+    today = ph_now().date()
+    return today.replace(day=1).isoformat(), end_of_month(today).isoformat()
+
+
 def ph_now():
     """
     Get current datetime in Philippine Standard Time (UTC+8).

@@ -113,7 +113,7 @@
         <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
     </label>
     <a href="{{ url_for('journals.cd_journal_export', mode='custom', date_from=date_from, date_to=date_to) }}"
-       id="cdv-journal-download" class="btn btn-sm cdv-journal-download">Download Journal</a>
+       id="journal-download" data-journal-download class="btn btn-sm btn-journal-download">Download Journal</a>
     <button type="submit" class="btn btn-primary btn-sm">Filter</button>
     <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary btn-sm">Clear</a>
 </form>
@@ -254,13 +254,6 @@
 .cdv-filter-bar select.form-control { width: 160px; }
 .cdv-filter-bar input[type="date"].form-control { width: 150px; }
 .cdv-filter-search { flex: 1 1 200px; min-width: 180px; }
-.cdv-filter-bar .cdv-journal-download {
-    background: #0d9488;
-    color: #fff;
-    font-weight: 600;
-    box-shadow: 0 4px 12px rgba(13, 148, 136, .35);
-}
-.cdv-filter-bar .cdv-journal-download:hover { background: #0f766e; }
 .btn-action {
     padding: 4px 8px;
     border-radius: 4px;
@@ -294,40 +287,9 @@
             allowHTML: false,
         });
     }
-
-    // Download Journal takes its period from the From / To boxes as they
-    // stand at the click, so a date typed without pressing Filter still counts.
-    const download = document.getElementById('cdv-journal-download');
-    if (download) {
-        const boxes = download.closest('form').elements;
-        const fromBox = boxes.date_from;
-        const toBox = boxes.date_to;
-        [fromBox, toBox].forEach(function (box) {
-            box.addEventListener('input', function () { box.setCustomValidity(''); });
-            box.addEventListener('blur', function () { box.setCustomValidity(''); });
-        });
-        download.addEventListener('click', function (e) {
-            const from = fromBox.value;
-            const to = toBox.value;
-            let bad = null;
-            let msg = '';
-            if (!from) { bad = fromBox; msg = 'Enter the From date to download the journal.'; }
-            else if (!to) { bad = toBox; msg = 'Enter the To date to download the journal.'; }
-            else if (from > to) { bad = toBox; msg = 'To must be on or after From.'; }
-            if (bad) {
-                e.preventDefault();
-                bad.setCustomValidity(msg);
-                bad.reportValidity();
-                return;
-            }
-            const url = new URL(download.href, window.location.href);
-            url.searchParams.set('mode', 'custom');
-            url.searchParams.set('date_from', from);
-            url.searchParams.set('date_to', to);
-            download.href = url.toString();
-        });
-    }
 })();
 </script>
+
+<script src="{{ url_for('static', filename='js/journal-download.js') }}?v=1"></script>
 
 {% endblock %}

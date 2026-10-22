@@ -672,6 +672,10 @@ tr.pc-row-excluded { background: var(--bg); }
 .btn-green:hover    { filter: brightness(0.93); }
 .btn-ghost     { background: transparent; color: var(--text-2); }
 .btn-ghost:hover    { background: var(--bg); }
+/* Download Journal, beside a list's From / To boxes (SI, CR, AP, CDV and JV lists) */
+.btn.btn-journal-download { background: #0d9488; color: #fff; font-weight: 600;
+                            box-shadow: 0 4px 12px rgba(13, 148, 136, .35); }
+.btn.btn-journal-download:hover { background: #0f766e; }
 .btn-sm  { padding: 4px 10px; font-size: 12px; }
 .btn-icon{ padding: 7px; }
 
