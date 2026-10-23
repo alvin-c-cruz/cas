@@ -1,25 +1,16 @@
-"""What POST /bug-reports accepts (spec section 4, "Create, in order", steps 2-5)."""
-import base64
-
+"""What POST /bug-reports accepts (spec section 4, "Create, in order", steps 2-5). Reports are text
+only since 23 Oct 2026 (owner: no files are uploaded to the server)."""
 import pytest
 
-from app.bug_reports.service import LIMITS, ReportRejected, first_words, parse_report, sniff_mime
+from app.bug_reports.service import LIMITS, ReportRejected, first_words, parse_report
 
 pytestmark = [pytest.mark.unit, pytest.mark.bug_reports]
 
-JPEG = b'\xff\xd8\xff\xe0' + b'\x00' * 60
-PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 60
-WEBP = b'RIFF\x00\x00\x00\x00WEBPVP8 ' + b'\x00' * 60
-GIF = b'GIF89a' + b'\x00' * 60
-
-
-def b64(data):
-    return base64.b64encode(data).decode('ascii')
+PARSED = ('It broke.', {'where': {'path': '/x'}})
 
 
 def body(**over):
-    b = {'message': '  It broke.  ', 'context': {'where': {'path': '/x'}},
-         'images': [{'kind': 'page', 'data': b64(JPEG)}]}
+    b = {'message': '  It broke.  ', 'context': {'where': {'path': '/x'}}}
     b.update(over)
     return b
 
@@ -30,52 +21,38 @@ def refusal(b):
     return e.value.code, e.value.status
 
 
-def test_limits_are_sanays():
-    assert LIMITS == {'body_bytes': 2_000_000, 'message': 5000, 'context_bytes': 64_000,
-                      'image_bytes': 400_000, 'images': 2, 'per_day': 10, 'keep_pictures_days': 90}
-
-
-def test_sniff_mime_reads_the_first_bytes():
-    assert sniff_mime(JPEG) == 'image/jpeg'
-    assert sniff_mime(PNG) == 'image/png'
-    assert sniff_mime(WEBP) == 'image/webp'
-    assert sniff_mime(GIF) is None
-    assert sniff_mime(b'') is None
-    assert sniff_mime(b'RIFF\x00\x00\x00\x00WAVEfmt ') is None
+def test_limits():
+    assert LIMITS == {'body_bytes': 2_000_000, 'message': 5000, 'context_bytes': 64_000, 'per_day': 10,
+                      'keep_pictures_days': 90}
 
 
 def test_a_good_report_parses():
-    message, context, images = parse_report(body())
-    assert message == 'It broke.'
-    assert context == {'where': {'path': '/x'}}
-    assert images == [('page', 'image/jpeg', JPEG)]
+    assert parse_report(body()) == PARSED
 
 
-def test_the_browsers_mime_claim_is_ignored():
-    _, _, images = parse_report(body(images=[{'kind': 'own', 'mime': 'image/jpeg', 'data': b64(PNG)}]))
-    assert images == [('own', 'image/png', PNG)]
+@pytest.mark.parametrize('images', [
+    [{'kind': 'page', 'mime': 'image/jpeg', 'data': '/9j/4AAQ'}],
+    [{'kind': 'page', 'data': 'not base64!'}] * 3,
+    {'kind': 'page'},
+    'x',
+    None,
+])
+def test_pictures_from_a_page_still_running_the_old_script_are_ignored(images):
+    """A page opened before the change still sends pictures, good or bad: the report is kept, the
+    pictures are not read."""
+    assert parse_report(body(images=images)) == PARSED
 
 
 def test_a_server_block_from_the_browser_is_dropped():
-    _, context, _ = parse_report(body(context={'where': {}, 'server': {'user': {'id': 99}}}))
+    _, context = parse_report(body(context={'where': {}, 'server': {'user': {'id': 99}}}))
     assert context == {'where': {}}
-
-
-def test_images_may_be_missing_or_null():
-    assert parse_report(body(images=None))[2] == []
-    b = body()
-    del b['images']
-    assert parse_report(b)[2] == []
 
 
 def test_exactly_at_the_limits_is_accepted():
     pad = 'x' * (64_000 - len('{"pad": ""}'))
-    biggest = b'\xff\xd8\xff' + b'\x00' * (400_000 - 3)
-    message, context, images = parse_report(body(
-        message='x' * 5000, context={'pad': pad},
-        images=[{'kind': 'page', 'data': b64(biggest)}, {'kind': 'own', 'data': b64(WEBP)}]))
+    message, context = parse_report(body(message='x' * 5000, context={'pad': pad}))
     assert len(message) == 5000
-    assert images[0][2] == biggest and images[1][1] == 'image/webp'
+    assert context == {'pad': pad}
 
 
 @pytest.mark.parametrize('b, expected', [
@@ -87,17 +64,6 @@ def test_exactly_at_the_limits_is_accepted():
     (body(context=None), ('bad_context', 400)),
     (body(context=['a']), ('bad_context', 400)),
     (body(context={'pad': 'x' * 64_001}), ('context_too_large', 413)),
-    (body(images={'kind': 'page'}), ('bad_images', 400)),
-    (body(images=[{'kind': 'page', 'data': b64(JPEG)}] * 3), ('bad_images', 400)),
-    (body(images=['x']), ('bad_image', 400)),
-    (body(images=[{'kind': 'screen', 'data': b64(JPEG)}]), ('bad_image', 400)),
-    (body(images=[{'kind': 'page', 'data': 5}]), ('bad_image', 400)),
-    (body(images=[{'kind': 'page', 'data': 'not base64!'}]), ('bad_image', 400)),
-    (body(images=[{'kind': 'page', 'data': 'abc'}]), ('bad_image', 400)),
-    (body(images=[{'kind': 'page', 'data': b64(JPEG) + '\n'}]), ('bad_image', 400)),
-    (body(images=[{'kind': 'page', 'data': b64(GIF)}]), ('bad_image', 400)),
-    (body(images=[{'kind': 'page', 'data': b64(b'\xff\xd8\xff' + b'\x00' * 400_000)}]),
-     ('image_too_large', 413)),
 ])
 def test_refusals(b, expected):
     assert refusal(b) == expected

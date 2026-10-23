@@ -39,7 +39,7 @@ def create():
     if (request.content_length or 0) > service.LIMITS['body_bytes']:
         return jsonify(error='too_large'), 413
     try:
-        message, context, images = service.parse_report(request.get_json(silent=True))
+        message, context = service.parse_report(request.get_json(silent=True))
     except service.ReportRejected as e:
         return jsonify(error=e.code), e.status
 
@@ -47,7 +47,7 @@ def create():
     if service.reports_since(current_user.id, now - timedelta(days=1)) >= service.LIMITS['per_day']:
         return jsonify(error='too_many'), 429
     context['server'] = service.server_context(current_user)
-    report_id = service.create_report(current_user, message, context, images, now)
+    report_id = service.create_report(current_user, message, context, now)
     return jsonify(id=report_id), 201
 
 
@@ -92,8 +92,9 @@ def set_status(report_id):
 @login_required
 @admin_panel_required
 def image(report_id, image_id):
-    """The picture itself, never cached, under the attachment-preview policy
-    (app/attachments/views.py). The path is built only from the server-generated name."""
+    """A picture of a report sent before reports became text only (23 Oct 2026), never cached, under
+    the attachment-preview policy (app/attachments/views.py). The path is built only from the
+    server-generated name."""
     picture = BugReportImage.query.filter_by(id=image_id, report_id=report_id).first()
     if picture is None:
         abort(404)

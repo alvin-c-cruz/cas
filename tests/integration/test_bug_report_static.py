@@ -20,22 +20,19 @@ def _between(src, start, end):
 
 def test_the_files_are_served(client):
     for path, marker in (('/static/js/bug-report.js', b'window.CasReport'),
-                         ('/static/css/bug-report.css', b'.cas-report-sheet'),
-                         ('/static/vendor/modern-screenshot-4.7.0.js', b'modern-screenshot v4.7.0')):
+                         ('/static/css/bug-report.css', b'.cas-report-sheet')):
         resp = client.get(path)
         assert resp.status_code == 200, path
         assert marker in resp.data, path
+    assert client.get('/static/vendor/modern-screenshot-4.7.0.js').status_code == 404  # removed 23 Oct 2026
 
 
 def test_the_script_keeps_the_cas_specific_changes(app):
     src = (Path(app.root_path) / 'static' / 'js' / 'bug-report.js').read_text(encoding='utf-8')
-    assert 'createObjectURL' not in src      # CSP img-src has no blob:; own screenshots are data: URLs
-    assert 'readAsDataURL' in src
     assert 'redirect: "error"' in src        # a redirect from any CAS gate never reads as sent
     assert 'res.status === 201' in src       # only a 201 is "Sent"
     assert '"x-csrftoken": csrfToken()' in src
     assert 'sessionStorage' in src           # the click and page record spans full page loads
-    assert 'font: false' in src              # Google Fonts are out of the library's reach under CSP
     assert src.count('"bad_csrf"') >= 2      # the sheet path queues it, and the flush path keeps it queued
     assert 'res.status === 401' in src       # a signed-out reply stays queued too
     assert '.board' not in src               # Sanay's chess-board tracking is not ported
@@ -77,27 +74,18 @@ def test_a_logout_click_clears_the_record_after_the_tap_is_written(app):
         assert re.search(pattern, url_for('users.logout'))
 
 
-def test_a_long_page_skips_the_automatic_picture(app):
-    """F2: past either size the sheet opens without a picture, at once, instead of freezing the tab."""
+def test_the_sheet_takes_no_picture(app):
+    """Reports are text only (owner, 23 Oct 2026: no files are uploaded to the server). No picture of
+    the page, no screenshot of the user's own, and the picture library is gone."""
     src = _script(app)
-    limits = _between(src, 'var LIMIT = {', 'var log = {')            # named at the top with the other limits
-    assert re.search(r'var MAX_PAGE_HEIGHT = 10000;', limits)
-    assert re.search(r'var MAX_ELEMENTS = 1500;', limits)   # calibrated on real CAS pages, not the ruling's 5,000
-    assert ('var TOO_LONG = "This page is too long for an automatic picture. '
-            'You can add your own screenshot (Windows: Win+Shift+S).";') in limits
-    too_long = _between(src, 'function tooLong()', 'function afterPaint()')
-    assert 'document.documentElement.scrollHeight > MAX_PAGE_HEIGHT' in too_long
-    assert 'document.getElementsByTagName("*").length > MAX_ELEMENTS' in too_long
+    for gone in ('modern-screenshot', 'modernScreenshot', 'domToCanvas', 'toDataURL', 'FileReader',
+                 'type: "file"', 'images', 'Taking a picture', 'screenshot'):
+        assert gone not in src, gone
+    assert not (Path(app.static_folder) / 'vendor' / 'modern-screenshot-4.7.0.js').exists()
     opener = _between(src, 'function open()', 'function show(')
-    # measured before the overlay or the picture library exists; the sheet opens with the message instead
-    assert opener.index('if (tooLong())') < opener.index('Taking a picture of the page')
-    assert opener.index('if (tooLong())') < opener.index('capturePage')
-    assert 'show(sheetOnly, ctx, null, "", TOO_LONG);' in opener
-    assert 'text: note || "The page picture could not be taken (' in src
-    # the waiting message gets one frame to paint before the capture starts
-    assert 'afterPaint().then(capturePage)' in opener
-    paint = _between(src, 'function afterPaint()', 'function toJpeg(')
-    assert 'requestAnimationFrame(go)' in paint and 'setTimeout(ok, 0)' in paint
+    assert 'show(back, ctx);' in opener                       # the sheet opens at once
+    assert 'var payload = { message: text, context: ctx };' in src
+    assert '413: "The report is too large to send. Shorten what you wrote and try again.",' in src
 
 
 def test_expired_queue_items_are_dropped_whoever_queued_them(app):

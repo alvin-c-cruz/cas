@@ -9,7 +9,7 @@ from app import db
 from app.bug_reports.models import BugReport
 from app.users.models import User
 from app.users.module_access import default_all_permissions, module_key_for_endpoint
-from tests.integration._bug_report_helpers import GIF, PNG, b64, login, payload, post_report
+from tests.integration._bug_report_helpers import JPEG, PNG, b64, login, payload, post_report
 
 pytestmark = [pytest.mark.integration, pytest.mark.bug_reports]
 
@@ -38,7 +38,8 @@ def test_a_signed_in_user_files_a_report(client, accountant_user, main_branch, u
     assert server['user'] == {'id': accountant_user.id, 'username': 'accountant',
                               'full_name': 'Accountant User', 'role': 'accountant'}
     assert server['branch'] == {'id': main_branch.id, 'name': 'Main Office'}
-    assert [im.mime for im in report.images] == ['image/jpeg']
+    assert report.images == []
+    assert list(uploads.rglob('*')) == []
 
 
 def test_the_body_cannot_choose_the_user_or_write_the_server_block(client, accountant_user, staff_user,
@@ -57,18 +58,23 @@ def test_signed_out_gets_json_401_not_a_redirect(client, db_session):
     assert resp.get_json() == {'error': 'signed_out'}
 
 
-def test_a_png_labelled_jpeg_is_stored_as_png(client, accountant_user, main_branch, uploads):
+def test_pictures_sent_by_a_page_still_running_the_old_script_are_not_stored(client, accountant_user,
+                                                                             main_branch, uploads):
+    """Reports are text only since 23 Oct 2026 (owner: no files are uploaded to the server). A page
+    opened before that still sends pictures: the report is saved, nothing is written to disk."""
     login(client, accountant_user, 'accountant123', main_branch)
-    report = _report(post_report(client, payload(images=[{'kind': 'own', 'mime': 'image/jpeg', 'data': b64(PNG)}])))
-    assert report.images[0].mime == 'image/png'
-    assert report.images[0].stored_name.endswith('.png')
+    resp = post_report(client, payload(images=[{'kind': 'page', 'mime': 'image/jpeg', 'data': b64(JPEG)},
+                                               {'kind': 'own', 'mime': 'image/jpeg', 'data': b64(PNG)}]))
+    assert resp.status_code == 201
+    report = _report(resp)
+    assert report.message == 'The save button did nothing.'
+    assert report.images == []
+    assert list(uploads.rglob('*')) == []
 
 
 @pytest.mark.parametrize('change, status, error', [
     ({'message': '   '}, 400, 'bad_message'),
     ({'context': {'pad': 'x' * 64_001}}, 413, 'context_too_large'),
-    ({'images': [{'kind': 'page', 'data': b64(GIF)}]}, 400, 'bad_image'),
-    ({'images': [{'kind': 'page', 'data': b64(b'\xff\xd8\xff' + b'\x00' * 400_000)}]}, 413, 'image_too_large'),
 ])
 def test_refusals_answer_in_json(client, accountant_user, main_branch, uploads, change, status, error):
     login(client, accountant_user, 'accountant123', main_branch)

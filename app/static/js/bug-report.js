@@ -4,28 +4,18 @@
    From the moment a page opens it records the last clicks (what was clicked, never what was typed), page changes,
    errors, and failed or slow requests to this site. The record lives in sessionStorage, so it spans the tab's page
    loads (CAS loads a whole page on every save); it belongs to the signed-in user and ends when they sign out.
-   CasReport.open() takes a picture of the page (not on a very long one), then shows a sheet for the user's message.
-   A report that cannot be sent waits in IndexedDB and goes out when a CAS page next opens, or the browser comes back
-   online, for the same user. */
+   CasReport.open() shows a sheet for the user's message. No picture is taken: reports are text only since 23 Oct 2026
+   (owner: no files are uploaded to the server, whose free disk filled up). A report that cannot be sent waits in
+   IndexedDB and goes out when a CAS page next opens, or the browser comes back online, for the same user. */
 (function () {
   "use strict";
   if (window.CasReport) return;
 
   var script = document.currentScript;
   var ENDPOINT = (script && script.getAttribute("data-endpoint")) || "/bug-reports";
-  var LIB_URL = (script && script.getAttribute("data-lib")) || "/static/vendor/modern-screenshot-4.7.0.js";
 
   var LIMIT = { taps: 30, pages: 20, errors: 20, requests: 20, sizes: 40 };
   var SLOW_MS = 3000;
-  var MAX_SIDE = 1600;
-  var MAX_PICTURE = 300 * 1024;
-  /* Past either size the automatic picture is skipped: the library copies the whole page before cropping it to the
-     screen, and on a long page that freezes the tab for seconds (the 10 s timeout cannot fire while it runs).
-     Calibrated 2026-10-17 on copies of Philgen's pages in Chromium: about 1.3-2 ms per element, so a page just under
-     1,500 elements takes about 2 s (the cash disbursements list, 1,391, took 1.9-2.3 s). */
-  var MAX_PAGE_HEIGHT = 10000;   // CSS px, document.documentElement.scrollHeight
-  var MAX_ELEMENTS = 1500;       // document.getElementsByTagName("*").length
-  var TOO_LONG = "This page is too long for an automatic picture. You can add your own screenshot (Windows: Win+Shift+S).";
   var LOG_KEY = "cas.report.log";
   var LOGOUT = /\/logout$/;
   var log = { taps: [], pages: [], errors: [], requests: [], sizes: [] };
@@ -170,7 +160,7 @@
     return el ? el.getAttribute("data-report-user") : null;
   }
 
-  /** Everything sent with a report except its pictures. The server adds who sent it, the branch and the code version. */
+  /** Everything sent with a report besides the message. The server adds who sent it, the branch and the code version. */
   function context() {
     var mm = function (q) { try { return !!window.matchMedia(q).matches; } catch (e) { return false; } };
     var tz = "";
@@ -191,102 +181,6 @@
         localTime: new Date().toString(),
       },
     };
-  }
-
-  /* ---------- pictures ---------- */
-
-  var libPromise = null;
-  function loadLib() {
-    if (window.modernScreenshot) return Promise.resolve(window.modernScreenshot);
-    if (!libPromise) {
-      libPromise = new Promise(function (ok, fail) {
-        var s = document.createElement("script");
-        s.src = LIB_URL;
-        s.onload = function () { window.modernScreenshot ? ok(window.modernScreenshot) : fail(new Error("the picture library did not start")); };
-        s.onerror = function () { libPromise = null; fail(new Error("the picture library did not load")); };
-        document.head.appendChild(s);
-      });
-    }
-    return libPromise;
-  }
-  function withTimeout(p, ms) {
-    return Promise.race([p, new Promise(function (_, fail) { setTimeout(function () { fail(new Error("it took too long")); }, ms); })]);
-  }
-  function bytesOf(dataUrl) { return Math.floor((dataUrl.length - dataUrl.indexOf(",") - 1) * 3 / 4); }
-  /** True when the page is past MAX_PAGE_HEIGHT or MAX_ELEMENTS: too long to picture without freezing the tab. */
-  function tooLong() {
-    return document.documentElement.scrollHeight > MAX_PAGE_HEIGHT || document.getElementsByTagName("*").length > MAX_ELEMENTS;
-  }
-  /** Resolves after the browser has painted once, so "Taking a picture of the page…" shows before the capture runs. */
-  function afterPaint() {
-    return new Promise(function (ok) {
-      var go = function () { setTimeout(ok, 0); };
-      if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(go);
-      else go();
-    });
-  }
-
-  /** A JPEG of at most about 300 KB: lower quality first, then a smaller picture. */
-  function toJpeg(canvas) {
-    var c = canvas;
-    for (var round = 0; round < 4; round++) {
-      for (var q = 0.8; q >= 0.35; q -= 0.15) {
-        var url = c.toDataURL("image/jpeg", q);
-        if (bytesOf(url) <= MAX_PICTURE) return url;
-      }
-      var smaller = document.createElement("canvas");
-      smaller.width = Math.round(c.width * 0.7);
-      smaller.height = Math.round(c.height * 0.7);
-      smaller.getContext("2d").drawImage(c, 0, 0, smaller.width, smaller.height);
-      c = smaller;
-    }
-    return c.toDataURL("image/jpeg", 0.35);
-  }
-
-  /** The visible part of the page as the user sees it, at most 1600 px on its long side, password fields left out.
-      font: false -- CAS's fonts come from Google Fonts, which the page's connect-src policy keeps the library from fetching. */
-  function capturePage() {
-    return withTimeout(loadLib().then(function (lib) {
-      var w = window.innerWidth, h = window.innerHeight;
-      var scale = Math.min(window.devicePixelRatio || 1, MAX_SIDE / Math.max(w, h));
-      return lib.domToCanvas(document.documentElement, {
-        scale: scale,
-        font: false,
-        filter: function (node) {
-          if (!node || node.nodeType !== 1) return true;
-          if (node.classList && node.classList.contains("cas-report-back")) return false;
-          return !(node.tagName === "INPUT" && node.type === "password");
-        },
-      }).then(function (full) {
-        var out = document.createElement("canvas");
-        out.width = Math.round(w * scale);
-        out.height = Math.round(h * scale);
-        out.getContext("2d").drawImage(full, Math.round(window.scrollX * scale), Math.round(window.scrollY * scale), out.width, out.height, 0, 0, out.width, out.height);
-        return toJpeg(out);
-      });
-    }), 10000);
-  }
-
-  /** A screenshot the user picked, shrunk the same way. Read as a data: URL: the page's img-src policy has no blob:. */
-  function shrinkFile(file) {
-    return new Promise(function (ok, fail) {
-      var reader = new FileReader();
-      reader.onerror = function () { fail(new Error("that file could not be read")); };
-      reader.onload = function () {
-        var img = new Image();
-        img.onload = function () {
-          var k = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
-          var c = document.createElement("canvas");
-          c.width = Math.round(img.naturalWidth * k);
-          c.height = Math.round(img.naturalHeight * k);
-          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-          ok(toJpeg(c));
-        };
-        img.onerror = function () { fail(new Error("that file is not a picture")); };
-        img.src = reader.result;
-      };
-      reader.readAsDataURL(file);
-    });
   }
 
   /* ---------- sending and the queue ---------- */
@@ -365,7 +259,7 @@
         var tries = it.value.tries || 0;
         var age = now - Date.parse(it.value.at);
         /* Too old or tried too often is dropped whoever queued it, so a shared PC does not keep another user's
-           report (picture included) for ever; only then are other users' reports left alone. */
+           report for ever; only then are other users' reports left alone. */
         if (tries >= MAX_TRIES || (isFinite(age) && age > MAX_AGE_MS)) {
           drop(r.db, it.key);
           return;
@@ -413,11 +307,10 @@
     (kids || []).forEach(function (c) { if (c) el.appendChild(c); });
     return el;
   }
-  function b64(dataUrl) { return dataUrl.slice(dataUrl.indexOf(",") + 1); }
 
   var MESSAGES = {
     401: "You have been signed out. Sign in again, then send the report.",
-    413: "The report is too large. Untick the picture and send again.",
+    413: "The report is too large to send. Shorten what you wrote and try again.",
     429: "You have sent 10 reports today. Please try again tomorrow.",
   };
   var busy = false;
@@ -426,49 +319,20 @@
     if (busy) return;
     busy = true;
     var ctx = context();
-    /* Measured before the overlay is added, and before the picture library is loaded. */
-    if (tooLong()) {
-      var sheetOnly = h("div", { className: "cas-report-back" });
-      document.body.appendChild(sheetOnly);
-      show(sheetOnly, ctx, null, "", TOO_LONG);
-      return;
-    }
-    var back = h("div", { className: "cas-report-back" }, [h("p", { className: "cas-report-wait", text: "Taking a picture of the page…" })]);
+    var back = h("div", { className: "cas-report-back" });
     document.body.appendChild(back);
-    afterPaint().then(capturePage).then(function (url) { show(back, ctx, url, ""); }, function (e) { show(back, ctx, null, short(e && e.message || e, 120)); });
+    show(back, ctx);
   }
 
-  /** note, when given, replaces the "could not be taken" line: the picture was skipped on purpose. */
-  function show(back, ctx, picture, pictureError, note) {
-    var own = null;
+  function show(back, ctx) {
     function close() { back.remove(); busy = false; }
     var message = h("textarea", { name: "message", maxlength: "5000", required: "required", rows: "5" });
     var status = h("p", { className: "cas-report-status", role: "status" });
-    var usePicture = h("input", { type: "checkbox", checked: "checked" });
-    var ownPreview = h("div", { className: "cas-report-own" });
-    var file = h("input", { type: "file", accept: "image/*", hidden: "hidden" });
-    file.addEventListener("change", function () {
-      if (!file.files || !file.files[0]) return;
-      shrinkFile(file.files[0]).then(function (url) {
-        own = url;
-        ownPreview.textContent = "";
-        ownPreview.appendChild(h("img", { src: url, alt: "Your screenshot", className: "cas-report-shot" }));
-        ownPreview.appendChild(h("button", { type: "button", className: "btn btn-secondary", text: "Remove your screenshot", onclick: function () { own = null; ownPreview.textContent = ""; } }));
-      }, function (e) { status.className = "cas-report-status bad"; status.textContent = e.message; });
-    });
-    var pictureBlock = picture
-      ? h("div", { className: "cas-report-picture" }, [
-          h("img", { src: picture, alt: "Picture of the page", className: "cas-report-shot", title: "Click to see it full size", onclick: function (e) { e.currentTarget.classList.toggle("big"); } }),
-          h("label", { className: "cas-report-check" }, [usePicture, document.createTextNode("Include this picture of the page")]),
-        ])
-      : h("p", { className: "cas-report-muted", text: note || "The page picture could not be taken (" + pictureError + "). You can add your own screenshot." });
     var sendButton = h("button", { type: "submit", className: "btn btn-primary", text: "Send" });
     var form = h("form", { className: "cas-report-sheet", "aria-label": "Report a problem" }, [
       h("h2", { text: "Report a problem" }),
       h("p", { text: "Tell us what went wrong. The details below go with it, so you don't need to describe the page." }),
       h("label", { className: "cas-report-field" }, [document.createTextNode("What happened?"), message]),
-      pictureBlock,
-      h("div", null, [h("button", { type: "button", className: "btn btn-secondary", text: "Add your own screenshot", onclick: function () { file.click(); } }), file, ownPreview]),
       h("details", null, [h("summary", { text: "What we'll send" }), h("pre", { text: JSON.stringify(ctx, null, 2) })]),
       status,
       h("div", { className: "cas-report-actions" }, [h("button", { type: "button", className: "btn btn-secondary", text: "Cancel", onclick: close }), sendButton]),
@@ -477,10 +341,7 @@
       e.preventDefault();
       var text = message.value.trim();
       if (!text) { status.className = "cas-report-status bad"; status.textContent = "Write what happened first."; return; }
-      var images = [];
-      if (picture && usePicture.checked) images.push({ kind: "page", mime: "image/jpeg", data: b64(picture) });
-      if (own) images.push({ kind: "own", mime: "image/jpeg", data: b64(own) });
-      var payload = { message: text, context: ctx, images: images };
+      var payload = { message: text, context: ctx };
       sendButton.disabled = true;
       status.className = "cas-report-status";
       status.textContent = "Sending…";

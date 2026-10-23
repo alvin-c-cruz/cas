@@ -29,7 +29,7 @@ def test_signed_in_pages_carry_the_button_and_the_script(client, accountant_user
     assert '/static/js/bug-report.js' in html
     assert '/static/css/bug-report.css' in html
     assert 'data-endpoint="/bug-reports"' in html
-    assert 'data-lib="/static/vendor/modern-screenshot-4.7.0.js"' in html
+    assert 'data-lib=' not in html and 'modern-screenshot' not in html   # no picture library (23 Oct 2026)
 
 
 def test_signed_out_pages_do_not(client, db_session):
@@ -39,8 +39,8 @@ def test_signed_out_pages_do_not(client, db_session):
 
 
 def test_the_admin_sidebar_shows_the_new_count(client, admin_user, staff_user, main_branch, uploads):
-    first = service.create_report(staff_user, 'one', {}, [], ph_now())
-    service.create_report(staff_user, 'two', {}, [], ph_now())
+    first = service.create_report(staff_user, 'one', {}, ph_now())
+    service.create_report(staff_user, 'two', {}, ph_now())
     login(client, admin_user, 'admin123', main_branch)
     html = _page(client)
     assert 'href="/admin/bug-reports"' in html

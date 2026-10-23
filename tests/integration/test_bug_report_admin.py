@@ -1,6 +1,7 @@
 """The administrator's Bug Reports pages (spec sections 4 and 5)."""
 import json
 import os
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -23,9 +24,20 @@ def uploads(app, tmp_path, monkeypatch):
 
 
 def _report(user, status='new', created=None, closed=None, images=(), message='Broken'):
+    """`images`: pictures as a report sent before reports became text-only (23 Oct 2026) left them, a
+    file under the report's folder and a bug_report_images row each. Those are still shown and purged."""
     report_id = service.create_report(user, message, {'where': {'path': '/sales-invoices/3'}},
-                                      list(images), created or ph_now())
+                                      created or ph_now())
     report = db.session.get(BugReport, report_id)
+    for kind, mime, data in images:
+        folder = service.report_dir(report_id)
+        os.makedirs(folder, exist_ok=True)
+        name = f'{uuid.uuid4().hex}.jpg'
+        with open(os.path.join(folder, name), 'wb') as f:
+            f.write(data)
+        db.session.add(BugReportImage(report_id=report_id, kind=kind, mime=mime, stored_name=name,
+                                      size_bytes=len(data)))
+    db.session.commit()
     if status != 'new':
         report.status = status
         report.closed_at = closed

@@ -1,7 +1,8 @@
 """Bug reports sent from the "Report a problem" button (app/static/js/bug-report.js).
 
-Pictures are files under UPLOAD_FOLDER/bug_reports/<report id>/, as attachments are; a row here
-only names one. No branch_id: a bug report is not an accounting record (the branch is in the
+Reports are text only since 23 Oct 2026 (owner: no files are uploaded to the server). BugReportImage
+names the pictures that reports sent before then left under UPLOAD_FOLDER/bug_reports/<report id>/;
+nothing adds rows any more, and they are purged 90 days after their report closes. No branch_id: a bug report is not an accounting record (the branch is in the
 context), and a branch_id would make the mapper-derived branch-delete guard refuse branch deletes
 over bug reports.
 """
