@@ -181,7 +181,7 @@
     'cdv_date': cdv.cdv_date.strftime(date_fmt) if cdv.cdv_date else '',
     'payment_method': (cdv.payment_method or '')|replace('_',' ')|title,
     'check_no': cdv.check_number or '',
-    'check_date': cdv.check_date.strftime(date_fmt) if cdv.check_date else '',
+    'check_date': cdv.effective_check_date.strftime(date_fmt) if cdv.effective_check_date else '',
     'check_bank': cdv.check_bank or '',
     'cash_account': (cdv.cash_account.code ~ ' : ' ~ cdv.cash_account.name) if cdv.cash_account else '',
     'vendor_name': cdv.vendor_name,
@@ -192,7 +192,7 @@
   } %}
   {% set field_isos = {
     'cdv_date': cdv.cdv_date.isoformat() if cdv.cdv_date else '',
-    'check_date': cdv.check_date.isoformat() if cdv.check_date else '',
+    'check_date': cdv.effective_check_date.isoformat() if cdv.effective_check_date else '',
   } %}
   {% for key in field_values %}{{ field(key, field_values[key], field_isos.get(key, '')) }}{% endfor %}
   {# Duplicated copies (elements outside the line-item group) #}

@@ -93,7 +93,7 @@
       <tr><td class="label">Payment</td><td>{{ cdv.payment_method|replace('_',' ')|title }}</td></tr>
       {% if cdv.payment_method == 'check' %}
       <tr><td class="label">Check No.</td><td>{{ cdv.check_number or '—' }}</td></tr>
-      <tr><td class="label">Check Date</td><td>{{ cdv.check_date.strftime('%d %B %Y') if cdv.check_date else '—' }}</td></tr>
+      <tr><td class="label">Check Date</td><td>{{ cdv.effective_check_date.strftime('%d %B %Y') if cdv.effective_check_date else '—' }}</td></tr>
       <tr><td class="label">Bank</td><td>{{ cdv.check_bank or '—' }}</td></tr>
       {% endif %}
       <tr><td class="label">Cash/Bank Acct</td><td>{{ (cdv.cash_account.code ~ ' : ' ~ cdv.cash_account.name) if cdv.cash_account else '—' }}</td></tr>

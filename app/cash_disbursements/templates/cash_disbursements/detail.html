@@ -146,7 +146,7 @@
         {{ field('Payment Method', cdv.payment_method|replace('_',' ')|title) }}
         {% if cdv.payment_method == 'check' %}
         {{ field('Check #', cdv.check_number or '—') }}
-        {{ field('Check Date', cdv.check_date.strftime('%b %d, %Y') if cdv.check_date else '—') }}
+        {{ field('Check Date', cdv.effective_check_date.strftime('%b %d, %Y') if cdv.effective_check_date else '—') }}
         {{ field('Bank', cdv.check_bank or '—') }}
         {% endif %}
         {{ field('Cash / Bank Acct', (cdv.cash_account.code ~ ' — ' ~ cdv.cash_account.name) if cdv.cash_account else '—') }}

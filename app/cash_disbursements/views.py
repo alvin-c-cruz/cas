@@ -1033,6 +1033,16 @@ def _form_context(all_accounts=None, selected_payee=None):
                 products=_products_for_form())
 
 
+def _check_date_from_form(form):
+    """The Check Date box, or the CDV date when the voucher is paid by check and the box is empty
+    (owner, 21 Oct 2026: "the empty check date takes the voucher's date"). The form's script fills
+    the box the same way when the method or account changes; this is the server's own rule for a
+    save the script never touched, like Philgen's CDV 1704, which printed undated."""
+    if form.payment_method.data == 'check':
+        return form.check_date.data or form.cdv_date.data
+    return form.check_date.data or None
+
+
 def _check_serial_error(cdv):
     """Friendly message if this check CDV's serial duplicates another NON-voided CDV on the
     same cash/bank account, else None. Fires only for a non-blank check_number. The DB
@@ -1209,7 +1219,7 @@ def create():
                 vendor_tin=payee.tin,
                 payment_method=form.payment_method.data,
                 check_number=form.check_number.data or None,
-                check_date=form.check_date.data or None,
+                check_date=_check_date_from_form(form),
                 check_bank=form.check_bank.data or None,
                 cash_account_id=form.cash_account_id.data,
                 notes=form.notes.data,
@@ -1386,7 +1396,7 @@ def edit(id):
             cdv.vendor_tin = payee.tin
             cdv.payment_method = form.payment_method.data
             cdv.check_number = (form.check_number.data or '').strip() or None
-            cdv.check_date = form.check_date.data or None
+            cdv.check_date = _check_date_from_form(form)
             cdv.check_bank = form.check_bank.data or None
             cdv.cash_account_id = form.cash_account_id.data
             cdv.notes = form.notes.data
@@ -1939,7 +1949,7 @@ def _build_check_values(cdv, layout):
     payee = alias or cdv.vendor_name
     values = {
         'payee': payee or '',
-        'check_date': cdv.check_date.strftime(date_fmt) if cdv.check_date else '',
+        'check_date': cdv.effective_check_date.strftime(date_fmt) if cdv.effective_check_date else '',
         'amount_figures': '{:,.2f}'.format(amt),
         'amount_in_words': words,
         'memo': cdv.notes or '',
@@ -2071,7 +2081,8 @@ def _cdv_export_data(branch_id):
             'Payment Method': (cdv.payment_method.replace('_', ' ').title()
                                if cdv.payment_method else ''),
             'Check #': cdv.check_number or '',
-            'Check Date': cdv.check_date.strftime('%Y-%m-%d') if cdv.check_date else '',
+            'Check Date': (cdv.effective_check_date.strftime('%Y-%m-%d')
+                           if cdv.effective_check_date else ''),
             'Cash/Bank Account': (
                 f'{cdv.cash_account.code} — {cdv.cash_account.name}'
                 if cdv.cash_account else ''

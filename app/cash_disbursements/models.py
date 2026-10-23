@@ -51,6 +51,15 @@ class CashDisbursementVoucher(RowVersioned, db.Model):
         return self.payment_method in self.DEPOSIT_METHODS
 
     @property
+    def effective_check_date(self):
+        """The date the check carries: its own, else the voucher's (owner, 21 Oct 2026: "the empty
+        check date takes the voucher's date"). Covers a voucher already saved blank, like Philgen's
+        CDV 1704. A voucher not paid by check has only what is stored."""
+        if self.payment_method != 'check':
+            return self.check_date
+        return self.check_date or self.cdv_date
+
+    @property
     def payee(self):
         """Resolve the polymorphic payee to its Vendor or Employee row (or None)."""
         if self.payee_type == 'employee':
