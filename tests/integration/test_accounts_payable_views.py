@@ -414,6 +414,7 @@ class TestStaffPermissions:
         assert b'permission' in resp.data or b'Only' in resp.data
 
 
+@pytest.mark.attachment_uploads  # the upload feature itself, switched on (tests/conftest.py)
 class TestCreateFormUpload:
     def test_create_form_has_multipart_upload_control(self, client, db_session, admin_user, main_branch):
         login(client)

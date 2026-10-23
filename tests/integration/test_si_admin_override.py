@@ -401,6 +401,7 @@ class TestDeleteLeavesNoDocumentPointingAtNothing:
         dr = db.session.get(DeliveryReceipt, dr.id)
         assert dr.status == 'delivered' and dr.sales_invoice_id is None
 
+    @pytest.mark.attachment_uploads  # the upload feature itself, switched on (tests/conftest.py)
     def test_attachments_go_with_the_invoice(self, client, db_session, admin_user, main_branch,
                                              app):
         si, *_ = _posted_si(client, db_session, admin_user, main_branch)

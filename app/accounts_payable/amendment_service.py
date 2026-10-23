@@ -43,9 +43,14 @@ def _missing_required_keys(ap):
 
 
 def create_request(ap, user, reason, file_storage):
-    """Stage a file against a posted, incomplete AP. Adds to session; caller commits."""
+    """Stage a file against a posted, incomplete AP. Adds to session; caller commits.
+    Refused while uploads are off (app/attachments/switch.py)."""
     from app.accounts_payable.views import _ATTACHMENT_ALLOWED
+    from app.attachments.switch import OFF_MESSAGE, uploads_enabled
     from werkzeug.utils import secure_filename
+
+    if not uploads_enabled():
+        raise APAmendmentError(OFF_MESSAGE)
 
     reason = (reason or '').strip()
     if len(reason) < Req.MIN_REASON_LEN:

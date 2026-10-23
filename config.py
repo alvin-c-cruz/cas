@@ -39,6 +39,10 @@ class Config:
 
     # Upload Security
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', str(16 * 1024 * 1024)))  # 16MB default
+    # File attachments on documents: off unless .env says true (owner, 23 Oct 2026: "we are not
+    # implementing the uploading of file attachment documents in our app. the free server got full").
+    # What off means: app/attachments/switch.py.
+    ATTACHMENT_UPLOADS = os.environ.get('ATTACHMENT_UPLOADS', 'False').lower() == 'true'
     UPLOAD_FOLDER = os.environ.get(
         'UPLOAD_FOLDER',
         os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'uploads')
@@ -130,6 +134,10 @@ class TestingConfig(Config):
     # Off in the plain testing config so the admin123 fixtures are not force-
     # redirected; the guard's own tests set it True locally.
     ENFORCE_DEFAULT_PW_CHANGE = False
+
+    # Off, as on every server. Tests of the upload feature itself turn it on with
+    # @pytest.mark.attachment_uploads (tests/conftest.py).
+    ATTACHMENT_UPLOADS = False
 
 
 class TestingErrorsConfig(TestingConfig):

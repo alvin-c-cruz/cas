@@ -12,7 +12,8 @@ from app.vat_categories.models import VATCategory
 from app.vendors.models import Vendor
 from app.audit.models import AuditLog
 
-pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 
 def login(client, username='admin', password='admin123'):

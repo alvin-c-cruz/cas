@@ -7,8 +7,10 @@
 
    `att` is app/attachments/service.py::panel_context(): document_type,
    document, attachments, can_upload, deletable_ids, closed_note, accept,
-   next_url. Generalised from the AP voucher panel in
-   accounts_payable/form.html and detail.html. #}
+   next_url, uploads_on, show. Generalised from the AP voucher panel in
+   accounts_payable/form.html and detail.html. While uploads are off
+   (app/attachments/switch.py) the panel lists the files attached before and
+   is not shown on a document with none. #}
 {% for a in att.attachments %}{% if a.is_previewable %}
 <div id="attPreview-{{ a.id }}"
      style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
@@ -78,6 +80,7 @@
   {% endif %}
 {% endmacro %}
 
+{% if att.show %}
 <div class="card attachments-panel" data-document-type="{{ att.document_type }}" style="margin-top:16px;">
   <div class="card-body">
     <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:4px;">
@@ -146,6 +149,7 @@
     {% endif %}
 
     {# Other files: unlabeled uploads. #}
+    {% if att.uploads_on or att.other_files %}
     <h4 style="font-size:13px; font-weight:600; color:var(--text-2); margin:8px 0;">
       Other files
       <span style="font-weight:400; color:var(--text-3);">({{ att.other_files|length }})</span>
@@ -173,8 +177,10 @@
     {% elif not att.can_upload %}
     <p style="color:var(--text-2); font-size:13px; font-style:italic;">No other files.</p>
     {% endif %}
+    {% endif %}
   </div>
 </div>
+{% endif %}
 
 {% if att.missing_required_count %}
 {# Soft gate (advisory): if a user presses Approve / Post / Submit / Confirm while

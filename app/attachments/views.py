@@ -17,6 +17,7 @@ from app.attachments.models import DocumentAttachment
 from app.attachments.registry import can_delete, can_upload, get_target
 from app.attachments.service import (delete_attachment, file_path,
                                      panel_context, save_attachment)
+from app.attachments.switch import OFF_MESSAGE, uploads_enabled
 
 
 def _resolve(document_type, document_id):
@@ -46,6 +47,9 @@ def upload(document_type, document_id):
     from app.attachments.registry import slots_for, can_late_complete
     from app.attachments.completeness import _present_kinds
     target, doc = _resolve(document_type, document_id)
+    if not uploads_enabled():
+        flash(OFF_MESSAGE, 'error')
+        return _back(target, doc)
 
     # Slot the files fill. Validate against this document's slots; unknown/blank
     # → unlabeled "Other" (None).
@@ -174,6 +178,13 @@ def attachment_panel(document_type, doc, next_url=None):
     if target is None:
         raise ValueError(f'No attachment target registered for {document_type!r}')
     return panel_context(target, doc, current_user, next_url=next_url)
+
+
+@attachments_bp.app_template_global('attachment_uploads_enabled')
+def attachment_uploads_enabled():
+    """For templates outside the shared panel (AP, SI, create forms, the sidebar):
+    whether to offer a file input at all (switch.py)."""
+    return uploads_enabled()
 
 
 @attachments_bp.app_template_global('attachment_incomplete_count')

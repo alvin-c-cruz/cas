@@ -7,7 +7,8 @@ from decimal import Decimal
 
 import pytest
 
-pytestmark = [pytest.mark.integration, pytest.mark.attachments]
+pytestmark = [pytest.mark.integration, pytest.mark.attachments,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 PASS = {'admin': 'admin123', 'accountant': 'accountant123', 'staff': 'staff123'}
 

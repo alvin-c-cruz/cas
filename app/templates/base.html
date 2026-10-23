@@ -1357,10 +1357,12 @@
                         <span class="nav-icon">🎯</span>
                         <span class="nav-text">Control Accounts</span>
                     </a>
+                    {% if attachment_uploads_enabled() %}
                     <a href="{{ url_for('company_settings.attachment_slots') }}" class="nav-item {% if request.endpoint in ('company_settings.attachment_slots', 'company_settings.save_attachment_slots') %}active{% endif %}">
                         <span class="nav-icon">📎</span>
                         <span class="nav-text">Required Attachments</span>
                     </a>
+                    {% endif %}
                     <a href="{{ url_for('company_settings.owners_view') }}" class="nav-item {% if request.endpoint in ('company_settings.owners_view', 'company_settings.save_owners_view') %}active{% endif %}">
                         <span class="nav-icon">👓</span>
                         <span class="nav-text">Owners' View</span>
@@ -1436,10 +1438,12 @@
                         <span class="nav-icon">🎯</span>
                         <span class="nav-text">Control Accounts</span>
                     </a>
+                    {% if attachment_uploads_enabled() %}
                     <a href="{{ url_for('company_settings.attachment_slots') }}" class="nav-item {% if request.endpoint in ('company_settings.attachment_slots', 'company_settings.save_attachment_slots') %}active{% endif %}">
                         <span class="nav-icon">📎</span>
                         <span class="nav-text">Required Attachments</span>
                     </a>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}

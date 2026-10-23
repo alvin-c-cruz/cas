@@ -380,7 +380,8 @@
             </div>
         </div>
 
-        <!-- ── Attachments ────────────────────────────────────────────────── -->
+        <!-- ── Attachments (only the files attached before, while uploads are off: app/attachments/switch.py) ── -->
+        {% if attachment_uploads_enabled() or ap.attachments %}
         <div style="margin-top:32px; padding-top:24px; border-top:1px solid var(--border);">
             <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:16px;">
                 Attachments
@@ -480,6 +481,7 @@
               </div>
             {% endif %}
         </div>
+        {% endif %}
 
         <!-- ── Audit Trail ─────────────────────────────────────────────────── -->
         <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--text-3);">

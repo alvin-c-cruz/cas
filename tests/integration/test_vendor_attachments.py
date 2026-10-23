@@ -23,7 +23,8 @@ import io
 
 import pytest
 
-pytestmark = [pytest.mark.integration, pytest.mark.vendors, pytest.mark.attachments]
+pytestmark = [pytest.mark.integration, pytest.mark.vendors, pytest.mark.attachments,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 
 def _login(client, username='admin', password='admin123'):

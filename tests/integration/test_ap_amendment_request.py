@@ -3,7 +3,8 @@ from datetime import date
 from decimal import Decimal
 import pytest
 from app import db
-pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 def _posted_incomplete_ap(db_session, main_branch):
     from app.accounts_payable.models import AccountsPayable

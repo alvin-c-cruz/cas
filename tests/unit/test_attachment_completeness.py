@@ -11,7 +11,8 @@ import pytest
 
 from app.attachments.completeness import required_slots, visible_slots
 
-pytestmark = [pytest.mark.unit, pytest.mark.attachments]
+pytestmark = [pytest.mark.unit, pytest.mark.attachments,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 
 def _keys(slots):

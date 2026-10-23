@@ -12,6 +12,7 @@ one query per document type, no per-document N+1.
 """
 from app.attachments.models import DocumentAttachment
 from app.attachments.registry import slots_for
+from app.attachments.switch import uploads_enabled
 
 
 def _required_flag(document_type, slot):
@@ -63,9 +64,13 @@ def approved_incomplete(document_type, doc):
     document was approved complete, was not approved with anything missing, or
     has since been completed (the badge self-heals). Required-ness is frozen at
     approval — this reads the snapshot, not current config — so later config
-    changes never rewrite which past approvals look incomplete.
+    changes never rewrite which past approvals look incomplete. Empty while
+    uploads are off (switch.py): a missing file can no longer be added, so a
+    past approval is not flagged for one.
     """
     import json
+    if not uploads_enabled():
+        return []
     raw = getattr(doc, 'approved_incomplete_slots', None)
     if not raw:
         return []

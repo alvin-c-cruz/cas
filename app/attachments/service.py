@@ -70,8 +70,12 @@ def save_attachment(target, doc, file_storage, user, kind=None):
 
     Does NOT check the status/role gate -- the route does that once for the
     whole request, and the create-form hook runs on a document that was just
-    created as a draft by a user who passed the module's own gate.
+    created as a draft by a user who passed the module's own gate. Refuses every
+    file while uploads are off (switch.py), so a queued file is reported skipped.
     """
+    from app.attachments.switch import OFF_MESSAGE, uploads_enabled
+    if not uploads_enabled():
+        return False, OFF_MESSAGE
     original_name = secure_filename(file_storage.filename or '')
     if not original_name:
         return False, 'Invalid filename.'
@@ -182,8 +186,11 @@ def panel_context(target, doc, user, next_url=None):
     Builds a per-slot checklist: each visible slot with the files in it and
     whether it is filled, plus an "Other" bucket for unlabeled files and any
     file whose kind is no longer a visible slot (e.g. a slot later hidden).
+    While uploads are off (switch.py) only the slots with a file are listed, and
+    the panel is not shown at all on a document with no file (`show`).
     """
     from app.attachments.completeness import visible_slots, required_slots, approved_incomplete
+    from app.attachments.switch import OFF_NOTE, uploads_enabled
 
     atts = attachments_for(target.document_type, doc.id)
     upload_ok = can_upload(target, doc, user)
@@ -218,7 +225,12 @@ def panel_context(target, doc, user, next_url=None):
     # "Other": kind is None, or kind not among the currently visible slots.
     other_files = [a for a in atts if not a.kind or a.kind not in slot_keys]
 
-    if upload_ok:
+    uploads_on = uploads_enabled()
+    if not uploads_on:
+        # Nothing can be attached, so an empty slot is not a gap: list the files there are.
+        slot_rows = [r for r in slot_rows if r['filled']]
+        closed_note = OFF_NOTE
+    elif upload_ok:
         closed_note = None
     elif target.amend_statuses and doc.status in target.amend_statuses:
         closed_note = ('Uploads are closed for this document. An approver can '
@@ -241,6 +253,8 @@ def panel_context(target, doc, user, next_url=None):
         'closed_note': closed_note,
         'accept': ACCEPT_ATTR,
         'next_url': next_url,
+        'uploads_on': uploads_on,
+        'show': uploads_on or bool(atts),
     }
 
 

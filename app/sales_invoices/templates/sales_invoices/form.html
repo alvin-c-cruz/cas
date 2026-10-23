@@ -284,7 +284,8 @@
 </div>
 {% endfor %}
 
-<!-- ── Attachments Card ── -->
+<!-- ── Attachments Card (only the files attached before, while uploads are off: app/attachments/switch.py) ── -->
+{% if attachment_uploads_enabled() or invoice.attachments %}
 <div class="card" style="margin-top:16px;">
   <div class="card-body">
     <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:16px;">
@@ -292,6 +293,7 @@
       <span style="font-weight:400; color:var(--text-3);">({{ invoice.attachments|length }} file{{ 's' if invoice.attachments|length != 1 else '' }})</span>
     </h3>
 
+    {% if attachment_uploads_enabled() %}
     <form method="POST" enctype="multipart/form-data"
           action="{{ url_for('sales_invoices.upload_attachment', id=invoice.id) }}"
           style="display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
@@ -300,6 +302,7 @@
              accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt">
       <button type="submit" class="btn btn-secondary" style="white-space:nowrap;">Upload File</button>
     </form>
+    {% endif %}
 
     {% if invoice.attachments %}
     <div style="overflow-x:auto;">
@@ -352,6 +355,7 @@
     {% endif %}
   </div>
 </div>
+{% endif %}
 {% endif %}
 
 {% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}

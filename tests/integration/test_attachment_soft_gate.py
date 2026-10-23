@@ -12,7 +12,8 @@ import pytest
 from app import db
 from app.audit.models import AuditLog
 
-pytestmark = [pytest.mark.integration, pytest.mark.attachments]
+pytestmark = [pytest.mark.integration, pytest.mark.attachments,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 
 @pytest.fixture(autouse=True)

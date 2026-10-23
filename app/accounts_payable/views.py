@@ -469,8 +469,12 @@ def _save_ap_attachment(ap, file_storage, user):
     and commits this attachment atomically (mirrors edit-mode upload). Returns
     (True, None) on success or (False, message) on a disallowed type / invalid
     name / error — after rolling back and removing any written file. Never
-    raises for those cases, so a bad file can be skipped by the caller.
+    raises for those cases, so a bad file can be skipped by the caller. Refuses
+    every file while uploads are off (app/attachments/switch.py).
     """
+    from app.attachments.switch import OFF_MESSAGE, uploads_enabled
+    if not uploads_enabled():
+        return False, OFF_MESSAGE
     original_name = secure_filename(file_storage.filename or '')
     if not original_name:
         return False, 'Invalid filename.'

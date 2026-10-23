@@ -12,7 +12,8 @@ from app.attachments.completeness import approved_incomplete
 from app.attachments.models import DocumentAttachment
 from app.utils import ph_now
 
-pytestmark = [pytest.mark.integration, pytest.mark.attachments]
+pytestmark = [pytest.mark.integration, pytest.mark.attachments,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 
 @pytest.fixture(autouse=True)

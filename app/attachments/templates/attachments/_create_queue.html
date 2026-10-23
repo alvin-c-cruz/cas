@@ -1,7 +1,9 @@
 {# Create-form attachment queue: files chosen here are held in the browser and
    saved by the create route right after the document commits. Must sit INSIDE
    the create <form>, which needs enctype="multipart/form-data". Pair with
-   <script src="{{ url_for('static', filename='js/attachment_queue.js') }}">. #}
+   <script src="{{ url_for('static', filename='js/attachment_queue.js') }}">.
+   Not shown while uploads are off (app/attachments/switch.py). #}
+{% if attachment_uploads_enabled() %}
 <div class="card" style="margin-top:16px;">
   <div class="card-body">
     <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:8px;">
@@ -14,3 +16,4 @@
     <ul id="attachmentQueue" style="list-style:none; padding:0; margin:0; font-size:13px;"></ul>
   </div>
 </div>
+{% endif %}

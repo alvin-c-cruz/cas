@@ -14,6 +14,11 @@
     </div>
   </div>
   <div class="card-body">
+    {% if not attachment_uploads_enabled() %}
+    <p class="attachment-uploads-off" style="color:var(--text-2); margin:0 0 12px;">
+      Files are no longer uploaded to CAS, so no slot is required and these settings have no effect.
+    </p>
+    {% endif %}
     <form method="post" action="{{ url_for('company_settings.save_attachment_slots') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       {% for group in groups %}

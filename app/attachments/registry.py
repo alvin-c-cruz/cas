@@ -232,7 +232,14 @@ def slots_for(document_type):
 
 
 def can_upload(target, doc, user):
-    """May *user* attach a file to *doc* right now?"""
+    """May *user* attach a file to *doc* right now? Never while uploads are off
+    (switch.py)."""
+    from app.attachments.switch import uploads_enabled
+    return uploads_enabled() and _status_allows_change(target, doc, user)
+
+
+def _status_allows_change(target, doc, user):
+    """The document's status/role gate for changing its files, upload or delete."""
     if target.admin_override:
         from app.common.admin_override import is_override_user
         if is_override_user(user):
@@ -247,8 +254,9 @@ def can_upload(target, doc, user):
 def can_delete(target, doc, user, attachment):
     """Same status gate as upload, plus ownership: staff may undo their own
     mistaken upload but not remove a colleague's evidence; accountants and
-    full-access users may remove any."""
-    if not can_upload(target, doc, user):
+    full-access users may remove any. Still allowed while uploads are off, so a
+    file attached before can be cleared."""
+    if not _status_allows_change(target, doc, user):
         return False
     return (attachment.uploaded_by_id == user.id
             or user.has_full_access

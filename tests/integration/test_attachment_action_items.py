@@ -9,7 +9,8 @@ from app import db
 from app.dashboard.action_items_service import (gather_missing_attachment_items,
                                                 count_action_items)
 
-pytestmark = [pytest.mark.integration, pytest.mark.attachments]
+pytestmark = [pytest.mark.integration, pytest.mark.attachments,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 
 @pytest.fixture(autouse=True)

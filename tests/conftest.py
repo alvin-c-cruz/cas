@@ -71,6 +71,22 @@ def app():
     shutil.rmtree(upload_tmp, ignore_errors=True)
 
 
+@pytest.fixture(autouse=True)
+def _attachment_uploads_marker(request):
+    """Attachments are off on every server and in TestingConfig (app/attachments/switch.py). A test
+    of the upload feature itself is marked @pytest.mark.attachment_uploads and runs with them on."""
+    if request.node.get_closest_marker('attachment_uploads') is None:
+        yield
+        return
+    app = request.getfixturevalue('app')
+    was = app.config.get('ATTACHMENT_UPLOADS')
+    app.config['ATTACHMENT_UPLOADS'] = True
+    try:
+        yield
+    finally:
+        app.config['ATTACHMENT_UPLOADS'] = was
+
+
 @pytest.fixture(scope='function')
 def db_session(app):
     """Create a new database session for each test"""

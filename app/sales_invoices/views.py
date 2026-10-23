@@ -1673,7 +1673,11 @@ def save_print_layout():
 @login_required
 @staff_or_above_required
 def upload_attachment(id):
+    from app.attachments.switch import OFF_MESSAGE, uploads_enabled
     invoice = _get_invoice_or_404(id)
+    if not uploads_enabled():
+        flash(OFF_MESSAGE, 'error')
+        return redirect(url_for('sales_invoices.edit', id=id))
     # The administrator may attach to a posted invoice too (owner, 2026-10-07).
     if invoice.status != 'draft' and not is_override_user(current_user):
         flash('Attachments can only be uploaded while the Sales Invoice is in draft status.', 'error')

@@ -482,6 +482,7 @@ class TestTheDetailPage:
 
 # ------------------------------------------------------------------ attachments
 
+@pytest.mark.attachment_uploads  # the upload feature itself, switched on (tests/conftest.py)
 class TestAttachmentsAfterPosting:
 
     def test_the_admin_may_upload_and_delete_on_a_posted_voucher(

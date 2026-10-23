@@ -18,6 +18,8 @@ the seed instead of erroring.
 """
 from flask import has_app_context
 
+from app.attachments.switch import uploads_enabled
+
 
 def _setting(key):
     # An override is optional: if it cannot be read (no app context, or the
@@ -43,7 +45,10 @@ def hidden_key(document_type, slot_key):
 
 def is_required(document_type, slot):
     """Effective required flag: the per-company override if set, else the code
-    seed (`slot.required`)."""
+    seed (`slot.required`). Never required while uploads are off (switch.py): a
+    file that cannot be attached must not be waited on."""
+    if has_app_context() and not uploads_enabled():
+        return False
     value = _setting(required_key(document_type, slot.key))
     if value is None:
         return slot.required

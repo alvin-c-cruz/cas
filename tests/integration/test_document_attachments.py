@@ -19,7 +19,8 @@ from app.attachments.models import DocumentAttachment
 from app.audit.models import AuditLog
 from app.vendors.models import Vendor
 
-pytestmark = [pytest.mark.integration, pytest.mark.attachments]
+pytestmark = [pytest.mark.integration, pytest.mark.attachments,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 PASSWORDS = {'admin': 'admin123', 'staff': 'staff123', 'accountant': 'accountant123',
              'chief': 'chief123'}

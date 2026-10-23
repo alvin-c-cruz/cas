@@ -152,6 +152,7 @@ class TestGroupedByAction:
 
         assert keys == ['draft'], 'only the group with something in it should survive'
 
+    @pytest.mark.attachment_uploads  # the upload feature itself, switched on (tests/conftest.py)
     def test_files_come_before_approvals_which_come_before_your_own_drafts(
             self, db_session, admin_user, colleague, main_branch, vendor):
         """Owner, 2026-09-23: files above approval.
@@ -192,6 +193,7 @@ class TestGroupedByAction:
         assert ids == ['WL-OLD', 'WL-NEW']
 
 
+@pytest.mark.attachment_uploads  # the upload feature itself, switched on (tests/conftest.py)
 class TestASubmittedDocumentMissingAFileShowsBothNeeds:
     """Owner decision 2026-09-23, correcting my first attempt.
 
@@ -297,6 +299,7 @@ class TestTheRenderedPage:
         import flask
         flask.g.pop('_login_user', None)
 
+    @pytest.mark.attachment_uploads  # the upload feature itself, switched on (tests/conftest.py)
     def test_the_heading_no_longer_calls_everything_a_draft(
             self, client, db_session, colleague, main_branch, vendor):
         """The specific defect: a submitted document under a "Drafts" heading."""
@@ -310,6 +313,7 @@ class TestTheRenderedPage:
         assert 'WL-PAGE' in body
         assert '>Drafts<' not in body
 
+    @pytest.mark.attachment_uploads  # the upload feature itself, switched on (tests/conftest.py)
     def test_the_button_says_what_the_row_needs(
             self, client, db_session, colleague, main_branch, vendor):
         _po(db_session, main_branch, vendor, 'WL-PAGE2', status='submitted',

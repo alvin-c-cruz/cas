@@ -18,7 +18,8 @@ import pytest
 from app.attachments.registry import (TARGETS, can_delete, can_upload,
                                       get_target)
 
-pytestmark = [pytest.mark.unit, pytest.mark.attachments]
+pytestmark = [pytest.mark.unit, pytest.mark.attachments,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 
 def _user(role, uid=1):

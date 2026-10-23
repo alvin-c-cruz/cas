@@ -413,6 +413,7 @@ def test_create_invoice_with_notes_and_blank_line_description_saves(
     assert inv.notes == 'Consulting services rendered'
 
 
+@pytest.mark.attachment_uploads  # the upload feature itself, switched on (tests/conftest.py)
 def test_attachment_lifecycle(client, db_session, accountant_user, customer, revenue_account, branch, tmp_path):
     """SI attachments: upload (draft-only, whitelisted) -> download -> delete; bad type +
     posted-status uploads are rejected; audit row written."""

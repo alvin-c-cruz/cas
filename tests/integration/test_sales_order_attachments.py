@@ -27,7 +27,8 @@ from tests.integration._so_helpers import (  # noqa: F401  (autouse fixture)
     sales_orders_module_enabled, _login, _select_branch, _customer, _product,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.sales_orders, pytest.mark.attachments]
+pytestmark = [pytest.mark.integration, pytest.mark.sales_orders, pytest.mark.attachments,
+              pytest.mark.attachment_uploads]  # the upload feature itself, switched on (tests/conftest.py)
 
 SLOT_KEYS = ['customer_po', 'signed_so', 'signed_jo']
 
