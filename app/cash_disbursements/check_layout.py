@@ -7,7 +7,9 @@ in an app_settings row, sanitized on read AND write against these defaults.
 Two things diverge from the voucher clones (see plans/2026-07-07-cdv-check-writer.md):
 - **Keyed per cash/bank account**, not per branch: each bank's pre-printed check has
   different field geometry. `cd_check_layout:<cash_account_id>` overrides the Default
-  (`cd_check_layout`); resolution is account -> Default -> hardcoded default.
+  (`cd_check_layout`); resolution is account -> Default -> hardcoded default. An account
+  with no row gets one on its first print-check: a copy of the last layout saved
+  (`seed_account_layout`, owner's rule 2 Nov 2026).
 - **Every field carries a `width`.** The amount-in-words line is the legally-operative
   amount (NIL Sec.17(b)); the print route uses `width` to refuse a hidden legal line.
   (The voucher clones' fields have no width.)
@@ -15,7 +17,7 @@ Two things diverge from the voucher clones (see plans/2026-07-07-cdv-check-write
   protective asterisks (anti-alteration); `boxed`+`pitch` lay the date out one digit per
   cell so each lands in a pre-printed date box, and `digitOffsets` then places those
   cells individually (horizontally) for stock whose boxes are grouped rather than evenly
-  spaced. All default OFF/empty.
+  spaced. Stars default off; the date defaults to boxed (BSP, owner 2 Nov 2026).
 
 The check prints via HTML @page + window.print() on the per-CDV page (same mechanics as the
 pre-printed vouchers); this module is only the layout schema/persistence.
@@ -23,6 +25,9 @@ pre-printed vouchers); this module is only the layout schema/persistence.
 import copy
 import json
 
+from sqlalchemy.exc import IntegrityError
+
+from app import db
 from app.settings import AppSettings
 from app.audit.utils import log_audit
 from app.common.preprinted_texts import clean_texts
@@ -106,8 +111,11 @@ DEFAULT_CHECK_LAYOUT = {
     # sample (Phase 0). All x >= SAFE_MARGIN. Each field has a width.
     'fields': {
         'payee':           {'x': 120, 'y': 180, 'fontSize': 11, 'bold': False, 'width': 380},
+        # Boxed by default: BSP requires the cheque date one digit per pre-printed box
+        # (owner, 2 Nov 2026: "the boxed date should be our app default. because it is
+        # required by BSP"). A layout may still be saved unboxed.
         'check_date':      {'x': 640, 'y': 90,  'fontSize': 11, 'bold': False, 'width': 160,
-                            'boxed': False, 'pitch': 24, 'digitOffsets': []},
+                            'boxed': True, 'pitch': 24, 'digitOffsets': []},
         'amount_figures':  {'x': 680, 'y': 180, 'fontSize': 12, 'bold': True,  'width': 160,
                             'stars': 'none'},
         'amount_in_words': {'x': 80,  'y': 232, 'fontSize': 11, 'bold': False, 'width': 740,
@@ -216,6 +224,61 @@ def get_layout(account_id=None):
             except (ValueError, TypeError):
                 break   # corrupt -> hardcoded default
     return copy.deepcopy(DEFAULT_CHECK_LAYOUT)
+
+
+def _is_layout_key(key):
+    return key == LAYOUT_SETTING_KEY or key.startswith(LAYOUT_SETTING_KEY + ':')
+
+
+def seed_account_layout(account_id, username):
+    """Give a cash account with no cheque layout its own copy of the last one saved.
+
+    Owner's rule (Alvin, 2 Nov 2026): "every cash account should have its saved check
+    layout. if none, then copy the last user used layout as base template". Without it, a
+    bank account set up for the first time printed from the hardcoded default -- date not
+    boxed, placeholder positions -- while the company's fitted layout sat on another
+    account (CDV 1722, CHINABANK 046-3, BUG-CHECK-BOXED-DATE-NO-PREVIEW).
+
+    The source is the most recently saved cheque layout of any account, or the Default
+    row, whichever is newest. A seeded copy is itself the newest row once written, but its
+    content is the source's, so "newest row" always means "the last layout a user saved".
+    The copy is written as the account's OWN row, so later edits of the source never reach
+    it and editing it never reaches the source. A corrupt row is skipped.
+
+    Returns the key copied from, or None when the account already has a layout, has no id,
+    or the company has never saved one (the hardcoded default then stays).
+    """
+    if account_id is None:
+        return None
+    key = _layout_key(account_id)
+    if AppSettings.query.filter_by(key=key).first() is not None:
+        return None
+    rows = (AppSettings.query
+            .filter(AppSettings.key.like(LAYOUT_SETTING_KEY + '%'))
+            .order_by(AppSettings.updated_at.desc(), AppSettings.id.desc())
+            .all())
+    for row in rows:
+        if not _is_layout_key(row.key):
+            continue
+        try:
+            clean = sanitize_layout(json.loads(row.value))
+        except (ValueError, TypeError):
+            continue
+        try:
+            AppSettings.set_setting(key, json.dumps(clean), updated_by=username)
+        except IntegrityError:
+            # A simultaneous first open wrote the row already; theirs is the same copy.
+            db.session.rollback()
+            return None
+        log_audit(module='cash_disbursements', action='create', record_id=None,
+                  record_identifier='cd_check_layout',
+                  old_values={'layout': None, 'account_id': account_id},
+                  new_values={'layout': json.dumps(clean), 'account_id': account_id,
+                              'copied_from': row.key},
+                  notes=f'CDV check layout for account {account_id} copied from {row.key} '
+                        f'(the last layout saved); the account had none')
+        return row.key
+    return None
 
 
 def save_layout(raw, username, account_id=None):

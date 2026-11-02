@@ -1966,7 +1966,8 @@ def print_check(id):
     layout positions, prints via the browser (@page margin:0) onto the physical check, and
     (for full-access users) doubles as the layout designer -- Edit Layout + Save right here.
     The layout is resolved by -- and Edit-Layout saves to -- the voucher's cash/bank account
-    (cd_check_layout:<cash_account_id>), so each bank's stock keeps its own geometry.
+    (cd_check_layout:<cash_account_id>), so each bank's stock keeps its own geometry. An
+    account without one is first given a copy of the last layout saved.
 
     Gated: check payment only, cd_check_print_access (posted/draft/hidden), a non-blank
     serial, a positive amount, and a layout whose amount/words fields are visible. Never
@@ -1974,7 +1975,8 @@ def print_check(id):
     """
     from app.audit.utils import log_audit
     from app.cash_disbursements.check_layout import (
-        get_layout, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES, PAPER_LABELS, DATE_FORMATS, STAR_RUN)
+        get_layout, seed_account_layout, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES, PAPER_LABELS,
+        DATE_FORMATS, STAR_RUN)
 
     cdv = _get_cdv_or_404(id)
     fail = lambda msg: (flash(msg, 'error'),
@@ -1994,6 +1996,9 @@ def print_check(id):
     if (cdv.total_amount or 0) <= 0:
         return fail('Cannot print a check for a zero or negative amount.')
 
+    # A cash account with no cheque layout of its own starts from a copy of the last one
+    # saved, not the hardcoded default (owner's rule, 2 Nov 2026; CDV 1722 on 046-3).
+    seed_account_layout(cdv.cash_account_id, current_user.username)
     layout = get_layout(cdv.cash_account_id)
     values, err = _build_check_values(cdv, layout)
     if err:

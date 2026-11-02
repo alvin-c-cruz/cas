@@ -217,10 +217,32 @@ class TestCheckOptions:
         hi = sanitize_layout({'fields': {'check_date': {'pitch': 9999}}})['fields']['check_date']['pitch']
         assert lo == PITCH_MIN and hi == PITCH_MAX
 
-    def test_defaults_off(self):
+    def test_stars_default_off(self):
         from app.cash_disbursements.check_layout import DEFAULT_CHECK_LAYOUT as D
         assert D['fields']['amount_figures'].get('stars', 'none') == 'none'
-        assert D['fields']['check_date'].get('boxed', False) is False
+
+    def test_the_date_is_boxed_by_default(self):
+        """Owner, 2 Nov 2026: "the boxed date should be our app default. because it is
+        required by BSP" -- one digit per pre-printed date box."""
+        from app.cash_disbursements.check_layout import DEFAULT_CHECK_LAYOUT as D, sanitize_layout
+        assert D['fields']['check_date']['boxed'] is True
+        assert sanitize_layout({})['fields']['check_date']['boxed'] is True
+
+    def test_a_company_with_no_layout_prints_the_date_boxed(self, client, db_session, admin_user, main_branch):
+        cdv = _check_cdv(db_session, main_branch)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        assert 'class="pp-el pp-boxed' in body
+        assert body.count('class="pp-digit"') == 8                    # 07082026
+
+    def test_a_layout_saved_unboxed_stays_unboxed(self, client, db_session, admin_user, main_branch):
+        from app.cash_disbursements.check_layout import save_layout
+        cdv = _check_cdv(db_session, main_branch)
+        save_layout({'fields': {'check_date': {'boxed': False}}}, 'admin', account_id=cdv._cash_acct_id)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        assert 'class="pp-el pp-boxed' not in body
+        assert '>07-08-2026</div>' in body
 
     def test_stars_rendered_around_amounts(self, client, db_session, admin_user, main_branch):
         from app.cash_disbursements.check_layout import save_layout

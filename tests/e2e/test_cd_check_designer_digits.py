@@ -280,3 +280,104 @@ def test_the_grip_stays_reachable_when_the_run_is_at_the_canvas_top(designer):
     assert grip_box['y'] >= canvas_box['y'], 'the grip escaped above the canvas'
     _drag(designer, _grip(designer), 35, 0)                    # and still drags the run
     assert _field_left_top(designer)[0] == DATE_X + 35
+
+
+# --- ticking "boxed" builds the cells at once (BUG-CHECK-BOXED-DATE-NO-PREVIEW) ----
+# Philgen, 2 Nov 2026: on CDV 1722 (account 046-3, no saved layout, so the date was not
+# boxed) ticking "boxed" changed nothing on screen -- no cells, the pitch moved nothing,
+# nothing to drag. The cells existed only after a Save Layout and a reload.
+
+PLAIN_HARNESS = '/tests/e2e/_cd_check_designer_plain_harness.html'
+
+
+@pytest.fixture
+def plain_designer(page, static_server):
+    """A date rendered as ONE plain string (layout not boxed), edit mode ON."""
+    page.set_viewport_size({'width': 1280, 'height': 1200})
+    page.goto(static_server + PLAIN_HARNESS)
+    page.click('#editLayoutBtn')
+    assert page.locator('#ppCanvas.pp-editing').count() == 1, 'edit mode did not engage'
+    return page
+
+
+def _boxed_toggle(page):
+    return page.locator('#ppFieldControls input[type="checkbox"][title="Boxed digits"]')
+
+
+def _date_text(page):
+    return page.locator('[data-el="check_date"]').evaluate("e => e.textContent")
+
+
+def test_ticking_boxed_builds_one_cell_per_digit_at_even_pitch(plain_designer):
+    assert _lefts(plain_designer) == [], 'the plain harness already has cells'
+    _boxed_toggle(plain_designer).check()
+    assert _lefts(plain_designer) == [0, 24, 48, 72, 96, 120, 144, 168]
+    digits = plain_designer.locator('[data-el="check_date"]').evaluate(
+        "e => [...e.querySelectorAll('.pp-digit')].map(d => d.textContent).join('')")
+    assert digits == '06172026'
+    assert plain_designer.locator('[data-el="check_date"].pp-boxed').count() == 1
+
+
+def test_ticking_boxed_adds_the_run_grip(plain_designer):
+    _boxed_toggle(plain_designer).check()
+    assert _grip(plain_designer).count() == 1
+    assert _grip(plain_designer).is_visible()
+
+
+def test_pitch_respreads_cells_built_by_ticking_boxed(plain_designer):
+    _boxed_toggle(plain_designer).check()
+    pitch_input = plain_designer.locator('#ppFieldControls input[type="number"]')
+    pitch_input.fill('30')
+    pitch_input.dispatch_event('input')
+    assert _lefts(plain_designer) == [0, 30, 60, 90, 120, 150, 180, 210]
+
+
+def test_a_cell_built_by_ticking_boxed_can_be_dragged(plain_designer):
+    _boxed_toggle(plain_designer).check()
+    _drag(plain_designer, _digit(plain_designer, 2), 40, 0)
+    assert _lefts(plain_designer)[2] == 48 + 40
+
+
+def test_save_after_ticking_boxed_posts_the_cells(plain_designer):
+    captured = _intercept_save(plain_designer)
+    _boxed_toggle(plain_designer).check()
+    _drag(plain_designer, _digit(plain_designer, 2), 46, 0)
+    plain_designer.click('#saveLayoutBtn')
+    plain_designer.wait_for_function("() => document.getElementById('layoutSavedFlag') !== null")
+    sent = json.loads(captured['body'])['fields']['check_date']
+    assert sent['boxed'] is True
+    assert sent['digitOffsets'] == [0, 24, 94, 72, 96, 120, 144, 168]
+
+
+def test_unticking_boxed_restores_the_plain_date(plain_designer):
+    _boxed_toggle(plain_designer).check()
+    _boxed_toggle(plain_designer).uncheck()
+    assert _lefts(plain_designer) == []
+    assert _grip(plain_designer).count() == 0
+    assert _date_text(plain_designer) == '06-17-2026'
+    assert plain_designer.locator('[data-el="check_date"].pp-boxed').count() == 0
+
+
+def test_unticking_a_server_boxed_run_restores_the_plain_date(designer):
+    """The run that print_check.html rendered boxed carries the formatted date in
+    data-plain, so unticking can show it as one string again."""
+    _boxed_toggle(designer).uncheck()
+    assert _lefts(designer) == []
+    assert _grip(designer).count() == 0
+    assert _date_text(designer) == '06-17-2026'
+
+
+def test_save_after_unticking_posts_not_boxed_and_no_offsets(designer):
+    captured = _intercept_save(designer)
+    _boxed_toggle(designer).uncheck()
+    designer.click('#saveLayoutBtn')
+    designer.wait_for_function("() => document.getElementById('layoutSavedFlag') !== null")
+    sent = json.loads(captured['body'])['fields']['check_date']
+    assert sent['boxed'] is False and sent['digitOffsets'] == []
+
+
+def test_ticking_boxed_again_rebuilds_the_cells(designer):
+    _boxed_toggle(designer).uncheck()
+    _boxed_toggle(designer).check()
+    assert _lefts(designer) == [0, 24, 48, 72, 96, 120, 144, 168]
+    assert _grip(designer).count() == 1

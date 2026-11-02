@@ -199,6 +199,34 @@
       el.classList.toggle('pp-grip-below', (parseInt(el.style.top) || 0) < GRIP_ROOM);
     });
   }
+  // Ticking "boxed" turns the plain date into one cell per digit ON THE SPOT, the same
+  // markup print_check.html renders for a boxed layout, evenly spaced at the field's pitch.
+  // Before this the cells only existed after a Save Layout and a reload, so on an account
+  // with no boxed layout yet ticking the box did nothing visible (CDV 1722, 2 Nov 2026).
+  // The formatted date comes from data-plain, which the template writes on both branches.
+  function boxDate(el) {
+    if (el.querySelector('.pp-digit')) return;
+    const plain = el.dataset.plain !== undefined ? el.dataset.plain : el.textContent;
+    const pitch = parseInt(el.dataset.pitch) || 24;
+    el.textContent = '';
+    [...plain].filter((ch) => ch >= '0' && ch <= '9').forEach((ch, i) => {
+      const d = document.createElement('span');
+      d.className = 'pp-digit';
+      d.style.position = 'absolute';
+      d.style.left = (i * pitch) + 'px';
+      d.style.width = pitch + 'px';
+      d.style.textAlign = 'center';
+      d.textContent = ch;
+      el.appendChild(d);
+    });
+    el.classList.add('pp-boxed');
+    ensureRunGrips();
+  }
+  // Unticking puts the date back as one plain string; the cells and the grip go.
+  function unboxDate(el) {
+    el.classList.remove('pp-boxed', 'pp-grip-below');
+    el.textContent = el.dataset.plain || '';
+  }
   function buildFieldControls() {
     if (!fieldStrip || fieldStrip.dataset.built) return;
     fieldStrip.appendChild(stripHeading('Fields:'));
@@ -238,7 +266,12 @@
         pitch.style.width = '52px';
         pitch.value = parseInt(el.dataset.pitch) || 24;
         pitch.disabled = !bx.checked;
-        bx.addEventListener('change', () => { el.dataset.boxed = bx.checked ? '1' : ''; pitch.disabled = !bx.checked; });
+        bx.addEventListener('change', () => {
+          el.dataset.boxed = bx.checked ? '1' : '';
+          pitch.disabled = !bx.checked;
+          if (bx.checked) boxDate(el); else unboxDate(el);
+          positionBar();
+        });
         pitch.addEventListener('input', () => {
           el.dataset.pitch = String(parseInt(pitch.value) || 24);
           respreadDigits(el);

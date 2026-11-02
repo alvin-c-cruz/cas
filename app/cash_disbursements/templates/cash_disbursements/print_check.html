@@ -111,17 +111,19 @@
   {#- Each digit is absolutely positioned on its OWN x, so a run can straddle the wider
       gaps between a check's MM / DD / YYYY box groups. `digitOffsets[i]` when saved, else
       the even `i * pitch` -- which also covers a saved run shorter than today's format,
-      so switching to a longer format never drops or stacks the extra digits. y is NOT
+      so switching to a longer format never drops or stacks the extra digits.
+      data-plain carries the formatted date on BOTH branches, so the designer can build the
+      cells the moment "boxed" is ticked, and put the plain string back when it is unticked. y is NOT
       per-digit: they all ride the field's top, so the run cannot leave its baseline.
       The container needs its explicit width here: absolutely-positioned children no
       longer size it, and a 0px-wide div is a drag hit-box the designer cannot grab. -#}
-  <div class="pp-el pp-boxed{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" data-stars="{{ f.stars }}" data-boxed="{{ '1' if f.boxed else '' }}" data-pitch="{{ f.pitch }}"
+  <div class="pp-el pp-boxed{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" data-stars="{{ f.stars }}" data-boxed="{{ '1' if f.boxed else '' }}" data-pitch="{{ f.pitch }}" data-plain="{{ values[key] }}"
        style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{% for ch in date_digits %}{% set off = f.digitOffsets[loop.index0] if loop.index0 < f.digitOffsets | length else loop.index0 * f.pitch %}<span class="pp-digit" style="position:absolute;left:{{ off }}px;width:{{ f.pitch }}px;text-align:center;">{{ ch }}</span>{% endfor %}</div>
   {% else %}
   {%- set raw = values[key] -%}
   {%- set lead = star_run if f.stars in ('left', 'both') else '' -%}
   {%- set trail = star_run if f.stars in ('right', 'both') else '' -%}
-  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" data-stars="{{ f.stars }}" data-boxed="{{ '1' if f.boxed else '' }}" data-pitch="{{ f.pitch }}"
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" data-stars="{{ f.stars }}" data-boxed="{{ '1' if f.boxed else '' }}" data-pitch="{{ f.pitch }}"{% if key == 'check_date' %} data-plain="{{ raw }}"{% endif %}
        style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ lead ~ raw ~ trail }}</div>
   {% endif %}
   {% endfor %}
@@ -133,7 +135,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=6"></script>
 {% endif %}
 </body>
 </html>
