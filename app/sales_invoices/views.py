@@ -1624,8 +1624,14 @@ def print_invoice(id):
         # selected branch changing between this render and that POST).
         can_edit_layout = (current_user.can_edit_print_layout
                            and invoice.branch_id == session.get('selected_branch_id'))
+        # DR No.: the CAS delivery receipts this invoice billed, in delivery order; an invoice
+        # billed outside CAS's DRs falls back to its Reference as typed (Philgen: "DR 0257").
+        from app.delivery_receipts.models import DeliveryReceipt
+        billed_drs = (DeliveryReceipt.query.filter_by(sales_invoice_id=invoice.id)
+                      .order_by(DeliveryReceipt.delivery_date, DeliveryReceipt.id).all())
+        dr_numbers = ', '.join(d.dr_number for d in billed_drs) or (invoice.reference or '')
         return render_template(
-            'sales_invoices/print_preprinted.html', invoice=invoice,
+            'sales_invoices/print_preprinted.html', invoice=invoice, dr_numbers=dr_numbers,
             je_entries=je_entries, company=company, printed_at=ph_now(),
             layout=get_layout(invoice.branch_id), can_edit_layout=can_edit_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,

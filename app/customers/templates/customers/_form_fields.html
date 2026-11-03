@@ -68,6 +68,11 @@
         </div>
     </div>
     <div class="form-group">
+        <label for="{{ form.business_style.id }}">{{ form.business_style.label.text }}</label>
+        {{ form.business_style(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+        {% if form.business_style.errors %}<div class="error-message">{{ form.business_style.errors[0] }}</div>{% endif %}
+    </div>
+    <div class="form-group">
         <label for="withholding_tax_ids">Withholding Tax</label>
         {% if withholding_taxes|default([]) %}
         <select id="withholding_tax_ids" name="withholding_tax_ids"

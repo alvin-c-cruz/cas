@@ -122,7 +122,7 @@ def build_customer_quick_add_form():
 # Single source of truth for the fields snapshotted to the audit trail and exported.
 # Adding a Customer column means editing this one list, not 6 scattered literals.
 CUSTOMER_FIELDS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
-                   'payment_terms', 'address', 'postal_code', 'default_vat_category',
+                   'business_style', 'payment_terms', 'address', 'postal_code', 'default_vat_category',
                    'default_wt_code', 'default_salesperson_id', 'withholding_taxes_str', 'is_active',
                    # is_locked is snapshotted so lock/unlock produces a real DIFF.
                    # Without it both sides of the lock audit are identical and the
@@ -131,7 +131,7 @@ CUSTOMER_FIELDS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
                    'is_locked']
 
 CUSTOMER_EXPORT_HEADERS = ['Customer Code', 'Customer Name', 'Contact Person', 'Phone',
-                           'Email', 'TIN', 'Payment Terms', 'Address', 'Postal Code',
+                           'Email', 'TIN', 'Business Style', 'Payment Terms', 'Address', 'Postal Code',
                            'VAT Category', 'WT Code', 'Default Salesperson', 'WT Codes', 'Active']
 
 
@@ -144,6 +144,7 @@ def _customer_export_rows(customers):
         'phone': c.phone or '',
         'email': c.email or '',
         'tin': c.tin or '',
+        'business_style': c.business_style or '',
         'payment_terms': c.payment_terms or '',
         'address': c.address or '',
         'postal_code': c.postal_code or '',
@@ -442,6 +443,7 @@ def create():
                 phone=form.phone.data,
                 email=form.email.data,
                 tin=form.tin.data,
+                business_style=(form.business_style.data or '').strip() or None,
                 payment_terms=form.payment_terms.data,
                 address=form.address.data,
                 postal_code=form.postal_code.data,
@@ -538,6 +540,7 @@ def edit(id):
             customer.phone = form.phone.data
             customer.email = form.email.data
             customer.tin = form.tin.data
+            customer.business_style = (form.business_style.data or '').strip() or None
             customer.payment_terms = form.payment_terms.data
             customer.address = form.address.data
             customer.postal_code = form.postal_code.data
@@ -588,6 +591,7 @@ def edit(id):
         form.phone.data = customer.phone
         form.email.data = customer.email
         form.tin.data = customer.tin
+        form.business_style.data = customer.business_style
         form.payment_terms.data = customer.payment_terms
         form.address.data = customer.address
         form.postal_code.data = customer.postal_code

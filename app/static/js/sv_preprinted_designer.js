@@ -58,12 +58,23 @@
     '<button type="button" id="ppBoldBtn" title="Bold"><b>B</b></button>' +
     '<button type="button" id="ppDupBtn" title="Duplicate">Dup</button>' +
     '<button type="button" id="ppDelBtn" title="Delete copy">Del</button>' +
-    '<input type="text" id="ppTextInput" title="Edit text" style="display:none;width:170px;">';
+    '<input type="text" id="ppTextInput" title="Edit text" style="display:none;width:170px;">' +
+    // Field box: justification inside a fixed width (legacy invoices right-justify amounts).
+    '<button type="button" id="ppAlignBtn" title="Justify text left or right inside the box" style="display:none;">Left</button>' +
+    '<input type="number" id="ppWidthInput" title="Box width in px (0 = fit the text)" placeholder="width" min="0" max="912" style="display:none;width:64px;">' +
+    // Column: vertical offset inside its row (e.g. a note on the line under its product).
+    '<input type="number" id="ppDyInput" title="Row offset in px (moves this column up or down inside each row)" placeholder="offset" min="-80" max="80" style="display:none;width:64px;">';
   document.body.appendChild(elBar);
   const textInput = elBar.querySelector('#ppTextInput');
-  // Editing a layout text -> live-update its content.
+  const alignBtn = elBar.querySelector('#ppAlignBtn');
+  const widthInput = elBar.querySelector('#ppWidthInput');
+  const dyInput = elBar.querySelector('#ppDyInput');
+  const isEndMark = (el) => !!(el && el.classList.contains('pp-endmark'));
+  const isPlainField = (el) => !!(el && el.classList.contains('pp-el') && !el.classList.contains('pp-text')
+    && !el.classList.contains('pp-col') && !isEndMark(el));
+  // Editing a layout text (or the end marker) -> live-update its content.
   textInput.addEventListener('input', () => {
-    if (selected && selected.classList.contains('pp-text')) selected.textContent = textInput.value;
+    if (selected && (selected.classList.contains('pp-text') || isEndMark(selected))) selected.textContent = textInput.value;
   });
   // Don't let a drag start from inside the text input.
   textInput.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -89,9 +100,23 @@
     const isText = el.classList.contains('pp-text');
     const dupBtn = elBar.querySelector('#ppDupBtn');
     if (dupBtn) dupBtn.style.display = (isText || el.classList.contains('pp-col')) ? 'none' : '';
-    // Layout texts get an editable text box in the toolbar.
-    textInput.style.display = isText ? '' : 'none';
-    if (isText) textInput.value = el.textContent;
+    const isEnd = isEndMark(el);
+    if (dupBtn && isEnd) dupBtn.style.display = 'none';
+    // Layout texts and the end marker get an editable text box in the toolbar.
+    textInput.style.display = (isText || isEnd) ? '' : 'none';
+    if (isText || isEnd) textInput.value = el.textContent.trim();
+    // Data fields (and their copies) get justification + box width.
+    const boxed = isPlainField(el);
+    alignBtn.style.display = boxed ? '' : 'none';
+    widthInput.style.display = boxed ? '' : 'none';
+    if (boxed) {
+      alignBtn.textContent = el.style.textAlign === 'right' ? 'Right' : 'Left';
+      widthInput.value = parseInt(el.style.width) || 0;
+    }
+    // Columns get their row offset.
+    const isCol = el.classList.contains('pp-col');
+    dyInput.style.display = isCol ? '' : 'none';
+    if (isCol) dyInput.value = parseInt(el.dataset.dy) || 0;
     positionBar();
   }
   function duplicateSelected() {
@@ -117,9 +142,11 @@
     selectEl(null);
     el.remove();
   }
-  // A line-item column shares the band font, so font changes apply to every column.
+  // A line-item column shares the band font, so font changes apply to every column
+  // (and to the end marker, which prints in the band font).
   function fontTargets() {
-    return (selected && selected.classList.contains('pp-col')) ? cols() : [selected];
+    const band = selected && (selected.classList.contains('pp-col') || isEndMark(selected));
+    return band ? cols().concat(endMark() ? [endMark()] : []) : [selected];
   }
   function changeFont(delta) {
     if (!selected) return;
@@ -138,10 +165,50 @@
   });
   elBar.querySelector('#ppDupBtn').addEventListener('click', duplicateSelected);
   elBar.querySelector('#ppDelBtn').addEventListener('click', deleteSelected);
+  alignBtn.addEventListener('click', () => {
+    if (!isPlainField(selected)) return;
+    if (selected.style.textAlign === 'right') {
+      selected.style.textAlign = 'left';
+    } else {
+      // Give the box the text's current width first, so the text does not jump.
+      if (!(parseInt(selected.style.width) > 0)) {
+        selected.style.width = Math.ceil(selected.getBoundingClientRect().width) + 'px';
+      }
+      selected.style.textAlign = 'right';
+    }
+    selectEl(selected);
+  });
+  widthInput.addEventListener('input', () => {
+    if (!isPlainField(selected)) return;
+    const w = Math.max(0, Math.min(912, parseInt(widthInput.value) || 0));
+    selected.style.width = w ? w + 'px' : '';
+    positionBar();
+  });
+  dyInput.addEventListener('input', () => {
+    if (!selected || !selected.classList.contains('pp-col')) return;
+    const dy = Math.max(-80, Math.min(80, parseInt(dyInput.value) || 0));
+    const top = bandTop();
+    selected.dataset.dy = dy;
+    selected.style.top = (top + dy) + 'px';
+    positionBar();
+  });
+  [widthInput, dyInput].forEach((inp) => inp.addEventListener('pointerdown', (e) => e.stopPropagation()));
 
   const li = () => canvas.querySelector('.pp-lineitems');
   const cols = () => [...canvas.querySelectorAll('.pp-col')];
-  const fieldEls = () => [...canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra])')];
+  const endMark = () => canvas.querySelector('.pp-endmark');
+  const fieldEls = () => [...canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra]):not(.pp-endmark)')];
+  // The band's top: every column sits at bandTop + its own row offset.
+  function bandTop() {
+    const first = cols()[0];
+    return first ? (parseInt(first.style.top) || 0) - (parseInt(first.dataset.dy) || 0) : 0;
+  }
+  // The end marker sits one row below the last line item, plus its own offset.
+  function endBase(top) {
+    const em = endMark();
+    const rows = em ? (parseInt(em.dataset.rows) || 0) : 0;
+    return top + rows * (parseInt(li().dataset.rowheight) || 20);
+  }
 
   function stripHeading(text) {
     const h = document.createElement('span');
@@ -193,6 +260,18 @@
       label.appendChild(document.createTextNode(' ' + (col.dataset.label || key)));
       colStrip.appendChild(label);
     });
+    const em = endMark();
+    if (em) {
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.coltoggle = 'endMarker';
+      cb.checked = !em.classList.contains('pp-field-hidden');
+      cb.addEventListener('change', () => em.classList.toggle('pp-field-hidden', !cb.checked));
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' End marker'));
+      colStrip.appendChild(label);
+    }
     colStrip.dataset.built = '1';
   }
 
@@ -258,7 +337,11 @@
       const x = Math.max(0, Math.min(canvas.clientWidth, Math.round(e.clientX - colDrag.c.left - colDrag.dx)));
       const y = Math.max(0, Math.min(canvas.clientHeight, Math.round(e.clientY - colDrag.c.top - colDrag.dy)));
       colDrag.col.style.left = x + 'px';                     // this column's x
-      cols().forEach((c) => { c.style.top = y + 'px'; });    // shared band top -> rows aligned
+      // shared band top -> rows aligned; each column keeps its own row offset
+      const top = y - (parseInt(colDrag.col.dataset.dy) || 0);
+      cols().forEach((c) => { c.style.top = (top + (parseInt(c.dataset.dy) || 0)) + 'px'; });
+      const em = endMark();
+      if (em) em.style.top = (endBase(top) + (parseInt(em.dataset.dy) || 0)) + 'px';
       return;
     }
     if (!drag) {
@@ -273,6 +356,14 @@
     const x = Math.max(0, Math.min(canvas.clientWidth, Math.round(e.clientX - drag.c.left - drag.dx)));
     const y = Math.max(0, Math.min(canvas.clientHeight, Math.round(e.clientY - drag.c.top - drag.dy)));
     drag.el.style.left = x + 'px';
+    if (isEndMark(drag.el)) {
+      // the end marker follows the rows; a vertical drag sets its offset from them
+      const base = endBase(bandTop());
+      const dy = Math.max(-80, Math.min(80, y - base));
+      drag.el.dataset.dy = dy;
+      drag.el.style.top = (base + dy) + 'px';
+      return;
+    }
     drag.el.style.top = y + 'px';
   });
 
@@ -283,7 +374,11 @@
   // --- Serialize DOM -> layout JSON ---
   function collect() {
     const fields = {};
-    canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra]):not(.pp-text)').forEach((el) => {
+    const box = (el) => ({
+      align: el.style.textAlign === 'right' ? 'right' : 'left',
+      width: parseInt(el.style.width) || 0,
+    });
+    canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra]):not(.pp-text):not(.pp-endmark)').forEach((el) => {
       const cs = getComputedStyle(el);
       fields[el.dataset.el] = {
         x: parseInt(el.style.left) || 0,
@@ -291,6 +386,7 @@
         fontSize: parseInt(cs.fontSize) || 11,
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
         hidden: el.classList.contains('pp-field-hidden'),
+        ...box(el),
       };
     });
     const extras = [...canvas.querySelectorAll('.pp-el[data-extra]')].map((el) => {
@@ -301,6 +397,7 @@
         y: parseInt(el.style.top) || 0,
         fontSize: parseInt(cs.fontSize) || 11,
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
+        ...box(el),
       };
     });
     const texts = [...canvas.querySelectorAll('.pp-text')].map((el) => {
@@ -323,7 +420,9 @@
       x: parseInt(c.style.left) || 0,
       visible: !c.classList.contains('pp-col-hidden'),
       width: parseInt(c.style.width) || 60,
+      dy: parseInt(c.dataset.dy) || 0,
     }));
+    const em = endMark();
     return {
       paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
       // Echoed back so save_print_layout can verify the invoice's own branch
@@ -340,11 +439,17 @@
       page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
       fields,
       lineItems: {
-        y: first ? (parseInt(first.style.top) || 0) : 300,
+        y: first ? bandTop() : 300,
         rowHeight: parseInt(li().dataset.rowheight) || 20,
         fontSize: lics ? (parseInt(lics.fontSize) || 10) : 10,
         bold: lics ? (lics.fontWeight === '700' || lics.fontWeight === 'bold') : false,
         columns,
+        endMarker: em ? {
+          text: em.textContent.trim(),
+          x: parseInt(em.style.left) || 0,
+          dy: parseInt(em.dataset.dy) || 0,
+          visible: !em.classList.contains('pp-field-hidden'),
+        } : undefined,
       },
     };
   }
@@ -416,6 +521,8 @@
     const y = p[0], m = p[1], d = p[2], mi = parseInt(m, 10) - 1;
     switch (key) {
       case 'long': return d + ' ' + MONTHS[mi] + ' ' + y;
+      case 'full': return MONTHS[mi] + ' ' + d + ', ' + y;
+      case 'us_dash': return m + '-' + d + '-' + y;
       case 'medium': return MON[mi] + ' ' + d + ', ' + y;
       case 'us': return m + '/' + d + '/' + y;
       case 'eu': return d + '/' + m + '/' + y;

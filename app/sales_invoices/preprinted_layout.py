@@ -10,7 +10,7 @@ import json
 
 from app.settings import AppSettings
 from app.audit.utils import log_audit
-from app.common.preprinted_texts import clean_texts
+from app.common.preprinted_texts import clean_texts, clean_wrap_width
 
 LAYOUT_SETTING_KEY = 'sv_preprinted_layout'
 
@@ -50,6 +50,8 @@ ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 FIELD_KEYS = [
     'invoice_no', 'invoice_date', 'due_date', 'terms', 'salesperson',
     'customer_name', 'customer_tin', 'customer_address', 'customer_po',
+    # Legacy-invoice fields (Philgen, 3 Nov 2026); hidden until placed in the designer.
+    'dr_number', 'customer_business_style',
     # BIR-standard SI summary
     'gross_sales', 'output_vat', 'net_of_vat', 'wht_amount', 'amount_collectible',
     'notes',
@@ -66,6 +68,8 @@ FIELD_LABELS = {
     'customer_tin': 'TIN',
     'customer_address': 'Address',
     'customer_po': 'PO No.',
+    'dr_number': 'DR No.',
+    'customer_business_style': 'Business Style',
     'gross_sales': 'Total Sales (VAT-incl.)',
     'output_vat': 'VAT',
     'net_of_vat': 'Amount Net of VAT',
@@ -77,6 +81,8 @@ FIELD_LABELS = {
 COLUMN_KEYS = [
     'line_number', 'product', 'quantity',
     'uom', 'unit_price', 'amount',
+    # The line's Description under a product line (legacy prints it as the item note).
+    'note',
 ]
 
 # Header labels for the line-item columns (presentation; keyed by COLUMN_KEYS).
@@ -87,6 +93,7 @@ COLUMN_LABELS = {
     'uom': 'UOM',
     'unit_price': 'Unit Price',
     'amount': 'Amount (₱)',
+    'note': 'Note',
 }
 
 ALLOWED_PAPERS = ('continuous', 'letter')
@@ -115,6 +122,8 @@ DATE_FORMATS = {
     'full':   '%B %d, %Y',
     'medium': '%b %d, %Y',
     'us':     '%m/%d/%Y',
+    # Month-first with dashes, as Philgen's legacy invoice prints it (09-25-2026).
+    'us_dash': '%m-%d-%Y',
     'eu':     '%d/%m/%Y',
     'iso':    '%Y-%m-%d',
 }
@@ -148,6 +157,8 @@ DEFAULT_SV_PREPRINTED_LAYOUT = {
         'customer_tin':       {'x': 60,  'y': 74,  'fontSize': 11, 'bold': False},
         'customer_address':   {'x': 60,  'y': 98,  'fontSize': 11, 'bold': False},
         'customer_po':        {'x': 60,  'y': 122, 'fontSize': 11, 'bold': False},
+        'dr_number':          {'x': 60,  'y': 146, 'fontSize': 11, 'bold': False, 'hidden': True},
+        'customer_business_style': {'x': 60, 'y': 170, 'fontSize': 11, 'bold': False, 'hidden': True},
         'gross_sales':        {'x': 620, 'y': 470, 'fontSize': 10, 'bold': False},
         'output_vat':         {'x': 620, 'y': 494, 'fontSize': 10, 'bold': False},
         'net_of_vat':         {'x': 620, 'y': 518, 'fontSize': 10, 'bold': False},
@@ -161,15 +172,22 @@ DEFAULT_SV_PREPRINTED_LAYOUT = {
     'lineItems': {
         'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
         'columns': [
-            {'key': 'line_number', 'x': 56,  'visible': True,  'width': 30},
-            {'key': 'product',     'x': 92,  'visible': True,  'width': 300},
-            {'key': 'quantity',    'x': 430, 'visible': True,  'width': 60},
-            {'key': 'uom',         'x': 510, 'visible': True,  'width': 50},
-            {'key': 'unit_price',  'x': 580, 'visible': True,  'width': 90},
-            {'key': 'amount',      'x': 690, 'visible': True,  'width': 100},
+            {'key': 'line_number', 'x': 56,  'visible': True,  'width': 30, 'dy': 0},
+            {'key': 'product',     'x': 92,  'visible': True,  'width': 300, 'dy': 0},
+            {'key': 'quantity',    'x': 430, 'visible': True,  'width': 60, 'dy': 0},
+            {'key': 'uom',         'x': 510, 'visible': True,  'width': 50, 'dy': 0},
+            {'key': 'unit_price',  'x': 580, 'visible': True,  'width': 90, 'dy': 0},
+            {'key': 'amount',      'x': 690, 'visible': True,  'width': 100, 'dy': 0},
+            {'key': 'note',        'x': 92,  'visible': False, 'width': 300, 'dy': 0},
         ],
+        # Optional closing line (e.g. "**NOTHING FOLLOWS**"), printed one row after the last
+        # line at its own x, plus dy px. Off by default.
+        'endMarker': {'text': '**NOTHING FOLLOWS**', 'x': 300, 'dy': 0, 'visible': False},
     },
 }
+
+ALIGNS = ('left', 'right')
+END_MARKER_MAXLEN = 200
 
 
 def _clamp(value, lo, hi, fallback):
@@ -190,7 +208,17 @@ def _clean_box(raw, default):
         'fontSize': _clamp(raw.get('fontSize'), FONT_MIN, FONT_MAX, default['fontSize']),
         'bold': bool(raw.get('bold', default['bold'])),
         'hidden': bool(raw.get('hidden', default.get('hidden', False))),
+        **_clean_align(raw, default),
     }
+
+
+def _clean_align(raw, default=None):
+    """Text alignment inside a box `width` px wide. width 0 = content-sized (today's
+    behaviour, and what every layout saved before 3 Nov 2026 means); right alignment
+    only has an effect with a width."""
+    default = default or {}
+    align = raw.get('align') if raw.get('align') in ALIGNS else default.get('align', 'left')
+    return {'align': align, 'width': clean_wrap_width(raw.get('width'), default.get('width', 0))}
 
 
 def _clean_columns(raw):
@@ -214,8 +242,23 @@ def _clean_columns(raw):
             'x': _clamp(src.get('x'), 0, CANVAS_W, d['x']),
             'visible': bool(src.get('visible', d['visible'])),
             'width': _clamp(src.get('width'), WIDTH_MIN, WIDTH_MAX, d['width']),
+            # vertical offset inside the row (a note on the line below its product)
+            'dy': _clamp(src.get('dy'), -ROW_MAX, ROW_MAX, 0),
         })
     return out
+
+
+def _clean_end_marker(raw):
+    raw = raw if isinstance(raw, dict) else {}
+    d = DEFAULT_SV_PREPRINTED_LAYOUT['lineItems']['endMarker']
+    text = raw.get('text')
+    text = text.strip()[:END_MARKER_MAXLEN] if isinstance(text, str) else d['text']
+    return {
+        'text': text,
+        'x': _clamp(raw.get('x'), 0, CANVAS_W, d['x']),
+        'dy': _clamp(raw.get('dy'), -ROW_MAX, ROW_MAX, d['dy']),
+        'visible': bool(raw.get('visible', d['visible'])),
+    }
 
 
 def _clean_extras(raw):
@@ -231,6 +274,7 @@ def _clean_extras(raw):
             'y': _clamp(e.get('y'), 0, CANVAS_H, 0),
             'fontSize': _clamp(e.get('fontSize'), FONT_MIN, FONT_MAX, 11),
             'bold': bool(e.get('bold', False)),
+            **_clean_align(e),
         })
     return out
 
@@ -254,6 +298,7 @@ def sanitize_layout(raw):
         'fontSize': _clamp(raw_li.get('fontSize'), FONT_MIN, FONT_MAX, dli['fontSize']),
         'bold': bool(raw_li.get('bold', dli['bold'])),
         'columns': _clean_columns(raw_li.get('columns')),
+        'endMarker': _clean_end_marker(raw_li.get('endMarker')),
     }
     return {'paper': paper, 'dateFormat': date_fmt, 'extras': _clean_extras(raw.get('extras')),
             'texts': clean_texts(raw.get('texts'), DEFAULT_SV_PREPRINTED_LAYOUT['texts']),

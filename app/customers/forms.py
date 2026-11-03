@@ -40,6 +40,11 @@ class CustomerForm(FlaskForm):
         Length(max=50, message='TIN must be 50 characters or less.')
     ])
 
+    business_style = StringField('Business Style', validators=[
+        Optional(),
+        Length(max=200, message='Business style must be 200 characters or less.')
+    ])
+
     payment_terms = SelectField('Payment Terms', choices=[
         ('Net 15', 'Net 15'),
         ('Net 30', 'Net 30'),

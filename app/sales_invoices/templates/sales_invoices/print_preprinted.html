@@ -31,6 +31,12 @@
   .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
   /* Layout-only signature texts: dotted outline in edit mode; double-click to type. */
   .pp-canvas.pp-editing .pp-text { outline: 1px dotted #1565c0; }
+  /* The end marker follows the rows: dotted while editing, labelled when its text is empty. */
+  .pp-canvas.pp-editing .pp-endmark { outline: 1px dotted #2e7d32; }
+  /* While switched off it only shows where it would print: it sits on the rows' band, so it
+     must not catch the clicks meant for a column. The Columns strip switches it back on. */
+  .pp-canvas.pp-editing .pp-endmark.pp-field-hidden { pointer-events: none; }
+  .pp-canvas.pp-editing .pp-endmark:empty::before { content: attr(data-label); color: #bbb; font-style: italic; }
   .pp-canvas.pp-editing .pp-text[contenteditable="true"] { outline: 2px solid #1565c0; cursor: text; background: #fff; }
   /* Screen-only guides: 0.5in (48px @96dpi) tractor-feed margins for CONTINUOUS stock
      (the holes). Dropped for cut sheets (letter). Never printed. */
@@ -54,15 +60,22 @@
 </head>
 <body style="font-family: {{ layout.page.fontFamily }};" data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}" data-invoice-branch-id="{{ invoice.branch_id }}">
 
+{# A box width (0 = content-sized) and, inside it, left or right justification. #}
+{% macro box_style(b) %}{% if b.width %}width:{{ b.width }}px;text-align:{{ b.align }};{% endif %}{% endmacro %}
+
+{# The line's Description printed as a note -- only under a PRODUCT line: without a product
+   the Description already prints as the product text. Skipped when it merely repeats the name. #}
+{% macro line_note(item) %}{% if item.product and item.description and item.description.strip().lower() != item.product.name.strip().lower() %}{{ item.description }}{% endif %}{% endmacro %}
+
 {% macro field(key, value, iso='') %}
   {% set f = layout.fields[key] %}
   <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"{% if iso %} data-date="{{ iso }}"{% endif %}
-       style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
+       style="left:{{ f.x }}px;top:{{ f.y }}px;{{ box_style(f) }}font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
 {% endmacro %}
 
 {% macro field_extra(ex, value, iso='') %}
   <div class="pp-el" data-el="{{ ex.key }}" data-label="{{ field_labels[ex.key] }}" data-extra="1"{% if iso %} data-date="{{ iso }}"{% endif %}
-       style="left:{{ ex.x }}px;top:{{ ex.y }}px;font-size:{{ ex.fontSize }}px;font-weight:{{ 'bold' if ex.bold else 'normal' }};">{{ value }}</div>
+       style="left:{{ ex.x }}px;top:{{ ex.y }}px;{{ box_style(ex) }}font-size:{{ ex.fontSize }}px;font-weight:{{ 'bold' if ex.bold else 'normal' }};">{{ value }}</div>
 {% endmacro %}
 
 <div class="pp-toolbar screen-only">
@@ -112,6 +125,8 @@
     'customer_tin': invoice.customer_tin or '',
     'customer_address': invoice.customer_address or '',
     'customer_po': invoice.customer_po_number or '',
+    'dr_number': dr_numbers,
+    'customer_business_style': (invoice.customer.business_style if invoice.customer else '') or '',
     'gross_sales': '{:,.2f}'.format(invoice.subtotal or 0),
     'output_vat': '{:,.2f}'.format(invoice.vat_amount or 0),
     'net_of_vat': '{:,.2f}'.format((invoice.subtotal or 0) - (invoice.vat_amount or 0)),
@@ -136,7 +151,8 @@
     {% for col in li.columns %}
     <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('amount', 'unit_price', 'quantity') else '' }}"
          data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
-         style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
+         data-dy="{{ col.dy }}"
+         style="left:{{ col.x }}px;top:{{ li.y + col.dy }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
       {%- for item in invoice.line_items %}
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
@@ -146,16 +162,22 @@
         {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.name if item.unit_of_measure else (item.uom_text or '—') }}
         {%- elif col.key == 'unit_price' -%}{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}
         {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.amount) }}
+        {%- elif col.key == 'note' -%}{{ line_note(item) }}
         {%- endif -%}
       </div>
       {% endfor -%}
     </div>
     {% endfor %}
   </div>
+  {# Closing line, one row below the last line item. #}
+  {% set em = li.endMarker %}
+  <div class="pp-el pp-endmark{{ ' pp-field-hidden' if not em.visible else '' }}" data-endmark="1" data-label="End marker"
+       data-rows="{{ invoice.line_items | length }}" data-dy="{{ em.dy }}"
+       style="left:{{ em.x }}px;top:{{ li.y + (invoice.line_items | length) * li.rowHeight + em.dy }}px;height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">{{ em.text }}</div>
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=27"></script>
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=28"></script>
 {% endif %}
 </body>
 </html>
