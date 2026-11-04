@@ -173,6 +173,24 @@ class SalesOrderItem(db.Model):
             self.vat_amount = Decimal('0.00')
         self.line_total = amt
 
+    @property
+    def kg_quantity(self):
+        """The line's quantity in KG: quantity x the product's KG per unit (owner, 4 Nov 2026:
+        PACKS on the customer's PO, KG for weight). None when either is missing."""
+        factor = self.product.kg_per_unit if self.product is not None else None
+        if factor is None or self.quantity is None:
+            return None
+        return (Decimal(str(self.quantity)) * Decimal(str(factor))).quantize(Decimal('0.0001'))
+
+    @property
+    def kg_unit_price(self):
+        """Price per KG: the line amount over its KG quantity, to the centavo, half up.
+        Same total either way -- the amount is not recomputed from it."""
+        kg = self.kg_quantity
+        if not kg or self.amount is None:
+            return None
+        return (Decimal(str(self.amount)) / kg).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
     def to_dict(self):
         return {
             'id': self.id, 'line_number': self.line_number,

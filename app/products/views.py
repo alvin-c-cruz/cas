@@ -71,6 +71,7 @@ def create():
             job_order_name=(form.job_order_name.data or '').strip() or None,
             default_unit_of_measure_id=_int_or_none(form.default_unit_of_measure_id.data),
             default_unit_price=form.default_unit_price.data,
+            kg_per_unit=form.kg_per_unit.data,
             default_account_id=_int_or_none(form.default_account_id.data),
             category_id=_int_or_none(form.category_id.data),
             standard_cost=form.standard_cost.data,
@@ -129,6 +130,7 @@ def edit(id):
         p.job_order_name = (form.job_order_name.data or '').strip() or None
         p.default_unit_of_measure_id = _int_or_none(form.default_unit_of_measure_id.data)
         p.default_unit_price = form.default_unit_price.data
+        p.kg_per_unit = form.kg_per_unit.data
         p.default_account_id = _int_or_none(form.default_account_id.data)
         p.category_id = _int_or_none(form.category_id.data)
         p.standard_cost = form.standard_cost.data

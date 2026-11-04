@@ -7,9 +7,10 @@ should always be at the very bottom."
 
 Owner directive 2026-08-31 SUPERSEDES the row count: "cut the number of line
 items into half. Increase the height of the surviving line items." So the grid
-is 10 rows at double height. GRID_ROWS * ROW_HEIGHT_PX is deliberately unchanged
-(10 x 51 == 20 x 25.5 == 510px), which keeps the signature block and page foot
-exactly where they were -- the rows got roomier, the sheet did not change shape.
+is 10 rows. Their height was 51px (10 x 51 == the old 20 x 25.5 == 510px) until the
+owner's 4 Nov 2026 layout (his edited Excel copy of this form) made them single-line,
+22px. The notes box stretches into the space given up, and the signature block stays
+anchored at the foot, so the sheet keeps its shape.
 
 Three rules, three separate concerns:
 
@@ -39,8 +40,7 @@ from tests.integration._so_helpers import (
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
 GRID_ROWS = 10
-ROW_HEIGHT_PX = 51           # was 25.5 across 20 rows
-GRID_TOTAL_PX = 510          # GRID_ROWS * ROW_HEIGHT_PX -- unchanged by the halving
+ROW_HEIGHT_PX = 22           # single line (owner, 4 Nov 2026); was 51, and 25.5 across 20 rows
 
 
 def _so_with_lines(db_session, main_branch, n, number='SO-LAYOUT-1'):
@@ -160,15 +160,12 @@ def test_a_long_order_is_not_truncated_to_ten(client, db_session, admin_user, ma
 
 
 
-def test_every_grid_row_carries_the_doubled_height(client, db_session, admin_user, main_branch,
-                                                   sales_orders_module_enabled):
-    """The rule applies to EVERY tbody cell -- data rows and filler alike.
-
-    Halving the grid without raising the height would leave the body occupying
-    half the sheet and the signature block floating up to meet it; raising the
-    height without halving would overflow onto a second page. The two numbers
-    only make sense together, which is what the next test pins.
-    """
+def test_every_grid_row_carries_the_single_line_height(client, db_session, admin_user, main_branch,
+                                                       sales_orders_module_enabled):
+    """The rule applies to EVERY tbody cell -- data rows and filler alike. 22px is one
+    line: just above the cell's own ~21.6px content, so the floor is live, not inert.
+    The space the grid no longer takes goes to the notes box (test_so_print_notes_fill)
+    and the signatures stay at the foot (test below)."""
     so = _so_with_lines(db_session, main_branch, 2)
     _login(client, admin_user); _select_branch(client, main_branch.id)
     html = _print(client, so)
@@ -178,27 +175,7 @@ def test_every_grid_row_carries_the_doubled_height(client, db_session, admin_use
     m = re.search(r'height:\s*([\d.]+)px', rule.group(0))
     assert m, f'the rule sets no px height: {rule.group(0)!r}'
     assert float(m.group(1)) == ROW_HEIGHT_PX
-
-
-def test_the_grid_still_occupies_the_same_total_height(client, db_session, admin_user,
-                                                       main_branch,
-                                                       sales_orders_module_enabled):
-    """rows x height is the invariant the page shape actually depends on.
-
-    This is the test that fails if someone later changes ONE of the two numbers:
-    the sheet is letter, the signature block is anchored to its foot, and the
-    body between them was 510px before the halving and must stay 510px after.
-    """
-    so = _so_with_lines(db_session, main_branch, 2)
-    _login(client, admin_user); _select_branch(client, main_branch.id)
-    html = _print(client, so)
-
-    rows = _tbody_rows(html)
-    rule = re.search(r'table\.particulars tbody td \{[^}]*\}', html)
-    height = float(re.search(r'height:\s*([\d.]+)px', rule.group(0)).group(1))
-
-    assert len(rows) * height == GRID_TOTAL_PX
-    assert GRID_ROWS * ROW_HEIGHT_PX == GRID_TOTAL_PX      # the constants agree too
+    assert len(_tbody_rows(html)) == GRID_ROWS
 
 
 

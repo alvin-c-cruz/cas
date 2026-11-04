@@ -1,4 +1,8 @@
-"""The SO printout carries six line columns, and gives the width to the product.
+"""The SO printout's line columns, and the width given to the product.
+
+Owner, 4 Nov 2026 (his edited Excel copy of this form): a second Qty / UOM / Unit
+Price, in KG, now sits between the first and Amount -- nine columns. The six-column
+rules below are kept as nine (test_so_kg_second_unit.py covers the KG figures).
 
 Owner directive 2026-08-31, from a live PhilGen order: the product name
 "DRIED PAPAYA CHUNKS (RED LADY PAPAYA VARIETY) (LOW SUGAR, LOW SO2 200ppm)"
@@ -31,7 +35,7 @@ from tests.integration._so_helpers import (
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
-KEPT = ['#', 'Product', 'Qty', 'UOM', 'Unit Price', 'Amount']
+KEPT = ['#', 'Product', 'Qty', 'UOM', 'Unit Price', 'Qty', 'UOM', 'Unit Price', 'Amount']
 DROPPED = ['VT', 'Delivery Date', 'Delivery Site']
 
 #: As long as the name that triggered this, so the fix is exercised against the
@@ -76,7 +80,7 @@ def printed(client, db_session, admin_user, main_branch, sales_orders_module_ena
     return so, html
 
 
-def test_the_line_table_carries_exactly_the_six_kept_columns(printed):
+def test_the_line_table_carries_exactly_the_nine_kept_columns(printed):
     so, html = printed
     headers = _headers(_particulars(html))
     assert headers == KEPT
@@ -107,7 +111,7 @@ def test_expected_delivery_survives_in_the_header_block(printed):
     assert 'Expected Delivery' in html
 
 
-def test_every_body_row_has_six_cells(printed):
+def test_every_body_row_has_nine_cells(printed):
     """The filler grid included. A row still emitting nine <td> widens the table
     past its own header set -- invisible to a header-only assertion."""
     so, html = printed
@@ -116,19 +120,18 @@ def test_every_body_row_has_six_cells(printed):
     rows = re.findall(r'<tr[^>]*>.*?</tr>', body, re.S)
     assert rows, 'no body rows rendered'
     counts = {len(re.findall(r'<td', r)) for r in rows}
-    assert counts == {6}, f'body rows have varying cell counts: {sorted(counts)}'
+    assert counts == {9}, f'body rows have varying cell counts: {sorted(counts)}'
 
 
-def test_the_totals_row_spans_the_six_columns(printed):
-    """`Total Sales` labels columns 1-5 and the figure sits under Amount, so the
-    row must account for exactly six columns -- no leftover trailing cells from
-    the nine-column layout."""
+def test_the_totals_row_spans_the_nine_columns(printed):
+    """`Total Sales` labels columns 1-8 and the figure sits under Amount, so the
+    row must account for exactly nine columns -- no leftover trailing cells."""
     so, html = printed
     foot = re.search(r'<tfoot.*?</tfoot>', _particulars(html), re.S).group(0)
     cells = re.findall(r'<td[^>]*>', foot)
     spans = sum(int(re.search(r'colspan="(\d+)"', c).group(1)) if 'colspan' in c else 1
                 for c in cells)
-    assert spans == 6, f'totals row spans {spans} columns, expected 6'
+    assert spans == 9, f'totals row spans {spans} columns, expected 9'
 
 # --- header + cell presentation (owner, 2026-08-31) -------------------------
 
@@ -193,10 +196,11 @@ def test_the_column_widths_are_the_agreed_split_and_total_100(printed):
     """Widths are declared inline per <th>, so they drift silently -- nothing
     complains if they stop summing to 100%, the browser just reflows.
 
-    Qty and Unit Price were swapped on owner request (2026-08-31); Product keeps
-    the 51% it gained when VT / Delivery Date / Delivery Site were dropped.
+    Qty and Unit Price were swapped on owner request (2026-08-31). Since 4 Nov 2026
+    the KG group takes its share; Product is still the widest column.
     """
     so, html = printed
     widths = re.findall(r'<th style="width:(\d+)%"', _particulars(html))
-    assert [int(w) for w in widths] == [4, 51, 14, 7, 7, 17]
+    assert [int(w) for w in widths] == [3, 37, 8, 7, 8, 8, 6, 9, 14]
+    assert max(int(w) for w in widths) == int(widths[1])      # Product
     assert sum(int(w) for w in widths) == 100

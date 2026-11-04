@@ -161,6 +161,12 @@ def create_app(config_name=None):
         from app.utils import format_line_qty
         return format_line_qty(item, blank)
 
+    # A bare quantity (e.g. a line's KG quantity) formatted as qty_fmt formats a line's.
+    @app.template_filter('qty_num')
+    def qty_num_filter(q, blank=''):
+        from app.utils import format_qty
+        return format_qty(q, blank)
+
     # Add custom Jinja2 filter for JSON parsing
     @app.template_filter('from_json')
     def from_json_filter(s):

@@ -50,6 +50,12 @@
 
             <div class="form-row-2">
                 {{ render_field(form.standard_cost) }}
+                <div>
+                    {{ render_field(form.kg_per_unit) }}
+                    <div class="form-hint">Weight of one unit in KG (a 100 g pack is 0.1). The Sales
+                        Order and Job Order Slip then show each line in KG too. Leave blank if not
+                        needed.</div>
+                </div>
             </div>
 
             {% if module_enabled('inventory') %}

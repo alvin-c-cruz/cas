@@ -49,6 +49,10 @@ class Product(db.Model):
     job_order_name = db.Column(db.String(200), nullable=True)
     default_unit_of_measure_id = db.Column(db.Integer, db.ForeignKey('units_of_measure.id'), nullable=True)
     default_unit_price = db.Column(db.Numeric(15, 2), nullable=True)   # VAT-inclusive
+    # Weight of ONE unit in KG (a 100 g pack is 0.1), for the second unit -- KG -- that the
+    # SO and Job Order Slip show beside the selling unit (owner, 4 Nov 2026; kgunit_0001).
+    # Blank = no KG figures for this product.
+    kg_per_unit = db.Column(db.Numeric(15, 6), nullable=True)
     default_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
     category_id = db.Column(db.Integer, db.ForeignKey('product_categories.id'), nullable=True)
     standard_cost = db.Column(db.Numeric(15, 2), nullable=True)
@@ -96,6 +100,7 @@ class Product(db.Model):
             'default_uom_code': self.default_unit_of_measure.code if self.default_unit_of_measure else None,
             'allowed_unit_ids': sorted(self.allowed_unit_ids()),
             'default_unit_price': float(self.default_unit_price) if self.default_unit_price is not None else None,
+            'kg_per_unit': float(self.kg_per_unit) if self.kg_per_unit is not None else None,
             'default_account_id': self.default_account_id,
             'category_id': self.category_id,
             'standard_cost': float(self.standard_cost) if self.standard_cost is not None else None,

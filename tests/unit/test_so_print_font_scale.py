@@ -103,7 +103,7 @@ def test_screen_chrome_was_not_scaled(selector):
 
 
 def test_the_grid_row_height_still_clears_the_larger_text():
-    """The 51px row floor must still exceed the cell's own content height.
+    """The row floor must still exceed the cell's own content height.
 
     12px text plus 3px padding top and bottom is ~21.6px; if the text ever grows
     past the floor the 10-row grid silently gets taller and the single-page
@@ -113,9 +113,12 @@ def test_the_grid_row_height_still_clears_the_larger_text():
     the grid and doubled the height (10 x 51 == the old 20 x 25.5 == 510px). The
     clearance therefore got MORE generous, not less -- but the number is pinned
     here so a later trim back toward the content height is a deliberate act.
+
+    Owner, 4 Nov 2026: single-line rows. 22px is the smallest floor that still clears
+    the ~21.6px content, so this is now the tight case it was written to guard.
     """
     css = io.open(TEMPLATE, encoding='utf-8').read()
-    assert 'table.particulars tbody td { height: 51px; }' in css
+    assert 'table.particulars tbody td { height: 22px; }' in css
     assert _declared_sizes()['.particulars'] == '12px'
     assert re.search(r'\.particulars td \{[^}]*padding:\s*3px', css), \
-        'cell padding changed -- recheck that content still fits the 25.5px floor'
+        'cell padding changed -- recheck that content still fits the 22px floor'

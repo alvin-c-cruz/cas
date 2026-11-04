@@ -8,7 +8,7 @@ from app.utils_helpers import (PHT, ph_now, ph_datetime, utc_to_pht, format_ph_d
 
 __all__ = ['PHT', 'ph_now', 'ph_datetime', 'utc_to_pht', 'format_ph_datetime', 'end_of_month',
            'this_month_iso',
-           'format_line_qty']
+           'format_line_qty', 'format_qty']
 
 def format_line_qty(item, blank=''):
     """Display a line item's quantity as entered: no trailing zeros, up to the
@@ -32,7 +32,12 @@ def format_line_qty(item, blank=''):
     emits a decimal point, so rstrip('0') can never eat a significant zero from
     the integer part: '20.0000' -> '20.' -> '20'.
     """
-    q = getattr(item, 'quantity', None)
+    return format_qty(getattr(item, 'quantity', None), blank)
+
+
+def format_qty(q, blank=''):
+    """A bare quantity the way format_line_qty shows a line's: no trailing zeros, up to 4
+    decimals, thousands separated. Used for the KG quantity beside the selling unit."""
     if q is None:
         return blank
     return '{:,.4f}'.format(q).rstrip('0').rstrip('.')

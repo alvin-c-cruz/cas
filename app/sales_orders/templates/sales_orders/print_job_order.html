@@ -99,17 +99,26 @@
     <table class="jo-table">
       <thead>
         <tr>
-          <th style="width:12%">Quantity</th>
-          <th style="width:34%">Description</th>
-          <th style="width:18%">PO Number</th>
-          <th style="width:16%">Delivery Date</th>
-          <th style="width:20%">Remarks</th>
+          {# Both units, unpriced (owner bug reports #3/#4, 30 Oct 2026): the selling unit
+             as ordered, then KG = qty x the product's KG per unit. #}
+          <th style="width:10%">Quantity</th>
+          <th style="width:7%">UOM</th>
+          <th style="width:9%">Quantity</th>
+          <th style="width:5%">UOM</th>
+          <th style="width:29%">Description</th>
+          <th style="width:13%">PO Number</th>
+          <th style="width:13%">Delivery Date</th>
+          <th style="width:14%">Remarks</th>
         </tr>
       </thead>
       <tbody>
         {% for item in so.line_items %}
         <tr>
           <td class="qty">{{ item | qty_fmt('—') }}</td>
+          <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
+          {% set kg = item.kg_quantity %}
+          <td class="qty">{{ kg | qty_num }}</td>
+          <td>{{ 'KG' if kg is not none else '' }}</td>
           <td>{% if item.product %}{{ item.product.job_order_name or item.product.name }}{% else %}—{% endif %}</td>
           <td>{{ so.customer_po_number or '—' }}</td>
           <td>{{ item.delivery_date.strftime('%d-%b-%Y') if item.delivery_date else '—' }}</td>
@@ -117,7 +126,7 @@
         </tr>
         {% endfor %}
         {% for _ in range(2) %}
-        <tr class="blank-row"><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>
+        <tr class="blank-row"><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
         {% endfor %}
       </tbody>
     </table>

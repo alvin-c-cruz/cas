@@ -27,6 +27,11 @@ class ProductForm(FlaskForm):
                                            coerce=int, validators=[Optional()])
     default_unit_price = DecimalField('Default Unit Price (₱, VAT-inclusive)', places=2,
                                       validators=[Optional(), NumberRange(min=0)])
+    # Weight of one unit in KG (a 100 g pack is 0.1): the SO and Job Order Slip show the
+    # line's KG quantity and price per KG from it (owner, 4 Nov 2026). Blank = none.
+    kg_per_unit = DecimalField('KG per unit', places=6,
+                               validators=[Optional(), NumberRange(min=0.000001,
+                                           message='KG per unit must be more than zero.')])
     default_account_id = SelectField('Default Account', validators=[Optional()], default='')
     category_id = SelectField('Category', validators=[Optional()], default='')
     standard_cost = DecimalField('Standard Cost (₱)', places=2,

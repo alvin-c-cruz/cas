@@ -36,12 +36,12 @@
      ruled space to write on, never the em-dash the real rows use for a missing
      value. `height` is a MINIMUM in table layout, so a wrapping cell grows.
 
-     51px, paired with the 10-row grid below (owner, 2026-08-31: half the rows,
-     taller rows). 10 x 51 == the old 20 x 25.5 == 510px, so the body occupies
-     the same slice of the sheet and the signature block does not move. Change
-     one of the two numbers and test_the_grid_still_occupies_the_same_total_height
-     goes red. */
-  table.particulars tbody td { height: 51px; }
+     22px, single-line rows (owner, 4 Nov 2026, from his edited Excel copy of this
+     form, where they are 20px; it replaces the 51px rows of 31 Aug). 22 rather than
+     20 because the cell's own content -- 12px text plus 3px padding top and bottom --
+     is ~21.6px, and a floor below the content is inert. The space the grid gives up
+     goes to the notes box, which stretches, so the signature block stays at the foot. */
+  table.particulars tbody td { height: 22px; }
 
   .so-header { text-align: center; border-bottom: 2px solid #111;
                padding-bottom: 10px; margin-bottom: 12px; }
@@ -256,12 +256,20 @@
            grid whose every other row is one line tall. Product now has 51%.
            Delivery date/site remain on the SO detail screen and the Job Order
            Slip; only the customer-facing printout drops them. #}
-        <th style="width:4%">#</th>
-        <th style="width:51%">Product</th>
-        <th style="width:14%">Qty</th>
+        {# A second Qty / UOM / Unit Price in KG before Amount (owner, 4 Nov 2026,
+           Philgen SO 0004: the customer's PO is in PACKS, the company weighs in KG).
+           KG qty = qty x the product's KG per unit; KG price = amount / KG qty. The
+           widths follow the owner's Excel copy, Product still the widest; table
+           layout widens a column whose figure needs more, taking it from Product. #}
+        <th style="width:3%">#</th>
+        <th style="width:37%">Product</th>
+        <th style="width:8%">Qty</th>
         <th style="width:7%">UOM</th>
-        <th style="width:7%">Unit Price</th>
-        <th style="width:17%">Amount</th>
+        <th style="width:8%">Unit Price</th>
+        <th style="width:8%">Qty</th>
+        <th style="width:6%">UOM</th>
+        <th style="width:9%">Unit Price</th>
+        <th style="width:14%">Amount</th>
       </tr>
     </thead>
     <tbody>
@@ -274,6 +282,12 @@
         <td class="amount">{{ item | qty_fmt('—') }}</td>
         <td class="uom">{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
         <td class="amount">{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}</td>
+        {# Blank, not an em dash, when the product has no KG per unit: there is nothing
+           missing, the line simply has no second unit. #}
+        {% set kg = item.kg_quantity %}
+        <td class="amount">{{ kg | qty_num }}</td>
+        <td class="uom">{{ 'KG' if kg is not none else '' }}</td>
+        <td class="amount">{% if item.kg_unit_price is not none %}{{ '{:,.2f}'.format(item.kg_unit_price) }}{% endif %}</td>
         <td class="amount">{{ '{:,.2f}'.format(item.amount) }}</td>
       </tr>
       {% endfor %}
@@ -283,12 +297,12 @@
          never a cap: silently dropping lines off a printed order would be far
          worse than a short page. #}
       {% for _ in range(10 - so.line_items|length) %}
-      <tr class="so-filler"><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr class="so-filler"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
       {% endfor %}
     </tbody>
     <tfoot>
       <tr>
-        <td colspan="5" style="text-align:right;font-weight:700">Total Sales</td>
+        <td colspan="8" style="text-align:right;font-weight:700">Total Sales</td>
         <td class="amount" style="font-weight:700">{{ '{:,.2f}'.format(so.total_amount) }}</td>
       </tr>
     </tfoot>

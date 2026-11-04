@@ -104,14 +104,17 @@ def test_the_grid_still_has_filler_rows(label, rel, selector):
         f'{label}: the grid no longer emits filler rows'
 
 
-def test_sales_order_grid_row_is_three_lines():
-    """Owner directive 2026-08-31: half the rows, taller rows.
+def test_sales_order_grid_row_is_single_line():
+    """Owner directive 2026-11-04: single-line rows (his edited Excel copy of the SO
+    print, which also added the KG columns). Before that, 2026-08-31: half the rows,
+    taller rows.
 
     17px was the base the SO grid inherited from the PR pattern. The 2026-08-21
     directive set 1.5 x 17 = 25.5px across a 20-row grid; 2026-08-31 halved the
     grid to 10 rows and doubled the height to 51px (3 x 17), so the body still
-    occupies 510px and the signature block does not move. See
-    test_so_print_page_layout.py, which pins that rows x height invariant.
+    occupied 510px. Since 4 Nov the rows are 22px -- one line, just above the cell's
+    ~21.6px content -- and the notes box takes the freed space, so the signature
+    block still sits at the foot (test_so_print_page_layout.py).
 
     The RR (19px) and PR (17px) are unchanged -- both directives named the SO
     only, and those two assertions below are what proves this change stayed
@@ -122,7 +125,7 @@ def test_sales_order_grid_row_is_three_lines():
     failing test.
     """
     css = (APP / 'sales_orders/templates/sales_orders/print.html').read_text(encoding='utf-8')
-    assert 'table.particulars tbody td { height: 51px; }' in css
+    assert 'table.particulars tbody td { height: 22px; }' in css
 
     pr = (APP / 'purchase_requests/templates/purchase_requests/print.html').read_text(encoding='utf-8')
     rr = (APP / 'receiving_reports/templates/receiving_reports/print.html').read_text(encoding='utf-8')
