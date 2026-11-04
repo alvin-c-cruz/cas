@@ -109,6 +109,16 @@ class SalesOrder(RowVersioned, db.Model):
         self.vat_amount = sum((Decimal(str(li.vat_amount or 0)) for li in self.line_items), Decimal('0.00'))
         self.total_amount = self.subtotal   # no WHT on an SO
 
+    @property
+    def total_kg(self):
+        """The order's weight: the sum of its lines' KG (owner, 4 Nov 2026 -- printed under
+        Weight in the SO's total row). None when the order has no lines or ANY line has no
+        weight: a sum over only some lines would read as the order's weight and be wrong."""
+        weights = [li.kg_quantity for li in self.line_items]
+        if not weights or any(w is None for w in weights):
+            return None
+        return sum(weights, Decimal('0'))
+
     def to_dict(self):
         return {'id': self.id, 'so_number': self.so_number,
                 'order_date': self.order_date.isoformat() if self.order_date else None,

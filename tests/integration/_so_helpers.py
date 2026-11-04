@@ -78,3 +78,29 @@ def _enable_products(db_session):
     AppSettings.set_setting('module_enabled:products', '1')
     db_session.commit()
     clear_module_config_cache()
+
+
+def _print_columns(table_html):
+    """The line table's columns, left to right, as a reader sees them under a header of
+    up to two rows: a top-row cell with colspan="n" is a group banner, and its n columns
+    are the next n cells of the second row; any other top-row cell spans both rows and is
+    a column of its own. A single-row header reads as itself."""
+    import re as _re
+    thead = _re.search(r'<thead>(.*?)</thead>', table_html, _re.S)
+    assert thead, 'no <thead> in the table'
+    rows = [_re.findall(r'<th\b([^>]*)>(.*?)</th>', tr, _re.S)
+            for tr in _re.findall(r'<tr[^>]*>(.*?)</tr>', thead.group(1), _re.S)]
+
+    def text(h):
+        return _re.sub(r'<[^>]+>', '', h).strip()
+
+    second = iter(rows[1] if len(rows) > 1 else [])
+    out = []
+    for attrs, label in rows[0]:
+        span = _re.search(r'colspan="(\d+)"', attrs)
+        if span:
+            out.extend(text(next(second)[1]) for _ in range(int(span.group(1))))
+        else:
+            out.append(text(label))
+    assert next(second, None) is None, 'second header row has cells no banner accounts for'
+    return out

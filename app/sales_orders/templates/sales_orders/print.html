@@ -95,6 +95,14 @@
   /* UOM is a short code ("KG", "PCS") under a centered header -- centering the
      cell keeps the column reading as one stack (owner, 2026-08-31). */
   .particulars td.uom { text-align: center; }
+  /* The two-row header (owner, 4 Nov 2026): AS ORDERED / BY WEIGHT banners over the
+     columns they own, at the ladder's label size. */
+  .particulars th.grp { letter-spacing: 1px; font-size: 10.8px; }
+  /* The BY WEIGHT columns are shaded so they read as reference figures beside the
+     ordered quantity the amount is computed from. print-color-adjust keeps the shade
+     on paper; browsers drop backgrounds when printing otherwise. */
+  .particulars .wt { background: #eef3f8; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .particulars th.wt { background: #dfe8f1; }
 
   .summary-block { max-width: 240px; margin-left: auto; margin-bottom: 10px; }
   .section-label { font-weight: 700; font-size: 12px; border: 1px solid #aaa;
@@ -256,20 +264,26 @@
            grid whose every other row is one line tall. Product now has 51%.
            Delivery date/site remain on the SO detail screen and the Job Order
            Slip; only the customer-facing printout drops them. #}
-        {# A second Qty / UOM / Unit Price in KG before Amount (owner, 4 Nov 2026,
-           Philgen SO 0004: the customer's PO is in PACKS, the company weighs in KG).
-           KG qty = qty x the product's KG per unit; KG price = amount / KG qty. The
-           widths follow the owner's Excel copy, Product still the widest; table
-           layout widens a column whose figure needs more, taking it from Product. #}
-        <th style="width:3%">#</th>
-        <th style="width:37%">Product</th>
+        {# The weight beside the ordered unit (owner, 4 Nov 2026, Philgen SO 0004: the
+           customer's PO is in PACKS, the company weighs in KG). Weight = qty x the
+           product's KG per unit; price per kg = amount / weight. Two groups under
+           banners -- AS ORDERED, then a shaded BY WEIGHT -- because two Qty / UOM /
+           Unit Price sets side by side read as the same thing twice (owner, same day,
+           from an approved sample). The unit is in the header, so the line carries no
+           repeated "KG". Product is still the widest; table layout widens a column
+           whose figure needs more, taking it from Product. #}
+        <th rowspan="2" style="width:3%">#</th>
+        <th rowspan="2" style="width:41%">Product</th>
+        <th colspan="3" class="grp">AS ORDERED</th>
+        <th colspan="2" class="grp wt">BY WEIGHT</th>
+        <th rowspan="2" style="width:14%">Amount</th>
+      </tr>
+      <tr>
         <th style="width:8%">Qty</th>
-        <th style="width:7%">UOM</th>
-        <th style="width:8%">Unit Price</th>
-        <th style="width:8%">Qty</th>
-        <th style="width:6%">UOM</th>
-        <th style="width:9%">Unit Price</th>
-        <th style="width:14%">Amount</th>
+        <th style="width:7%">Unit</th>
+        <th style="width:8%">Price</th>
+        <th class="wt" style="width:9%">Weight (kg)</th>
+        <th class="wt" style="width:10%">Price per kg</th>
       </tr>
     </thead>
     <tbody>
@@ -283,11 +297,9 @@
         <td class="uom">{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
         <td class="amount">{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}</td>
         {# Blank, not an em dash, when the product has no KG per unit: there is nothing
-           missing, the line simply has no second unit. #}
-        {% set kg = item.kg_quantity %}
-        <td class="amount">{{ kg | qty_num }}</td>
-        <td class="uom">{{ 'KG' if kg is not none else '' }}</td>
-        <td class="amount">{% if item.kg_unit_price is not none %}{{ '{:,.2f}'.format(item.kg_unit_price) }}{% endif %}</td>
+           missing, the line simply has no weight. #}
+        <td class="amount wt">{{ item.kg_quantity | qty_num }}</td>
+        <td class="amount wt">{% if item.kg_unit_price is not none %}{{ '{:,.2f}'.format(item.kg_unit_price) }}{% endif %}</td>
         <td class="amount">{{ '{:,.2f}'.format(item.amount) }}</td>
       </tr>
       {% endfor %}
@@ -297,12 +309,17 @@
          never a cap: silently dropping lines off a printed order would be far
          worse than a short page. #}
       {% for _ in range(10 - so.line_items|length) %}
-      <tr class="so-filler"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr class="so-filler"><td></td><td></td><td></td><td></td><td></td><td class="wt"></td><td class="wt"></td><td></td></tr>
       {% endfor %}
     </tbody>
     <tfoot>
+      {# Each total under its own column: the weight under Weight (kg), the amount under
+         Amount. "Total", not "Total Sales", since the row now carries a weight too. The
+         weight is blank when any line has none (SalesOrder.total_kg). #}
       <tr>
-        <td colspan="8" style="text-align:right;font-weight:700">Total Sales</td>
+        <td colspan="5" style="text-align:right;font-weight:700">Total</td>
+        <td class="amount wt" style="font-weight:700">{{ so.total_kg | qty_num }}</td>
+        <td class="wt"></td>
         <td class="amount" style="font-weight:700">{{ '{:,.2f}'.format(so.total_amount) }}</td>
       </tr>
     </tfoot>

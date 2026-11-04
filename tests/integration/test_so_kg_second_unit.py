@@ -13,6 +13,14 @@ Owner's layout and answers, 4 Nov 2026 (Excel copy of the SO print, edited by hi
   - the 10 line rows are single-line height (his Excel), not the 51px rows of 31 Aug;
   - the SO screens show the KG figures too, computed, never typed.
 
+Owner, later on 4 Nov 2026 ("the two UOM looks confusing"), from a sample he approved:
+  - GROUPED HEADERS: "AS ORDERED" over Qty / Unit / Price, "BY WEIGHT" over Weight (kg) /
+    Price per kg, then Amount. The repeated KG column goes -- the unit is in the header;
+  - the weight columns are SHADED, so they read as the reference figures they are;
+  - the TOTAL WEIGHT prints in the footer, under Weight, beside the total amount;
+  - the Job Order slip and the SO screens use the SAME WORDS (Qty, Unit, Weight (kg),
+    Price per kg).
+
 SO 0004's real figures are the fixture: 2,000 PACKS @ 100.80 = 201,600.00 -> 200 KG @
 1,008.00; 300 PACKS @ 67.20 = 20,160.00 -> 30 KG @ 672.00.
 """
@@ -28,12 +36,12 @@ from app import db
 from app.sales_orders.models import SalesOrder, SalesOrderItem
 
 from tests.integration._so_helpers import (
-    sales_orders_module_enabled, _login, _select_branch, _customer,
+    sales_orders_module_enabled, _login, _select_branch, _customer, _print_columns,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
-PRINT_HEADERS = ['#', 'Product', 'Qty', 'UOM', 'Unit Price', 'Qty', 'UOM', 'Unit Price', 'Amount']
+PRINT_COLUMNS = ['#', 'Product', 'Qty', 'Unit', 'Price', 'Weight (kg)', 'Price per kg', 'Amount']
 
 
 def _uom(code):
@@ -114,6 +122,27 @@ def test_a_line_without_quantity_has_no_kg_figures(db_session, main_branch):
     line.quantity = None
     assert line.kg_quantity is None
     assert line.kg_unit_price is None
+
+
+def test_the_order_weight_is_the_sum_of_its_lines(db_session, main_branch):
+    so = _so_0004(db_session, main_branch)
+    assert so.total_kg == Decimal('230')
+
+
+def test_the_order_has_no_weight_when_a_line_has_none(db_session, main_branch):
+    """A sum over only some lines would read as the order's weight and be wrong, so the
+    total is blank instead (Claude's judgment, 4 Nov 2026 -- the owner may overrule)."""
+    so = _so_0004(db_session, main_branch, papaya_factor=None)
+    assert so.total_kg is None
+
+
+def test_an_order_without_lines_has_no_weight(db_session, main_branch):
+    c = _customer(db_session)
+    so = SalesOrder(so_number='SO-KG-EMPTY', order_date=datetime.date(2026, 11, 4),
+                    customer_id=c.id, customer_name='Acme', branch_id=main_branch.id,
+                    status='draft')
+    db.session.add(so); db.session.commit()
+    assert so.total_kg is None
 
 
 def test_the_product_dict_carries_kg_per_unit(db_session):
@@ -203,46 +232,92 @@ def _body_rows(table):
     return re.findall(r'<tr[^>]*>.*?</tr>', body, re.S)
 
 
+def _foot(page):
+    return re.search(r'<tfoot.*?</tfoot>', _particulars(page), re.S).group(0)
+
+
+def _classes(attrs):
+    m = re.search(r'class="([^"]*)"', attrs)
+    return set(m.group(1).split()) if m else set()
+
+
+def _print(client, admin_user, main_branch, so):
+    _login(client, admin_user); _select_branch(client, main_branch.id)
+    return client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
+
+
 @pytest.fixture
 def printed(client, db_session, admin_user, main_branch, sales_orders_module_enabled):
+    """Papaya has no KG per unit: one line with a weight, one without."""
     so = _so_0004(db_session, main_branch, papaya_factor=None)
-    _login(client, admin_user); _select_branch(client, main_branch.id)
-    return so, client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
+    return so, _print(client, admin_user, main_branch, so)
 
 
-def test_the_print_has_the_second_qty_uom_price_group_before_amount(printed):
+def test_the_print_columns_are_as_ordered_then_by_weight_then_amount(printed):
     so, page = printed
-    headers = [re.sub(r'<[^>]+>', '', h).strip()
-               for h in re.findall(r'<th[^>]*>.*?</th>', _particulars(page), re.S)]
-    assert headers == PRINT_HEADERS
+    assert _print_columns(_particulars(page)) == PRINT_COLUMNS
 
 
-def test_a_line_prints_its_kg_quantity_unit_and_price(printed):
+def test_the_group_banners_head_their_columns(printed):
+    so, page = printed
+    thead = re.search(r'<thead>.*?</thead>', _particulars(page), re.S).group(0)
+    assert re.search(r'<th colspan="3"[^>]*>AS ORDERED</th>', thead)
+    assert re.search(r'<th colspan="2"[^>]*>BY WEIGHT</th>', thead)
+
+
+def test_a_line_prints_its_weight_and_price_per_kg(printed):
+    """No "KG" in the line any more: the unit is in the column header."""
     so, page = printed
     mango = _cells(_body_rows(_particulars(page))[0])
     assert mango == ['1', 'A ONE DRIED MANGO SLICES 100g', '2,000', 'PACKS', '100.80',
-                     '200', 'KG', '1,008.00', '201,600.00']
+                     '200', '1,008.00', '201,600.00']
 
 
-def test_a_line_whose_product_has_no_kg_per_unit_leaves_the_kg_cells_blank(printed):
+def test_a_line_whose_product_has_no_kg_per_unit_leaves_the_weight_cells_blank(printed):
     so, page = printed
     papaya = _cells(_body_rows(_particulars(page))[1])
     assert papaya[2:5] == ['300', 'PACKS', '67.20']
-    assert papaya[5:8] == ['', '', '']
-    assert papaya[8] == '20,160.00'
+    assert papaya[5:7] == ['', '']
+    assert papaya[7] == '20,160.00'
 
 
-def test_every_print_body_row_has_nine_cells(printed):
+def test_every_print_body_row_has_eight_cells(printed):
     so, page = printed
     counts = {len(re.findall(r'<td', r)) for r in _body_rows(_particulars(page))}
-    assert counts == {9}
+    assert counts == {8}
 
 
-def test_total_sales_spans_up_to_the_amount_column(printed):
+def test_the_weight_columns_are_shaded_on_every_row(printed):
+    """Data rows and the blank grid alike, so the band runs the height of the table."""
     so, page = printed
-    foot = re.search(r'<tfoot.*?</tfoot>', _particulars(page), re.S).group(0)
-    assert 'colspan="8"' in foot
-    assert '221,760.00' in foot
+    for row in _body_rows(_particulars(page)):
+        tds = re.findall(r'<td([^>]*)>', row)
+        assert [i for i, a in enumerate(tds) if 'wt' in _classes(a)] == [5, 6], row
+    heads = re.findall(r'<th\b([^>]*)>(.*?)</th>', _particulars(page), re.S)
+    shaded = [label for attrs, label in heads if 'wt' in _classes(attrs)]
+    assert shaded == ['BY WEIGHT', 'Weight (kg)', 'Price per kg']
+
+
+def test_the_shading_survives_printing(printed):
+    """Browsers drop backgrounds when printing unless told not to."""
+    so, page = printed
+    rule = re.search(r'\.particulars \.wt \{[^}]*\}', page)
+    assert rule, 'no rule for the shaded weight cells'
+    assert re.search(r'background:\s*#[0-9a-fA-F]{3,6}', rule.group(0))
+    assert re.search(r'(?<!-)print-color-adjust:\s*exact', rule.group(0))
+
+
+def test_the_total_row_prints_the_total_weight_under_weight(client, db_session, admin_user,
+                                                           main_branch, sales_orders_module_enabled):
+    so = _so_0004(db_session, main_branch)            # both lines have a weight
+    foot = _foot(_print(client, admin_user, main_branch, so))
+    assert _cells(foot) == ['Total', '230', '', '221,760.00']
+    assert re.search(r'<td colspan="5"[^>]*>Total</td>', foot)
+
+
+def test_the_total_weight_is_blank_when_a_line_has_no_weight(printed):
+    so, page = printed
+    assert _cells(_foot(page)) == ['Total', '', '', '221,760.00']
 
 
 def test_the_print_rows_are_single_line_height(printed):
@@ -253,13 +328,15 @@ def test_the_print_rows_are_single_line_height(printed):
 
 # ---- the SO screens --------------------------------------------------------------------
 
-def test_the_so_detail_shows_kg_quantity_and_kg_price(client, db_session, admin_user, main_branch,
-                                                       sales_orders_module_enabled):
+def test_the_so_detail_shows_weight_and_price_per_kg(client, db_session, admin_user, main_branch,
+                                                     sales_orders_module_enabled):
+    """The printout's words, not "KG" / "Price / KG"."""
     so = _so_0004(db_session, main_branch)
     _login(client, admin_user); _select_branch(client, main_branch.id)
     page = client.get(f'/sales-orders/{so.id}').get_data(as_text=True)
-    assert '>KG<' in re.sub(r'\s+', '', page) or 'KG</th>' in page
-    assert 'Price / KG' in page
+    heads = [re.sub(r'<[^>]+>', '', h).strip() for h in re.findall(r'<th\b[^>]*>.*?</th>', page, re.S)]
+    assert 'Weight (kg)' in heads and 'Price per kg' in heads
+    assert 'KG' not in heads and 'Price / KG' not in heads
     text = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', page))
     assert '200 KG' in text or re.search(r'\b200\b.*1,008\.00', text)
     assert '1,008.00' in text and '672.00' in text
@@ -271,24 +348,30 @@ def test_the_so_form_has_the_kg_columns_and_the_factor(client, db_session, admin
     _login(client, admin_user); _select_branch(client, main_branch.id)
     page = client.get(f'/sales-orders/{so.id}/edit').get_data(as_text=True)
     thead = re.search(r'<thead>.*?</thead>', page[page.index('Unit Price') - 2000:], re.S).group(0)
-    assert 'KG' in thead and 'Price / KG' in thead
+    heads = [re.sub(r'<[^>]+>', '', h).strip() for h in re.findall(r'<th\b[^>]*>.*?</th>', thead, re.S)]
+    assert 'Weight (kg)' in heads and 'Price per kg' in heads
+    assert 'KG' not in heads and 'Price / KG' not in heads
     assert '"kg_per_unit": 0.1' in page or '"kg_per_unit":0.1' in page
     assert 'function refreshKg' in page
 
 
 # ---- the Job Order Slip ----------------------------------------------------------------
 
-def test_the_job_order_slip_prints_both_units(client, db_session, admin_user, main_branch,
-                                              sales_orders_module_enabled):
+def test_the_job_order_slip_prints_the_weight_beside_the_ordered_unit(client, db_session, admin_user,
+                                                                      main_branch, sales_orders_module_enabled):
+    """The printout's words: Qty, Unit, Weight (kg). Seven columns, every row."""
     so = _so_0004(db_session, main_branch, papaya_factor=None)
     _login(client, admin_user); _select_branch(client, main_branch.id)
     page = client.get(f'/sales-orders/{so.so_number}/print-job-order').get_data(as_text=True)
     table = re.search(r'<table class="jo-table".*?</table>', page, re.S).group(0)
-    headers = [re.sub(r'<[^>]+>', '', h).strip() for h in re.findall(r'<th[^>]*>.*?</th>', table, re.S)]
-    assert headers[:4] == ['Quantity', 'UOM', 'Quantity', 'UOM']
+    headers = [re.sub(r'<[^>]+>', '', h).strip() for h in re.findall(r'<th\b[^>]*>.*?</th>', table, re.S)]
+    assert headers == ['Qty', 'Unit', 'Weight (kg)', 'Description', 'PO Number',
+                       'Delivery Date', 'Remarks']
     rows = re.findall(r'<tr>\s*<td class="qty">.*?</tr>', table, re.S)
     mango, papaya = _cells(rows[0]), _cells(rows[1])
-    assert mango[:4] == ['2,000', 'PACKS', '200', 'KG']
-    assert papaya[:4] == ['300', 'PACKS', '', '']
+    assert mango[:3] == ['2,000', 'PACKS', '200']
+    assert papaya[:3] == ['300', 'PACKS', '']
+    body = re.search(r'<tbody.*?</tbody>', table, re.S).group(0)
+    assert {len(re.findall(r'<td', r)) for r in re.findall(r'<tr[^>]*>.*?</tr>', body, re.S)} == {7}
     # still unpriced: the slip goes to production
     assert '100.80' not in table and '1,008.00' not in table
