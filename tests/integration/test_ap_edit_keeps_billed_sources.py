@@ -17,13 +17,17 @@ The create path has always guarded this (`po.vendor_id != ap.vendor_id` ->
 missing half.
 """
 import json
+import pathlib
+import re
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
 from app import db
 from app.accounts_payable.models import AccountsPayable
 from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
 from app.vendors.models import Vendor
 
 pytestmark = [pytest.mark.integration]
@@ -181,3 +185,198 @@ class TestADraftBillCannotAbandonWhatItBilled:
         db.session.refresh(ap)
         assert ap.vendor_id == johnson.id, \
             'a bill with no billed source must still be freely re-pointed'
+
+
+# ---------------------------------------------------------------------------
+# Each LINE keeps its link to the PO/RR line it billed.
+# ---------------------------------------------------------------------------
+
+FORM_HTML = (pathlib.Path(__file__).resolve().parents[2] / 'app' / 'accounts_payable'
+             / 'templates' / 'accounts_payable' / 'form.html')
+
+
+def _rr(db_session, branch, po, received=60, number='RR-APEDIT-0001'):
+    rr = ReceivingReport(branch_id=branch.id, rr_number=number, receipt_date=date(2026, 7, 11),
+                         vendor_id=po.vendor_id, vendor_name=po.vendor_name, status='approved')
+    rr.line_items.append(ReceivingReportItem(line_number=1,
+                                             purchase_order_item_id=po.line_items[0].id,
+                                             received_quantity=Decimal(str(received))))
+    db_session.add(rr); db_session.commit()
+    return rr
+
+
+def _billed_line(expense, *, po_item_id=None, rr_item_id=None, qty=60, price=11):
+    """One line as the PO/RR billing picker injects it (ap_po_billing.js injectLines)."""
+    return {
+        'description': 'Plastic pouch', 'amount': float(qty * price),
+        'quantity': qty, 'unit_price': price,
+        'vat_category': None, 'account_id': expense.id, 'wt_id': None, 'wt_rate': None,
+        'source_po_item_id': po_item_id, 'source_rr_item_id': rr_item_id,
+    }
+
+
+def _lines_the_edit_page_loads(client, ap):
+    """The `existingItems` the edit page hands its JavaScript -- the only line data
+    the browser has when the user saves."""
+    page = client.get(f'/accounts-payable/{ap.id}/edit').data.decode()
+    m = re.search(r'const existingItems = (.*?);\n', page)
+    assert m, 'the edit page no longer renders existingItems -- update this helper'
+    return json.loads(m.group(1))
+
+
+def _as_the_browser_posts(items):
+    """form.html's submit handler, key for key: what the browser sends back for each
+    loaded line. initItems() first maps unit_of_measure_id onto uom_id."""
+    out = []
+    for it in items:
+        uom_id = it['uom_id'] if 'uom_id' in it else it.get('unit_of_measure_id')
+        out.append({
+            'description': it.get('description'),
+            'amount': it.get('amount'),
+            'product_id': it.get('product_id') or None,
+            'quantity': it.get('quantity'),
+            'uom_id': uom_id or None,
+            'uom_text': it.get('uom_text') or '',
+            'unit_price': it.get('unit_price'),
+            'vat_category': it.get('vat_category'),
+            'account_id': it.get('account_id'),
+            'wt_id': it.get('wt_id'),
+            'wt_rate': it.get('wt_rate'),
+            'source_po_item_id': it.get('source_po_item_id') or None,
+            'source_rr_item_id': it.get('source_rr_item_id') or None,
+        })
+    return out
+
+
+class TestAnEditKeepsEachLineLinkedToItsSource:
+    """THE INCIDENT (philgen, 2 Nov 2026): APV 00054 was created by billing RR 00768,
+    both lines linked to their RR (and PO) lines. Nine minutes later the owner opened
+    the edit form only to change the invoice and due dates, and saved. Both lines came
+    back with source_rr_item_id / source_po_item_id NULL and the variance snapshot
+    gone, while the RR still said 'billed' to that voucher. APV 00053 likewise.
+
+    The edit page serialises the lines through AccountsPayableItem.to_dict(), which
+    did not carry the link fields; the form posts back only what it loaded, and edit()
+    rebuilds every line from that post. So ANY save unlinked EVERY line.
+
+    These tests take the lines from the rendered edit page and post them back the way
+    the browser does -- a hand-written POST carrying the ids would pass while the real
+    form kept failing."""
+
+    def test_rr_billed_lines_keep_their_links_when_only_a_date_changes(
+            self, client, db_session, admin_user, main_branch, two_vendors_and_account):
+        rotopack, _johnson, expense = two_vendors_and_account
+        _login(client, admin_user, main_branch)
+        po = _po(db_session, main_branch, rotopack)
+        rr = _rr(db_session, main_branch, po, received=60)
+        rr_item_id, po_item_id = rr.line_items[0].id, po.line_items[0].id
+        client.post('/accounts-payable/create', data=_form_data(
+            rotopack, expense, source_rr_ids=json.dumps([rr.id]),
+            line_items=json.dumps([_billed_line(expense, rr_item_id=rr_item_id)])),
+            follow_redirects=True)
+        ap = AccountsPayable.query.one()
+        line = ap.line_items[0]
+        assert (line.source_rr_item_id, line.source_po_item_id) == (rr_item_id, po_item_id), \
+            'setup failed: the bill was not created linked to the RR line'
+
+        posted = _as_the_browser_posts(_lines_the_edit_page_loads(client, ap))
+        _edit(client, ap, rotopack, expense, due_date=date(2026, 9, 11).isoformat(),
+              line_items=json.dumps(posted))
+
+        db.session.expire_all()
+        ap = db.session.get(AccountsPayable, ap.id)
+        assert ap.due_date == date(2026, 9, 11), 'setup failed: the edit did not save'
+        line = ap.line_items[0]
+        assert line.source_rr_item_id == rr_item_id, 'the edit unlinked the line from its RR line'
+        assert line.source_po_item_id == po_item_id, 'the edit unlinked the line from its PO line'
+        assert line.matched_unit_price == Decimal('10.00')
+        assert line.matched_quantity == Decimal('60.0000')
+        assert line.price_variance == Decimal('1.00'), 'the variance snapshot was lost'
+        rr = db.session.get(ReceivingReport, rr.id)
+        assert (rr.status, rr.accounts_payable_id) == ('billed', ap.id)
+
+    def test_po_billed_lines_keep_their_link_when_only_a_date_changes(
+            self, client, db_session, admin_user, main_branch, two_vendors_and_account):
+        rotopack, _johnson, expense = two_vendors_and_account
+        _login(client, admin_user, main_branch)
+        po = _po(db_session, main_branch, rotopack)
+        po_item_id = po.line_items[0].id
+        client.post('/accounts-payable/create', data=_form_data(
+            rotopack, expense, source_po_ids=json.dumps([po.id]),
+            line_items=json.dumps([_billed_line(expense, po_item_id=po_item_id,
+                                                 qty=80, price=10)])),
+            follow_redirects=True)
+        ap = AccountsPayable.query.one()
+        assert ap.line_items[0].source_po_item_id == po_item_id, 'setup failed'
+
+        posted = _as_the_browser_posts(_lines_the_edit_page_loads(client, ap))
+        _edit(client, ap, rotopack, expense, due_date=date(2026, 9, 11).isoformat(),
+              line_items=json.dumps(posted))
+
+        db.session.expire_all()
+        ap = db.session.get(AccountsPayable, ap.id)
+        assert ap.due_date == date(2026, 9, 11), 'setup failed: the edit did not save'
+        line = ap.line_items[0]
+        assert line.source_po_item_id == po_item_id, 'the edit unlinked the line from its PO line'
+        assert line.source_rr_item_id is None
+        assert line.matched_unit_price == Decimal('10.00')
+        assert line.matched_quantity == Decimal('100.0000')
+        assert line.quantity_variance == Decimal('-20.0000')
+
+    def test_the_edit_page_carries_the_variance_snapshot(
+            self, client, db_session, admin_user, main_branch, two_vendors_and_account):
+        """checkVariance() in form.html reads matched_unit_price / matched_quantity off
+        the loaded line; without them the 'Ordered @ ...' note never shows on the edit
+        page, even for a line that is still linked."""
+        rotopack, _johnson, expense = two_vendors_and_account
+        _login(client, admin_user, main_branch)
+        po = _po(db_session, main_branch, rotopack)
+        rr = _rr(db_session, main_branch, po, received=60)
+        client.post('/accounts-payable/create', data=_form_data(
+            rotopack, expense, source_rr_ids=json.dumps([rr.id]),
+            line_items=json.dumps([_billed_line(expense, rr_item_id=rr.line_items[0].id)])),
+            follow_redirects=True)
+        ap = AccountsPayable.query.one()
+
+        loaded = _lines_the_edit_page_loads(client, ap)[0]
+        assert loaded.get('source_rr_item_id') == rr.line_items[0].id
+        assert loaded.get('source_po_item_id') == po.line_items[0].id
+        assert loaded.get('matched_unit_price') == 10.0
+        assert loaded.get('matched_quantity') == 60.0
+
+    def test_a_line_added_in_the_edit_form_saves_unlinked(
+            self, client, db_session, admin_user, main_branch, two_vendors_and_account):
+        """CONTROL. A line typed in by hand on the edit form has no source; it must not
+        borrow one, and the billed line beside it must keep its own."""
+        rotopack, _johnson, expense = two_vendors_and_account
+        _login(client, admin_user, main_branch)
+        po = _po(db_session, main_branch, rotopack)
+        rr = _rr(db_session, main_branch, po, received=60)
+        rr_item_id = rr.line_items[0].id
+        client.post('/accounts-payable/create', data=_form_data(
+            rotopack, expense, source_rr_ids=json.dumps([rr.id]),
+            line_items=json.dumps([_billed_line(expense, rr_item_id=rr_item_id)])),
+            follow_redirects=True)
+        ap = AccountsPayable.query.one()
+
+        posted = _as_the_browser_posts(_lines_the_edit_page_loads(client, ap))
+        posted += _as_the_browser_posts([{'description': 'Freight', 'amount': 150.0,
+                                          'account_id': expense.id}])
+        _edit(client, ap, rotopack, expense, line_items=json.dumps(posted))
+
+        db.session.expire_all()
+        lines = sorted(db.session.get(AccountsPayable, ap.id).line_items,
+                       key=lambda l: l.line_number)
+        assert len(lines) == 2, 'setup failed: the edit did not save the added line'
+        assert lines[0].source_rr_item_id == rr_item_id
+        assert (lines[1].source_po_item_id, lines[1].source_rr_item_id) == (None, None)
+        assert (lines[1].matched_unit_price, lines[1].matched_quantity) == (None, None)
+
+    def test_the_form_still_posts_the_source_ids_back(self):
+        """Keeps _as_the_browser_posts honest: if the submit handler stops sending the
+        ids, the round-trip tests above would be testing a form that no longer exists."""
+        text = FORM_HTML.read_text(encoding='utf-8')
+        start = text.index("getElementById('billForm').addEventListener('submit'")
+        handler = text[start:text.index('});', start)]
+        assert 'source_po_item_id: item.source_po_item_id || null' in handler
+        assert 'source_rr_item_id: item.source_rr_item_id || null' in handler

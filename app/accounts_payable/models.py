@@ -354,6 +354,17 @@ class AccountsPayableItem(db.Model):
             'wt_id': self.wt_id,
             'wt_rate': float(self.wt_rate) if self.wt_rate is not None else None,
             'wt_amount': float(self.wt_amount),
+            # The edit form posts back only what this payload gave it, and edit()
+            # rebuilds every line from that post -- so a link left out here is a link
+            # erased on every save (philgen APV 00053/00054, Nov 2026). The server
+            # re-derives matched_* from the source ids; they are sent so the form's
+            # variance note shows on the edit page.
+            'source_po_item_id': self.source_po_item_id,
+            'source_rr_item_id': self.source_rr_item_id,
+            'matched_unit_price': (float(self.matched_unit_price)
+                                   if self.matched_unit_price is not None else None),
+            'matched_quantity': (float(self.matched_quantity)
+                                 if self.matched_quantity is not None else None),
         }
 
 
