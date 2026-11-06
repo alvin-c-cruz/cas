@@ -100,15 +100,16 @@
       <thead>
         <tr>
           {# Both units, unpriced (owner bug reports #3/#4, 30 Oct 2026): the selling unit
-             as ordered, then the weight = qty x the product's KG per unit. The SO
-             printout's words, Qty / Unit / Weight (kg) (owner, 4 Nov 2026). #}
-          <th style="width:10%">Qty</th>
+             as ordered, then the line in the company's inventory unit = qty x the
+             product's inventory qty per unit (owner, 4-5 Nov 2026: KG, CANS ...). #}
+          <th style="width:9%">Qty</th>
           <th style="width:7%">Unit</th>
-          <th style="width:10%">Weight (kg)</th>
-          <th style="width:33%">Description</th>
+          <th style="width:9%">Inventory Qty</th>
+          <th style="width:8%">Inventory Unit</th>
+          <th style="width:29%">Description</th>
           <th style="width:13%">PO Number</th>
-          <th style="width:13%">Delivery Date</th>
-          <th style="width:14%">Remarks</th>
+          <th style="width:12%">Delivery Date</th>
+          <th style="width:13%">Remarks</th>
         </tr>
       </thead>
       <tbody>
@@ -116,7 +117,8 @@
         <tr>
           <td class="qty">{{ item | qty_fmt('—') }}</td>
           <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
-          <td class="qty">{{ item.kg_quantity | qty_num }}</td>
+          <td class="qty">{{ item.inventory_quantity | qty_num }}</td>
+          <td>{{ item.inventory_unit_code or '' }}</td>
           <td>{% if item.product %}{{ item.product.job_order_name or item.product.name }}{% else %}—{% endif %}</td>
           <td>{{ so.customer_po_number or '—' }}</td>
           <td>{{ item.delivery_date.strftime('%d-%b-%Y') if item.delivery_date else '—' }}</td>
@@ -124,7 +126,7 @@
         </tr>
         {% endfor %}
         {% for _ in range(2) %}
-        <tr class="blank-row"><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr class="blank-row"><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
         {% endfor %}
       </tbody>
     </table>

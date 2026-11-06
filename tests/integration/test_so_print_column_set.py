@@ -3,8 +3,9 @@
 Owner, 4 Nov 2026 (his edited Excel copy of this form): a second Qty / UOM / Unit
 Price, in KG, now sits between the first and Amount. Later the same day he found the two
 units confusing and approved GROUPED HEADERS: "AS ORDERED" over Qty / Unit / Price, "BY
-WEIGHT" over Weight (kg) / Price per kg, then Amount -- eight columns under a two-row
-header (test_so_kg_second_unit.py covers the weight figures).
+WEIGHT" over Weight (kg) / Price per kg, then Amount. On 5 Nov 2026 the second group became
+"COMPANY INVENTORY" over its own Qty / Unit / Price (any unit, e.g. CANS, not only KG) --
+nine columns under a two-row header (test_so_company_inventory.py covers the figures).
 
 Owner directive 2026-08-31, from a live PhilGen order: the product name
 "DRIED PAPAYA CHUNKS (RED LADY PAPAYA VARIETY) (LOW SUGAR, LOW SO2 200ppm)"
@@ -38,7 +39,7 @@ from tests.integration._so_helpers import (
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
-KEPT = ['#', 'Product', 'Qty', 'Unit', 'Price', 'Weight (kg)', 'Price per kg', 'Amount']
+KEPT = ['#', 'Product', 'Qty', 'Unit', 'Price', 'Qty', 'Unit', 'Price', 'Amount']
 DROPPED = ['VT', 'Delivery Date', 'Delivery Site']
 
 #: As long as the name that triggered this, so the fix is exercised against the
@@ -83,7 +84,7 @@ def printed(client, db_session, admin_user, main_branch, sales_orders_module_ena
     return so, html
 
 
-def test_the_line_table_carries_exactly_the_eight_kept_columns(printed):
+def test_the_line_table_carries_exactly_the_nine_kept_columns(printed):
     so, html = printed
     assert _print_columns(_particulars(html)) == KEPT
 
@@ -113,8 +114,8 @@ def test_expected_delivery_survives_in_the_header_block(printed):
     assert 'Expected Delivery' in html
 
 
-def test_every_body_row_has_eight_cells(printed):
-    """The filler grid included. A row emitting a ninth <td> widens the table
+def test_every_body_row_has_nine_cells(printed):
+    """The filler grid included. A row emitting a tenth <td> widens the table
     past its own header set -- invisible to a header-only assertion."""
     so, html = printed
     table = _particulars(html)
@@ -122,19 +123,19 @@ def test_every_body_row_has_eight_cells(printed):
     rows = re.findall(r'<tr[^>]*>.*?</tr>', body, re.S)
     assert rows, 'no body rows rendered'
     counts = {len(re.findall(r'<td', r)) for r in rows}
-    assert counts == {8}, f'body rows have varying cell counts: {sorted(counts)}'
+    assert counts == {9}, f'body rows have varying cell counts: {sorted(counts)}'
 
 
-def test_the_totals_row_spans_the_eight_columns(printed):
-    """`Total` labels columns 1-5, the total weight sits under Weight and the total
-    amount under Amount, so the row must account for exactly eight columns -- no
-    leftover trailing cells."""
+def test_the_totals_row_spans_the_nine_columns(printed):
+    """`Total` labels columns 1-5, the inventory total and its unit sit under COMPANY
+    INVENTORY's Qty and Unit, and the total amount under Amount, so the row must account
+    for exactly nine columns -- no leftover trailing cells."""
     so, html = printed
     foot = re.search(r'<tfoot.*?</tfoot>', _particulars(html), re.S).group(0)
     cells = re.findall(r'<td[^>]*>', foot)
     spans = sum(int(re.search(r'colspan="(\d+)"', c).group(1)) if 'colspan' in c else 1
                 for c in cells)
-    assert spans == 8, f'totals row spans {spans} columns, expected 8'
+    assert spans == 9, f'totals row spans {spans} columns, expected 9'
 
 # --- header + cell presentation (owner, 2026-08-31) -------------------------
 
@@ -200,14 +201,17 @@ def test_the_column_widths_are_the_agreed_split_and_total_100(printed):
     complains if they stop summing to 100%, the browser just reflows.
 
     Qty and Unit Price were swapped on owner request (2026-08-31). Since 4 Nov 2026
-    the weight group takes its share; Product is still the widest column. The group
-    banners carry no width of their own -- the columns under them do.
+    the second group takes its share (COMPANY INVENTORY since 5 Nov: Qty / Unit / Price);
+    Product is still the widest column. The group banners carry no width of their own --
+    the columns under them do. A list, not a dict: Qty / Unit / Price appear twice.
     """
     so, html = printed
     ths = re.findall(r'<th\b([^>]*)>(.*?)</th>', _particulars(html), re.S)
-    widths = {re.sub(r'<[^>]+>', '', label).strip(): int(re.search(r'width:\s*(\d+)%', attrs).group(1))
-              for attrs, label in ths if 'width' in attrs}
-    assert widths == {'#': 3, 'Product': 41, 'Qty': 8, 'Unit': 7, 'Price': 8,
-                      'Weight (kg)': 9, 'Price per kg': 10, 'Amount': 14}
-    assert max(widths.values()) == widths['Product']
-    assert sum(widths.values()) == 100
+    widths = [(re.sub(r'<[^>]+>', '', label).strip(), int(re.search(r'width:\s*(\d+)%', attrs).group(1)))
+              for attrs, label in ths if 'width' in attrs]
+    # source order: the row-spanning #, Product, Amount, then the six grouped columns
+    assert widths == [('#', 3), ('Product', 36), ('Amount', 14),
+                      ('Qty', 8), ('Unit', 7), ('Price', 8),       # AS ORDERED
+                      ('Qty', 8), ('Unit', 7), ('Price', 9)]       # COMPANY INVENTORY
+    assert max(n for _, n in widths) == 36
+    assert sum(n for _, n in widths) == 100

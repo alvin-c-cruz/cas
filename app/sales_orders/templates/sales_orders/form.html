@@ -110,19 +110,21 @@
                     <thead>
                         <tr>
                             <th style="width: 1%; white-space: nowrap; color: var(--text-2);">#</th>
-                            <th style="width: 16%;">Product</th>
+                            <th style="width: 14%;">Product</th>
                             <th style="width: 8%; text-align: right;">Qty</th>
                             <th style="width: 6%;">UOM</th>
                             <th style="width: 7%; text-align: right;">Unit Price</th>
-                            {# Computed from the product's KG per unit, never typed, under the SO
-                               printout's words (owner, 4 Nov 2026). #}
-                            <th style="width: 6%; text-align: right;">Weight (kg)</th>
-                            <th style="width: 7%; text-align: right;">Price per kg</th>
+                            {# The line in the company's inventory unit, computed from the
+                               product, never typed (COMPANY INVENTORY on the printout; owner,
+                               4-5 Nov 2026). #}
+                            <th style="width: 6%; text-align: right;">Inventory Qty</th>
+                            <th style="width: 5%;">Inventory Unit</th>
+                            <th style="width: 7%; text-align: right;">Inventory Price</th>
                             <th style="width: 9%; text-align: right;">Amount (VAT-incl.)</th>
-                            <th style="width: 8%;">VT</th>
+                            <th style="width: 7%;">VT</th>
                             <th style="width: 8%;">WT</th>
                             <th style="width: 8%;">Delivery Date</th>
-                            <th style="width: 10%;">Delivery Site</th>
+                            <th style="width: 9%;">Delivery Site</th>
                             <th style="width: 5%;"></th>
                         </tr>
                     </thead>
@@ -132,7 +134,7 @@
                        total's presentation is stable across create/edit and view. #}
                     <tfoot>
                         <tr>
-                            <td colspan="7" style="text-align:right; font-weight:700;">Total Sales</td>
+                            <td colspan="8" style="text-align:right; font-weight:700;">Total Sales</td>
                             <td id="totalDisplay" style="text-align:right; font-family:var(--mono); font-weight:700;">0.00</td>
                             <td colspan="5"></td>
                         </tr>
@@ -454,8 +456,9 @@ function addLineItem(existingItem) {
                    style="text-align:right;"
                    value="${item.unit_price != null ? amtFmt(item.unit_price) : ''}"
                    onfocus="amtFocus(this)" onblur="upBlur(this, ${id})"></td>
-        <td id="kg-${id}" style="text-align:right; font-family:var(--mono); color:var(--text-2); white-space:nowrap;"></td>
-        <td id="kgp-${id}" style="text-align:right; font-family:var(--mono); color:var(--text-2); white-space:nowrap;"></td>
+        <td id="invq-${id}" style="text-align:right; font-family:var(--mono); color:var(--text-2); white-space:nowrap;"></td>
+        <td id="invu-${id}" style="color:var(--text-2); white-space:nowrap;"></td>
+        <td id="invp-${id}" style="text-align:right; font-family:var(--mono); color:var(--text-2); white-space:nowrap;"></td>
         <td><input type="text" id="amt-${id}" class="form-control" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right; font-family:var(--mono);"
                    onfocus="amtFocus(this)" onblur="amtBlur(this, ${id})"></td>
@@ -762,29 +765,50 @@ function rebuildLineDeliverySiteOptions() {
 // Formula: VAT = round2(Gross - Gross/1.12); Net of VAT = Gross - VAT.
 // SO has no WHT deduction; Total Amount = Subtotal.
 
-// The line in KG beside the selling unit: KG = qty x the product's KG per unit, and
-// price per KG = amount / KG, to the centavo -- the same figures the server prints
-// (SalesOrderItem.kg_quantity / kg_unit_price). Blank when the product has no factor.
-function refreshKg(id) {
-    const item  = lineItems.find(i => i.id === id);
-    const kgEl  = document.getElementById(`kg-${id}`);
-    const kgpEl = document.getElementById(`kgp-${id}`);
-    if (!item || !kgEl || !kgpEl) return;
+// The line in the company's inventory unit (COMPANY INVENTORY): qty x the product's
+// inventory qty per unit, in its inventory unit, at amount / that qty, to the centavo --
+// the same figures the server prints (SalesOrderItem.inventory_quantity / _unit_code /
+// _unit_price, and the same three blank cases as SalesOrderItem._inventory_factor).
+function lineUnitCode(item) {
+    let code = null;
+    if (item.uom_id) {
+        const u = units.find(uu => String(uu.id) === String(item.uom_id));
+        code = u ? u.code : null;
+    } else {
+        code = item.uom_text;
+    }
+    code = (code || '').trim().toUpperCase();
+    return code || null;
+}
+
+function refreshInventory(id) {
+    const item = lineItems.find(i => i.id === id);
+    const qEl = document.getElementById(`invq-${id}`);
+    const uEl = document.getElementById(`invu-${id}`);
+    const pEl = document.getElementById(`invp-${id}`);
+    if (!item || !qEl || !uEl || !pEl) return;
+    const blank = () => { qEl.textContent = ''; uEl.textContent = ''; pEl.textContent = ''; };
     const p = products.find(pp => String(pp.id) === String(item.product_id));
-    const factor = p && p.kg_per_unit != null ? parseFloat(p.kg_per_unit) : null;
+    const factor = p && p.inventory_qty_per_unit != null ? parseFloat(p.inventory_qty_per_unit) : null;
+    const invUnit = p && p.inventory_unit_code ? p.inventory_unit_code.trim().toUpperCase() : '';
     const q = parseFloat(item.quantity);
-    if (!(factor > 0) || !(q > 0)) { kgEl.textContent = ''; kgpEl.textContent = ''; return; }
-    const kg = Math.round(q * factor * 10000) / 10000;
-    kgEl.textContent = kg.toLocaleString('en-PH', { maximumFractionDigits: 4 });
+    if (!(factor > 0) || !invUnit || !(q > 0)) return blank();
+    const lineUnit = lineUnitCode(item);
+    const sellingUnit = p.default_uom_code ? p.default_uom_code.trim().toUpperCase() : '';
+    if (lineUnit && lineUnit === invUnit) return blank();                    // already in it
+    if (lineUnit && sellingUnit && sellingUnit !== invUnit && lineUnit !== sellingUnit) return blank(); // another unit
+    const invQty = Math.round(q * factor * 10000) / 10000;
+    qEl.textContent = invQty.toLocaleString('en-PH', { maximumFractionDigits: 4 });
+    uEl.textContent = p.inventory_unit_code;
     const amt = parseFloat(item.amount) || 0;
-    kgpEl.textContent = amt > 0 ? amtFmt(Math.round(amt / kg * 100) / 100) : '';
+    pEl.textContent = amt > 0 ? amtFmt(Math.round(amt / invQty * 100) / 100) : '';
 }
 
 function calculateTotals() {
     let subtotalC = 0, autoVatC = 0;
 
     lineItems.forEach(item => {
-        refreshKg(item.id);
+        refreshInventory(item.id);
         const amtC = Math.round((item.amount || 0) * 100);
         subtotalC += amtC;
         const vat = vatCategories.find(v => v.code === item.vat_category);

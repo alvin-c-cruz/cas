@@ -184,9 +184,12 @@ def get_active_products():
     """
     from sqlalchemy.orm import joinedload, selectinload
     from app.products.models import Product
+    # inventory_unit too (5 Nov 2026): to_dict() reads its code for the SO form's
+    # COMPANY INVENTORY columns -- the same detach hazard as default_unit_of_measure.
     return (Product.query
             .options(joinedload(Product.default_unit_of_measure),
-                    selectinload(Product.allowed_units))
+                     joinedload(Product.inventory_unit),
+                     selectinload(Product.allowed_units))
             .filter_by(is_active=True)
             .order_by(Product.code)
             .all())

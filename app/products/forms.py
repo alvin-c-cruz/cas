@@ -27,11 +27,19 @@ class ProductForm(FlaskForm):
                                            coerce=int, validators=[Optional()])
     default_unit_price = DecimalField('Default Unit Price (₱, VAT-inclusive)', places=2,
                                       validators=[Optional(), NumberRange(min=0)])
-    # Weight of one unit in KG (a 100 g pack is 0.1): the SO and Job Order Slip show the
-    # line's KG quantity and price per KG from it (owner, 4 Nov 2026). Blank = none.
-    kg_per_unit = DecimalField('KG per unit', places=6,
-                               validators=[Optional(), NumberRange(min=0.000001,
-                                           message='KG per unit must be more than zero.')])
+    # The unit the company keeps the stock in, and how many of it make one selling unit
+    # (0.1 KG for a 100 g pack; 24 CANS for a box of 24): the SO and Job Order Slip show each
+    # line in it under COMPANY INVENTORY (owner, 4-5 Nov 2026). Both or neither -- see
+    # validate_inventory_unit_id. No Optional() on the unit: it would stop the chain on a
+    # blank pick and the pairing check would never run. validate_choice=False because an edit
+    # post that leaves the field out falls back to the product's stored value, and a stored
+    # None is coerced to the text 'None', which is in no list -- the edit would be refused;
+    # validate_inventory_unit_id checks the choice itself. places=None so the edit page shows
+    # 24 / 0.1, not the column's 24.000000 (the view trims the stored value).
+    inventory_unit_id = SelectField('Inventory Unit', default='', validate_choice=False)
+    inventory_qty_per_unit = DecimalField('Inventory Qty per Unit', places=None,
+                                          validators=[Optional(), NumberRange(min=0.000001,
+                                              message='Inventory qty per unit must be more than zero.')])
     default_account_id = SelectField('Default Account', validators=[Optional()], default='')
     category_id = SelectField('Category', validators=[Optional()], default='')
     standard_cost = DecimalField('Standard Cost (₱)', places=2,
@@ -73,6 +81,22 @@ class ProductForm(FlaskForm):
                     f'A product named "{name}" already exists'
                     f'{" (inactive -- reactivate it instead)" if not active else ""}.')
 
+
+    def validate_inventory_unit_id(self, field):
+        """The unit and its quantity go together: a unit with no quantity converts nothing, a
+        quantity with no unit has no meaning. Also the choice check WTForms is told to skip:
+        blank, None and the coerced 'None' all mean no unit; anything else must be listed."""
+        unit = '' if field.data in (None, '', 'None') else str(field.data)
+        if unit and unit not in {str(value) for value, _label in (field.choices or [])}:
+            raise ValidationError('Not a valid choice.')
+        has_unit = bool(unit)
+        has_qty = self.inventory_qty_per_unit.data is not None or bool(
+            self.inventory_qty_per_unit.raw_data and self.inventory_qty_per_unit.raw_data[0].strip())
+        if has_unit and not has_qty:
+            raise ValidationError('Enter the Inventory Qty per Unit for this unit '
+                                  '(how many of it make one selling unit).')
+        if has_qty and not has_unit:
+            raise ValidationError('Pick the Inventory Unit the quantity is counted in.')
 
     def validate_track_inventory(self, field):
         """When inventory tracking is on, a costing method + cost basis are required.

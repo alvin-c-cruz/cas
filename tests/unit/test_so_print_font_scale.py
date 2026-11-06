@@ -53,7 +53,7 @@ EXPECTED = {
     '.info-row table': '12px',
     '.info-wide': '12px',          # the full-width CUSTOMER table, same base
     '.particulars': '12px',
-    # the AS ORDERED / BY WEIGHT banners (owner, 4 Nov 2026): the ladder's label size
+    # the AS ORDERED / COMPANY INVENTORY banners (owner, 4-5 Nov 2026): the ladder's label size
     '.particulars th.grp': '10.8px',
     '.section-label': '12px',
     '.summary-inner': '12px',

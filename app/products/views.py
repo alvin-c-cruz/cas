@@ -1,4 +1,6 @@
 """Product / Item master (Maintenance). Mirrors the Vendor/UOM CRUD pattern."""
+from decimal import Decimal
+
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from flask_login import login_required, current_user
 from wtforms.validators import DataRequired, Optional
@@ -23,6 +25,7 @@ def _populate_choices(form):
     form.default_unit_of_measure_id.choices = (
         [('', '— None —')] + [(str(u.id), f'{u.code} — {u.name}') for u in units]
     )
+    form.inventory_unit_id.choices = form.default_unit_of_measure_id.choices[:]   # `list` is a view here
     form.allowed_unit_ids.choices = [(u.id, f'{u.code} — {u.name}') for u in units]
     form.default_account_id.choices = (
         [('', '— None —')] + [(str(a.id), f'{a.code} — {a.name}') for a in accounts]
@@ -40,6 +43,14 @@ def _populate_choices(form):
 def _int_or_none(v):
     """Convert a SelectField string value to int, or None for the blank sentinel."""
     return int(v) if v not in (None, '', 'None') else None
+
+
+def _trimmed(d):
+    """A stored Numeric(15, 6) without its trailing zeros, for the edit page: 24, not
+    24.000000; 0.1, not 0.100000. Formatted as fixed-point -- normalize() alone gives 2.4E+1."""
+    if d is None:
+        return None
+    return Decimal(format(Decimal(d).normalize(), 'f'))
 
 
 @products_bp.route('/products')
@@ -71,7 +82,8 @@ def create():
             job_order_name=(form.job_order_name.data or '').strip() or None,
             default_unit_of_measure_id=_int_or_none(form.default_unit_of_measure_id.data),
             default_unit_price=form.default_unit_price.data,
-            kg_per_unit=form.kg_per_unit.data,
+            inventory_unit_id=_int_or_none(form.inventory_unit_id.data),
+            inventory_qty_per_unit=form.inventory_qty_per_unit.data,
             default_account_id=_int_or_none(form.default_account_id.data),
             category_id=_int_or_none(form.category_id.data),
             standard_cost=form.standard_cost.data,
@@ -118,6 +130,8 @@ def edit(id):
     if request.method == 'GET':
         form.is_active.data = '1' if p.is_active else '0'
         form.default_unit_of_measure_id.data = str(p.default_unit_of_measure_id or '')
+        form.inventory_unit_id.data = str(p.inventory_unit_id or '')
+        form.inventory_qty_per_unit.data = _trimmed(p.inventory_qty_per_unit)
         form.default_account_id.data = str(p.default_account_id or '')
         form.category_id.data = str(p.category_id or '')
         form.costing_method.data = p.costing_method or ''
@@ -130,7 +144,8 @@ def edit(id):
         p.job_order_name = (form.job_order_name.data or '').strip() or None
         p.default_unit_of_measure_id = _int_or_none(form.default_unit_of_measure_id.data)
         p.default_unit_price = form.default_unit_price.data
-        p.kg_per_unit = form.kg_per_unit.data
+        p.inventory_unit_id = _int_or_none(form.inventory_unit_id.data)
+        p.inventory_qty_per_unit = form.inventory_qty_per_unit.data
         p.default_account_id = _int_or_none(form.default_account_id.data)
         p.category_id = _int_or_none(form.category_id.data)
         p.standard_cost = form.standard_cost.data

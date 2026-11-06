@@ -110,14 +110,24 @@ class SalesOrder(RowVersioned, db.Model):
         self.total_amount = self.subtotal   # no WHT on an SO
 
     @property
-    def total_kg(self):
-        """The order's weight: the sum of its lines' KG (owner, 4 Nov 2026 -- printed under
-        Weight in the SO's total row). None when the order has no lines or ANY line has no
-        weight: a sum over only some lines would read as the order's weight and be wrong."""
-        weights = [li.kg_quantity for li in self.line_items]
-        if not weights or any(w is None for w in weights):
+    def inventory_total(self):
+        """The order in its COMPANY INVENTORY unit: the sum of the lines' inventory quantities,
+        printed in the SO's total row (owner, 4-5 Nov 2026). None when the order has no lines,
+        when ANY line has no inventory figure (a sum over only some lines would read as the
+        order's total and be wrong), or when the lines are in different units (KG and CANS do
+        not add up to anything)."""
+        if self.inventory_total_unit is None:
             return None
-        return sum(weights, Decimal('0'))
+        return sum((li.inventory_quantity for li in self.line_items), Decimal('0'))
+
+    @property
+    def inventory_total_unit(self):
+        """The one inventory unit every line is in, or None (see inventory_total)."""
+        lines = list(self.line_items)
+        if not lines or any(li.inventory_quantity is None for li in lines):
+            return None
+        units = {li.inventory_unit_code for li in lines}
+        return units.pop() if len(units) == 1 else None
 
     def to_dict(self):
         return {'id': self.id, 'so_number': self.so_number,
@@ -183,23 +193,69 @@ class SalesOrderItem(db.Model):
             self.vat_amount = Decimal('0.00')
         self.line_total = amt
 
-    @property
-    def kg_quantity(self):
-        """The line's quantity in KG: quantity x the product's KG per unit (owner, 4 Nov 2026:
-        PACKS on the customer's PO, KG for weight). None when either is missing."""
-        factor = self.product.kg_per_unit if self.product is not None else None
-        if factor is None or self.quantity is None:
+    # ── COMPANY INVENTORY: the line in the unit the company keeps its stock in ──────────
+    # Owner, 4 Nov 2026 (SO 0004: PACKS on the customer's PO, KG in the company's books) and
+    # 5 Nov 2026 ("items that uses different UOM, ei. Cans"): quantity x the product's
+    # inventory qty per unit, in the product's inventory unit, at amount / that quantity.
+    # Computed, never stored; the amount is not recomputed from it.
+
+    def _line_unit_code(self):
+        """The unit this line is sold in, as an upper-case code: the UOM master's code, or the
+        typed text when the master is off. None when the line names no unit."""
+        if self.unit_of_measure is not None:
+            code = self.unit_of_measure.code
+        else:
+            code = self.uom_text
+        code = (code or '').strip().upper()
+        return code or None
+
+    def _inventory_factor(self):
+        """The product's inventory qty per unit when it applies to THIS line, else None:
+        - the product has no inventory unit or no factor -> None;
+        - the line is already in the inventory unit (SO 0005, sold in KG) -> None, a second
+          column would only repeat the first;
+        - the line is in a unit other than the product's own selling unit -> None. The factor
+          counts per that unit (24 CANS per BOX); a line sold by the CASE would be multiplied
+          by the wrong number (Claude's judgment, told to the owner 5 Nov 2026). Except when
+          the product's own unit IS its inventory unit (Philgen 616: KG in the master, ordered
+          in PACKS): KG cannot be what the factor counts per, so there is nothing to guard."""
+        p = self.product
+        if p is None or p.inventory_unit is None or p.inventory_qty_per_unit is None:
             return None
-        return (Decimal(str(self.quantity)) * Decimal(str(factor))).quantize(Decimal('0.0001'))
+        line_unit = self._line_unit_code()
+        inv_unit = (p.inventory_unit.code or '').strip().upper()
+        if line_unit is not None and line_unit == inv_unit:
+            return None
+        selling = p.default_unit_of_measure
+        selling_unit = (selling.code or '').strip().upper() if selling is not None else ''
+        if (line_unit is not None and selling_unit and selling_unit != inv_unit
+                and line_unit != selling_unit):
+            return None
+        return Decimal(str(p.inventory_qty_per_unit))
 
     @property
-    def kg_unit_price(self):
-        """Price per KG: the line amount over its KG quantity, to the centavo, half up.
-        Same total either way -- the amount is not recomputed from it."""
-        kg = self.kg_quantity
-        if not kg or self.amount is None:
+    def inventory_quantity(self):
+        """Quantity x the product's inventory qty per unit, to 4 places. None when there is no
+        quantity or the factor does not apply (see _inventory_factor)."""
+        factor = self._inventory_factor()
+        if factor is None or self.quantity is None:
             return None
-        return (Decimal(str(self.amount)) / kg).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return (Decimal(str(self.quantity)) * factor).quantize(Decimal('0.0001'))
+
+    @property
+    def inventory_unit_code(self):
+        """The product's inventory unit code, when the line has an inventory quantity."""
+        if self.inventory_quantity is None:
+            return None
+        return self.product.inventory_unit.code
+
+    @property
+    def inventory_unit_price(self):
+        """The line amount over its inventory quantity, to the centavo, half up."""
+        qty = self.inventory_quantity
+        if not qty or self.amount is None:
+            return None
+        return (Decimal(str(self.amount)) / qty).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     def to_dict(self):
         return {

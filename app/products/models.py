@@ -49,10 +49,12 @@ class Product(db.Model):
     job_order_name = db.Column(db.String(200), nullable=True)
     default_unit_of_measure_id = db.Column(db.Integer, db.ForeignKey('units_of_measure.id'), nullable=True)
     default_unit_price = db.Column(db.Numeric(15, 2), nullable=True)   # VAT-inclusive
-    # Weight of ONE unit in KG (a 100 g pack is 0.1), for the second unit -- KG -- that the
-    # SO and Job Order Slip show beside the selling unit (owner, 4 Nov 2026; kgunit_0001).
-    # Blank = no KG figures for this product.
-    kg_per_unit = db.Column(db.Numeric(15, 6), nullable=True)
+    # The unit the company keeps this product's stock in, and how many of it make ONE selling
+    # unit (0.1 KG for a 100 g pack; 24 CANS for a box of 24). The SO and the Job Order Slip show
+    # each line in it under COMPANY INVENTORY (owner, 4-5 Nov 2026; kgunit_0001 added it as
+    # "KG per unit", invunit_0001 made the unit any unit). Both blank = no second unit.
+    inventory_unit_id = db.Column(db.Integer, db.ForeignKey('units_of_measure.id'), nullable=True)
+    inventory_qty_per_unit = db.Column(db.Numeric(15, 6), nullable=True)
     default_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
     category_id = db.Column(db.Integer, db.ForeignKey('product_categories.id'), nullable=True)
     standard_cost = db.Column(db.Numeric(15, 2), nullable=True)
@@ -64,6 +66,7 @@ class Product(db.Model):
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
 
     default_unit_of_measure = db.relationship('UnitOfMeasure', foreign_keys=[default_unit_of_measure_id])
+    inventory_unit = db.relationship('UnitOfMeasure', foreign_keys=[inventory_unit_id])
     default_account = db.relationship('Account', foreign_keys=[default_account_id])
     category = db.relationship('ProductCategory', foreign_keys=[category_id])
     created_by = db.relationship('User', foreign_keys=[created_by_id])
@@ -100,7 +103,10 @@ class Product(db.Model):
             'default_uom_code': self.default_unit_of_measure.code if self.default_unit_of_measure else None,
             'allowed_unit_ids': sorted(self.allowed_unit_ids()),
             'default_unit_price': float(self.default_unit_price) if self.default_unit_price is not None else None,
-            'kg_per_unit': float(self.kg_per_unit) if self.kg_per_unit is not None else None,
+            'inventory_unit_id': self.inventory_unit_id,
+            'inventory_unit_code': self.inventory_unit.code if self.inventory_unit else None,
+            'inventory_qty_per_unit': (float(self.inventory_qty_per_unit)
+                                       if self.inventory_qty_per_unit is not None else None),
             'default_account_id': self.default_account_id,
             'category_id': self.category_id,
             'standard_cost': float(self.standard_cost) if self.standard_cost is not None else None,

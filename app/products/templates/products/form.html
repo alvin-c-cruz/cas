@@ -50,10 +50,17 @@
 
             <div class="form-row-2">
                 {{ render_field(form.standard_cost) }}
+                <div></div>
+            </div>
+
+            {# COMPANY INVENTORY on the Sales Order and Job Order Slip (owner, 4-5 Nov 2026). #}
+            <div class="form-row-2">
+                {{ render_field(form.inventory_unit_id) }}
                 <div>
-                    {{ render_field(form.kg_per_unit) }}
-                    <div class="form-hint">Weight of one unit in KG (a 100 g pack is 0.1). The Sales
-                        Order and Job Order Slip then show each line in KG too. Leave blank if not
+                    {{ render_field(form.inventory_qty_per_unit) }}
+                    <div class="form-hint">How many of the inventory unit make one selling unit:
+                        0.1 KG for a 100 g pack, 24 CANS for a box of 24. The Sales Order and Job
+                        Order Slip then show each line in this unit too. Leave both blank if not
                         needed.</div>
                 </div>
             </div>

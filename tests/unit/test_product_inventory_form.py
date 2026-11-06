@@ -16,6 +16,7 @@ def _form(**overrides):
     on those unrelated SelectFields doesn't reject a raw unit-level form build."""
     form = ProductForm(meta={'csrf': False})
     form.default_unit_of_measure_id.choices = [('', '— None —')]
+    form.inventory_unit_id.choices = [('', '— None —')]     # COMPANY INVENTORY unit, 5 Nov 2026
     form.default_account_id.choices = [('', '— None —')]
     form.category_id.choices = [('', '— None —')]
     return form
