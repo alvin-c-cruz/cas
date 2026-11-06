@@ -184,3 +184,109 @@ def test_export_all_xlsx_includes_voided_ap_row(client, db_session, main_branch,
     assert 'AP-2026-06-9999' in all_vals, (
         'Voided AP bill reference AP-2026-06-9999 missing from Purchase Journal sheet.'
     )
+
+
+def _voided_cdv(branch_id):
+    """A CDV voided from draft (no JE), dated in June 2026."""
+    from decimal import Decimal
+    from datetime import date
+    from app.accounts.models import Account
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    cash = Account.query.filter_by(code='10101').first()
+    if not cash:
+        cash = Account(code='10101', name='Cash on Hand', account_type='Asset',
+                       normal_balance='debit', is_active=True)
+        db.session.add(cash)
+        db.session.flush()
+    db.session.add(CashDisbursementVoucher(
+        branch_id=branch_id, cdv_number='1672', cdv_date=date(2026, 6, 15),
+        vendor_name='Johnson Hardware', payment_method='check', check_number='3596872',
+        cash_account_id=cash.id, total_amount=Decimal('113745.28'), status='voided',
+        void_reason='Printing error on check - check spoiled.'))
+    db.session.commit()
+
+
+def test_export_all_xlsx_includes_voided_cdv_row(client, db_session, main_branch, accountant_user):
+    """Bug report #5: a voided CDV is listed in the Cash Disbursements Book too."""
+    _set_company()
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    _voided_cdv(main_branch.id)
+
+    resp = client.get(
+        '/reports/books-of-accounts/export-all?date_from=2026-06-01&date_to=2026-06-30')
+    assert resp.status_code == 200
+    wb = load_workbook(BytesIO(resp.data))
+    ws = next(s for s in wb.worksheets if 'Disbursement' in s.title)
+    rows = [[c.value for c in row] for row in ws.iter_rows()]
+    assert ['06/15/2026', '[VOIDED]', '1672'] in [r[:3] for r in rows]
+
+
+def test_print_all_includes_voided_cdv_row(client, db_session, main_branch, accountant_user):
+    _set_company()
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    _voided_cdv(main_branch.id)
+
+    html = client.get(
+        '/reports/books-of-accounts/print-all?date_from=2026-06-01&date_to=2026-06-30'
+    ).get_data(as_text=True)
+    section = html[html.index('CASH DISBURSEMENTS BOOK'):]
+    assert '<td>06/15/2026</td>' in section
+    assert '<td>[VOIDED]</td>' in section
+    assert '<td>1672</td>' in section
+    assert '113,745.28' not in html
+
+
+def _voided_crv(branch_id):
+    """A CRV voided from draft (no JE), dated in June 2026."""
+    from decimal import Decimal
+    from datetime import date
+    from app.accounts.models import Account
+    from app.cash_receipts.models import CashReceiptVoucher
+    from app.customers.models import Customer
+    cash = Account.query.filter_by(code='10101').first()
+    if not cash:
+        cash = Account(code='10101', name='Cash on Hand', account_type='Asset',
+                       normal_balance='debit', is_active=True)
+        db.session.add(cash)
+    customer = Customer(code='VCR01', name='Voided Receipt Customer', is_active=True)
+    db.session.add(customer)
+    db.session.flush()
+    db.session.add(CashReceiptVoucher(
+        branch_id=branch_id, crv_number='CR-V1', crv_date=date(2026, 6, 16),
+        customer_id=customer.id, customer_name=customer.name, payment_method='cash',
+        cash_account_id=cash.id, total_amount=Decimal('56789.10'), status='voided',
+        void_reason='Wrong customer on the receipt.'))
+    db.session.commit()
+
+
+def test_export_all_xlsx_includes_voided_crv_row(client, db_session, main_branch, accountant_user):
+    _set_company()
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    _voided_crv(main_branch.id)
+
+    resp = client.get(
+        '/reports/books-of-accounts/export-all?date_from=2026-06-01&date_to=2026-06-30')
+    assert resp.status_code == 200
+    wb = load_workbook(BytesIO(resp.data))
+    ws = next(s for s in wb.worksheets if 'Receipt' in s.title)
+    rows = [[c.value for c in row] for row in ws.iter_rows()]
+    assert ['06/16/2026', '[VOIDED]', 'CR-V1'] in [r[:3] for r in rows]
+
+
+def test_print_all_includes_voided_crv_row(client, db_session, main_branch, accountant_user):
+    _set_company()
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    _voided_crv(main_branch.id)
+
+    html = client.get(
+        '/reports/books-of-accounts/print-all?date_from=2026-06-01&date_to=2026-06-30'
+    ).get_data(as_text=True)
+    section = html[html.index('CASH RECEIPTS BOOK'):html.index('CASH DISBURSEMENTS BOOK')]
+    assert '<td>06/16/2026</td>' in section
+    assert '<td>[VOIDED]</td>' in section
+    assert '<td>CR-V1</td>' in section
+    assert '56,789.10' not in html

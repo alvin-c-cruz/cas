@@ -20,8 +20,8 @@
   .crj-table th.credit-col { background: #b71c1c; }
   .crj-table th.debit-col  { background: #1565c0; }
   .crj-row-draft td { background: #fffde7; }
-  .crj-row-cancelled td { background: #ffebee; text-decoration: line-through; }
-  .crj-row-cancelled td.no-strike { text-decoration: none; }
+  .crj-row-cancelled td, .crj-row-voided td { background: #ffebee; text-decoration: line-through; }
+  .crj-row-cancelled td.no-strike, .crj-row-voided td.no-strike { text-decoration: none; }
   .crj-total td { border-top: 2px solid #111; font-weight: 700; background: #f0f0f0; }
   .balance-warning { margin-top: 10px; font-size: 11px; font-weight: 700; color: #b91c1c; }
   .audit-footer { margin-top: 8px; font-size: 9px; color: #888; text-align: right;
@@ -78,6 +78,16 @@
       </thead>
       <tbody>
         {% for row in matrix.rows %}
+        {% if row.is_voided %}
+        <tr class="crj-row-voided">
+          <td>{{ row.crv.crv_date.strftime('%d-%b-%Y') }}</td>
+          <td class="no-strike">{{ row.crv.crv_number }}</td>
+          <td>{{ row.crv.check_number or '' }}</td>
+          <td>{{ row.crv.customer_name }}</td>
+          <td>[VOIDED] {{ row.crv.notes or '' }}</td>
+          {% for col in matrix.columns %}<td class="num no-strike"></td>{% endfor %}
+        </tr>
+        {% else %}
         {% set crv = crv_map.get(row.entry.reference) %}
         <tr {% if row.is_cancelled %}class="crj-row-cancelled"{% elif row.is_draft %}class="crj-row-draft"{% endif %}>
           <td>{{ row.entry.entry_date.strftime('%d-%b-%Y') }}</td>
@@ -98,6 +108,7 @@
           </td>
           {% endfor %}
         </tr>
+        {% endif %}
         {% endfor %}
 
         <tr class="crj-total">

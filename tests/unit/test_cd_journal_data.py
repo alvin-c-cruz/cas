@@ -154,6 +154,78 @@ def test_build_columnar_cd_draft_amounts_pivots_draft_lines():
 
 
 # ---------------------------------------------------------------------------
+# Voided CDVs (bug report #5, 30 Oct 2026, CDV 1672: "Voided transactions should
+# still be included in downloadable Cash Disbursements Journal"). A CDV is voided
+# from draft and its JE is deleted, so the journal never saw it. Listed like the
+# AP and SI journals' voided rows: one marked row, cheque number kept, no amounts.
+# ---------------------------------------------------------------------------
+
+def _mock_voided_cdv(date_str, number, check_number='3596872', vendor='JOHNSON HARDWARE',
+                     notes='Payment for October'):
+    cdv = MagicMock()
+    cdv.cdv_date = date.fromisoformat(date_str)
+    cdv.cdv_number = number
+    cdv.check_number = check_number
+    cdv.vendor_name = vendor
+    cdv.notes = notes
+    return cdv
+
+
+def test_build_columnar_cd_voided_cdv_is_listed_with_no_amounts_and_not_in_totals():
+    je = _mock_entry('2026-06-01', 'CD-2026-06-0001', _standard_cdv_lines())
+    voided = _mock_voided_cdv('2026-06-02', '1672')
+    matrix = build_columnar_cd(
+        posted_entries=[je], draft_entries=[],
+        ap_account_id=AP_ID, wt_account_id=WHT_ID,
+        input_vat_account_ids={VAT_ID}, voided_cdvs=[voided],
+    )
+    row = next(r for r in matrix['rows'] if r['is_voided'])
+    assert row['cdv'] is voided
+    assert row['entry'] is None
+    assert row['cells'] == {}
+    assert (row['is_draft'], row['is_cancelled']) == (False, False)
+    assert matrix['totals'][CASH_ID] == Decimal('-11000')
+    assert matrix['balanced'] is True
+
+
+def test_build_columnar_cd_posted_and_draft_rows_are_not_voided():
+    je = _mock_entry('2026-06-01', 'CD-2026-06-0001', _standard_cdv_lines())
+    draft = _mock_entry('2026-06-02', 'CD-2026-06-0002', _standard_cdv_lines())
+    matrix = build_columnar_cd(
+        posted_entries=[je], draft_entries=[draft],
+        ap_account_id=AP_ID, wt_account_id=WHT_ID,
+        input_vat_account_ids={VAT_ID},
+    )
+    assert [r['is_voided'] for r in matrix['rows']] == [False, False]
+
+
+def test_build_columnar_cd_voided_rows_sort_with_the_others_by_date():
+    first = _mock_entry('2026-06-01', 'CD-2026-06-0001', _standard_cdv_lines())
+    last = _mock_entry('2026-06-09', 'CD-2026-06-0003', _standard_cdv_lines())
+    voided = _mock_voided_cdv('2026-06-05', '1672')
+    matrix = build_columnar_cd(
+        posted_entries=[first, last], draft_entries=[],
+        ap_account_id=AP_ID, wt_account_id=WHT_ID,
+        input_vat_account_ids={VAT_ID}, voided_cdvs=[voided],
+    )
+    order = [r['cdv'].cdv_number if r['is_voided'] else r['entry'].entry_number
+             for r in matrix['rows']]
+    assert order == ['CD-2026-06-0001', '1672', 'CD-2026-06-0003']
+
+
+def test_build_columnar_cd_voided_cdv_adds_no_column():
+    """A voided CDV has no JE lines, so a period with only a voided CDV has no columns."""
+    matrix = build_columnar_cd(
+        posted_entries=[], draft_entries=[],
+        ap_account_id=AP_ID, wt_account_id=WHT_ID,
+        input_vat_account_ids={VAT_ID}, voided_cdvs=[_mock_voided_cdv('2026-06-02', '1672')],
+    )
+    assert matrix['columns'] == []
+    assert len(matrix['rows']) == 1
+    assert matrix['grand_total'] == Decimal('0')
+
+
+# ---------------------------------------------------------------------------
 # The download copies the legacy RIC app's Disbursement Journal cell for cell
 # (owner, 22 Oct 2026) -- an Excel template reads the row-5 account titles and
 # the "Total" row. Spec: app-docs/superpowers/specs/2026-10-22-cd-journal-xlsx-layout-design.md
@@ -295,6 +367,31 @@ def test_xlsx_cancelled_row_is_marked_but_not_filled(app):
     assert row[4].value == '[CANCELLED] Rent\nfor June'
     assert row[7].value == 'Yes'
     assert all(c.fill.fill_type is None for c in row)
+
+
+def _voided_row(number='1672', check_number='3596872', notes='Payment for October'):
+    return {'cdv': _mock_voided_cdv('2026-06-03', number, check_number=check_number, notes=notes),
+            'entry': None, 'cells': {}, 'is_draft': False, 'is_cancelled': False,
+            'is_voided': True}
+
+
+def test_xlsx_voided_cdv_row_keeps_its_cheque_number_and_has_no_amounts(app):
+    ws = _sheet(app, [_POSTED, _voided_row()])
+    row = ws[7]
+    assert (row[0].value, row[1].value, row[2].value, row[3].value) == (
+        '03-Jun-2026', '1672', '3596872', 'JOHNSON HARDWARE')
+    assert row[4].value == '[VOIDED] Payment for October'
+    assert (row[5].value, row[6].value) == (None, None)       # no amounts
+    assert row[7].value == 'No'                                # never reached the books
+    assert all(c.fill.fill_type is None for c in row)
+    assert ws['A9'].value == 'Total' and ws['F9'].value == '=SUM(F5:F8)'
+
+
+def test_xlsx_voided_cdv_without_a_cheque_leaves_the_check_number_blank(app):
+    ws = _sheet(app, [_voided_row(number='1724', check_number=None, notes='')])
+    row = ws[6]
+    assert (row[1].value, row[2].value) == ('1724', None)
+    assert row[4].value == '[VOIDED] '
 
 
 @pytest.mark.parametrize('date_from, date_to, label', [

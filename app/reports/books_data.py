@@ -159,12 +159,18 @@ def _assemble_columnar(books, branch_id, df, dt):
         CashReceiptVoucher.crv_number.in_(cr_refs)
     ).all() if cr_refs else []
     cr_cancelled = {c.crv_number for c in crvs if c.status == 'cancelled'}
+    voided_crvs = CashReceiptVoucher.query.filter(
+        CashReceiptVoucher.branch_id == branch_id,
+        CashReceiptVoucher.status == 'voided',
+        CashReceiptVoucher.crv_date >= df,
+        CashReceiptVoucher.crv_date <= dt,
+    ).order_by(CashReceiptVoucher.crv_date, CashReceiptVoucher.crv_number).all()
 
     cr_ar_id, cr_wht_id, cr_vat_ids = _si_cr_account_ids()
     books['cash_receipts'] = {
         'title': 'Cash Receipts Book', 'kind': 'columnar',
         'data': build_columnar_cr(cr_posted, cr_drafts, cr_ar_id, cr_wht_id, cr_vat_ids,
-                                  cancelled_refs=cr_cancelled),
+                                  cancelled_refs=cr_cancelled, voided_crvs=voided_crvs),
     }
 
     # ── Cash Disbursements Book ───────────────────────────────────────────────
@@ -185,10 +191,16 @@ def _assemble_columnar(books, branch_id, df, dt):
         CashDisbursementVoucher.cdv_number.in_(cd_refs)
     ).all() if cd_refs else []
     cd_cancelled = {c.cdv_number for c in cdvs if c.status == 'cancelled'}
+    voided_cdvs = CashDisbursementVoucher.query.filter(
+        CashDisbursementVoucher.branch_id == branch_id,
+        CashDisbursementVoucher.status == 'voided',
+        CashDisbursementVoucher.cdv_date >= df,
+        CashDisbursementVoucher.cdv_date <= dt,
+    ).order_by(CashDisbursementVoucher.cdv_date, CashDisbursementVoucher.cdv_number).all()
 
     cd_ap_id, cd_wt_id, cd_vat_ids = _ap_cd_account_ids()
     books['cash_disbursements'] = {
         'title': 'Cash Disbursements Book', 'kind': 'columnar',
         'data': build_columnar_cd(cd_posted, cd_drafts, cd_ap_id, cd_wt_id, cd_vat_ids,
-                                  cancelled_refs=cd_cancelled),
+                                  cancelled_refs=cd_cancelled, voided_cdvs=voided_cdvs),
     }

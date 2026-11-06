@@ -35,13 +35,16 @@ def _col_key(account, ap_account_id, wt_account_id, input_vat_account_ids, total
 
 def build_columnar_cd(posted_entries, draft_entries, ap_account_id,
                       wt_account_id, input_vat_account_ids, cancelled_refs=None,
-                      draft_amounts=False):
+                      draft_amounts=False, voided_cdvs=None):
     """Pivot disbursement journal-entry lines into a columnar matrix.
 
     Columns are built only from POSTED entries' accounts. Cancelled CDVs
     (whose JEs remain posted) are included in totals but flagged is_cancelled=True
     for visual display (strikethrough + badge). Draft rows carry no amounts unless
     draft_amounts=True (the .xlsx download), which pivots them like posted rows.
+    Voided CDVs (voided from draft; their JE is deleted) are listed as is_voided
+    rows carrying the CDV under 'cdv', with no amounts and outside the totals, as
+    the AP and SI journals list theirs (bug report #5, 30 Oct 2026).
 
     cancelled_refs: set of CDV numbers (entry.reference) that are cancelled.
 
@@ -49,6 +52,8 @@ def build_columnar_cd(posted_entries, draft_entries, ap_account_id,
     """
     if cancelled_refs is None:
         cancelled_refs = set()
+    if voided_cdvs is None:
+        voided_cdvs = []
 
     accounts_by_id = {}
     totals = {}
@@ -66,11 +71,17 @@ def build_columnar_cd(posted_entries, draft_entries, ap_account_id,
 
     for je in posted_entries:
         is_cancelled = je.reference in cancelled_refs
-        rows.append({'entry': je, 'cells': pivot(je), 'is_draft': False, 'is_cancelled': is_cancelled})
+        rows.append({'entry': je, 'cells': pivot(je), 'is_draft': False,
+                     'is_cancelled': is_cancelled, 'is_voided': False})
 
     for je in draft_entries:
         cells = pivot(je) if draft_amounts else {}
-        rows.append({'entry': je, 'cells': cells, 'is_draft': True, 'is_cancelled': False})
+        rows.append({'entry': je, 'cells': cells, 'is_draft': True,
+                     'is_cancelled': False, 'is_voided': False})
+
+    for cdv in voided_cdvs:
+        rows.append({'cdv': cdv, 'entry': None, 'cells': {}, 'is_draft': False,
+                     'is_cancelled': False, 'is_voided': True})
 
     ordered = sorted(
         accounts_by_id.values(),
@@ -83,7 +94,12 @@ def build_columnar_cd(posted_entries, draft_entries, ap_account_id,
         'group': _group(a, ap_account_id, wt_account_id, input_vat_account_ids, totals),
     } for a in ordered]
 
-    rows.sort(key=lambda r: (r['entry'].entry_date, r['entry'].entry_number))
+    def _row_sort_key(r):
+        if r['is_voided']:
+            return (r['cdv'].cdv_date, r['cdv'].cdv_number)
+        return (r['entry'].entry_date, r['entry'].entry_number or '')
+
+    rows.sort(key=_row_sort_key)
 
     grand_total = sum(totals.values(), Decimal('0'))
     return {
@@ -111,9 +127,16 @@ def build_cd_journal_xlsx(columns, rows, date_from, date_to, company_name,
     identity(entry) -> (cd_no, check_no, vendor, particulars)
     cash_account_ids: the Cash & Bank accounts; their columns come first, as the
     legacy app puts "Cash and Cash Equivalents" first. Then every account by code.
+    Voided CDVs never reached the books: a marked row, cheque number kept, no amounts.
     """
     out = []
     for r in rows:
+        if r.get('is_voided'):
+            c = r['cdv']
+            out.append(journal_row([text_date(c.cdv_date), c.cdv_number, c.check_number,
+                                    c.vendor_name, '[VOIDED] ' + (c.notes or '')], {},
+                                   [posted_flag(False)]))
+            continue
         no, check_no, vendor, particulars = identity(r['entry'])
         if r['is_cancelled']:
             particulars = '[CANCELLED] ' + (particulars or '')

@@ -166,9 +166,18 @@ def _cd_journal_context(branch_id, draft_amounts=False):
     cdv_map = {c.cdv_number: c for c in cdvs}
     cancelled_refs = {c.cdv_number for c in cdvs if c.status == 'cancelled'}
 
+    # Voided CDVs have no JE (the void deletes it), so they are fetched directly.
+    voided_cdvs = CashDisbursementVoucher.query.filter(
+        CashDisbursementVoucher.branch_id == branch_id,
+        CashDisbursementVoucher.status == 'voided',
+        CashDisbursementVoucher.cdv_date >= period['date_from'],
+        CashDisbursementVoucher.cdv_date <= period['date_to'],
+    ).order_by(CashDisbursementVoucher.cdv_date, CashDisbursementVoucher.cdv_number).all()
+
     ap_id, wt_id, vat_ids = _gl_account_ids()
     matrix = build_columnar_cd(posted, drafts, ap_id, wt_id, vat_ids,
-                               cancelled_refs=cancelled_refs, draft_amounts=draft_amounts)
+                               cancelled_refs=cancelled_refs, draft_amounts=draft_amounts,
+                               voided_cdvs=voided_cdvs)
     return period, matrix, cdv_map
 
 
@@ -217,9 +226,18 @@ def _cr_journal_context(branch_id, draft_amounts=False):
     crv_map = {c.crv_number: c for c in crvs}
     cancelled_refs = {c.crv_number for c in crvs if c.status == 'cancelled'}
 
+    # Voided CRVs have no JE (the void deletes it), so they are fetched directly.
+    voided_crvs = CashReceiptVoucher.query.filter(
+        CashReceiptVoucher.branch_id == branch_id,
+        CashReceiptVoucher.status == 'voided',
+        CashReceiptVoucher.crv_date >= period['date_from'],
+        CashReceiptVoucher.crv_date <= period['date_to'],
+    ).order_by(CashReceiptVoucher.crv_date, CashReceiptVoucher.crv_number).all()
+
     ar_id, wht_recv_id, vat_ids = _cr_gl_account_ids()
     matrix = build_columnar_cr(posted, drafts, ar_id, wht_recv_id, vat_ids,
-                               cancelled_refs=cancelled_refs, draft_amounts=draft_amounts)
+                               cancelled_refs=cancelled_refs, draft_amounts=draft_amounts,
+                               voided_crvs=voided_crvs)
     return period, matrix, crv_map
 
 

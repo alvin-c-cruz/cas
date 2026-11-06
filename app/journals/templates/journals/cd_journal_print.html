@@ -20,8 +20,8 @@
   .cdj-table th.credit-col { background: #b71c1c; }
   .cdj-table th.debit-col  { background: #1565c0; }
   .cdj-row-draft td { background: #fffde7; }
-  .cdj-row-cancelled td { background: #ffebee; text-decoration: line-through; }
-  .cdj-row-cancelled td.no-strike { text-decoration: none; }
+  .cdj-row-cancelled td, .cdj-row-voided td { background: #ffebee; text-decoration: line-through; }
+  .cdj-row-cancelled td.no-strike, .cdj-row-voided td.no-strike { text-decoration: none; }
   .cdj-total td { border-top: 2px solid #111; font-weight: 700; background: #f0f0f0; }
   .balance-warning { margin-top: 10px; font-size: 11px; font-weight: 700; color: #b91c1c; }
   .audit-footer { margin-top: 8px; font-size: 9px; color: #888; text-align: right;
@@ -78,6 +78,16 @@
       </thead>
       <tbody>
         {% for row in matrix.rows %}
+        {% if row.is_voided %}
+        <tr class="cdj-row-voided">
+          <td>{{ row.cdv.cdv_date.strftime('%d-%b-%Y') }}</td>
+          <td class="no-strike">{{ row.cdv.cdv_number }}</td>
+          <td>{{ row.cdv.check_number or '' }}</td>
+          <td>{{ row.cdv.vendor_name }}</td>
+          <td>[VOIDED] {{ row.cdv.notes or '' }}</td>
+          {% for col in matrix.columns %}<td class="num no-strike"></td>{% endfor %}
+        </tr>
+        {% else %}
         {% set cdv = cdv_map.get(row.entry.reference) %}
         <tr {% if row.is_cancelled %}class="cdj-row-cancelled"{% elif row.is_draft %}class="cdj-row-draft"{% endif %}>
           <td>{{ row.entry.entry_date.strftime('%d-%b-%Y') }}</td>
@@ -98,6 +108,7 @@
           </td>
           {% endfor %}
         </tr>
+        {% endif %}
         {% endfor %}
 
         <tr class="cdj-total">

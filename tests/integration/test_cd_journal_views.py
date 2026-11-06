@@ -222,6 +222,104 @@ class TestCDJournalExport:
         assert 'spreadsheetml' in resp.headers['Content-Type']
 
 
+def _voided_cdv(branch_id, number, cdv_date, cash_acct, check_number='3596872',
+                vendor='JOHNSON HARDWARE', notes='Payment for October', amount='113745.28'):
+    """A CDV voided from draft, as the void route leaves it: status 'voided', no JE."""
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    cdv = CashDisbursementVoucher(
+        branch_id=branch_id, cdv_number=number, cdv_date=cdv_date,
+        vendor_name=vendor, payment_method='check', check_number=check_number,
+        cash_account_id=cash_acct.id, notes=notes,
+        total_amount=Decimal(amount), status='voided',
+        void_reason='Printing error on check - check spoiled.')
+    db.session.add(cdv)
+    db.session.commit()
+    return cdv
+
+
+class TestCDJournalVoidedCDVs:
+    """Bug report #5 (30 Oct 2026, CDV 1672): "Voided transactions should still be
+    included in downloadable Cash Disbursements Journal". A voided CDV has no JE, so it
+    is listed like the AP and SI journals' voided rows: marked, cheque number kept,
+    no amounts, outside the totals."""
+
+    def test_journal_lists_a_voided_cdv_with_its_cheque_number(
+            self, client, accountant, branch, cash_acct, expense_acct, db_session):
+        _disbursement_je(branch.id, date(2026, 10, 1), 'CD-POSTED', cash_acct, expense_acct, 8000)
+        cdv = _voided_cdv(branch.id, '1672', date(2026, 10, 1), cash_acct)
+        _login(client, 'acc_cd')
+        html = client.get('/journals/cd?mode=month&year=2026&month=10').get_data(as_text=True)
+        assert '<tr class="cd-jrnl-voided">' in html
+        assert f'href="/cash-disbursements/{cdv.id}"' in html
+        assert '>1672</a>' in html
+        assert '<span class="cd-jrnl-voided-badge cd-jrnl-no-strike">VOIDED</span>' in html
+        assert '<td>3596872</td>' in html
+
+    def test_a_voided_cdv_shows_no_amount_and_leaves_the_totals_alone(
+            self, client, accountant, branch, cash_acct, expense_acct, db_session):
+        _disbursement_je(branch.id, date(2026, 10, 1), 'CD-POSTED', cash_acct, expense_acct, 8000)
+        _voided_cdv(branch.id, '1672', date(2026, 10, 2), cash_acct)
+        _login(client, 'acc_cd')
+        html = client.get('/journals/cd?mode=month&year=2026&month=10').get_data(as_text=True)
+        assert '113,745.28' not in html
+        total_row = html[html.index('<tr class="cd-jrnl-total">'):]
+        assert '(8,000.00)' in total_row and '8,000.00' in total_row
+
+    def test_only_voided_cdvs_of_this_branch_and_period_are_listed(
+            self, client, accountant, branch, cash_acct, db_session):
+        other = Branch(name='Other Branch', code='OTH')
+        db.session.add(other)
+        db.session.commit()
+        _voided_cdv(branch.id, 'V-IN', date(2026, 10, 5), cash_acct, check_number='111')
+        _voided_cdv(branch.id, 'V-SEPT', date(2026, 9, 30), cash_acct, check_number='222')
+        _voided_cdv(other.id, 'V-OTHER', date(2026, 10, 5), cash_acct, check_number='333')
+        _login(client, 'acc_cd')
+        html = client.get('/journals/cd?mode=month&year=2026&month=10').get_data(as_text=True)
+        assert '>V-IN</a>' in html
+        assert '>V-SEPT</a>' not in html
+        assert '>V-OTHER</a>' not in html
+
+    def test_print_marks_the_voided_cdv(
+            self, client, accountant, branch, cash_acct, db_session):
+        _voided_cdv(branch.id, '1672', date(2026, 10, 1), cash_acct)
+        _login(client, 'acc_cd')
+        html = client.get('/journals/cd/print?mode=month&year=2026&month=10').get_data(as_text=True)
+        assert '<tr class="cdj-row-voided">' in html
+        assert '<td class="no-strike">1672</td>' in html
+        assert '<td>3596872</td>' in html
+        assert '[VOIDED] Payment for October' in html
+        assert '113,745.28' not in html
+
+    def test_download_lists_the_voided_cdv_with_no_amounts(
+            self, client, accountant, branch, cash_acct, expense_acct, db_session):
+        """The owner's ask: the downloadable journal. Posted = No, as it never reached the books."""
+        from openpyxl import load_workbook
+        import io
+        _disbursement_je(branch.id, date(2026, 10, 1), 'CD-POSTED', cash_acct, expense_acct, 8000)
+        _voided_cdv(branch.id, '1672', date(2026, 10, 1), cash_acct)
+        _login(client, 'acc_cd')
+        resp = client.get('/journals/cd/export?mode=month&year=2026&month=10')
+        ws = load_workbook(io.BytesIO(resp.data)).active
+        voided = next(r for r in ws.iter_rows(min_row=6, max_row=7) if r[1].value == '1672')
+        assert [c.value for c in voided] == ['01-Oct-2026', '1672', '3596872', 'JOHNSON HARDWARE',
+                                             '[VOIDED] Payment for October', None, None, 'No']
+        assert (ws['A9'].value, ws['F9'].value, ws['G9'].value) == ('Total', '=SUM(F5:F8)', '=SUM(G5:G8)')
+        posted = next(r for r in ws.iter_rows(min_row=6, max_row=7) if r[1].value == 'CD-POSTED')
+        assert (posted[5].value, posted[6].value, posted[7].value) == (-8000, 8000, 'Yes')
+
+    def test_cdv_list_download_journal_carries_the_voided_cdv(
+            self, client, accountant, branch, cash_acct, db_session):
+        """The CDV list's Download Journal button uses the same export."""
+        from openpyxl import load_workbook
+        import io
+        _voided_cdv(branch.id, '1672', date(2026, 10, 1), cash_acct)
+        _login(client, 'acc_cd')
+        resp = client.get('/journals/cd/export?mode=custom&date_from=2026-10-01&date_to=2026-10-31')
+        ws = load_workbook(io.BytesIO(resp.data)).active
+        assert (ws['B6'].value, ws['C6'].value, ws['E6'].value) == (
+            '1672', '3596872', '[VOIDED] Payment for October')
+
+
 class TestCDVListDownloadJournal:
     """The CDV list's Download Journal button sits beside the From / To boxes
     and downloads the period those boxes name (owner, 21 Oct 2026). Before,

@@ -17,10 +17,10 @@
 .cd-jrnl-head--debit { background:#eff6ff; }
 .cd-jrnl-draft-badge { font-size:10px; font-weight:600; color:#c2410c; background:#fff7ed;
     border:1px solid #fed7aa; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
-.cd-jrnl-cancelled-badge { font-size:10px; font-weight:600; color:#b91c1c; background:#fef2f2;
+.cd-jrnl-cancelled-badge, .cd-jrnl-voided-badge { font-size:10px; font-weight:600; color:#b91c1c; background:#fef2f2;
     border:1px solid #fecaca; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
-.cd-jrnl-cancelled td { text-decoration:line-through; background:var(--red-50, #fef2f2); }
-.cd-jrnl-cancelled .cd-jrnl-no-strike { text-decoration:none !important; }
+.cd-jrnl-cancelled td, .cd-jrnl-voided td { text-decoration:line-through; background:var(--red-50, #fef2f2); }
+.cd-jrnl-cancelled .cd-jrnl-no-strike, .cd-jrnl-voided .cd-jrnl-no-strike { text-decoration:none !important; }
 .cd-jrnl-scroll { overflow-x:auto; }
 .cd-jrnl-balance-warning { color:var(--red,#dc2626); font-weight:600; margin-top:10px; }
 .cd-jrnl-meta { padding:8px 20px 0; }
@@ -100,6 +100,19 @@
             </thead>
             <tbody>
                 {% for row in matrix.rows %}
+                {% if row.is_voided %}
+                <tr class="cd-jrnl-voided">
+                    <td>{{ row.cdv.cdv_date.strftime('%b %d, %Y') }}</td>
+                    <td class="cd-jrnl-no-strike">
+                        <a href="{{ url_for('cash_disbursements.view', id=row.cdv.id) }}" style="font-weight:600;color:var(--blue);">{{ row.cdv.cdv_number }}</a>
+                        <span class="cd-jrnl-voided-badge cd-jrnl-no-strike">VOIDED</span>
+                    </td>
+                    <td>{{ row.cdv.check_number or '' }}</td>
+                    <td>{{ row.cdv.vendor_name }}</td>
+                    <td>{{ row.cdv.notes or '' }}</td>
+                    {% for col in matrix.columns %}<td class="cd-jrnl-num cd-jrnl-no-strike"></td>{% endfor %}
+                </tr>
+                {% else %}
                 {% set cdv = cdv_map.get(row.entry.reference) %}
                 <tr {% if row.is_cancelled %}class="cd-jrnl-cancelled"{% endif %}>
                     <td>{{ row.entry.entry_date.strftime('%b %d, %Y') }}</td>
@@ -123,6 +136,7 @@
                     </td>
                     {% endfor %}
                 </tr>
+                {% endif %}
                 {% endfor %}
                 <tr class="cd-jrnl-total">
                     <td colspan="5">TOTAL</td>

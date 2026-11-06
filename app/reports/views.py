@@ -2225,15 +2225,24 @@ def books_export_all():
                     # template's col-row-voided rendering: date from the source
                     # document, "[VOIDED]" in the Ref column, doc number in
                     # Particulars, blank/zero amounts.  Sales Journal rows carry
-                    # key 'invoice'; Purchase Journal rows carry key 'ap'.
+                    # key 'invoice'; Purchase Journal rows carry key 'ap'; Cash
+                    # Receipts Book rows 'crv'; Cash Disbursements Book rows 'cdv'.
                     inv = r.get('invoice')
                     ap = r.get('ap')
+                    crv = r.get('crv')
+                    cdv = r.get('cdv')
                     if inv:
                         date_str = inv.invoice_date.strftime('%m/%d/%Y') if inv.invoice_date else ''
                         particulars = inv.invoice_number or ''
                     elif ap:
                         date_str = ap.ap_date.strftime('%m/%d/%Y') if ap.ap_date else ''
                         particulars = ap.ap_number or ''
+                    elif crv:
+                        date_str = crv.crv_date.strftime('%m/%d/%Y') if crv.crv_date else ''
+                        particulars = crv.crv_number or ''
+                    elif cdv:
+                        date_str = cdv.cdv_date.strftime('%m/%d/%Y') if cdv.cdv_date else ''
+                        particulars = cdv.cdv_number or ''
                     else:
                         date_str = ''
                         particulars = ''

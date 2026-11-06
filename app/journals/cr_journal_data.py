@@ -40,13 +40,16 @@ def _col_key(account, ar_account_id, wt_account_id, output_vat_account_ids, tota
 
 def build_columnar_cr(posted_entries, draft_entries, ar_account_id,
                       wt_account_id, output_vat_account_ids, cancelled_refs=None,
-                      draft_amounts=False):
+                      draft_amounts=False, voided_crvs=None):
     """Pivot receipt journal-entry lines into a columnar matrix.
 
     Columns are built only from POSTED entries' accounts. Cancelled CRVs
     (whose JEs remain posted) are included in totals but flagged is_cancelled=True
     for visual display (strikethrough + badge). Draft rows carry no amounts unless
     draft_amounts=True (the .xlsx download), which pivots them like posted rows.
+    Voided CRVs (voided from draft; their JE is deleted) are listed as is_voided
+    rows carrying the CRV under 'crv', with no amounts and outside the totals, as
+    the AP, SI and CD journals list theirs (owner, 6 Nov 2026).
 
     cancelled_refs: set of CRV numbers (entry.reference) that are cancelled.
 
@@ -54,6 +57,8 @@ def build_columnar_cr(posted_entries, draft_entries, ar_account_id,
     """
     if cancelled_refs is None:
         cancelled_refs = set()
+    if voided_crvs is None:
+        voided_crvs = []
     if output_vat_account_ids is None:
         output_vat_account_ids = set()
 
@@ -73,11 +78,17 @@ def build_columnar_cr(posted_entries, draft_entries, ar_account_id,
 
     for je in posted_entries:
         is_cancelled = je.reference in cancelled_refs
-        rows.append({'entry': je, 'cells': pivot(je), 'is_draft': False, 'is_cancelled': is_cancelled})
+        rows.append({'entry': je, 'cells': pivot(je), 'is_draft': False,
+                     'is_cancelled': is_cancelled, 'is_voided': False})
 
     for je in draft_entries:
         cells = pivot(je) if draft_amounts else {}
-        rows.append({'entry': je, 'cells': cells, 'is_draft': True, 'is_cancelled': False})
+        rows.append({'entry': je, 'cells': cells, 'is_draft': True,
+                     'is_cancelled': False, 'is_voided': False})
+
+    for crv in voided_crvs:
+        rows.append({'crv': crv, 'entry': None, 'cells': {}, 'is_draft': False,
+                     'is_cancelled': False, 'is_voided': True})
 
     ordered = sorted(
         accounts_by_id.values(),
@@ -90,7 +101,12 @@ def build_columnar_cr(posted_entries, draft_entries, ar_account_id,
         'group': _group(a, ar_account_id, wt_account_id, output_vat_account_ids, totals),
     } for a in ordered]
 
-    rows.sort(key=lambda r: (r['entry'].entry_date, r['entry'].entry_number))
+    def _row_sort_key(r):
+        if r['is_voided']:
+            return (r['crv'].crv_date, r['crv'].crv_number)
+        return (r['entry'].entry_date, r['entry'].entry_number or '')
+
+    rows.sort(key=_row_sort_key)
 
     grand_total = sum(totals.values(), Decimal('0'))
     return {
@@ -118,9 +134,18 @@ def build_cr_journal_xlsx(columns, rows, date_from, date_to, company_name, branc
     identity(entry) -> (cr_no, invoice_numbers, customer, particulars)
     first_account_ids: the Cash & Bank and trade receivable accounts, first by code;
     revenue_account_ids: the sales accounts, last by code descending -- the legacy order.
+    Voided CRVs never reached the books: a marked row, invoices kept, no amounts.
     """
     out = []
     for r in rows:
+        if r.get('is_voided'):
+            c = r['crv']
+            lines = sorted(c.ar_lines, key=lambda line: line.line_number)
+            invoices = '/'.join(line.invoice_number for line in lines if line.invoice_number)
+            out.append(journal_row([text_date(c.crv_date), c.crv_number, invoices or None,
+                                    c.customer_name, '[VOIDED] ' + (c.notes or '')], {},
+                                   [posted_flag(False)]))
+            continue
         no, invoices, customer, particulars = identity(r['entry'])
         if r['is_cancelled']:
             particulars = '[CANCELLED] ' + (particulars or '')

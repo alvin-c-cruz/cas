@@ -17,10 +17,10 @@
 .cr-jrnl-head--debit { background:#eff6ff; }
 .cr-jrnl-draft-badge { font-size:10px; font-weight:600; color:#c2410c; background:#fff7ed;
     border:1px solid #fed7aa; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
-.cr-jrnl-cancelled-badge { font-size:10px; font-weight:600; color:#b91c1c; background:#fef2f2;
+.cr-jrnl-cancelled-badge, .cr-jrnl-voided-badge { font-size:10px; font-weight:600; color:#b91c1c; background:#fef2f2;
     border:1px solid #fecaca; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
-.cr-jrnl-cancelled td { text-decoration:line-through; background:var(--red-50, #fef2f2); }
-.cr-jrnl-cancelled .cr-jrnl-no-strike { text-decoration:none !important; }
+.cr-jrnl-cancelled td, .cr-jrnl-voided td { text-decoration:line-through; background:var(--red-50, #fef2f2); }
+.cr-jrnl-cancelled .cr-jrnl-no-strike, .cr-jrnl-voided .cr-jrnl-no-strike { text-decoration:none !important; }
 .cr-jrnl-scroll { overflow-x:auto; }
 .cr-jrnl-balance-warning { color:var(--red,#dc2626); font-weight:600; margin-top:10px; }
 .cr-jrnl-meta { padding:8px 20px 0; }
@@ -100,6 +100,19 @@
             </thead>
             <tbody>
                 {% for row in matrix.rows %}
+                {% if row.is_voided %}
+                <tr class="cr-jrnl-voided">
+                    <td>{{ row.crv.crv_date.strftime('%b %d, %Y') }}</td>
+                    <td class="cr-jrnl-no-strike">
+                        <a href="{{ url_for('cash_receipts.view', id=row.crv.id) }}" style="font-weight:600;color:var(--blue);">{{ row.crv.crv_number }}</a>
+                        <span class="cr-jrnl-voided-badge cr-jrnl-no-strike">VOIDED</span>
+                    </td>
+                    <td>{{ row.crv.check_number or '' }}</td>
+                    <td>{{ row.crv.customer_name }}</td>
+                    <td>{{ row.crv.notes or '' }}</td>
+                    {% for col in matrix.columns %}<td class="cr-jrnl-num cr-jrnl-no-strike"></td>{% endfor %}
+                </tr>
+                {% else %}
                 {% set crv = crv_map.get(row.entry.reference) %}
                 <tr {% if row.is_cancelled %}class="cr-jrnl-cancelled"{% endif %}>
                     <td>{{ row.entry.entry_date.strftime('%b %d, %Y') }}</td>
@@ -123,6 +136,7 @@
                     </td>
                     {% endfor %}
                 </tr>
+                {% endif %}
                 {% endfor %}
                 <tr class="cr-jrnl-total">
                     <td colspan="5">TOTAL</td>

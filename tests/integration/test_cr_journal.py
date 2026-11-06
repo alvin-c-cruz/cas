@@ -235,3 +235,85 @@ class TestCRJournalExport:
         assert resp.status_code == 200
         assert 'spreadsheetml' in resp.headers['Content-Type']
         assert resp.data[:2] == b'PK'
+
+
+def _voided_crv(branch_id, number, crv_date, cash_acct, check_number='0012345',
+                notes='Collection for SI-0101', amount='56789.10'):
+    """A CRV voided from draft, as the void route leaves it: status 'voided', no JE."""
+    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+    from app.customers.models import Customer
+    customer = Customer.query.filter_by(code='VCR01').first()
+    if not customer:
+        customer = Customer(code='VCR01', name='Voided Receipt Customer', is_active=True)
+        db.session.add(customer)
+        db.session.flush()
+    crv = CashReceiptVoucher(
+        branch_id=branch_id, crv_number=number, crv_date=crv_date,
+        customer_id=customer.id, customer_name=customer.name,
+        payment_method='check', check_number=check_number, cash_account_id=cash_acct.id,
+        notes=notes, total_amount=Decimal(amount), status='voided',
+        void_reason='Wrong customer on the receipt.')
+    db.session.add(crv)
+    db.session.flush()
+    db.session.add(CRVArLine(crv_id=crv.id, line_number=1, invoice_number='SI-0101',
+                             original_balance=Decimal(amount), amount_applied=Decimal(amount)))
+    db.session.commit()
+    return crv
+
+
+class TestCRJournalVoidedCRVs:
+    """Owner, 6 Nov 2026: "fix the CR journal too" (bug report #5 was the CD journal).
+    A voided CRV has no JE; it is listed marked, with no amounts, outside the totals."""
+
+    def test_journal_lists_a_voided_crv(self, client, accountant, branch,
+                                        cash_acct, revenue_acct, db_session):
+        _receipt_je(branch.id, date(2026, 10, 1), 'CR-POSTED', cash_acct, revenue_acct, 8000)
+        crv = _voided_crv(branch.id, 'CR-V1', date(2026, 10, 2), cash_acct)
+        _login(client, 'acc_cr')
+        html = client.get('/journals/cr?mode=month&year=2026&month=10').get_data(as_text=True)
+        assert '<tr class="cr-jrnl-voided">' in html
+        assert f'href="/cash-receipts/{crv.id}"' in html
+        assert '>CR-V1</a>' in html
+        assert '<span class="cr-jrnl-voided-badge cr-jrnl-no-strike">VOIDED</span>' in html
+        assert '<td>0012345</td>' in html
+        assert '56,789.10' not in html
+        total_row = html[html.index('<tr class="cr-jrnl-total">'):]
+        assert '8,000.00' in total_row
+
+    def test_only_voided_crvs_of_this_branch_and_period_are_listed(
+            self, client, accountant, branch, cash_acct, db_session):
+        other = Branch(name='Other Branch CR', code='OCR')
+        db.session.add(other)
+        db.session.commit()
+        _voided_crv(branch.id, 'V-IN', date(2026, 10, 5), cash_acct)
+        _voided_crv(branch.id, 'V-SEPT', date(2026, 9, 30), cash_acct)
+        _voided_crv(other.id, 'V-OTHER', date(2026, 10, 5), cash_acct)
+        _login(client, 'acc_cr')
+        html = client.get('/journals/cr?mode=month&year=2026&month=10').get_data(as_text=True)
+        assert '>V-IN</a>' in html
+        assert '>V-SEPT</a>' not in html
+        assert '>V-OTHER</a>' not in html
+
+    def test_print_marks_the_voided_crv(self, client, accountant, branch, cash_acct, db_session):
+        _voided_crv(branch.id, 'CR-V1', date(2026, 10, 2), cash_acct)
+        _login(client, 'acc_cr')
+        html = client.get('/journals/cr/print?mode=month&year=2026&month=10').get_data(as_text=True)
+        assert '<tr class="crj-row-voided">' in html
+        assert '<td class="no-strike">CR-V1</td>' in html
+        assert '[VOIDED] Collection for SI-0101' in html
+        assert '56,789.10' not in html
+
+    def test_download_lists_the_voided_crv_with_no_amounts(
+            self, client, accountant, branch, cash_acct, revenue_acct, db_session):
+        from openpyxl import load_workbook
+        import io
+        _receipt_je(branch.id, date(2026, 10, 1), 'CR-POSTED', cash_acct, revenue_acct, 8000)
+        _voided_crv(branch.id, 'CR-V1', date(2026, 10, 2), cash_acct)
+        _login(client, 'acc_cr')
+        ws = load_workbook(io.BytesIO(
+            client.get('/journals/cr/export?mode=month&year=2026&month=10').data)).active
+        voided = next(r for r in ws.iter_rows(min_row=6, max_row=7) if r[1].value == 'CR-V1')
+        assert [c.value for c in voided] == ['02-Oct-2026', 'CR-V1', 'SI-0101',
+                                             'Voided Receipt Customer',
+                                             '[VOIDED] Collection for SI-0101', None, None, 'No']
+        assert ws['A9'].value == 'Total'
