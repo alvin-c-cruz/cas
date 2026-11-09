@@ -6,6 +6,27 @@
 {% block content %}
 {% set may_manage = current_user.role == 'accountant' or current_user.has_full_access %}
 
+{% if admin_override %}
+<div id="adminDeleteModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:520px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Delete {{ entry.entry_number }}?</h3>
+    <p style="color:var(--text-2);margin-bottom:20px;">This removes the journal entry and its lines from
+      the books. The JV number becomes free. A full copy is kept in the audit log. This cannot be undone.</p>
+    <form method="POST" action="{{ url_for('journal_entries.delete', id=entry.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+        <textarea name="delete_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('adminDeleteModal').style.display='none'">Keep entry</button>
+        <button type="submit" class="btn btn-danger">Delete entry</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="card-header">
         <div class="card-header-actions">
@@ -17,6 +38,13 @@
                     📮 Post Entry
                 </button>
             </form>
+            {% endif %}
+
+            {% if admin_override %}
+            <a href="{{ url_for('journal_entries.edit', id=entry.id) }}" class="btn btn-primary"
+               title="Administrator: edit this posted entry in place">Edit (admin)</a>
+            <button type="button" class="btn btn-danger" onclick="document.getElementById('adminDeleteModal').style.display='flex'"
+                    title="Administrator: delete this entry">Delete</button>
             {% endif %}
 
             {% if entry.status != 'cancelled' and entry.status != 'reversed' and may_manage %}

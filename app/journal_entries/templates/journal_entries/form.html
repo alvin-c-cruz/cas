@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{% if entry %}Edit{% else %}New{% endif %} Journal Entry{% endblock %}
-{% block page_title %}{% if entry %}Edit{% else %}New{% endif %} Journal Entry{% endblock %}
+{% block title %}{% if admin_posted_edit %}Edit Posted Journal Entry (admin){% elif entry %}Edit Journal Entry{% else %}New Journal Entry{% endif %}{% endblock %}
+{% block page_title %}{% if admin_posted_edit %}Edit Posted Journal Entry (admin){% elif entry %}Edit Journal Entry{% else %}New Journal Entry{% endif %}{% endblock %}
 {% block content %}
 {% from "macros.html" import render_field %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}?v=1">
@@ -96,6 +96,15 @@
 
             <!-- Hidden field to store lines data -->
             <input type="hidden" name="lines" id="linesData">
+
+            {% if admin_posted_edit %}
+            <div class="admin-override-reason" style="margin-top:12px;padding:10px 12px;border:1px solid var(--red);border-radius:6px;">
+                <label class="form-label" for="admin_reason">Reason for editing this POSTED journal entry <span style="color:var(--red);">*</span></label>
+                <textarea id="admin_reason" name="admin_reason" class="form-control" rows="2" required minlength="10"
+                          placeholder="Minimum 10 characters -- kept in the audit log">{{ admin_reason or '' }}</textarea>
+                <div style="font-size:12px;color:var(--text-2);margin-top:4px;">Administrator override: the entry stays posted under the same number and posting date; its lines are replaced by the ones above.</div>
+            </div>
+            {% endif %}
 
             <!-- Form Actions -->
             <div class="form-actions">

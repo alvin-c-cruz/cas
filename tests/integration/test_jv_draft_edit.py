@@ -176,8 +176,12 @@ def test_moving_a_draft_to_another_month_renumbers_it_for_that_month(
 
 @pytest.mark.parametrize('status', ['posted', 'cancelled'])
 def test_posted_and_cancelled_entries_cannot_be_edited(
-        client, admin_user, main_branch, login_user, status):
-    _login(client, login_user, main_branch)
+        client, admin_user, accountant_user, main_branch, login_user, status):
+    """As an accountant: since bug report #6 the ADMINISTRATOR may edit a posted voucher
+    (test_jv_admin_override.py); for everyone else the draft-only rule stands."""
+    login_user(client, 'accountant', 'accountant123')
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
     a, b, _ = _accounts()
     entry = _draft(main_branch, admin_user, a, b, status=status)
 
@@ -211,8 +215,13 @@ def test_a_draft_in_a_branch_the_user_cannot_reach_cannot_be_edited(
     assert db.session.get(JournalEntry, foreign.id).description == 'original description'
 
 
-def test_detail_page_offers_edit_only_on_a_draft(client, admin_user, main_branch, login_user):
-    _login(client, login_user, main_branch)
+def test_detail_page_offers_edit_only_on_a_draft(client, admin_user, accountant_user, main_branch,
+                                                 login_user):
+    """As an accountant; the administrator's Edit (admin) on a posted voucher is covered in
+    test_jv_admin_override.py."""
+    login_user(client, 'accountant', 'accountant123')
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
     a, b, _ = _accounts()
     draft = _draft(main_branch, admin_user, a, b, number='JV-2026-08-0001')
     posted = _draft(main_branch, admin_user, a, b, number='JV-2026-08-0002', status='posted')

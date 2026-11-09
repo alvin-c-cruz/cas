@@ -10,7 +10,10 @@ from app.journal_entries.forms import JournalEntryForm
 from app.accounts.models import Account
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
-from app.periods.utils import validate_transaction_date_with_flash
+from app.periods.utils import validate_transaction_date, validate_transaction_date_with_flash
+from app.common.admin_override import (RECONCILED, REASON_REQUIRED, clean_reason,
+                                       is_override_user, journal_entry_snapshot, log_override,
+                                       reconciled_line_count)
 from app.journal_entries.utils import generate_entry_number, generate_jv_number, jv_prefix
 from app.utils.concurrency import commit_with_renumber_retry
 from app.settings import AppSettings
@@ -57,6 +60,55 @@ def _get_entry_or_404(id):
     entry = db.get_or_404(JournalEntry, id)
     require_same_branch(entry)
     return entry
+
+
+def _pointers_to_entries():
+    """Every (table, column) outside the journal itself holding a journal entry's id: the
+    documents that own an entry (CDV, AP, SI, CRV, payroll, stock ...). Read from the
+    schema, so a document added later is covered without touching this list."""
+    out = []
+    for table in db.metadata.sorted_tables:
+        if table.name in ('journal_entries', 'journal_entry_lines'):
+            continue
+        for fk in table.foreign_keys:
+            if fk.column.table.name == 'journal_entries':
+                out.append((table, fk.parent))
+    return out
+
+
+def _owner_of(entry):
+    """Why this entry is not a voucher made on the JV form, or None. Such an entry is
+    changed through the document it belongs to, never by the JV override."""
+    if entry.source_ref:
+        return 'was imported from the legacy books'
+    if entry.reversed_entry_id or entry.reversed_by_id:
+        return 'is part of a reversal; change it through the document it reverses'
+    for table, column in _pointers_to_entries():
+        if db.session.execute(db.select(column).where(column == entry.id).limit(1)).first():
+            return f'belongs to a document ({table.name}); change it through that document'
+    return None
+
+
+def _admin_override_refusal(entry):
+    """Why the administrator may NOT edit or delete this posted voucher, or None.
+
+    The rules settled for every document (owner, 6 Oct 2026; admin-override-checklist.md):
+    a closed period, a bank-reconciled line and a fixed-asset tag refuse. A JV adds one: it
+    must be a voucher of its own, not another document's entry."""
+    owner = _owner_of(entry)
+    if owner:
+        return f'This entry {owner}.'
+    ok, period_msg = validate_transaction_date(entry.entry_date, 'journal entry')
+    if not ok:
+        return period_msg
+    if reconciled_line_count(entry.id):
+        return RECONCILED
+    from app.fixed_assets import services as fixed_asset_services
+    tagged = fixed_asset_services.get_tags_for_document('jv', entry.id)
+    if tagged:
+        return (f'It is linked to fixed asset(s) {", ".join(a.code for a in tagged)}. '
+                'Delete the fixed asset(s) first.')
+    return None
 
 
 def _number_for_date(submitted, entry_date, branch_id):
@@ -277,9 +329,12 @@ def view(id):
     }
     fixed_asset_tags = {k: v for k, v in fixed_asset_tags.items() if v is not None}
 
+    # Edit (admin) / Delete on a posted voucher of its own (owner, 6 Oct 2026; bug report #6).
+    admin_override = (entry.status == 'posted' and is_override_user(current_user)
+                      and _owner_of(entry) is None)
     return render_template('journal_entries/detail.html', entry=entry,
                            jv_print_form=AppSettings.get_setting('jv_print_form', 'current'),
-                           fixed_asset_tags=fixed_asset_tags)
+                           fixed_asset_tags=fixed_asset_tags, admin_override=admin_override)
 
 
 @journal_entries_bp.route('/journal-entries/<int:id>/edit', methods=['GET', 'POST'])
@@ -294,10 +349,19 @@ def edit(id):
     lines can be capitalized -- so replacing the lines orphans nothing.
     """
     entry = _get_entry_or_404(id)
-    if entry.status != 'draft':
+    # The administrator may edit a POSTED voucher in place (owner, 6 Oct 2026, every
+    # document; bug report #6 for the JV): it stays posted under the same number and
+    # posting stamp. Everyone else, and every other status, keeps the draft-only rule.
+    admin_posted = entry.status == 'posted' and is_override_user(current_user)
+    if entry.status != 'draft' and not admin_posted:
         flash('Only draft journal entries can be edited. Correct a posted entry with a '
               'reversing entry.', 'error')
         return redirect(url_for('journal_entries.view', id=id))
+    if admin_posted:
+        refusal = _admin_override_refusal(entry)
+        if refusal:
+            flash(f'Cannot edit posted journal entry {entry.entry_number}: {refusal}', 'error')
+            return redirect(url_for('journal_entries.view', id=id))
 
     form = JournalEntryForm(obj=entry)
 
@@ -307,13 +371,21 @@ def edit(id):
                       'debit': float(l.debit_amount or 0), 'credit': float(l.credit_amount or 0)}
                      for l in entry.lines]
         return render_template('journal_entries/form.html', form=form, entry=entry,
-                               accounts=_accounts_for_select(), existing_lines=lines)
+                               accounts=_accounts_for_select(), existing_lines=lines,
+                               admin_posted_edit=admin_posted,
+                               admin_reason=request.form.get('admin_reason', ''))
 
     if request.method == 'GET':
         return _render()
 
     if not form.validate_on_submit():
         return _render(_safe_json(request.form.get('lines')))
+    admin_reason = None
+    if admin_posted:
+        admin_reason = clean_reason(request.form.get('admin_reason'))
+        if not admin_reason:
+            flash(REASON_REQUIRED, 'error')
+            return _render(_safe_json(request.form.get('lines')))
     if not validate_transaction_date_with_flash(form.entry_date.data, 'journal entry'):
         return _render(_safe_json(request.form.get('lines')))
 
@@ -325,7 +397,9 @@ def edit(id):
     try:
         from app.audit.utils import get_changes
         total = sum((l['debit'] for l in lines), Decimal('0.00'))
-        new_number = _number_for_date(entry.entry_number, form.entry_date.data, entry.branch_id)
+        # A posted voucher keeps its number (edit in place); a draft follows its date's month.
+        new_number = entry.entry_number if admin_posted else \
+            _number_for_date(entry.entry_number, form.entry_date.data, entry.branch_id)
         fields = ['entry_number', 'entry_date', 'description', 'reference', 'entry_type',
                   'total_debit', 'total_credit']
         new_data = {'entry_number': new_number, 'entry_date': form.entry_date.data,
@@ -366,9 +440,14 @@ def edit(id):
         else:
             db.session.commit()
 
-        log_update(module='journal_entry', record_id=entry.id,
-                   record_identifier=f'{entry.entry_number} - {entry.description}',
-                   old_values=old_values, new_values=new_values)
+        if admin_posted:
+            log_override('journal_entry', 'admin_edit_posted', entry.id,
+                         f'{entry.entry_number} - {entry.description}', admin_reason,
+                         old_values=old_values, new_values=new_values)
+        else:
+            log_update(module='journal_entry', record_id=entry.id,
+                       record_identifier=f'{entry.entry_number} - {entry.description}',
+                       old_values=old_values, new_values=new_values)
 
         flash(f'Journal Entry "{entry.entry_number}" updated.', 'success')
         return redirect(url_for('journal_entries.view', id=entry.id))
@@ -533,8 +612,37 @@ def cancel(id):
 @login_required
 @accountant_or_admin_required
 def delete(id):
-    """Delete journal entry (only drafts can be deleted)."""
+    """Delete a draft journal entry; the administrator may also hard-delete a POSTED voucher
+    (owner, 6 Oct 2026; bug report #6): the entry and its lines leave the books, its number
+    is free again, and the audit row keeps a full snapshot."""
     entry = _get_entry_or_404(id)
+
+    if entry.status == 'posted' and is_override_user(current_user):
+        reason = clean_reason(request.form.get('delete_reason'))
+        if not reason:
+            flash(REASON_REQUIRED, 'error')
+            return redirect(url_for('journal_entries.view', id=id))
+        refusal = _admin_override_refusal(entry)
+        if refusal:
+            flash(f'Cannot delete posted journal entry {entry.entry_number}: {refusal}', 'error')
+            return redirect(url_for('journal_entries.view', id=id))
+        number, identifier = entry.entry_number, f'{entry.entry_number} - {entry.description}'
+        snapshot = journal_entry_snapshot(entry)
+        try:
+            db.session.delete(entry)   # its lines go with it
+            db.session.commit()
+        except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            db.session.rollback()
+            current_app.logger.error('Error deleting posted journal entry', exc_info=True)
+            log_exception(e, severity='ERROR', module='journal_entries.delete')
+            flash('An unexpected error occurred while deleting the journal entry. Nothing was '
+                  'changed.', 'error')
+            return redirect(url_for('journal_entries.view', id=id))
+        log_override('journal_entry', 'admin_delete', id, identifier, reason, old_values=snapshot)
+        flash(f'Journal Entry "{number}" deleted. Its number is free again.', 'warning')
+        return redirect(url_for('journal_entries.list_entries'))
 
     if entry.status != 'draft':
         flash('Only draft journal entries can be deleted.', 'error')
