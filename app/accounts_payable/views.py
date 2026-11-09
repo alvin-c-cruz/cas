@@ -842,6 +842,19 @@ def create():
                       f'been suggested below -- review and Save again.', 'error')
                 return _render_form(request.form.get('line_items', ''))
 
+            # The two control-account overrides are admin / chief accountant only (owner,
+            # 2 Nov 2026; as on the SI, 4acde49b): anyone else gets the company's accounts,
+            # whatever was posted.
+            if current_user.has_full_access:
+                ap_trade_id = form.ap_trade_account_id.data
+                wht_payable_id = form.wht_payable_account_id.data
+            else:
+                from app.posting.control_accounts import get_control_account
+                _default_ap = get_control_account('ap_trade', required=False)
+                _default_wt = get_control_account('wht_payable', required=False)
+                ap_trade_id = _default_ap.id if _default_ap else None
+                wht_payable_id = _default_wt.id if _default_wt else None
+
             ap = AccountsPayable(
                 branch_id=session.get('selected_branch_id'),
                 ap_number=ap_num,
@@ -862,8 +875,8 @@ def create():
                 amount_paid=Decimal('0.00'),
                 balance=Decimal('0.00'),
                 created_by_id=current_user.id,
-                ap_trade_account_id=form.ap_trade_account_id.data,
-                wht_payable_account_id=form.wht_payable_account_id.data,
+                ap_trade_account_id=ap_trade_id,
+                wht_payable_account_id=wht_payable_id,
             )
 
             for line_item in _build_validated_ap_lines():
@@ -1259,8 +1272,11 @@ def edit(id):
             # would ERASE a reference recorded before the field was removed --
             # the column is kept precisely so that history survives.
             ap.notes = form.notes.data
-            ap.ap_trade_account_id = form.ap_trade_account_id.data
-            ap.wht_payable_account_id = form.wht_payable_account_id.data
+            # Admin / chief accountant only; anyone else leaves the voucher's own accounts
+            # as they are (not reset to the company default, which would erase an override).
+            if current_user.has_full_access:
+                ap.ap_trade_account_id = form.ap_trade_account_id.data
+                ap.wht_payable_account_id = form.wht_payable_account_id.data
 
             # Build + validate the new lines BEFORE deleting the old ones, so an
             # invalid submission rejects without destroying the existing lines.

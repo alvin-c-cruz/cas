@@ -120,6 +120,46 @@ class TestTheRoute:
         assert resp.get_json() == {'check_number': '', 'bank': ''}
 
 
+# What a browser sends when the address is typed or a link followed, and what the CV form's
+# fetch() sends (Sec-Fetch-* are set by the browser, not by the page's script).
+NAVIGATE = {'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'}
+OLD_BROWSER_NAVIGATE = {'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'}
+FORM_FETCH = {'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Dest': 'empty', 'Accept': '*/*'}
+
+
+class TestOnlyTheAdminOpensThePage:
+    """Work order 2026-11-03 (owner: "I just dont want other users to reach this weird page"):
+    a non-admin who opens /cash-disbursements/next-check as a page gets a 404; the CV form's
+    own fetch keeps its JSON for everyone, so the cheque autofill still works (owner's choice,
+    the lighter way)."""
+
+    def _as(self, client, main_branch, username, password, headers):
+        client.post('/login', data={'username': username, 'password': password},
+                    follow_redirects=True)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        return client.get('/cash-disbursements/next-check?account_id=1', headers=headers)
+
+    @pytest.mark.parametrize('headers', [NAVIGATE, OLD_BROWSER_NAVIGATE], ids=['navigate', 'old-browser'])
+    def test_staff_opening_the_page_get_a_404(self, client, db_session, staff_user, main_branch, headers):
+        staff_user.set_branches([main_branch]); db_session.commit()
+        assert self._as(client, main_branch, 'staff', 'staff123', headers).status_code == 404
+
+    def test_a_chief_accountant_opening_the_page_gets_a_404(
+            self, client, db_session, chief_accountant_user, main_branch):
+        assert self._as(client, main_branch, 'chief', 'chief123', NAVIGATE).status_code == 404
+
+    def test_the_admin_still_opens_it(self, client, db_session, admin_user, main_branch):
+        resp = self._as(client, main_branch, 'admin', 'admin123', NAVIGATE)
+        assert resp.status_code == 200 and resp.get_json() == {'check_number': '', 'bank': ''}
+
+    def test_the_forms_fetch_still_answers_staff(self, client, db_session, staff_user, main_branch):
+        staff_user.set_branches([main_branch]); db_session.commit()
+        resp = self._as(client, main_branch, 'staff', 'staff123', FORM_FETCH)
+        assert resp.status_code == 200 and resp.get_json() == {'check_number': '', 'bank': ''}
+
+
 def test_the_form_wires_the_autofill(client, db_session, admin_user, main_branch, book):
     """The JS that calls the route and fills the three fields is on the create form."""
     login(client)

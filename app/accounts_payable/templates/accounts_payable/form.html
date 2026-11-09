@@ -25,8 +25,11 @@
                     {{ render_field(form.payment_terms) }}
                     {{ render_field(form.vendor_invoice_number) }}
                     {{ render_field(form.vendor_invoice_date) }}
+                    {#- Admin and chief accountant only (owner, 2 Nov 2026; as on the SI). -#}
+                    {% if current_user.has_full_access %}
                     {{ render_field(form.ap_trade_account_id) }}
                     {{ render_field(form.wht_payable_account_id) }}
+                    {% endif %}
                 </div>
                 <!-- Right 2/3: vendor card -->
                 <div class="right-col">

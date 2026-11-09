@@ -169,7 +169,7 @@
                     </label>
 
                     {% for section in ['Transactions', 'Ledger', 'Financial Reports', 'Maintenance'] %}
-                    {% set mods = module_registry | selectattr('section', 'equalto', section) | list %}
+                    {% set mods = module_registry | selectattr('section', 'equalto', section) | rejectattr('full_access_only') | list %}
                     {% if mods %}
                     <div class="form-hint" style="margin: 10px 0 6px; font-weight: 600;">{{ section }}</div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">

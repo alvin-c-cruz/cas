@@ -13,8 +13,10 @@ def login(client, username='accountant', password='accountant123'):
 
 
 def test_create_ap_persists_control_account_override(
-        client, db_session, accountant_user, main_branch):
-    login(client)
+        client, db_session, admin_user, main_branch):
+    """As the administrator: the override is admin / chief accountant only since plan item 2.1
+    (owner, 2 Nov 2026); an accountant's is ignored (test_accounts_payable_control_account_gating)."""
+    login(client, 'admin', 'admin123')
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = main_branch.id
 

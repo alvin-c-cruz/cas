@@ -164,8 +164,10 @@ MODULE_REGISTRY = [
      'area': 'Accounting', 'group': 'Financial Statements',
      'endpoints': ('reports.trial_balance', 'reports.trial_balance_export_excel',
                    'reports.trial_balance_print')},
+    # Admin and chief accountant only (owner, 2 Nov 2026: "periods comes out of the
+    # permissions staff can be granted"); its routes are full_access_required.
     {'key': 'periods', 'label': 'Accounting Periods', 'section': 'Financial Reports',
-     'area': 'Accounting', 'group': 'Financial Statements',
+     'area': 'Accounting', 'group': 'Financial Statements', 'full_access_only': True,
      'endpoints': ('periods.',)},
     {'key': 'fiscal_year_close', 'label': 'Year-End Close', 'section': 'Financial Reports',
      'area': 'Accounting', 'group': 'Financial Statements',
@@ -375,6 +377,9 @@ def can_access_module(user, key):
         return False
     if user.has_full_access:
         return True
+    entry = next((m for m in MODULE_REGISTRY if m['key'] == key), None)
+    if entry and entry.get('full_access_only'):
+        return False      # a stored tick from before it stopped being grantable counts for nothing
     return user.get_book_permissions().get(key, False)
 
 
@@ -430,8 +435,10 @@ def all_permission_keys():
     never per-user, so they are excluded here — matching the admin user-save
     path and the form grid. EXCEPTION: an optional module flagged per_user (e.g.
     sales_orders) is both instance-gated AND per-user grantable, so it stays in
-    the grid — a bare optional would silently drop it to admin-only."""
-    return [m['key'] for m in MODULE_REGISTRY if not m.get('optional') or m.get('per_user')]
+    the grid — a bare optional would silently drop it to admin-only. A
+    full_access_only module (periods) is never granted per user."""
+    return [m['key'] for m in MODULE_REGISTRY
+            if (not m.get('optional') or m.get('per_user')) and not m.get('full_access_only')]
 
 
 def default_all_permissions():

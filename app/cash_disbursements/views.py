@@ -1119,8 +1119,26 @@ def next_check_for_account(account_id):
 @cash_disbursements_bp.route('/cash-disbursements/next-check')
 @login_required
 def next_check():
-    """JSON for the CV form: the next check serial and bank for ?account_id=."""
+    """JSON for the CV form: the next check serial and bank for ?account_id=.
+
+    Only the administrator may open it as a page (owner, 3 Nov 2026: "I just dont want
+    other users to reach this weird page"); the form's own fetch keeps its JSON for
+    everyone, so the cheque autofill still works (his choice, the lighter way, work order
+    2026-11-03-recommendation-next-check-admin-only.md). The browser marks a typed address
+    or a followed link as a navigation; the headers can be forged, which is acceptable,
+    since the JSON holds nothing the form does not already show its user."""
+    if _opened_as_a_page() and not is_override_user(current_user):
+        abort(404)
     return jsonify(next_check_for_account(request.args.get('account_id', type=int)))
+
+
+def _opened_as_a_page():
+    """A top-level navigation (typed address, followed link), not a script's fetch."""
+    mode = request.headers.get('Sec-Fetch-Mode')
+    if mode:
+        return mode == 'navigate'
+    # Browsers without Fetch Metadata: a page load asks for HTML first; a fetch asks */*.
+    return request.accept_mimetypes.best_match(['application/json', 'text/html']) == 'text/html'
 
 
 @cash_disbursements_bp.route('/cash-disbursements/payee-defaults')
