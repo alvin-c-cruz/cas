@@ -103,6 +103,10 @@
       <a href="{{ url_for('cash_receipts.print_crv', id=crv.id) }}" target="_blank"
          rel="noopener noreferrer" class="btn btn-secondary">Print</a>
       {% endif %}
+      {% if deposit_slip_printable %}
+      <a href="{{ url_for('cash_receipts.print_deposit_slip', id=crv.id) }}" target="_blank"
+         rel="noopener noreferrer" class="btn btn-secondary">Print Deposit Slip</a>
+      {% endif %}
       {% if (current_user.has_full_access or current_user.role == 'accountant') and crv.status == 'draft' %}
       <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post CRV</button>
       {% endif %}

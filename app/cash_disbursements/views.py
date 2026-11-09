@@ -2032,6 +2032,59 @@ def print_check(id):
         date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
 
 
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/deposit-slip')
+@login_required
+def print_deposit_slip(id):
+    """A deposit slip for this CDV's cheque, printed over the bank's slip: Philgen's own
+    cheque into the payee's account (owner, 10 Nov 2026; design
+    app-docs/superpowers/specs/2026-11-10-deposit-slip-print-design.md). One slip per
+    cheque. Same status rule as Print Check; `?form=` picks the bank form."""
+    from app.audit.utils import log_audit
+    from app.common import deposit_slip as ds
+
+    cdv = _get_cdv_or_404(id)
+    form_key = request.args.get('form')
+    if form_key is not None and form_key not in ds.FORMS:
+        abort(404)
+    fail = lambda msg: (flash(msg, 'error'),
+                        redirect(url_for('cash_disbursements.view', id=id)))[1]
+
+    if cdv.payment_method != 'check':
+        return fail('This voucher is not paid by check.')
+    access = AppSettings.get_setting('cd_check_print_access', 'posted_only')
+    status_ok = access != 'hidden' and (
+        (cdv.status == 'posted') if access != 'draft_and_posted'
+        else (cdv.status not in ('voided', 'cancelled')))
+    if not status_ok:
+        return fail('This voucher is not eligible for a deposit slip.')
+    if not (cdv.check_number or '').strip():
+        return fail('A check number is required to print a deposit slip.')
+    if (cdv.total_amount or 0) <= 0:
+        return fail('Cannot print a deposit slip for a zero amount.')
+
+    values, deposit_bank = ds.cdv_values(cdv)
+    form_key = form_key or ds.default_form_for(deposit_bank)
+    log_audit(module='cash_disbursements', action='print_deposit_slip', record_id=cdv.id,
+              record_identifier=cdv.cdv_number, notes=f'check {cdv.check_number} / {form_key}')
+    return ds.render_slip(
+        title=f'Deposit slip — CDV {cdv.cdv_number}', form_key=form_key, values=values,
+        form_url=url_for('cash_disbursements.print_deposit_slip', id=cdv.id),
+        save_url=url_for('cash_disbursements.save_deposit_slip_layout', form_key=form_key))
+
+
+@cash_disbursements_bp.route('/cash-disbursements/deposit-slip-layout/<form_key>', methods=['POST'])
+@login_required
+def save_deposit_slip_layout(form_key):
+    """Persist a bank form's deposit slip layout (full access, as the cheque layout)."""
+    from app.common import deposit_slip as ds
+    if not current_user.has_full_access:
+        abort(403)
+    if form_key not in ds.FORMS:
+        abort(404)
+    clean = ds.save_layout(form_key, request.get_json(silent=True) or {}, current_user.username)
+    return jsonify(ok=True, layout=clean)
+
+
 def _cdv_export_data(branch_id):
     """Return (data_dicts, columns, headers) for CDV list export.
 

@@ -1265,8 +1265,54 @@ def view(id):
     return render_template('cash_receipts/detail.html',
                            crv=crv, je_entries=je_entries, now=ph_now(),
                            cr_print_access=cr_print_access, cr_print_form=cr_print_form,
+                           deposit_slip_printable=_deposit_slip_refusal(crv) is None,
                            admin_override=is_override_user(current_user),
                            admin_deletable=crv.status in ADMIN_DELETABLE_STATUSES)
+
+
+def _deposit_slip_refusal(crv):
+    """Why this CRV cannot print a deposit slip, or None. The CRV print's status rule;
+    a cheque with a number and an amount (one slip per cheque)."""
+    if crv.payment_method != 'check':
+        return 'This receipt is not a cheque.'
+    access = AppSettings.get_setting('cr_print_access', 'posted_only')
+    if not ((crv.status == 'posted') if access != 'draft_and_posted'
+            else (crv.status not in ('voided', 'cancelled'))):
+        return 'This receipt is not eligible for a deposit slip.'
+    if not (crv.check_number or '').strip():
+        return 'A check number is required to print a deposit slip.'
+    if (crv.total_amount or 0) <= 0:
+        return 'Cannot print a deposit slip for a zero amount.'
+    return None
+
+
+@cash_receipts_bp.route('/cash-receipts/<int:id>/deposit-slip')
+@login_required
+def print_deposit_slip(id):
+    """A deposit slip for this CRV's cheque, printed over the bank's slip: a customer's
+    cheque into the company's account (owner, 10 Nov 2026; design
+    app-docs/superpowers/specs/2026-11-10-deposit-slip-print-design.md). `?form=` picks
+    the bank form; the layouts are shared with the CDV slips."""
+    from app.audit.utils import log_audit
+    from app.common import deposit_slip as ds
+
+    crv = _get_crv_or_404(id)
+    form_key = request.args.get('form')
+    if form_key is not None and form_key not in ds.FORMS:
+        abort(404)
+    refusal = _deposit_slip_refusal(crv)
+    if refusal:
+        flash(refusal, 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+
+    values, deposit_bank = ds.crv_values(crv)
+    form_key = form_key or ds.default_form_for(deposit_bank)
+    log_audit(module='cash_receipts', action='print_deposit_slip', record_id=crv.id,
+              record_identifier=crv.crv_number, notes=f'check {crv.check_number} / {form_key}')
+    return ds.render_slip(
+        title=f'Deposit slip — CRV {crv.crv_number}', form_key=form_key, values=values,
+        form_url=url_for('cash_receipts.print_deposit_slip', id=crv.id),
+        save_url=url_for('cash_disbursements.save_deposit_slip_layout', form_key=form_key))
 
 
 # ---------------------------------------------------------------------------

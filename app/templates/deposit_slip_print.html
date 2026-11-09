@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>{{ title }}</title>
+{#- A deposit slip printed over the bank's pre-printed slip (app/common/deposit_slip.py).
+    The cheque page's markup (print_check.html), so the cheque designer edits it unchanged;
+    the slip adds an editable value per field, a print-date box, the form picker and a
+    whole-print nudge applied on paper only. -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/cd_check_designer.css') }}?v=2">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { color: #000; background: #eee; }  /* font-family is on the <body> tag (see print_check.html) */
+  .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
+  .pp-el { position: absolute; white-space: nowrap; line-height: 1; }
+  .pp-canvas.pp-editing .pp-el { outline: 1px dashed #2e7d32; cursor: move; }
+  .pp-canvas.pp-editing .pp-el:hover { outline: 2px solid #2e7d32; background: rgba(46,125,50,.06); }
+  .pp-canvas.pp-editing .pp-el:empty::before { content: attr(data-label); color: #bbb; font-style: italic; }
+  .pp-field-hidden { display: none; }
+  .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
+  .pp-canvas.pp-editing .pp-text { outline: 1px dotted #1565c0; }
+  .pp-canvas.pp-editing .pp-text[contenteditable="true"] { outline: 2px solid #1565c0; cursor: text; background: #fff; }
+  .pp-col-controls { max-width: 816px; margin: 8px auto 0; display: none; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+  .pp-col-controls.pp-show { display: flex; }
+  .pp-col-controls label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+  .pp-toolbar { max-width: 816px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font: 13px Arial, sans-serif; }
+  .pp-toolbar .hint { font-size: 12px; color: #555; margin-left: auto; }
+  .pp-toolbar input[type=number] { width: 64px; }
+  .ds-values { max-width: 816px; margin: 10px auto 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+               gap: 8px 16px; font: 13px Arial, sans-serif; }
+  .ds-values label { display: grid; gap: 2px; color: #444; }
+  .ds-values label.ds-date { display: flex; gap: 6px; align-items: center; }
+  .ds-values input[type=text] { padding: 4px 6px; border: 1px solid #bbb; border-radius: 3px; font: inherit; color: #000; }
+  .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; color: #fff; text-decoration: none; display: inline-block; }
+  .btn-print { background: #1565c0; } .btn-close { background: #666; } .btn-edit { background: #2e7d32; }
+  @media print {
+    body { background: #fff; }
+    .screen-only { display: none !important; }
+    .pp-canvas { margin: 0; }
+  }
+  @media print { .pp-el { transform: translate(var(--ds-dx), var(--ds-dy)); } }
+</style>
+<style id="ppPageStyle">@page { size: 8.5in 11in; margin: 0; }</style>
+</head>
+<body style="font-family: {{ layout.page.fontFamily }};" data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="letter">
+
+<div class="pp-toolbar screen-only">
+  <button type="button" class="btn btn-print" onclick="window.print()">Print</button>
+  <button type="button" class="btn btn-close" onclick="window.close()">Close</button>
+  <select id="dsForm" data-url="{{ form_url }}" title="Bank form">
+    {% for key, form in forms.items() %}
+    <option value="{{ key }}"{{ ' selected' if key == form_key else '' }}>{{ form.label }}</option>
+    {% endfor %}
+  </select>
+  {% if can_edit_layout %}
+  <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
+  <select id="ppFontFamily" class="screen-only" style="display:none;">
+    {% for group, fonts in font_groups %}
+    <optgroup label="{{ group }}">
+      {% for font in fonts %}
+      <option value="{{ font }}" {{ 'selected' if font == layout.page.fontFamily else '' }}>{{ font.split(',')[0].replace('"','') }}</option>
+      {% endfor %}
+    </optgroup>
+    {% endfor %}
+  </select>
+  <select id="ppDateFormat" class="screen-only" style="display:none;" title="Date format">
+    {% for key in date_formats %}
+    <option value="{{ key }}" {{ 'selected' if key == layout.dateFormat else '' }}>{{ date_labels[key] }}</option>
+    {% endfor %}
+  </select>
+  <span id="ppOffsetWrap" style="display:none;" title="Moves the whole print on paper; + is right / down">
+    Nudge print (mm): X <input type="number" id="ppOffsetX" step="0.1" value="{{ layout.page.offsetX }}">
+    Y <input type="number" id="ppOffsetY" step="0.1" value="{{ layout.page.offsetY }}">
+  </span>
+  {% endif %}
+  <span class="hint">Letter, margins None. Feed the slip at the top-left.</span>
+</div>
+
+<div class="ds-values screen-only">
+  <label class="ds-date"><input type="checkbox" id="dsPrintDate"> Print date
+    <input type="date" id="dsDate" value="{{ today.isoformat() }}"></label>
+  {% for key in ['account_name', 'account_number', 'total_amount', 'check_bank', 'check_number', 'check_amount'] %}
+  <label>{{ field_labels[key] }}
+    <input type="text" class="ds-value" data-for="{{ key }}" value="{{ values[key] }}"></label>
+  {% endfor %}
+</div>
+
+{% if can_edit_layout %}
+<div id="ppFieldControls" class="pp-col-controls screen-only"></div>
+{% endif %}
+
+<div class="pp-canvas" id="ppCanvas" data-save-url="{{ save_url }}" data-date-format="{{ layout.dateFormat }}"
+     style="width:816px;height:1056px;--ds-dx:{{ layout.page.offsetX }}mm;--ds-dy:{{ layout.page.offsetY }}mm;">
+  {% for key, f in layout.fields.items() %}
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};text-align:{{ f.align }};">{{ values[key] }}</div>
+  {% endfor %}
+  {% for t in layout.texts %}
+  <div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"
+       style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>
+  {% endfor %}
+</div>
+
+<script>
+(function () {
+  var canvas = document.getElementById('ppCanvas');
+  function field(key) { return canvas.querySelector('.pp-el[data-el="' + key + '"]'); }
+  // A typed value changes this print only; nothing is saved.
+  document.querySelectorAll('.ds-value').forEach(function (input) {
+    input.addEventListener('input', function () {
+      var el = field(input.dataset.for);
+      if (el) el.textContent = input.value;
+    });
+  });
+  // The date is blank unless "Print date" is ticked (owner, 10 Nov 2026: "CAS-Q3, yes").
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December'];
+  function fmt(iso, key) {
+    var p = (iso || '').split('-');
+    if (p.length !== 3) return '';
+    var y = p[0], m = p[1], d = p[2], mi = parseInt(m, 10) - 1;
+    if (key === 'mdy_dash') return m + '-' + d + '-' + y;
+    if (key === 'medium') return MONTHS[mi].slice(0, 3) + ' ' + d + ', ' + y;
+    if (key === 'full') return MONTHS[mi] + ' ' + d + ', ' + y;
+    return m + '/' + d + '/' + y;
+  }
+  var tick = document.getElementById('dsPrintDate');
+  var day = document.getElementById('dsDate');
+  var dateFormat = document.getElementById('ppDateFormat');
+  function showDate() {
+    var el = field('deposit_date');
+    if (el) el.textContent = tick.checked
+      ? fmt(day.value, (dateFormat && dateFormat.value) || canvas.dataset.dateFormat) : '';
+  }
+  tick.addEventListener('change', showDate);
+  day.addEventListener('input', showDate);
+  if (dateFormat) dateFormat.addEventListener('change', showDate);
+  var form = document.getElementById('dsForm');
+  form.addEventListener('change', function () {
+    location.href = form.dataset.url + '?form=' + encodeURIComponent(form.value);
+  });
+})();
+</script>
+{% if can_edit_layout %}
+<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=7"></script>
+{% endif %}
+{% include '_print_report_button.html' %}
+</body>
+</html>

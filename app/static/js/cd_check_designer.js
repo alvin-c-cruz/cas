@@ -13,6 +13,10 @@
   const fieldStrip = document.getElementById('ppFieldControls');
   const colStrip = document.getElementById('ppColControls');
   const printBtn = document.querySelector('.btn-print');
+  // Whole-print nudge in mm (the deposit slip only; the cheque page has no such boxes).
+  const offWrap = document.getElementById('ppOffsetWrap');
+  const offX = document.getElementById('ppOffsetX');
+  const offY = document.getElementById('ppOffsetY');
   let editing = false;
 
   // --- Save button injected next to Edit ---
@@ -318,6 +322,7 @@
     if (paperSel) paperSel.style.display = editing ? '' : 'none';
     if (dateSel) dateSel.style.display = editing ? '' : 'none';
     if (jeModeSel) jeModeSel.style.display = editing ? '' : 'none';
+    if (offWrap) offWrap.style.display = editing ? '' : 'none';
     if (printBtn) printBtn.style.display = editing ? 'none' : '';  // no printing while designing
     if (fieldStrip) { buildFieldControls(); fieldStrip.classList.toggle('pp-show', editing); }
     if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
@@ -513,7 +518,9 @@
       journalEntry: jeLayout,
       // read the select (exact ALLOWED_FONTS string) rather than the computed
       // stack, so the value round-trips through the server-side whitelist.
-      page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
+      page: Object.assign(
+        { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
+        offX && offY ? { offsetX: parseFloat(offX.value) || 0, offsetY: parseFloat(offY.value) || 0 } : {}),
       fields,
       lineItems: {
         y: first ? (parseInt(first.style.top) || 0) : 300,
@@ -564,6 +571,13 @@
     el.style.fontWeight = 'normal';
     canvas.appendChild(el);
     selectEl(el);
+  });
+
+  // whole-print nudge: rewrite the canvas's CSS variables live (applied on paper only)
+  [[offX, '--ds-dx'], [offY, '--ds-dy']].forEach(([input, prop]) => {
+    if (input) input.addEventListener('input', () => {
+      canvas.style.setProperty(prop, (parseFloat(input.value) || 0) + 'mm');
+    });
   });
 
   // page-wide font family (options rendered server-side from ALLOWED_FONTS)

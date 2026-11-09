@@ -1,0 +1,285 @@
+"""Deposit slip print-over: the forms, their layouts, and the values a slip carries.
+
+Owner, 9 Nov 2026: "we will create a deposit slip in CAS ... it will be printed over the deposit
+slip, like the check and vouchers"; Epson LQ-310, Edge, Letter, margins None; one slip per
+cheque; no X marks. 10 Nov 2026: slips print from a CDV and from a CRV ("CAS-Q1: CRV, CDV,
+both"), one layout per bank form set in a designer ("CAS-Q2, yes"), the date blank unless asked
+for ("CAS-Q3, yes"); the design was approved as written ("CAS-D, approve as is").
+Design: app-docs/superpowers/specs/2026-11-10-deposit-slip-print-design.md (beside the checkout).
+
+A layout has the cheque layout's shape (fields with x/y/fontSize/bold/width, free texts, a font,
+a date format), so the cheque designer (cd_check_designer.js) edits it unchanged. Two things
+differ: each field has an `align` (the Chinabank amount ends at its column's right border), and
+the page carries a whole-print nudge in mm (`offsetX`/`offsetY`), applied on paper only, for a
+printer that lands every field a little off (the 9 Nov test print sat 1.2 mm low).
+"""
+import copy
+import json
+
+from app.audit.utils import log_audit
+from app.common.preprinted_texts import clean_texts
+from app.settings import AppSettings
+
+SETTING_PREFIX = 'deposit_slip_layout'
+
+PX_PER_MM = 96 / 25.4
+CANVAS_W, CANVAS_H = 816, 1056            # Letter at 96 px per inch
+FONT_MIN, FONT_MAX = 6, 72
+WIDTH_MIN, WIDTH_MAX = 10, CANVAS_W
+OFFSET_MAX_MM = 20.0
+ALIGNS = ('left', 'right')
+
+FONT_GROUPS = [
+    ('Deposit slip', ['"Arial Narrow", Arial, sans-serif']),
+    ('Dot-matrix friendly', [
+        '"Courier New", Courier, monospace',
+        'Consolas, "Courier New", monospace',
+        '"Lucida Console", Monaco, monospace',
+    ]),
+    ('Standard', [
+        'Arial, sans-serif',
+        'Calibri, Candara, "Segoe UI", sans-serif',
+        'Tahoma, Geneva, sans-serif',
+        'Verdana, Geneva, sans-serif',
+        '"Times New Roman", Times, serif',
+    ]),
+]
+ALLOWED_FONTS = [f for _label, fonts in FONT_GROUPS for f in fonts]
+
+DATE_FORMATS = {
+    'us':       '%m/%d/%Y',
+    'mdy_dash': '%m-%d-%Y',
+    'medium':   '%b %d, %Y',
+    'full':     '%B %d, %Y',
+}
+
+FIELD_KEYS = ['deposit_date', 'account_name', 'account_number', 'total_amount',
+              'check_bank', 'check_number', 'check_amount']
+FIELD_LABELS = {
+    'deposit_date': 'Date',
+    'account_name': 'Account Name',
+    'account_number': 'Account Number',
+    'total_amount': 'Total Amount',
+    'check_bank': 'Bank/Branch',
+    'check_number': 'Check No.',
+    'check_amount': 'Amount',
+}
+
+# The interim slips' fonts and offset (clients/philgen/forms/deposit-slips, 9 Nov 2026):
+# Arial Narrow bold 10 pt, a field's top 0.86 em above its baseline, and the whole print
+# raised 1.2 mm after the first test print on the LQ-310.
+_FONT_PT = 10
+_FONT_PX = int(_FONT_PT * 96 / 72)               # 13
+_TOP_ABOVE_BASELINE_MM = 0.86 * _FONT_PT * 25.4 / 72 + 1.2
+
+
+def _px(mm):
+    return int(round(mm * PX_PER_MM))
+
+
+def _field(x_mm, baseline_mm, width_px, align='left'):
+    """A field from the interim slip's measurement: x (or the right edge when right-aligned)
+    and the baseline, in mm from the slip's top-left."""
+    x = _px(x_mm) - width_px if align == 'right' else _px(x_mm)
+    return {'x': x, 'y': _px(baseline_mm - _TOP_ABOVE_BASELINE_MM), 'fontSize': _FONT_PX,
+            'bold': True, 'hidden': False, 'width': width_px, 'align': align}
+
+
+def _layout(fields):
+    return {'paper': 'letter', 'dateFormat': 'us', 'extras': [], 'texts': [],
+            'page': {'fontFamily': ALLOWED_FONTS[0], 'offsetX': 0.0, 'offsetY': 0.0},
+            'fields': {k: fields[k] for k in FIELD_KEYS}}
+
+
+FORMS = {
+    # Chinabank Check Deposit Slip, BNK-108 (05-24) P/N, about 226 x 97 mm; the stub right of
+    # the perforation gets nothing. Positions: the work order's table.
+    'chinabank_bnk108': {
+        'label': 'Chinabank Check Deposit Slip (BNK-108)',
+        'default': _layout({
+            'deposit_date':   _field(11.0, 20.5, 120),
+            'account_name':   _field(72.0, 46.0, 260),
+            'account_number': _field(11.0, 52.5, 220),
+            'total_amount':   _field(11.0, 64.0, 200),
+            'check_bank':     _field(13.0, 83.6, 200),
+            'check_number':   _field(69.0, 83.6, 140),
+            'check_amount':   _field(139.0, 83.6, 113, align='right'),
+        }),
+    },
+    # BDO Check Transaction Slip, form V062019, 216.3 x 103.6 mm. Positions:
+    # interim/ub_3586838.json. The LQ-310 prints 8in wide, so the amounts are written
+    # left-aligned at 187 mm rather than right-aligned at the column border.
+    'bdo_v062019': {
+        'label': 'BDO Check Transaction Slip (V062019)',
+        'default': _layout({
+            'deposit_date':   _field(192.0, 14.5, 88),
+            'account_name':   _field(36.0, 22.0, 360),
+            'account_number': _field(36.0, 30.0, 300),
+            'total_amount':   _field(187.0, 92.0, 105),
+            'check_bank':     _field(132.5, 37.0, 105),
+            'check_number':   _field(161.5, 37.0, 95),
+            'check_amount':   _field(187.0, 37.0, 105),
+        }),
+    },
+}
+
+
+def default_form_for(bank_name):
+    """The form a slip starts on, from the bank of the account deposited into."""
+    return 'bdo_v062019' if 'BDO' in (bank_name or '').upper() else 'chinabank_bnk108'
+
+
+def default_layout(form_key):
+    return copy.deepcopy(FORMS[form_key]['default'])
+
+
+def _clamp(value, lo, hi, fallback):
+    try:
+        n = int(round(float(value)))
+    except (TypeError, ValueError, OverflowError):
+        return fallback
+    return max(lo, min(hi, n))
+
+
+def _offset(value):
+    try:
+        mm = round(float(value), 1)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if mm != mm:          # NaN
+        return 0.0
+    return max(-OFFSET_MAX_MM, min(OFFSET_MAX_MM, mm))
+
+
+def _clean_field(raw, default):
+    raw = raw if isinstance(raw, dict) else {}
+    align = raw.get('align', default['align'])
+    return {
+        'x': _clamp(raw.get('x'), 0, CANVAS_W, default['x']),
+        'y': _clamp(raw.get('y'), 0, CANVAS_H, default['y']),
+        'fontSize': _clamp(raw.get('fontSize'), FONT_MIN, FONT_MAX, default['fontSize']),
+        'bold': bool(raw.get('bold', default['bold'])),
+        'hidden': bool(raw.get('hidden', default['hidden'])),
+        'width': _clamp(raw.get('width'), WIDTH_MIN, WIDTH_MAX, default['width']),
+        'align': align if align in ALIGNS else default['align'],
+    }
+
+
+def sanitize_layout(form_key, raw):
+    """A full, valid layout for `form_key` built from `raw` over that form's default."""
+    d = FORMS[form_key]['default']
+    raw = raw if isinstance(raw, dict) else {}
+    page = raw.get('page') if isinstance(raw.get('page'), dict) else {}
+    font = page.get('fontFamily')
+    raw_fields = raw.get('fields') if isinstance(raw.get('fields'), dict) else {}
+    return {
+        'paper': 'letter',
+        'dateFormat': raw.get('dateFormat') if raw.get('dateFormat') in DATE_FORMATS else d['dateFormat'],
+        'extras': [],
+        'texts': clean_texts(raw.get('texts'), d['texts']),
+        'page': {'fontFamily': font if font in ALLOWED_FONTS else d['page']['fontFamily'],
+                 'offsetX': _offset(page.get('offsetX', 0)),
+                 'offsetY': _offset(page.get('offsetY', 0))},
+        'fields': {k: _clean_field(raw_fields.get(k), d['fields'][k]) for k in FIELD_KEYS},
+    }
+
+
+def _key(form_key):
+    return f'{SETTING_PREFIX}:{form_key}'
+
+
+def get_layout(form_key):
+    """The form's saved layout, or its default."""
+    FORMS[form_key]   # KeyError for an unknown form
+    stored = AppSettings.get_setting(_key(form_key))
+    if stored:
+        try:
+            return sanitize_layout(form_key, json.loads(stored))
+        except (ValueError, TypeError):
+            pass
+    return default_layout(form_key)
+
+
+def _money(value):
+    from decimal import Decimal
+    return '{:,.2f}'.format(Decimal(str(value or 0)))
+
+
+def _bank_account_for(gl_account_id):
+    from app.bank_accounts.models import BankAccount
+    return BankAccount.query.filter_by(account_id=gl_account_id).first() if gl_account_id else None
+
+
+def cdv_values(cdv):
+    """(values, deposit bank) for Philgen's own cheque deposited into the payee's account.
+
+    The payee's account: the vendor's bank account name, else its cheque payee name, else
+    the payee; the vendor's bank account number, or blank to be typed (Resaida on V151
+    PETTY CASH has none). The cheque's bank: the Bank Accounts master's bank name for the
+    CDV's cash account when it is set, else the CDV's cheque bank.
+    """
+    vendor = cdv.vendor if cdv.payee_type == 'vendor' else None
+    name = ((vendor.bank_account_name or '').strip() or (vendor.check_payee_name or '').strip()) \
+        if vendor else ''
+    bank_acct = _bank_account_for(cdv.cash_account_id)
+    amount = _money(cdv.total_amount)
+    values = {
+        'deposit_date': '',
+        'account_name': name or cdv.vendor_name or '',
+        'account_number': ((vendor.bank_account_number or '').strip() if vendor else ''),
+        'total_amount': amount,
+        'check_bank': ((bank_acct.bank_name or '').strip() if bank_acct else '') or (cdv.check_bank or ''),
+        'check_number': (cdv.check_number or '').strip(),
+        'check_amount': amount,
+    }
+    return values, (vendor.bank_name if vendor else '')
+
+
+def crv_values(crv):
+    """(values, deposit bank) for a customer's cheque deposited into the company's account.
+
+    The account: the company name, and the Bank Accounts master's number for the CRV's
+    cash account (blank to be typed when the master has none: Philgen's was empty on
+    9 Nov 2026). The cheque: the CRV's cheque bank and number.
+    """
+    bank_acct = _bank_account_for(crv.cash_account_id)
+    amount = _money(crv.total_amount)
+    values = {
+        'deposit_date': '',
+        'account_name': AppSettings.get_setting('company_name', '') or '',
+        'account_number': ((bank_acct.account_number or '').strip() if bank_acct else ''),
+        'total_amount': amount,
+        'check_bank': crv.check_bank or '',
+        'check_number': (crv.check_number or '').strip(),
+        'check_amount': amount,
+    }
+    return values, (bank_acct.bank_name if bank_acct else '')
+
+
+def render_slip(title, form_key, values, form_url, save_url):
+    """The slip page: the values at the form's layout positions, editable before printing;
+    for full-access users it doubles as the layout designer, as the cheque page does."""
+    from datetime import date
+    from flask import render_template
+    from flask_login import current_user
+    from app.utils import ph_now
+    layout = get_layout(form_key)
+    return render_template(
+        'deposit_slip_print.html', title=title, form_key=form_key, forms=FORMS, layout=layout,
+        values=values, field_labels=FIELD_LABELS, font_groups=FONT_GROUPS,
+        date_formats=DATE_FORMATS,
+        date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()},
+        today=ph_now().date(), form_url=form_url, save_url=save_url,
+        can_edit_layout=current_user.has_full_access)
+
+
+def save_layout(form_key, raw, username):
+    """Sanitize, persist, audit, and return the clean layout."""
+    clean = sanitize_layout(form_key, raw)
+    old = AppSettings.get_setting(_key(form_key))
+    AppSettings.set_setting(_key(form_key), json.dumps(clean), updated_by=username)
+    log_audit(module='cash_disbursements', action='update', record_id=None,
+              record_identifier=_key(form_key),
+              old_values={'layout': old}, new_values={'layout': json.dumps(clean)},
+              notes=f'Deposit slip layout updated ({FORMS[form_key]["label"]})')
+    return clean
