@@ -14,5 +14,6 @@
         {% if customer.address %}<br>{{ customer.address }}{% endif %}
     </div>
     {{ soa_body(statement, currency='₱') }}
+{% include '_print_report_button.html' %}
 </body>
 </html>

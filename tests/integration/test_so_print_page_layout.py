@@ -249,7 +249,9 @@ def test_signatories_are_anchored_to_the_bottom_of_the_page(client, db_session, 
     assert bottom, '.page-bottom rule not found'
     assert re.search(r'margin-top:\s*auto', bottom.group(0))
 
-    # the signature row must actually live inside that bottom block
-    blk = re.search(r'<div class="page-bottom">(.*?)</div>\s*</div>\s*</body>', html, re.S)
+    # the signature row must actually live inside that bottom block, the page's last block
+    # (only the screen-only Report-a-problem partial may follow it, bug report #7)
+    blk = re.search(r'<div class="page-bottom">(.*?)</div>\s*</div>\s*'
+                    r'(?:<meta name="csrf-token"|</body>)', html, re.S)
     assert blk and 'sig-row' in blk.group(1), \
         'the signature row is not inside .page-bottom -- the anchor applies to nothing'

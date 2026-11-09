@@ -50,5 +50,6 @@
 
     {{ matrix(data.mtd, as_of.strftime('%b %Y') + ' (MTD)') }}
     {{ matrix(data.ytd, 'YTD ' ~ as_of.year) }}
+{% include '_print_report_button.html' %}
 </body>
 </html>

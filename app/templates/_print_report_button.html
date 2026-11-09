@@ -1,0 +1,39 @@
+{#- "Report a problem" on the print pages (bug report #7, 2 Nov 2026: "print buttons should also have
+    bug reports"). The print pages are full documents that do not extend base.html, so each includes
+    this just before </body>. Screen only: the button never prints. The sheet's colours fall back to
+    style.css's values, which most print pages do not load. -#}
+{% if current_user.is_authenticated %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bug-report.css') }}?v=2">
+<style>
+  .cas-print-report, .cas-report-back {
+    --card: #ffffff; --text: #0f172a; --text-2: #475569; --border: #e2e8f0; --bg: #f1f5f9;
+    --form-border: #cbd5e1; --form-label: #334155; --red: #ef4444; --radius: 8px;
+    --shadow-md: 0 4px 12px rgba(0,0,0,.12);
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  .cas-print-report {
+    position: fixed; right: 16px; bottom: 16px; z-index: 1500;
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; padding: 0; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 50%;
+    background: var(--card); color: var(--text-2); box-shadow: var(--shadow-md);
+  }
+  .cas-print-report:hover { color: var(--text); border-color: var(--form-border); }
+  .cas-report-back .btn { padding: 6px 14px; border-radius: var(--radius); font: 600 14px var(--font);
+    cursor: pointer; border: 1px solid var(--form-border); background: var(--card); color: var(--text); }
+  .cas-report-back .btn-primary { background: #2563eb; border-color: #2563eb; color: #ffffff; }
+  @media print { .cas-print-report { display: none !important; } }
+</style>
+<button type="button" class="cas-print-report" data-report-open data-report-user="{{ current_user.id }}"
+        aria-label="Report a problem" title="Report a problem">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M8 2l1.9 1.9M16 2l-1.9 1.9"/>
+    <path d="M9 7.5V6a3 3 0 0 1 6 0v1.5"/>
+    <rect x="6" y="7.5" width="12" height="13" rx="6"/>
+    <path d="M12 7.5v13M6 12H3M21 12h-3M6.5 17l-2.5 2M17.5 17l2.5 2M6.5 9L4 7M17.5 9L20 7"/>
+  </svg>
+</button>
+<script src="{{ url_for('static', filename='js/bug-report.js') }}?v=2"
+        data-endpoint="{{ url_for('bug_reports.create') }}"></script>
+{% endif %}

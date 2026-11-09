@@ -59,5 +59,6 @@
     {% else %}
     <p>No account balances found as of {{ as_of_date.strftime('%B %d, %Y') }}.</p>
     {% endif %}
+{% include '_print_report_button.html' %}
 </body>
 </html>
