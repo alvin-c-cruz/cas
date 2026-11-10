@@ -28,6 +28,7 @@ pytestmark = [pytest.mark.unit]
 CLAMP_MODULES = [
     'app.common.preprinted_base',
     'app.common.preprinted_texts',
+    'app.common.deposit_slip',          # deposit slip layouts (bbe950a4)
     'app.accounts_payable.preprinted_layout',
     'app.cash_disbursements.check_layout',
     'app.cash_disbursements.preprinted_layout',
