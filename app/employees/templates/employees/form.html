@@ -132,6 +132,26 @@
                 </div>
             </div>
 
+            <!-- Bank Details Section: the account a payroll deposit goes into (10 Nov 2026) -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">🏦</span>
+                    <div>
+                        <h3 class="form-section-title">Bank Details</h3>
+                        <p class="form-section-desc">The account payroll is deposited into; fills the deposit slip</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    {{ render_field(form.bank_name) }}
+                    {{ render_field(form.bank_account_name) }}
+                </div>
+                <div class="form-row-2">
+                    {{ render_field(form.bank_account_number) }}
+                    {{ render_field(form.deposit_slip_form) }}
+                </div>
+            </div>
+
             <!-- Link + Status Section -->
             <div class="form-section">
                 <div class="form-section-header">

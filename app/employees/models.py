@@ -51,6 +51,14 @@ class Employee(db.Model):
     # Eligible to be credited as the salesperson on sales documents (capability, not a title).
     is_salesperson = db.Column(db.Boolean, default=False, nullable=False)
 
+    # The account a payroll deposit goes into, as on the vendor (owner, 10 Nov 2026: "EMP-B, yes
+    # queue it"), and the bank form its CDV deposit slip opens on, a key of
+    # app.common.deposit_slip.FORMS; NULL follows bank_name ("VS-4 A"). The number is text.
+    bank_name = db.Column(db.String(100))
+    bank_account_name = db.Column(db.String(200))
+    bank_account_number = db.Column(db.String(50))
+    deposit_slip_form = db.Column(db.String(30))
+
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
 
@@ -91,6 +99,10 @@ class Employee(db.Model):
             'user_id': self.user_id,
             'is_active': self.is_active,
             'is_salesperson': self.is_salesperson,
+            'bank_name': self.bank_name,
+            'bank_account_name': self.bank_account_name,
+            'bank_account_number': self.bank_account_number,
+            'deposit_slip_form': self.deposit_slip_form,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

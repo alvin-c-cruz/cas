@@ -124,5 +124,11 @@
             {{ form.bank_account_number(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
             {% if form.bank_account_number.errors %}<div class="error-message">{{ form.bank_account_number.errors[0] }}</div>{% endif %}
         </div>
+        {# The bank form this vendor's CDV deposit slip opens on; blank follows the bank name. #}
+        <div class="form-group">
+            <label for="{{ form.deposit_slip_form.id }}">{{ form.deposit_slip_form.label.text }}</label>
+            {{ form.deposit_slip_form(class="form-control form-control-sm") }}
+            {% if form.deposit_slip_form.errors %}<div class="error-message">{{ form.deposit_slip_form.errors[0] }}</div>{% endif %}
+        </div>
     </div>
 </div>

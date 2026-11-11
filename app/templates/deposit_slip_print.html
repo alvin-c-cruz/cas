@@ -32,6 +32,9 @@
   .ds-values label { display: grid; gap: 2px; color: #444; }
   .ds-values label.ds-date { display: flex; gap: 6px; align-items: center; }
   .ds-values input[type=text] { padding: 4px 6px; border: 1px solid #bbb; border-radius: 3px; font: inherit; color: #000; }
+  .ds-deposit-to { max-width: 816px; margin: 10px auto 0; font: bold 14px Arial, sans-serif; color: #0d3c61; }
+  .ds-notice { max-width: 816px; margin: 10px auto 0; padding: 8px 12px; border: 1px solid #e0b252; border-radius: 4px;
+               background: #fff4d6; color: #5c4200; font: 13px Arial, sans-serif; }
   .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; color: #fff; text-decoration: none; display: inline-block; }
   .btn-print { background: #1565c0; } .btn-close { background: #666; } .btn-edit { background: #2e7d32; }
   @media print {
@@ -76,6 +79,12 @@
   {% endif %}
   <span class="hint">Letter, margins None. Feed the slip at the top-left.</span>
 </div>
+{% if deposit_to %}
+<div class="ds-deposit-to screen-only">{{ deposit_to }}</div>
+{% endif %}
+{% if notice %}
+<div class="ds-notice screen-only" role="status">{{ notice }}</div>
+{% endif %}
 
 <div class="ds-values screen-only">
   <label class="ds-date"><input type="checkbox" id="dsPrintDate"> Print date

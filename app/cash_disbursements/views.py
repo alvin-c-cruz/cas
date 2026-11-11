@@ -2081,13 +2081,19 @@ def print_deposit_slip(id):
         return fail('Cannot print a deposit slip for a zero amount.')
 
     values, deposit_bank = ds.cdv_values(cdv)
-    form_key = form_key or ds.default_form_for(deposit_bank)
+    notice = ''
+    if not form_key:       # the payee's own form, else its bank's (owner, 10 Nov 2026: "VS-2 A, VS-3 A")
+        payee = ds.cdv_payee(cdv)
+        form_key, notice = ds.pick_form(payee.deposit_slip_form if payee else None, deposit_bank,
+                                        payee=cdv.payee_type or 'vendor')
     log_audit(module='cash_disbursements', action='print_deposit_slip', record_id=cdv.id,
               record_identifier=cdv.cdv_number, notes=f'check {cdv.check_number} / {form_key}')
     return ds.render_slip(
         title=f'Deposit slip — CDV {cdv.cdv_number}', form_key=form_key, values=values,
         form_url=url_for('cash_disbursements.print_deposit_slip', id=cdv.id),
-        save_url=url_for('cash_disbursements.save_deposit_slip_layout', form_key=form_key))
+        save_url=url_for('cash_disbursements.save_deposit_slip_layout', form_key=form_key),
+        notice=notice,
+        deposit_to=ds.deposit_to_line(deposit_bank, values['account_name'], values['account_number']))
 
 
 @cash_disbursements_bp.route('/cash-disbursements/deposit-slip-layout/<form_key>', methods=['POST'])

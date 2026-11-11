@@ -46,6 +46,9 @@ class Vendor(db.Model):
     bank_name = db.Column(db.String(100))
     bank_account_name = db.Column(db.String(200))
     bank_account_number = db.Column(db.String(50))
+    # The bank form this vendor's CDV deposit slip opens on, a key of
+    # app.common.deposit_slip.FORMS; NULL follows bank_name (owner, 10 Nov 2026: "VS-1 A").
+    deposit_slip_form = db.Column(db.String(30))
 
     # Postal code
     postal_code = db.Column(db.String(20))
@@ -87,6 +90,12 @@ class Vendor(db.Model):
         parts = (self.bank_name, self.bank_account_name, self.bank_account_number)
         return ' · '.join(p.strip() for p in parts if p and p.strip())
 
+    @property
+    def deposit_slip_label(self):
+        """The name of the slip form set on this vendor, or '' when it follows the bank name."""
+        from app.common.deposit_slip import FORMS
+        return FORMS.get(self.deposit_slip_form or '', {}).get('label', '')
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=ph_now)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)
@@ -110,6 +119,7 @@ class Vendor(db.Model):
             'bank_name': self.bank_name,
             'bank_account_name': self.bank_account_name,
             'bank_account_number': self.bank_account_number,
+            'deposit_slip_form': self.deposit_slip_form,
             'postal_code': self.postal_code,
             'default_vat_category': self.default_vat_category,
             'withholding_taxes': [{'id': wt.id, 'code': wt.code, 'name': wt.name, 'rate': wt.rate} for wt in self.withholding_taxes],

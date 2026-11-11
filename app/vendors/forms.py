@@ -9,6 +9,14 @@ from wtforms.validators import DataRequired, Length, Email, Optional
 class VendorForm(FlaskForm):
     """Form for creating and editing vendors."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from app.common.deposit_slip import FORMS
+        self.deposit_slip_form.choices = [('', '— follow bank name')] + [
+            (key, form['label']) for key, form in FORMS.items()]
+        if self.deposit_slip_form.data is None:      # a NULL vendor, or a post without the field
+            self.deposit_slip_form.data = ''
+
     code = StringField('Vendor Code', validators=[
         DataRequired(message='Vendor code is required.'),
         Length(max=20, message='Vendor code must be 20 characters or less.')
@@ -75,6 +83,9 @@ class VendorForm(FlaskForm):
         Optional(),
         Length(max=50, message='Account number must be 50 characters or less.')
     ])
+    # The bank form this vendor's deposit slip opens on; blank follows the bank name
+    # (owner, 10 Nov 2026: "VS-1 A"). Choices are filled from the slip forms in __init__.
+    deposit_slip_form = SelectField('Deposit Slip Form', choices=[], default='')
 
     postal_code = StringField('Postal Code', validators=[
         Optional(),

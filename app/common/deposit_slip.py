@@ -15,6 +15,7 @@ printer that lands every field a little off (the 9 Nov test print sat 1.2 mm low
 """
 import copy
 import json
+import re
 
 from app.audit.utils import log_audit
 from app.common.preprinted_texts import clean_texts
@@ -96,6 +97,7 @@ FORMS = {
     # the perforation gets nothing. Positions: the work order's table.
     'chinabank_bnk108': {
         'label': 'Chinabank Check Deposit Slip (BNK-108)',
+        'aliases': ('CBC', 'CHINABANK'),
         'default': _layout({
             'deposit_date':   _field(11.0, 20.5, 120),
             'account_name':   _field(72.0, 46.0, 260),
@@ -111,6 +113,7 @@ FORMS = {
     # left-aligned at 187 mm rather than right-aligned at the column border.
     'bdo_v062019': {
         'label': 'BDO Check Transaction Slip (V062019)',
+        'aliases': ('BDO', 'BANCODEORO'),
         'default': _layout({
             'deposit_date':   _field(192.0, 14.5, 88),
             'account_name':   _field(36.0, 22.0, 360),
@@ -124,9 +127,50 @@ FORMS = {
 }
 
 
+def form_for_bank(bank_name):
+    """The form of the bank a free-text bank name names, or None (blank, or a bank with no
+    form yet). Letters and digits only, upper-cased, matched at the start against each form's
+    aliases: 'China Bank', 'CBC / EASTWOOD' and 'Chinabank' are Chinabank; 'BDO Unibank' and
+    'Banco de Oro' are BDO; 'BPI' and 'METROBANK' are None (owner, 10 Nov 2026: "VS-3 A")."""
+    name = re.sub(r'[^A-Z0-9]', '', (bank_name or '').upper())
+    if not name:
+        return None
+    for key, form in FORMS.items():
+        if any(name.startswith(alias) for alias in form['aliases']):
+            return key
+    return None
+
+
 def default_form_for(bank_name):
-    """The form a slip starts on, from the bank of the account deposited into."""
-    return 'bdo_v062019' if 'BDO' in (bank_name or '').upper() else 'chinabank_bnk108'
+    """The form a slip starts on, from the bank of the account deposited into: the first
+    form when the bank is blank or has no form."""
+    return form_for_bank(bank_name) or next(iter(FORMS))
+
+
+def pick_form(chosen, bank_name, payee='vendor'):
+    """(form, notice) for a payee's slip (owner, 10 Nov 2026: "VS-1 A, VS-2 A, VS-3 A"). The
+    form set on the payee (a vendor or an employee) wins; a blank one (or one no longer in
+    FORMS) follows the bank name. A named bank with no form starts on the first form with a
+    notice, never quietly."""
+    if chosen in FORMS:
+        return chosen, ''
+    known = form_for_bank(bank_name)
+    if known:
+        return known, ''
+    if not (bank_name or '').strip():
+        return next(iter(FORMS)), ''
+    return next(iter(FORMS)), (f"No slip form set for this {payee}'s bank ({bank_name.strip()}); "
+                               f"choose one here or in {payee} maintenance.")
+
+
+def deposit_to_line(bank_name, account_name, account_number):
+    """The screen's one-line answer to "which account does this go into?" (owner, 10 Nov 2026:
+    "...fill in the deposit slip with account number as well as the receipt's bank, ei. CBC or
+    BDO"). Neither form has a receiving-bank box, so the bank is named here, not printed."""
+    bank = (bank_name or '').strip() or 'bank not on file'
+    name = (account_name or '').strip() or 'name not on file'
+    number = (account_number or '').strip() or 'account number not on file'
+    return f'Deposit to: {bank} — {name}, {number}'
 
 
 def default_layout(form_key):
@@ -210,29 +254,38 @@ def _bank_account_for(gl_account_id):
     return BankAccount.query.filter_by(account_id=gl_account_id).first() if gl_account_id else None
 
 
+def cdv_payee(cdv):
+    """The CDV's payee master row, a Vendor or an Employee, or None. A vendor comes through
+    vendor_id, as before employees were added; an employee through payee_id."""
+    if cdv.payee_type == 'employee':
+        return cdv.payee
+    return cdv.vendor if cdv.payee_type == 'vendor' else None
+
+
 def cdv_values(cdv):
     """(values, deposit bank) for Philgen's own cheque deposited into the payee's account.
 
-    The payee's account: the vendor's bank account name, else its cheque payee name, else
-    the payee; the vendor's bank account number, or blank to be typed (Resaida on V151
-    PETTY CASH has none). The cheque's bank: the Bank Accounts master's bank name for the
+    The payee's account, from the vendor's or the employee's bank details (employees since
+    10 Nov 2026, "EMP-B"): the bank account name, else a vendor's cheque payee name, else the
+    payee; the bank account number, or blank to be typed (Resaida on V151 PETTY CASH has
+    none). The cheque's bank: the Bank Accounts master's bank name for the
     CDV's cash account when it is set, else the CDV's cheque bank.
     """
-    vendor = cdv.vendor if cdv.payee_type == 'vendor' else None
-    name = ((vendor.bank_account_name or '').strip() or (vendor.check_payee_name or '').strip()) \
-        if vendor else ''
+    payee = cdv_payee(cdv)
+    name = ((payee.bank_account_name or '').strip()
+            or (getattr(payee, 'check_payee_name', None) or '').strip()) if payee else ''
     bank_acct = _bank_account_for(cdv.cash_account_id)
     amount = _money(cdv.total_amount)
     values = {
         'deposit_date': '',
         'account_name': name or cdv.vendor_name or '',
-        'account_number': ((vendor.bank_account_number or '').strip() if vendor else ''),
+        'account_number': ((payee.bank_account_number or '').strip() if payee else ''),
         'total_amount': amount,
         'check_bank': ((bank_acct.bank_name or '').strip() if bank_acct else '') or (cdv.check_bank or ''),
         'check_number': (cdv.check_number or '').strip(),
         'check_amount': amount,
     }
-    return values, (vendor.bank_name if vendor else '')
+    return values, ((payee.bank_name or '') if payee else '')
 
 
 def crv_values(crv):
@@ -256,7 +309,7 @@ def crv_values(crv):
     return values, (bank_acct.bank_name if bank_acct else '')
 
 
-def render_slip(title, form_key, values, form_url, save_url):
+def render_slip(title, form_key, values, form_url, save_url, notice='', deposit_to=''):
     """The slip page: the values at the form's layout positions, editable before printing;
     for full-access users it doubles as the layout designer, as the cheque page does."""
     from datetime import date
@@ -269,7 +322,7 @@ def render_slip(title, form_key, values, form_url, save_url):
         values=values, field_labels=FIELD_LABELS, font_groups=FONT_GROUPS,
         date_formats=DATE_FORMATS,
         date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()},
-        today=ph_now().date(), form_url=form_url, save_url=save_url,
+        today=ph_now().date(), form_url=form_url, save_url=save_url, notice=notice, deposit_to=deposit_to,
         can_edit_layout=current_user.has_full_access)
 
 

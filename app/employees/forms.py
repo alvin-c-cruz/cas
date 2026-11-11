@@ -48,3 +48,19 @@ class EmployeeForm(FlaskForm):
     user_id = SelectField('Linked User (optional)', validators=[Optional()], coerce=lambda v: int(v) if v else None)
 
     is_active = SelectField('Status', choices=[('1', 'Active'), ('0', 'Inactive')])
+
+    # The account a payroll deposit goes into (owner, 10 Nov 2026: "EMP-B"), as on the vendor.
+    bank_name = StringField('Bank', validators=[Optional(), Length(max=100)])
+    bank_account_name = StringField('Account Name', validators=[Optional(), Length(max=200)])
+    bank_account_number = StringField('Account Number', validators=[Optional(), Length(max=50)])
+    # The bank form this employee's deposit slip opens on; blank follows the bank name
+    # ("VS-4 A"). Choices are filled from the slip forms in __init__.
+    deposit_slip_form = SelectField('Deposit Slip Form', choices=[], default='')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from app.common.deposit_slip import FORMS
+        self.deposit_slip_form.choices = [('', '— follow bank name')] + [
+            (key, form['label']) for key, form in FORMS.items()]
+        if self.deposit_slip_form.data is None:      # a NULL employee, or a post without the field
+            self.deposit_slip_form.data = ''

@@ -96,3 +96,71 @@ def test_the_form_defaults_from_the_deposit_account_bank(bank, form):
 def test_the_slip_fonts_offer_arial_narrow_first():
     assert ds.ALLOWED_FONTS[0] == '"Arial Narrow", Arial, sans-serif'
     assert '"Courier New", Courier, monospace' in ds.ALLOWED_FONTS
+
+
+# The vendor's deposit slip form (owner, 10 Nov 2026: "VS-1 A, VS-2 A, VS-3 A, VS-4 A, VS-5 A").
+@pytest.mark.parametrize('bank, form', [
+    ('CBC', 'chinabank_bnk108'),
+    ('CHINA BANK', 'chinabank_bnk108'),
+    ('Chinabank', 'chinabank_bnk108'),
+    ('China Banking Corporation', 'chinabank_bnk108'),
+    ('CBC / EASTWOOD', 'chinabank_bnk108'),
+    ('BDO', 'bdo_v062019'),
+    ('BDO Unibank', 'bdo_v062019'),
+    ('bdo masangkay', 'bdo_v062019'),
+    ('Banco de Oro', 'bdo_v062019'),
+    ('BPI', None),
+    ('METROBANK', None),
+    ('Sterling Bank of Asia', None),
+    ('', None),
+    (None, None),
+])
+def test_a_bank_is_known_by_its_aliases(bank, form):
+    assert ds.form_for_bank(bank) == form
+
+
+def test_every_form_names_its_bank_aliases():
+    for form in ds.FORMS.values():
+        assert form['aliases'], 'a form with no aliases is never picked from a bank name'
+
+
+def test_the_vendors_form_wins():
+    assert ds.pick_form('bdo_v062019', 'CBC') == ('bdo_v062019', '')
+
+
+def test_a_blank_form_follows_a_known_bank():
+    assert ds.pick_form(None, 'BDO Unibank') == ('bdo_v062019', '')
+    assert ds.pick_form('', 'CHINA BANK') == ('chinabank_bnk108', '')
+
+
+def test_a_retired_form_is_ignored():
+    assert ds.pick_form('retired_form', 'BDO') == ('bdo_v062019', '')
+
+
+def test_no_bank_starts_on_the_first_form_quietly():
+    assert ds.pick_form(None, '') == ('chinabank_bnk108', '')
+    assert ds.pick_form(None, None) == ('chinabank_bnk108', '')
+
+
+def test_another_bank_starts_on_the_first_form_with_a_notice():
+    form, notice = ds.pick_form(None, 'BPI')
+    assert form == 'chinabank_bnk108'
+    assert 'BPI' in notice and 'vendor maintenance' in notice
+
+
+def test_an_employees_notice_points_to_employee_maintenance():
+    form, notice = ds.pick_form(None, 'METROBANK', payee='employee')
+    assert form == 'chinabank_bnk108'
+    assert "employee's bank (METROBANK)" in notice and 'employee maintenance' in notice
+
+
+def test_deposit_to_names_bank_name_and_number():
+    assert ds.deposit_to_line('CBC', 'ALBERTO B. HAUS', '136102037793') == \
+        'Deposit to: CBC — ALBERTO B. HAUS, 136102037793'
+
+
+def test_deposit_to_says_what_is_missing():
+    assert ds.deposit_to_line('', 'ACCUPOINT SYSTEMS, INC.', '') == \
+        'Deposit to: bank not on file — ACCUPOINT SYSTEMS, INC., account number not on file'
+    assert ds.deposit_to_line(None, None, None) == \
+        'Deposit to: bank not on file — name not on file, account number not on file'

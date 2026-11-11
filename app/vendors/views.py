@@ -25,6 +25,7 @@ vendors_bp = Blueprint('vendors', __name__, template_folder='templates')
 _VENDOR_AUDIT_FIELDS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
                         'payment_terms', 'address', 'check_payee_name',
                         'bank_name', 'bank_account_name', 'bank_account_number',
+                        'deposit_slip_form',
                         'postal_code', 'default_vat_category', 'is_active']
 
 
@@ -200,6 +201,7 @@ def create():
                 bank_name=form.bank_name.data,
                 bank_account_name=form.bank_account_name.data,
                 bank_account_number=form.bank_account_number.data,
+                deposit_slip_form=form.deposit_slip_form.data or None,
                 postal_code=form.postal_code.data,
                 default_vat_category=form.default_vat_category.data if form.default_vat_category.data else None,
                 is_active=bool(int(form.is_active.data)) if form.is_active.data else True
@@ -306,6 +308,7 @@ def edit(id):
             vendor.bank_name = form.bank_name.data
             vendor.bank_account_name = form.bank_account_name.data
             vendor.bank_account_number = form.bank_account_number.data
+            vendor.deposit_slip_form = form.deposit_slip_form.data or None
             vendor.postal_code = form.postal_code.data
             vendor.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
             vendor.is_active = bool(int(form.is_active.data))
@@ -353,6 +356,7 @@ def edit(id):
         form.bank_name.data = vendor.bank_name
         form.bank_account_name.data = vendor.bank_account_name
         form.bank_account_number.data = vendor.bank_account_number
+        form.deposit_slip_form.data = vendor.deposit_slip_form or ''
         form.postal_code.data = vendor.postal_code
         form.default_vat_category.data = vendor.default_vat_category
         form.is_active.data = '1' if vendor.is_active else '0'
@@ -436,11 +440,13 @@ def delete(id):
 _VENDOR_EXPORT_COLUMNS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
                           'payment_terms', 'address', 'postal_code', 'check_payee_name',
                           'bank_name', 'bank_account_name', 'bank_account_number',
+                          'deposit_slip_form',
                           'default_vat_category', 'withholding_taxes_str', 'is_active']
 
 _VENDOR_EXPORT_HEADERS = ['Vendor Code', 'Vendor Name', 'Contact Person', 'Phone', 'Email',
                           'TIN', 'Payment Terms', 'Address', 'Postal Code', 'Check Payee Name',
                           'Bank', 'Bank Account Name', 'Bank Account Number',
+                          'Deposit Slip Form',
                           'VAT Category', 'Withholding Taxes', 'Active']
 
 
@@ -467,6 +473,7 @@ def _vendor_export_rows():
             'bank_name': vendor.bank_name or '',
             'bank_account_name': vendor.bank_account_name or '',
             'bank_account_number': vendor.bank_account_number or '',
+            'deposit_slip_form': vendor.deposit_slip_label,
             'default_vat_category': vendor.default_vat_category or '',
             'withholding_taxes_str': wt_codes,
             'is_active': 'Yes' if vendor.is_active else 'No',
