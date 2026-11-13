@@ -53,7 +53,8 @@ _FIELDS = ['employee_no', 'first_name', 'middle_name', 'last_name', 'birthdate',
            'date_hired', 'employment_status', 'position', 'branch_id', 'tax_status_code',
            'qualified_dependents', 'is_minimum_wage', 'pay_basis', 'basic_rate',
            'pay_frequency', 'user_id', 'is_active',
-           'bank_name', 'bank_account_name', 'bank_account_number', 'deposit_slip_form']
+           'bank_name', 'bank_account_name', 'bank_account_number', 'deposit_slip_form',
+           'check_payee_name']
 
 
 def staff_or_above_required(f):
@@ -105,6 +106,7 @@ def _apply(form, e):
     e.bank_account_name = form.bank_account_name.data
     e.bank_account_number = form.bank_account_number.data
     e.deposit_slip_form = form.deposit_slip_form.data or None
+    e.check_payee_name = (form.check_payee_name.data or '').strip() or None
 
 
 @employees_bp.route('/employees')

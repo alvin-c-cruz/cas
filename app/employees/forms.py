@@ -53,6 +53,8 @@ class EmployeeForm(FlaskForm):
     bank_name = StringField('Bank', validators=[Optional(), Length(max=100)])
     bank_account_name = StringField('Account Name', validators=[Optional(), Length(max=200)])
     bank_account_number = StringField('Account Number', validators=[Optional(), Length(max=50)])
+    # The cheque payee when not the employee's own name, e.g. CASH (plan 2.3).
+    check_payee_name = StringField('Check Payee Name', validators=[Optional(), Length(max=200)])
     # The bank form this employee's deposit slip opens on; blank follows the bank name
     # ("VS-4 A"). Choices are filled from the slip forms in __init__.
     deposit_slip_form = SelectField('Deposit Slip Form', choices=[], default='')

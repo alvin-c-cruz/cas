@@ -50,7 +50,7 @@ ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 FIELD_KEYS = [
     'cdv_no', 'cdv_date', 'payment_method',
     'check_no', 'check_date', 'check_bank', 'cash_account',
-    'vendor_name', 'check_payee', 'vendor_tin',
+    'vendor_name', 'check_payee', 'check_payee_label', 'vendor_tin',
     'deposit_account',
     'notes',
 ]
@@ -65,6 +65,7 @@ FIELD_LABELS = {
     'cash_account': 'Cash/Bank Acct',
     'vendor_name': 'Pay To',
     'check_payee': 'Check Payee',
+    'check_payee_label': 'Check Payee label',
     'vendor_tin': 'TIN',
     'deposit_account': 'Deposit Account',
     'notes': 'Notes',
@@ -164,6 +165,13 @@ DEFAULT_CDV_PREPRINTED_LAYOUT = {
         # journalEntry.columnsEnabled.
         'check_payee':    {'x': 60,  'y': 62,  'fontSize': 11, 'bold': False,
                            'hidden': True},
+        # The words printed beside the cheque payee, e.g. NAME ON CHECK. Part of the field
+        # (owner, 12 Nov 2026: "PNT B"), so it prints only when the cheque-payee line does --
+        # a free layout text printed on every voucher, beside nothing when the line was blank.
+        # Its wording is the layout's `text`, edited in the designer's text box. Ships HIDDEN
+        # like check_payee.
+        'check_payee_label': {'x': 60, 'y': 62, 'fontSize': 11, 'bold': False,
+                              'hidden': True, 'text': 'NAME ON CHECK'},
         'vendor_tin':     {'x': 60,  'y': 74,  'fontSize': 11, 'bold': False},
         # The vendor's bank account on one line, for a Bank Transfer / Online voucher
         # (blank on any other). Ships HIDDEN for the same reason as check_payee above:
@@ -235,7 +243,16 @@ def _clean_box(raw, default):
         'hidden': bool(raw.get('hidden', default.get('hidden', False))),
         # Wrap width. Absent from every blob saved before 2026-09-06 -> 0 -> single line.
         'width': clean_wrap_width(raw.get('width'), default.get('width', 0)),
+        # Only a field whose default carries wording (check_payee_label) keeps a `text`.
+        **({'text': _clean_field_text(raw.get('text'), default['text'])} if 'text' in default else {}),
     }
+
+
+def _clean_field_text(raw, default):
+    """A field's own wording: a string up to 200 characters, else the default."""
+    if raw is None:
+        return default
+    return str(raw)[:200]
 
 
 def _clean_columns(raw):

@@ -140,6 +140,7 @@
             {{ render_field(form.check_number) }}
             {{ render_field(form.check_date) }}
             {{ render_field(form.check_bank) }}
+            {{ render_field(form.check_payee_name) }}
           </div>
 
           <!-- Cash/Bank Account (Choices.js) -->
@@ -457,6 +458,7 @@ const checkBankInput = document.getElementById('check_bank');
 const checkDateInput = document.getElementById('check_date');
 const cdvDateInput   = document.getElementById('cdv_date');
 let lastCheckSuggestion = { check_number: '', bank: '' };
+let lastPayToSuggestion = {{ (cdv.check_payee_name if cdv else '') | default('', true) | tojson }};
 function fillCheckDefaults() {
     if (!pmSel || pmSel.value !== 'check' || !cashAccSel || !cashAccSel.value) return;
     if (checkDateInput && !checkDateInput.value && cdvDateInput && cdvDateInput.value) {
@@ -551,6 +553,12 @@ function onVendorChange(vendorId) {
         .then(d => {
             currentVendorWHTs = d.withholding_taxes || [];
             defaultExpenseAccountId = d.last_expense_account_id || null;
+            // Pay to (on cheque): the payee master's default, unless the user typed their own.
+            const payToInput = document.getElementById('check_payee_name');
+            if (payToInput && (!payToInput.value || payToInput.value === lastPayToSuggestion)) {
+                payToInput.value = d.check_payee || '';
+            }
+            lastPayToSuggestion = d.check_payee || '';
             if (d.last_cash_account_id) {
                 cashAccChoices.setChoiceByValue(String(d.last_cash_account_id));
             }

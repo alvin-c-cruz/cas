@@ -295,7 +295,27 @@ def _bills_of_payee(payee_type, payee_id):
 
 # Header fields a CDV create/update audit row records (before/after on update).
 _CDV_AUDIT_FIELDS = ['cdv_number', 'cdv_date', 'payee_type', 'payee_id', 'vendor_name',
-                     'payment_method', 'total_amount', 'status']
+                     'payment_method', 'check_payee_name', 'total_amount', 'status']
+
+
+def default_check_payee(payee_type, payee):
+    """The cheque payee a payee's master gives: its Check Payee Name, else its name (a vendor's
+    registered name, an employee's full name). Plan 2.3; employees since then too (owner, 28 Oct
+    2026: "employee should have option to change payee name")."""
+    if payee is None:
+        return ''
+    alias = (getattr(payee, 'check_payee_name', None) or '').strip()
+    if alias:
+        return alias
+    return (payee.full_name if payee_type == 'employee' else payee.name) or ''
+
+
+def _check_payee_from_form(form, payment_method, payee_type, payee):
+    """The CDV's cheque payee: what was typed, else the master default; none unless by cheque."""
+    if payment_method != 'check':
+        return None
+    typed = (getattr(form, 'check_payee_name', None) and form.check_payee_name.data or '').strip()
+    return typed or default_check_payee(payee_type, payee) or None
 
 #: Statuses the administrator may hard-delete (owner, 2026-10-06). A cancelled voucher
 #: is not among them: its reversal JE is already part of the books.
@@ -1156,7 +1176,7 @@ def payee_defaults():
     payee = resolve_payee(payee_type, payee_id)
     if payee is None:
         return jsonify({'withholding_taxes': [], 'last_cash_account_id': None,
-                        'last_expense_account_id': None})
+                        'last_expense_account_id': None, 'check_payee': ''})
     if payee_type == 'vendor':
         whts = [w for w in payee.withholding_taxes if w.is_active]
     else:
@@ -1178,6 +1198,7 @@ def payee_defaults():
                               for w in whts],
         'last_cash_account_id': last_cdv.cash_account_id if last_cdv else None,
         'last_expense_account_id': last_exp.account_id if last_exp else None,
+        'check_payee': default_check_payee(payee_type, payee),
     })
 
 
@@ -1239,6 +1260,7 @@ def create():
                 check_number=form.check_number.data or None,
                 check_date=_check_date_from_form(form),
                 check_bank=form.check_bank.data or None,
+                check_payee_name=_check_payee_from_form(form, form.payment_method.data, payee_type, payee),
                 cash_account_id=form.cash_account_id.data,
                 notes=form.notes.data,
                 status='draft',
@@ -1416,6 +1438,7 @@ def edit(id):
             cdv.check_number = (form.check_number.data or '').strip() or None
             cdv.check_date = _check_date_from_form(form)
             cdv.check_bank = form.check_bank.data or None
+            cdv.check_payee_name = _check_payee_from_form(form, form.payment_method.data, payee_type, payee)
             cdv.cash_account_id = form.cash_account_id.data
             cdv.notes = form.notes.data
 
@@ -1958,13 +1981,15 @@ def _build_check_values(cdv, layout):
     except (ValueError, TypeError, InvalidOperation):
         return None, 'The disbursement amount cannot be spelled onto a check.'
     date_fmt = DATE_FORMATS[layout['dateFormat']]
-    # Who the cheque is made out to. A VENDOR may carry a Check Payee Name alias
-    # (2026-09-23); an EMPLOYEE has none, so the snapshot -- the full name -- is
-    # the payee. Read live from the vendor, no snapshot (owner ruling 2026-09-06).
-    alias = ''
-    if cdv.payee_type == 'vendor' and cdv.vendor:
-        alias = (cdv.vendor.check_payee_name or '').strip()
-    payee = alias or cdv.vendor_name
+    # Who the cheque is made out to: the voucher's own value (plan 2.3). A CDV saved before
+    # that has none and falls back as before: the payee master's Check Payee Name (a vendor's
+    # since 2026-09-23, an employee's since 2.3), read live, else the snapshot name.
+    payee = (cdv.check_payee_name or '').strip()
+    if not payee:
+        master = cdv.vendor if cdv.payee_type == 'vendor' else (
+            cdv.payee if cdv.payee_type == 'employee' else None)
+        payee = (getattr(master, 'check_payee_name', None) or '').strip() if master else ''
+    payee = payee or cdv.vendor_name
     values = {
         'payee': payee or '',
         'check_date': cdv.effective_check_date.strftime(date_fmt) if cdv.effective_check_date else '',

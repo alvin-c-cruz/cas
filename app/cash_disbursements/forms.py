@@ -42,6 +42,12 @@ class CashDisbursementForm(RowVersionFormMixin, FlaskForm):
         Length(max=100)
     ])
 
+    # Blank = the payee master's default, filled on save (plan 2.3).
+    check_payee_name = StringField('Pay to (on cheque)', validators=[
+        Optional(),
+        Length(max=200)
+    ])
+
     cash_account_id = SelectField('Cash / Bank Account', validators=[
         DataRequired(message='Cash or bank account is required.')
     ], coerce=int)

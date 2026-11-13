@@ -134,6 +134,12 @@
   // Editing a layout text -> live-update its content.
   textInput.addEventListener('input', () => {
     if (selected && selected.classList.contains('pp-text')) selected.textContent = textInput.value;
+    // A field with its own wording (check_payee_label): edit the wording; it shows on the
+    // canvas only where this voucher prints it.
+    else if (selected && selected.dataset.fieldtext !== undefined) {
+      selected.dataset.fieldtext = textInput.value;
+      if (selected.textContent.trim()) selected.textContent = textInput.value;
+    }
   });
   // Don't let a drag start from inside the text input.
   textInput.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -160,8 +166,10 @@
     const dupBtn = elBar.querySelector('#ppDupBtn');
     if (dupBtn) dupBtn.style.display = (isText || el.classList.contains('pp-col') || el.classList.contains('pp-je')) ? 'none' : '';
     // Layout texts get an editable text box in the toolbar.
-    textInput.style.display = isText ? '' : 'none';
+    const isFieldText = el.dataset.fieldtext !== undefined;
+    textInput.style.display = (isText || isFieldText) ? '' : 'none';
     if (isText) textInput.value = el.textContent;
+    else if (isFieldText) textInput.value = el.dataset.fieldtext;
     const sizable = isSizableEl(el);
     widthInput.style.display = sizable ? '' : 'none';
     if (sizable) widthInput.value = parseInt(el.style.width) || 0;
@@ -438,6 +446,7 @@
         hidden: el.classList.contains('pp-field-hidden'),
         width: el.classList.contains('pp-wrap') ? (parseInt(el.style.width) || 0) : 0,
       };
+      if (el.dataset.fieldtext !== undefined) fields[el.dataset.el].text = el.dataset.fieldtext;
     });
     const extras = [...canvas.querySelectorAll('.pp-el[data-extra]')].map((el) => {
       const cs = getComputedStyle(el);

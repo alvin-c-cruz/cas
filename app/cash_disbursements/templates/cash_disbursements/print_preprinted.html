@@ -98,7 +98,7 @@
 
 {% macro field(key, value, iso='') %}
   {% set f = layout.fields[key] %}
-  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}{{ ' pp-wrap' if f.width else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"{% if iso %} data-date="{{ iso }}"{% endif %}
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}{{ ' pp-wrap' if f.width else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"{% if iso %} data-date="{{ iso }}"{% endif %}{% if f.text is defined %} data-fieldtext="{{ f.text }}"{% endif %}
        style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};{% if f.width %}width:{{ f.width }}px;{% endif %}">{{ value }}</div>
 {% endmacro %}
 
@@ -176,6 +176,11 @@
 
      This note sits above the block, not inside it: a Jinja comment is not legal within a
      set-expression, and writing the comment delimiters inline would close this one early. #}
+  {# The cheque payee: the voucher's own (plan 2.3), else the vendor's live alias (a voucher
+     saved before 2.3). Blank whenever it is the payee's own name, and its label goes with it
+     (owner, 12 Nov 2026: "PNT B"). #}
+  {% set cp = (cdv.check_payee_name or '')|trim or (((cdv.vendor.check_payee_name or '')|trim) if cdv.vendor else '') %}
+  {% set cp = '' if cp == (cdv.vendor_name or '')|trim else cp %}
   {% set field_values = {
     'cdv_no': cdv.cdv_number,
     'cdv_date': cdv.cdv_date.strftime(date_fmt) if cdv.cdv_date else '',
@@ -185,7 +190,8 @@
     'check_bank': cdv.check_bank or '',
     'cash_account': (cdv.cash_account.code ~ ' : ' ~ cdv.cash_account.name) if cdv.cash_account else '',
     'vendor_name': cdv.vendor_name,
-    'check_payee': (cdv.vendor.check_payee_name or '') if cdv.vendor else '',
+    'check_payee': cp,
+    'check_payee_label': (layout.fields.check_payee_label.text if cp else ''),
     'vendor_tin': cdv.vendor_tin or '',
     'deposit_account': (cdv.vendor.bank_details_line if cdv.vendor else '') if cdv.pays_by_deposit else '',
     'notes': cdv.notes or '',
@@ -307,7 +313,7 @@
 {% if can_edit_layout %}
 <script type="application/json" id="ppJELayout">{{ layout.journalEntry | tojson }}</script>
 <script type="application/json" id="ppServerLineItems">{{ layout.lineItems | tojson }}</script>
-<script src="{{ url_for('static', filename='js/preprinted_je_designer.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/preprinted_je_designer.js') }}?v=3"></script>
 {% endif %}
 {% include '_print_report_button.html' %}
 </body>

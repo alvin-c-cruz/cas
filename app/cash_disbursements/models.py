@@ -41,6 +41,11 @@ class CashDisbursementVoucher(RowVersioned, db.Model):
     check_number = db.Column(db.String(50))
     check_date = db.Column(db.Date)
     check_bank = db.Column(db.String(100))
+    # Who the cheque is made out to ("Pay to the order of"), the voucher's own value since plan 2.3
+    # (owner, 28 Oct 2026: "the CDV should have option to change the Payee of the check in the CDV.
+    # the default will come from the maintenance"). NULL on a CDV saved before it: print falls back
+    # to the payee master, as before.
+    check_payee_name = db.Column(db.String(200))
 
     #: Methods that pay INTO the vendor's bank account, so the voucher shows that account
     #: (vendor bank details, 2026-09-23) the way a check payment shows its check details.

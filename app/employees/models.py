@@ -58,6 +58,9 @@ class Employee(db.Model):
     bank_account_name = db.Column(db.String(200))
     bank_account_number = db.Column(db.String(50))
     deposit_slip_form = db.Column(db.String(30))
+    # The name an employee's cheque is made out to when it is not the employee's own (owner, 28 Oct
+    # 2026: "sometimes employee has no own bank account"); blank = the full name. Plan 2.3.
+    check_payee_name = db.Column(db.String(200))
 
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
@@ -103,6 +106,7 @@ class Employee(db.Model):
             'bank_account_name': self.bank_account_name,
             'bank_account_number': self.bank_account_number,
             'deposit_slip_form': self.deposit_slip_form,
+            'check_payee_name': self.check_payee_name,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -336,7 +336,7 @@ def cdv_values(cdv):
     """
     payee = cdv_payee(cdv)
     name = ((payee.bank_account_name or '').strip()
-            or (getattr(payee, 'check_payee_name', None) or '').strip()) if payee else ''
+            or ((payee.check_payee_name or '').strip() if cdv.payee_type == 'vendor' else '')) if payee else ''
     bank_acct = _bank_account_for(cdv.cash_account_id)
     amount = _money(cdv.total_amount)
     values = {
