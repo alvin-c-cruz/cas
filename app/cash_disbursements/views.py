@@ -2088,12 +2088,33 @@ def print_deposit_slip(id):
                                         payee=cdv.payee_type or 'vendor')
     log_audit(module='cash_disbursements', action='print_deposit_slip', record_id=cdv.id,
               record_identifier=cdv.cdv_number, notes=f'check {cdv.check_number} / {form_key}')
+    # Bank/Branch kept per cash account (owner, 13 Nov 2026: "BB-1 A")
+    bank_keep = {'source': ds.cdv_check_bank(cdv)[1],
+                 'account': ds.cash_account_label(cdv.cash_account_id),
+                 'url': url_for('cash_disbursements.keep_deposit_slip_bank', id=cdv.id)}
     return ds.render_slip(
         title=f'Deposit slip — CDV {cdv.cdv_number}', form_key=form_key, values=values,
         form_url=url_for('cash_disbursements.print_deposit_slip', id=cdv.id),
         save_url=url_for('cash_disbursements.save_deposit_slip_layout', form_key=form_key),
         notice=notice,
-        deposit_to=ds.deposit_to_line(deposit_bank, values['account_name'], values['account_number']))
+        deposit_to=ds.deposit_to_line(deposit_bank, values['account_name'], values['account_number']),
+        bank_keep=bank_keep)
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/deposit-slip-bank', methods=['POST'])
+@login_required
+def keep_deposit_slip_bank(id):
+    """Keep the slip's Bank/Branch for this CDV's cash account, for every later slip on it
+    (owner, 13 Nov 2026: "BB-1 A"). Full access, as the slip layout; a blank clears it. The
+    voucher's own Bank is not touched. Answers with what the box now starts from."""
+    from app.common import deposit_slip as ds
+    if not current_user.has_full_access:
+        abort(403)
+    cdv = _get_cdv_or_404(id)
+    ds.keep_bank(cdv.cash_account_id, (request.get_json(silent=True) or {}).get('bank'),
+                 current_user.username)
+    bank, source = ds.cdv_check_bank(cdv)
+    return jsonify(ok=True, bank=bank, source=source)
 
 
 @cash_disbursements_bp.route('/cash-disbursements/deposit-slip-layout/<form_key>', methods=['POST'])

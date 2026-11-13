@@ -254,6 +254,69 @@ def _bank_account_for(gl_account_id):
     return BankAccount.query.filter_by(account_id=gl_account_id).first() if gl_account_id else None
 
 
+# The CDV slip's Bank/Branch, kept per GL cash account (owner, 13 Nov 2026: "BB-1 A"; work order
+# 2026-11-13-cdv-deposit-slip-bank-branch). A company's cheques name their own bank and branch
+# (Philgen: "CBC/Eastwood this is the bank/branch of both our bank account"), which the voucher's
+# Bank box ("CHINA BANK") does not, and a value typed on the slip lasts one print. Keyed by the GL
+# account, not the branch: one cash account can serve two branches. Works with the Bank Accounts
+# module off. Data, not code: each client keeps its own from the slip page.
+BANK_SETTING_PREFIX = 'deposit_slip_bank'
+BANK_MAX = 100              # the voucher's own Bank column (check_bank, String(100))
+
+
+def _bank_key(cash_account_id):
+    return f'{BANK_SETTING_PREFIX}:{cash_account_id}'
+
+
+def kept_bank(cash_account_id):
+    """The Bank/Branch kept for a cash account's slips, or ''."""
+    if not cash_account_id:
+        return ''
+    return (AppSettings.get_setting(_bank_key(cash_account_id)) or '').strip()
+
+
+def cash_account_label(cash_account_id):
+    """'<code> <name>' of a GL cash account, as the slip page names it."""
+    from app import db
+    from app.accounts.models import Account
+    account = db.session.get(Account, cash_account_id) if cash_account_id else None
+    return f'{account.code} {account.name}' if account else 'this cash account'
+
+
+def keep_bank(cash_account_id, text, username):
+    """Keep `text` as the Bank/Branch of every slip on the cash account; blank clears it.
+    Trimmed and cut to the voucher's Bank length; audited old -> new. Returns the kept value."""
+    from app import db
+    clean = ('' if text is None else str(text)).strip()[:BANK_MAX]
+    key = _bank_key(cash_account_id)
+    row = AppSettings.query.filter_by(key=key).first()
+    old = row.value if row else ''
+    if clean:
+        AppSettings.set_setting(key, clean, updated_by=username)
+    elif row:
+        db.session.delete(row)
+        db.session.commit()
+    log_audit(module='cash_disbursements', action='update', record_id=None, record_identifier=key,
+              old_values={'bank': old}, new_values={'bank': clean},
+              notes=(f'Deposit slip Bank/Branch {"kept" if clean else "cleared"} for '
+                     f'{cash_account_label(cash_account_id)}'))
+    return clean
+
+
+def cdv_check_bank(cdv, bank_acct=None):
+    """(Bank/Branch, the line saying where it came from) for a CDV's slip: the value kept for
+    its cash account, else the Bank Accounts master's bank name, else the voucher's Bank."""
+    label = cash_account_label(cdv.cash_account_id)
+    kept = kept_bank(cdv.cash_account_id)
+    if kept:
+        return kept, f'Kept for {label}.'
+    bank_acct = bank_acct or _bank_account_for(cdv.cash_account_id)
+    master = (bank_acct.bank_name or '').strip() if bank_acct else ''
+    if master:
+        return master, f'From Bank Accounts for {label}.'
+    return cdv.check_bank or '', f"From this voucher's Bank. Nothing kept for {label}."
+
+
 def cdv_payee(cdv):
     """The CDV's payee master row, a Vendor or an Employee, or None. A vendor comes through
     vendor_id, as before employees were added; an employee through payee_id."""
@@ -268,8 +331,8 @@ def cdv_values(cdv):
     The payee's account, from the vendor's or the employee's bank details (employees since
     10 Nov 2026, "EMP-B"): the bank account name, else a vendor's cheque payee name, else the
     payee; the bank account number, or blank to be typed (Resaida on V151 PETTY CASH has
-    none). The cheque's bank: the Bank Accounts master's bank name for the
-    CDV's cash account when it is set, else the CDV's cheque bank.
+    none). The cheque's bank: cdv_check_bank (the value kept for the CDV's cash account, else
+    the Bank Accounts master's bank name, else the CDV's cheque bank).
     """
     payee = cdv_payee(cdv)
     name = ((payee.bank_account_name or '').strip()
@@ -281,7 +344,7 @@ def cdv_values(cdv):
         'account_name': name or cdv.vendor_name or '',
         'account_number': ((payee.bank_account_number or '').strip() if payee else ''),
         'total_amount': amount,
-        'check_bank': ((bank_acct.bank_name or '').strip() if bank_acct else '') or (cdv.check_bank or ''),
+        'check_bank': cdv_check_bank(cdv, bank_acct)[0],
         'check_number': (cdv.check_number or '').strip(),
         'check_amount': amount,
     }
@@ -309,9 +372,11 @@ def crv_values(crv):
     return values, (bank_acct.bank_name if bank_acct else '')
 
 
-def render_slip(title, form_key, values, form_url, save_url, notice='', deposit_to=''):
+def render_slip(title, form_key, values, form_url, save_url, notice='', deposit_to='', bank_keep=None):
     """The slip page: the values at the form's layout positions, editable before printing;
-    for full-access users it doubles as the layout designer, as the cheque page does."""
+    for full-access users it doubles as the layout designer, as the cheque page does.
+    `bank_keep` (a CDV slip only: {'source', 'account', 'url'}) adds the line under Bank/Branch
+    saying where it came from and, for full access, the Keep button."""
     from datetime import date
     from flask import render_template
     from flask_login import current_user
@@ -323,7 +388,7 @@ def render_slip(title, form_key, values, form_url, save_url, notice='', deposit_
         date_formats=DATE_FORMATS,
         date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()},
         today=ph_now().date(), form_url=form_url, save_url=save_url, notice=notice, deposit_to=deposit_to,
-        can_edit_layout=current_user.has_full_access)
+        bank_keep=bank_keep, can_edit_layout=current_user.has_full_access)
 
 
 def save_layout(form_key, raw, username):

@@ -37,6 +37,10 @@
                background: #fff4d6; color: #5c4200; font: 13px Arial, sans-serif; }
   .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; color: #fff; text-decoration: none; display: inline-block; }
   .btn-print { background: #1565c0; } .btn-close { background: #666; } .btn-edit { background: #2e7d32; }
+  .ds-keep { display: grid; gap: 4px; align-content: end; justify-items: start; }
+  .ds-source { font-size: 12px; color: #555; }
+  .btn-keep { background: #2e7d32; padding: 4px 10px; font-size: 12px; }
+  .btn-keep:disabled { opacity: .6; cursor: wait; }
   @media print {
     body { background: #fff; }
     .screen-only { display: none !important; }
@@ -92,6 +96,16 @@
   {% for key in ['account_name', 'account_number', 'total_amount', 'check_bank', 'check_number', 'check_amount'] %}
   <label>{{ field_labels[key] }}
     <input type="text" class="ds-value" data-for="{{ key }}" value="{{ values[key] }}"></label>
+  {% if key == 'check_bank' and bank_keep %}
+  {#- A CDV slip: where Bank/Branch came from, and Keep for the cash account (owner, 13 Nov 2026: "BB-1 A"). -#}
+  <div class="ds-keep">
+    <span class="ds-source" id="dsBankSource">{{ bank_keep.source }}</span>
+    {% if can_edit_layout %}
+    <button type="button" id="dsKeepBank" class="btn btn-keep" data-url="{{ bank_keep.url }}"
+            title="Every later slip on this cash account starts from what is in Bank/Branch now; save it blank to clear">Keep for {{ bank_keep.account }}</button>
+    {% endif %}
+  </div>
+  {% endif %}
   {% endfor %}
 </div>
 
@@ -147,6 +161,29 @@
   var form = document.getElementById('dsForm');
   form.addEventListener('change', function () {
     location.href = form.dataset.url + '?form=' + encodeURIComponent(form.value);
+  });
+  // Keep Bank/Branch for the cash account: every later slip on it starts from this value.
+  var keep = document.getElementById('dsKeepBank');
+  if (keep) keep.addEventListener('click', function () {
+    var input = document.querySelector('.ds-value[data-for="check_bank"]');
+    var source = document.getElementById('dsBankSource');
+    var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    keep.disabled = true;
+    fetch(keep.dataset.url, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify({ bank: input.value })
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      input.value = data.bank;
+      var el = field('check_bank');
+      if (el) el.textContent = data.bank;
+      source.textContent = data.source;
+    }).catch(function () {
+      source.textContent = 'Not kept: the save failed. Try again.';
+    }).then(function () { keep.disabled = false; });
   });
 })();
 </script>
