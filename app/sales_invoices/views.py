@@ -13,6 +13,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.common.vat_nature import resolve_sales_nature
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now, this_month_iso
+from app.utils_helpers import journal_period, list_date_range, list_period_context
 from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
                                     fresh_number_if_collision, flush_or_suggest_fresh_number)
 from app.utils.export import export_to_excel, export_to_csv
@@ -610,16 +611,14 @@ def _filtered_invoices_query(include_ids=False):
                    SalesInvoice.customer_name.ilike(like))
         )
 
-    # From / To open on the current month, first day to last (owner, 22 Oct 2026).
-    bom, eom = this_month_iso()
-    date_from = request.args.get('date_from', bom)
+    # From / To open on the current month; any search spans all dates (list_date_range).
+    date_from, date_to, _ = list_date_range(request.args, q)
     if date_from:
         try:
             query = query.filter(SalesInvoice.invoice_date >= date.fromisoformat(date_from))
         except ValueError:
             pass
 
-    date_to = request.args.get('date_to', eom)
     if date_to:
         try:
             query = query.filter(SalesInvoice.invoice_date <= date.fromisoformat(date_to))
@@ -654,9 +653,7 @@ def list_invoices():
         today=ph_now().date(),
         status_filter=request.args.get('status', 'all'),
         customer_filter=request.args.get('customer_id', 'all'),
-        q=request.args.get('q', ''),
-        date_from=request.args.get('date_from', this_month_iso()[0]),
-        date_to=request.args.get('date_to', this_month_iso()[1]),
+        **list_period_context(request.args),
     )
 
 
@@ -758,8 +755,7 @@ def print_list():
         today=ph_now().date(),
         printed_at=ph_now(),
         status_filter=request.args.get('status', 'all'),
-        date_from=request.args.get('date_from', this_month_iso()[0]),
-        date_to=request.args.get('date_to', this_month_iso()[1]),
+        **list_period_context(request.args),
     )
 
 

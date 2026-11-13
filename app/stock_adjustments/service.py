@@ -343,7 +343,10 @@ def _reverse_fifo_movement(orig, actor, journal_entry_id):
             db.session.expire(bal, ['row_version', 'quantity_on_hand', 'average_unit_cost', 'total_value'])
             return mv
 
-        db.session.expire(bal)
+        db.session.expire_all()   # lost the race: re-read EVERYTHING fresh, as post_movement and
+                                  # _reverse_specific_id_movement do -- a retry must not reuse the
+                                  # identity-mapped StockCostLayer of the losing attempt (work order
+                                  # 2026-07-23-reverse-fifo-movement-narrow-expire-on-lost-race)
     raise RuntimeError('stock balance update failed after retries (persistent contention)')
 
 

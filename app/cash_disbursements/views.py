@@ -222,16 +222,20 @@ def list_cdvs():
             CashDisbursementVoucher.vendor_name.ilike(like)
         ))
 
-    # From / To open on the current month, first day to last (owner, 22 Oct 2026).
+    # From / To open on the current month, first day to last (owner, 22 Oct 2026). Any search --
+    # a CDV number or a payee name -- looks across all dates and ignores From / To, which the
+    # form always submits (owner, 12 Nov 2026: "S8 A", bug report #8; NAME-1: "A: search across
+    # all dates too, like number searches.").
     bom, eom = this_month_iso()
-    date_from = request.args.get('date_from', bom)
+    all_dates = bool(q)
+    date_from = '' if all_dates else request.args.get('date_from', bom)
     if date_from:
         try:
             query = query.filter(CashDisbursementVoucher.cdv_date >= date.fromisoformat(date_from))
         except ValueError:
             pass
 
-    date_to = request.args.get('date_to', eom)
+    date_to = '' if all_dates else request.args.get('date_to', eom)
     if date_to:
         try:
             query = query.filter(CashDisbursementVoucher.cdv_date <= date.fromisoformat(date_to))
@@ -266,6 +270,11 @@ def list_cdvs():
                            q=q,
                            date_from=date_from,
                            date_to=date_to,
+                           all_dates=all_dates,
+                           # The journal download needs a real period even while a number
+                           # search spans all dates.
+                           journal_from=date_from or bom,
+                           journal_to=date_to or eom,
                            pm_filter=pm_filter)
 
 
