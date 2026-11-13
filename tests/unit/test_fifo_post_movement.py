@@ -176,3 +176,46 @@ def test_existing_moving_average_product_unaffected(db_session, product_tracked,
     db.session.commit()
     assert mv.unit_cost == D('5.00')
     assert StockCostLayer.query.filter_by(product_id=product_tracked.id).count() == 0
+
+
+def test_reversal_lost_race_retry_rereads_its_layer_fresh(monkeypatch, db_session, product_fifo, branch_main):
+    """The reversal's own lost-race retry must re-read its StockCostLayer FRESH, as
+    post_movement's does (work order 2026-07-23-reverse-fifo-movement-narrow-expire-on-lost-race;
+    plan item 1.4).
+
+    Reversing a receipt targets the receipt's own layer and refuses (FifoLayerConsumedError)
+    if anything drew from it since. Here the first claim loses the race while a concurrent
+    writer draws that layer from 5 down to 2 -- a bulk UPDATE with synchronize_session=False,
+    invisible to this session's identity map. With the narrow `db.session.expire(bal)` the
+    retry reuses the stale layer (remaining still 5), sees nothing consumed and reverses the
+    receipt anyway, corrupting the layer ledger. With `expire_all()` it re-reads remaining 2
+    and refuses."""
+    import pytest
+    from app.stock_adjustments.service import FifoLayerConsumedError, _reverse_fifo_movement
+    actor = _actor(db_session)
+    receipt, _ = post_movement(product_fifo, branch_main.id, 'receipt', D('5'), D('4.00'),
+                               'test_doc', 1, 'r1', actor, movement_date=date(2026, 1, 1))
+    db.session.commit()
+    layer = StockCostLayer.query.filter_by(source_movement_id=receipt.id).one()
+    layer_id = layer.id
+    assert D(layer.remaining_qty) == D('5')          # untouched before the reversal
+
+    real_claim = service_module._claim_balance_update
+    state = {'calls': 0}
+
+    def fake_claim(balance_id, read_version, new_qty, new_avg, new_value):
+        state['calls'] += 1
+        if state['calls'] == 1:
+            db.session.execute(
+                sa.update(StockCostLayer)
+                .where(StockCostLayer.id == layer_id)
+                .values(remaining_qty=D('2.0000'))
+                .execution_options(synchronize_session=False))
+            return False
+        return real_claim(balance_id, read_version, new_qty, new_avg, new_value)
+
+    monkeypatch.setattr(service_module, '_claim_balance_update', fake_claim)
+
+    with pytest.raises(FifoLayerConsumedError):
+        _reverse_fifo_movement(receipt, actor, journal_entry_id=None)
+    assert state['calls'] == 1          # lost once, then the fresh re-read refused before a second claim
