@@ -12,8 +12,14 @@ def backfill_book_permissions(session):
     default_all_permissions().
 
     Returns the number of users updated."""
+    from sqlalchemy.orm import load_only
     updated = 0
-    users = session.query(User).filter(User.role.in_(('accountant', 'viewer'))).all()
+    # load_only: this runs inside migration 36517765f386, against the schema of ITS revision.
+    # Selecting the whole model would ask for every column added to `users` since (e.g.
+    # must_change_password, pwforce_0001) and fail on a database upgraded from empty.
+    users = (session.query(User)
+             .options(load_only(User.id, User.role, User.book_permissions))
+             .filter(User.role.in_(('accountant', 'viewer'))).all())
     for u in users:
         if u.get_book_permissions():          # already has at least one → skip
             continue
