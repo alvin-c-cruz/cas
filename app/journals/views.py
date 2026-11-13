@@ -22,9 +22,11 @@ def _branch_id():
 
 
 def _date_defaults():
-    """From / To open on the current month, first day to last (owner, 22 Oct 2026)."""
-    bom, eom = this_month_iso()
-    return request.args.get('date_from', bom), request.args.get('date_to', eom)
+    """From / To open on the current month, first day to last (owner, 22 Oct 2026). On the JV
+    list a search spans all dates (owner, 12 Nov 2026: S8-ALL "A"), so it comes back blank then."""
+    from app.utils_helpers import list_date_range
+    date_from, date_to, _ = list_date_range(request.args, request.args.get('q', ''))
+    return date_from, date_to
 
 
 def _cash_bank_account_ids():
@@ -61,7 +63,7 @@ def _apply_date_filter(query, date_from, date_to):
     return query
 
 
-def _voucher_query(branch_id, status_filter, date_from, date_to):
+def _voucher_query(branch_id, status_filter, date_from, date_to, q=''):
     """Shared filtered + eager-loaded query for the voucher list/print/export.
 
     Eager-loads posted_by/created_by so the per-row username lookups don't N+1.
@@ -76,6 +78,12 @@ def _voucher_query(branch_id, status_filter, date_from, date_to):
     )
     if status_filter != 'all':
         query = query.filter(JournalEntry.status == status_filter)
+    q = (q or '').strip()
+    if q:      # JV number, reference or description (owner, 12 Nov 2026: S8-ALL "A")
+        like = f'%{q}%'
+        query = query.filter(db.or_(JournalEntry.entry_number.ilike(like),
+                                    JournalEntry.reference.ilike(like),
+                                    JournalEntry.description.ilike(like)))
     return _apply_date_filter(query, date_from, date_to)
 
 
@@ -388,16 +396,17 @@ def voucher():
         flash('Please select a branch to view journal entries.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
 
-    query = _voucher_query(branch_id, status_filter, date_from, date_to)
+    query = _voucher_query(branch_id, status_filter, date_from, date_to,
+                           q=request.args.get('q', ''))
     pagination = query.order_by(JournalEntry.entry_date.desc()).paginate(
         page=page, per_page=50, error_out=False)
 
+    from app.utils_helpers import list_period_context
     return render_template('journals/voucher.html',
                            entries=pagination.items,
                            pagination=pagination,
-                           date_from=date_from,
-                           date_to=date_to,
-                           status_filter=status_filter)
+                           status_filter=status_filter,
+                           **list_period_context(request.args))
 
 
 @journals_bp.route('/journals/voucher/print')
@@ -412,7 +421,7 @@ def voucher_print():
     date_from, date_to = _date_defaults()
     status_filter = request.args.get('status', 'all')
 
-    query = _voucher_query(branch_id, status_filter, date_from, date_to)
+    query = _voucher_query(branch_id, status_filter, date_from, date_to, q=request.args.get("q", ""))
     entries = query.order_by(JournalEntry.entry_date.asc()).all()
 
     company_name = AppSettings.get_setting('company_name') or ''
@@ -441,7 +450,7 @@ def voucher_export():
     date_from, date_to = _date_defaults()
     status_filter = request.args.get('status', 'all')
 
-    query = _voucher_query(branch_id, status_filter, date_from, date_to)
+    query = _voucher_query(branch_id, status_filter, date_from, date_to, q=request.args.get("q", ""))
     entries = query.order_by(JournalEntry.entry_date.asc()).all()
 
     company_name = AppSettings.get_setting('company_name') or ''

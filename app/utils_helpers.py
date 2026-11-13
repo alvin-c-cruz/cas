@@ -20,6 +20,36 @@ def this_month_iso():
     return today.replace(day=1).isoformat(), end_of_month(today).isoformat()
 
 
+def list_date_range(args, q):
+    """(date_from, date_to, all_dates) for a transaction list's From / To.
+
+    The lists open on the current month (owner, 22 Oct 2026). Any search text -- a document
+    number or a name -- looks across all dates and ignores From / To, which the filter forms
+    always submit (owner, 12 Nov 2026: "S8 A", NAME-1 "A", S8-ALL "A"). Then both come back
+    blank, so the boxes show that no period applies. `args` is request.args."""
+    if (q or '').strip():
+        return '', '', True
+    bom, eom = this_month_iso()
+    return args.get('date_from', bom), args.get('date_to', eom), False
+
+
+def journal_period(date_from, date_to):
+    """The period a list's Download Journal link carries: the list's own From / To, or the
+    current month while a search spans all dates (the download needs a real period)."""
+    bom, eom = this_month_iso()
+    return date_from or bom, date_to or eom
+
+
+def list_period_context(args):
+    """Template values for a list's search and From / To: q, date_from, date_to, all_dates
+    (the page says "Searching all dates"), and journal_from / journal_to for Download Journal."""
+    q = (args.get('q') or '').strip()
+    date_from, date_to, all_dates = list_date_range(args, q)
+    journal_from, journal_to = journal_period(date_from, date_to)
+    return {'q': q, 'date_from': date_from, 'date_to': date_to, 'all_dates': all_dates,
+            'journal_from': journal_from, 'journal_to': journal_to}
+
+
 def ph_now():
     """
     Get current datetime in Philippine Standard Time (UTC+8).

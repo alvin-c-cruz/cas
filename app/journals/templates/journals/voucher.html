@@ -7,7 +7,7 @@
 <div class="card">
     <div class="card-header">
         <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
-            <a href="{{ url_for('journals.voucher_print', status=status_filter, date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('journals.voucher_print', status=status_filter, q=q, date_from=date_from, date_to=date_to) }}"
                target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Print</a>
             {% if (current_user.has_full_access or current_user.role == 'accountant') %}
             <a href="{{ url_for('journal_entries.create') }}" class="btn btn-green">📝 Enter Journal Voucher</a>
@@ -17,6 +17,10 @@
 
     <div style="padding: 20px; background: var(--bg); border-bottom: 1px solid var(--border);">
         <form method="GET" action="{{ url_for('journals.voucher') }}" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;">
+            <div style="flex: 2; min-width: 200px;">
+                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase;">Search</label>
+                <input type="text" name="q" value="{{ q }}" placeholder="JV #, reference or description" class="form-control form-control-sm">
+            </div>
             <div style="flex: 1; min-width: 150px;">
                 <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase;">From Date</label>
                 <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
@@ -25,7 +29,7 @@
                 <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase;">To Date</label>
                 <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
             </div>
-            <a href="{{ url_for('journals.voucher_journal_export', mode='custom', date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('journals.voucher_journal_export', mode='custom', date_from=journal_from, date_to=journal_to) }}"
                id="journal-download" data-journal-download class="btn btn-sm btn-journal-download">Download Journal</a>
             <div style="flex: 1; min-width: 120px;">
                 <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase;">Status</label>
@@ -42,6 +46,9 @@
                 <a href="{{ url_for('journals.voucher') }}" class="btn btn-secondary btn-sm">Clear</a>
             </div>
         </form>
+        {% if all_dates %}
+        <p class="text-muted" style="margin:10px 0 0; font-size:13px;">Searching all dates for &ldquo;{{ q }}&rdquo;. Clear the search to go back to the month.</p>
+        {% endif %}
     </div>
 
     <div class="card-body">

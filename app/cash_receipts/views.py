@@ -13,6 +13,7 @@ from app.common.vat_nature import resolve_sales_nature
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now, this_month_iso
+from app.utils_helpers import journal_period, list_date_range, list_period_context
 from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
                                     fresh_number_if_collision, flush_or_suggest_fresh_number)
 from app.utils.export import export_to_excel, export_to_csv
@@ -917,16 +918,14 @@ def list_crvs():
             CashReceiptVoucher.customer_name.ilike(like)
         ))
 
-    # From / To open on the current month, first day to last (owner, 22 Oct 2026).
-    bom, eom = this_month_iso()
-    date_from = request.args.get('date_from', bom)
+    # From / To open on the current month; any search spans all dates (list_date_range).
+    date_from, date_to, _ = list_date_range(request.args, q)
     if date_from:
         try:
             query = query.filter(CashReceiptVoucher.crv_date >= date.fromisoformat(date_from))
         except ValueError:
             pass
 
-    date_to = request.args.get('date_to', eom)
     if date_to:
         try:
             query = query.filter(CashReceiptVoucher.crv_date <= date.fromisoformat(date_to))
@@ -956,10 +955,8 @@ def list_crvs():
                            today=ph_now().date(),
                            status_filter=status_filter,
                            customer_filter=customer_filter,
-                           q=q,
-                           date_from=date_from,
-                           date_to=date_to,
-                           pm_filter=pm_filter)
+                           pm_filter=pm_filter,
+                           **list_period_context(request.args))
 
 
 # ---------------------------------------------------------------------------
