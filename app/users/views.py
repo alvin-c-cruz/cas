@@ -129,6 +129,11 @@ def _post_login_redirect(user, form):
     except Exception:
         db.session.rollback()
 
+    # A password someone else set goes straight to Change password (work order 2026-11-10).
+    if user.must_change_password:
+        flash('An administrator set your password. Please choose your own to continue.', 'warning')
+        return redirect(url_for('users.change_password'))
+
     # Force a still-default password to be changed before anything else. The
     # submitted password IS the stored one (auth just succeeded), so this is a free
     # compare -- no hash. Caching the result also spares the before_request hook its
@@ -534,6 +539,9 @@ def edit_user(id):
             if form.password.data:
                 user.set_password(form.password.data)
                 password_changed = True
+                # Someone else's password set by an admin must be changed at the next login;
+                # an admin changing their OWN password is not flagged (work order 2026-11-10).
+                user.must_change_password = current_user.id != user.id
 
             # Update book permissions from form. Iterate all_permission_keys()
             # (not optional OR per_user) -- the SAME grantable set the edit grid
@@ -599,7 +607,8 @@ def edit_user(id):
             # Audit log - Password change
             if password_changed:
                 action = 'password_reset' if current_user.id != user.id else 'password_changed'
-                notes = f'Password reset by admin: {current_user.username}' if action == 'password_reset' else 'User changed own password'
+                notes = (f'Password reset by admin: {current_user.username}; must change at next login'
+                         if action == 'password_reset' else 'User changed own password')
                 log_audit(
                     module='user',
                     action=action,
@@ -726,14 +735,19 @@ def change_password():
             return render_template('users/change_password.html', form=form)
 
         try:
+            was_forced = bool(current_user.must_change_password)
             current_user.set_password(form.new_password.data)
+            current_user.must_change_password = False
             db.session.commit()
             # Release the default-password gate for this session (the before_request
             # hook re-verifies anyway, but this avoids one extra redirect).
             session['pw_is_default'] = False
             log_audit(module='users', action='change_password', record_id=current_user.id,
                       record_identifier=current_user.username,
-                      notes='Password changed by the account owner', user_id=current_user.id)
+                      notes=('Password changed by the account owner'
+                             + ('; forced change after a password set by someone else, cleared'
+                                if was_forced else '')),
+                      user_id=current_user.id)
             flash('Password changed successfully!', 'success')
             return redirect(url_for('users.profile'))
         except Exception as e:

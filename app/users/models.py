@@ -47,6 +47,11 @@ class User(UserMixin, db.Model):
     account_locked_until = db.Column(db.DateTime, nullable=True)
     last_failed_login = db.Column(db.DateTime, nullable=True)
 
+    # Set when someone else set this password (an admin's reset, or `flask reset-password`); the
+    # next login goes straight to Change password until the user picks their own (work order
+    # 2026-11-10-force-password-change-after-admin-reset; owner, 12 Nov 2026: "PW-3 A").
+    must_change_password = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
+
     def set_password(self, password):
         """Hash and set the user's password."""
         self.password_hash = generate_password_hash(password)

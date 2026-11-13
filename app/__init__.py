@@ -441,6 +441,8 @@ def create_app(config_name=None):
     app.cli.add_command(backup_mint_token_cmd)
     from app.integrity.cli import integrity_check_cmd
     app.cli.add_command(integrity_check_cmd)
+    from app.users.cli import reset_password_cmd
+    app.cli.add_command(reset_password_cmd)
 
     migrate.init_app(app, db)
 
@@ -663,11 +665,17 @@ def create_app(config_name=None):
         from flask import session, redirect, url_for, request, flash
         from flask_login import current_user
 
-        if not app.config.get('ENFORCE_DEFAULT_PW_CHANGE'):
-            return
         if request.endpoint is None or request.endpoint in PW_ROTATION_EXEMPT:
             return
         if not current_user.is_authenticated:
+            return
+        # A password someone else set (admin reset, CLI reset) must be changed first. Read from
+        # the user row on every request, never from the session, so no cache can skip it; not
+        # config-gated, unlike the default-password check below.
+        if getattr(current_user, 'must_change_password', False):
+            flash('An administrator set your password. Please choose your own to continue.', 'warning')
+            return redirect(url_for('users.change_password'))
+        if not app.config.get('ENFORCE_DEFAULT_PW_CHANGE'):
             return
         if session.get('pw_is_default') is False:
             return  # proven non-default this session — fast path, no hash
