@@ -40,6 +40,7 @@ import pytest
 
 from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.utils import OPEN_PO_STATUSES
+from app.purchase_orders.progress import _AS_STORED as PO_PROGRESS_AS_STORED
 from app.purchase_requests.allocation import (
     APPROVED_PR, COMMITTED_PO, PULLABLE_PR, RECOMPUTABLE_PR)
 from app.purchase_requests.models import PurchaseRequest
@@ -143,6 +144,23 @@ class Tuple_:
 
 
 REGISTRY = [
+    Tuple_(
+        'purchase_orders.progress._AS_STORED', PO_PROGRESS_AS_STORED,
+        'purchase order',
+        'does the GCD-5 label simply repeat the stored status, without reading '
+        'the order\'s receipts? (display only; it gates nothing)',
+        {
+            'submitted':
+                'a submitted order can be received (RECEIVABLE_PO_STATUSES), so '
+                'its receipts decide the label -- Submitted only while none is '
+                'committed (rule 3)',
+            'approved':
+                'the receipts decide: Approved, Partly received, Received, Paid '
+                'or Closed (rules 3-7)',
+            'closed':
+                'its own rule (2): an APV billed the order itself, so it reads '
+                'Closed whatever its receipts say',
+        }),
     # -- purchase order lifecycle ---------------------------------------------
     Tuple_(
         'purchase_requests.allocation.COMMITTED_PO', COMMITTED_PO,

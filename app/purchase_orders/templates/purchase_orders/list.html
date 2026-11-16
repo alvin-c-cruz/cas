@@ -34,11 +34,11 @@
            class="form-control form-control-sm pb-filter-search">
     <select name="status" class="form-control form-control-sm">
         <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
-        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
-        <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
-        <option value="partially_received" {% if status_filter == 'partially_received' %}selected{% endif %}>Partially Received</option>
-        <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Closed</option>
-        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+        {# GCD-5: the same labels the Status column shows, in the order a PO moves through
+           them; views._filter_by_progress matches the derived label, not the stored status. #}
+        {% for key in ['draft', 'submitted', 'approved', 'partly_received', 'received', 'paid', 'closed', 'cancelled'] %}
+        <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ progress_labels[key] }}</option>
+        {% endfor %}
     </select>
     <select name="vendor" id="vendor-filter" class="form-control form-control-sm">
         <option value="all">All Vendors</option>
@@ -70,7 +70,6 @@
     </div>
     <div class="card-body">
         {% if po_list %}
-        {% set badge_map = {'draft':'draft','approved':'approved','partially_received':'partially-received','closed':'closed','cancelled':'cancelled'} %}
         <div class="table-wrap">
         <table class="table">
             <thead>
@@ -83,7 +82,8 @@
                     <td>{{ po.order_date.strftime('%b %d, %Y') if po.order_date else '' }}</td>
                     <td>{{ po.vendor_name }}</td>
                     <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(po.total_amount or 0) }}</td>
-                    <td><span class="badge badge-{{ badge_map.get(po.status, 'draft') }}">{{ po.status|replace('_', ' ')|title }}</span> {% if attachment_incomplete_count('purchase_orders', po) %}<span class="badge badge-warning" title="Approved with required files missing">⚠</span>{% endif %}</td>
+                    {% set pk = progress[po.id] %}
+                    <td><span class="badge badge-{{ progress_badges.get(pk, 'draft') }}" data-po-id="{{ po.id }}" data-po-progress="{{ pk }}">{{ progress_labels.get(pk, pk) }}</span> {% if attachment_incomplete_count('purchase_orders', po) %}<span class="badge badge-warning" title="Approved with required files missing">⚠</span>{% endif %}</td>
                     <td>
                         <a href="{{ url_for('purchase_orders.view', id=po.id) }}" class="pb-btn-action">👁️</a>
                         {% if po.status == 'draft' %}<a href="{{ url_for('purchase_orders.edit', id=po.id) }}" class="pb-btn-action">✏️</a>{% endif %}

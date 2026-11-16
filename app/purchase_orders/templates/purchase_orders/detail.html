@@ -50,7 +50,10 @@
 <div class="card"><div class="card-body">
   <div class="detail-grid">
     <div><strong>Vendor:</strong> {{ po.vendor_name }}</div>
-    <div><strong>Status:</strong> <span class="badge">{{ po.status }}</span></div>
+    {# GCD-5: how the order finished (Paid / Received / Partly received / Closed ...), derived
+       from its committed receipts by purchase_orders/progress.py. The buttons on this page
+       still read the stored po.status -- the label changes no rule. #}
+    <div><strong>Status:</strong> <span class="badge badge-{{ progress_badge }}" data-po-progress="{{ progress }}">{{ progress_label }}</span></div>
     <div><strong>Order Date:</strong> {{ po.order_date.strftime('%b %d, %Y') if po.order_date else '' }}</div>
     <div><strong>Expected:</strong> {{ po.expected_date.strftime('%b %d, %Y') if po.expected_date else '-' }}</div>
     <div><strong>VAT Treatment:</strong> {{ po.vat_treatment }}</div>
@@ -104,6 +107,30 @@
     </table>
   </div>
 </div></div>
+
+{% if receipts %}
+{# GCD-5 (5.1 A): each committed receipt (approved or billed RR) and what finished it -- the
+   reason the status above reads as it does. Drafts and submitted receipts are not listed:
+   they have not received anything yet. #}
+<div class="card" data-po-receipts><div class="card-body">
+  <h3>Receipts</h3>
+  <ul style="margin:0;padding-left:20px;">
+    {% for r in receipts %}
+    <li>
+      <a href="{{ url_for('receiving_reports.view', id=r.rr.id) }}">RR {{ r.rr.rr_number }}</a>
+      ({{ r.rr.receipt_date.strftime('%b %d, %Y') if r.rr.receipt_date else '' }})
+      {% if r.finished_by == 'cdv' %}
+        paid by <a href="{{ url_for('cash_disbursements.view', id=r.document_id) }}">CDV {{ r.document }}</a>
+      {% elif r.finished_by == 'apv' %}
+        billed by <a href="{{ url_for('accounts_payable.view', id=r.document_id) }}">APV {{ r.document }}</a>
+      {% else %}
+        &mdash; not yet billed
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div></div>
+{% endif %}
 
 {# Attachments: the signed order, vendor quotations, other supporting scans.
    Shown for every status; upload open while unapproved (edit roles) and, once

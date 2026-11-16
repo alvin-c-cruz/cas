@@ -478,10 +478,6 @@ def _filtered_po_query(include_ids=False):
             if ids:
                 return query.filter(PurchaseOrder.id.in_(ids))
 
-    status_filter = request.args.get('status', 'all')
-    if status_filter in VALID_PO_STATUSES:
-        query = query.filter_by(status=status_filter)
-
     vendor_filter = request.args.get('vendor', 'all')
     if vendor_filter != 'all':
         try:
@@ -509,7 +505,32 @@ def _filtered_po_query(include_ids=False):
         except ValueError:
             pass
 
+    status_key = _status_filter_key()
+    if status_key:
+        query = _filter_by_progress(query, status_key)
+
     return query
+
+
+def _status_filter_key():
+    """The list's status filter, as a GCD-5 label key, or None for all. An old bookmarked
+    'partially_received' still means Partly received; an unknown value is ignored."""
+    from app.purchase_orders.progress import FILTER_ALIASES, LABELS
+    raw = request.args.get('status', 'all')
+    raw = FILTER_ALIASES.get(raw, raw)
+    return raw if raw in LABELS else None
+
+
+def _filter_by_progress(query, key):
+    """Narrow *query* to the orders whose LABEL is *key* -- the word the list shows, so picking
+    "Received" finds what reads Received (GCD-5). Draft and cancelled are stored as such; every
+    other label is derived, so those candidates are read once and matched by id."""
+    from app.purchase_orders.progress import progress_keys
+    if key in ('draft', 'cancelled'):
+        return query.filter(PurchaseOrder.status == key)
+    candidates = query.filter(PurchaseOrder.status.notin_(('draft', 'cancelled'))).all()
+    keys = progress_keys(candidates)
+    return query.filter(PurchaseOrder.id.in_([po.id for po in candidates if keys[po.id] == key]))
 
 
 @purchase_orders_bp.route('/purchase-orders')
@@ -529,12 +550,17 @@ def list_po():
     summary = compute_po_summary(branch_id)
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
 
+    from app.purchase_orders.progress import BADGES, LABELS, progress_keys
     return render_template('purchase_orders/list.html',
                            po_list=pagination.items,
                            pagination=pagination,
                            vendors=vendors,
                            summary=summary,
-                           status_filter=request.args.get('status', 'all'),
+                           # GCD-5: how each order finished, derived (never stored).
+                           progress=progress_keys(pagination.items),
+                           progress_labels=LABELS,
+                           progress_badges=BADGES,
+                           status_filter=_status_filter_key() or 'all',
                            vendor_filter=request.args.get('vendor', 'all'),
                            q=request.args.get('q', ''),
                            date_from=request.args.get('date_from', ''),
@@ -700,8 +726,16 @@ def view(id):
     can_receive = (po_is_receivable(po)
                    and current_user.role in RR_EDIT_ROLES
                    and module_enabled('receiving_reports'))
+    from app.purchase_orders.progress import badge_for, label_for, progress_key, receipts_for
+    progress = progress_key(po)
     return render_template('purchase_orders/detail.html', po=po,
                            can_receive=can_receive,
+                           # GCD-5: the status line reads how the order finished, and each
+                           # committed receipt says what billed or paid it.
+                           progress=progress,
+                           progress_label=label_for(progress),
+                           progress_badge=badge_for(progress),
+                           receipts=receipts_for(po),
                            created_by_user=created_by_user,
                            approved_by_user=approved_by_user,
                            cancelled_by_user=cancelled_by_user,
@@ -1424,8 +1458,28 @@ def select_print_layout():
 
 # ── export routes ────────────────────────────────────────────────────────────
 
+#: 'progress_label' is the GCD-5 label the list shows (Paid / Received / ...), not the stored
+#: status -- an export and the screen it came from must read alike.
 _EXPORT_COLUMNS = ['po_number', 'order_date', 'vendor_name', 'vendor_tin', 'subtotal',
-                   'vat_amount', 'total_amount', 'status']
+                   'vat_amount', 'total_amount', 'progress_label']
+
+
+class _ExportRow:
+    """A purchase order with its GCD-5 label attached, for export_to_excel/csv's getattr."""
+
+    def __init__(self, po, label):
+        self._po = po
+        self.progress_label = label
+
+    def __getattr__(self, name):
+        return getattr(self._po, name)
+
+
+def _export_rows():
+    from app.purchase_orders.progress import label_for, progress_keys
+    rows = _filtered_po_query(include_ids=True).order_by(PurchaseOrder.order_date.desc()).all()
+    keys = progress_keys(rows)
+    return [_ExportRow(po, label_for(keys[po.id])) for po in rows]
 _EXPORT_HEADERS = ['PO #', 'Order Date', 'Vendor', 'TIN', 'Subtotal', 'VAT', 'Total', 'Status']
 
 
@@ -1433,7 +1487,7 @@ _EXPORT_HEADERS = ['PO #', 'Order Date', 'Vendor', 'TIN', 'Subtotal', 'VAT', 'To
 @login_required
 def export_excel():
     from app.utils.export import export_to_excel
-    rows = _filtered_po_query(include_ids=True).order_by(PurchaseOrder.order_date.desc()).all()
+    rows = _export_rows()
     log_audit('purchase_orders', 'export_excel', None, f'{len(rows)} records',
               notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
@@ -1446,7 +1500,7 @@ def export_excel():
 @login_required
 def export_csv_route():
     from app.utils.export import export_to_csv
-    rows = _filtered_po_query(include_ids=True).order_by(PurchaseOrder.order_date.desc()).all()
+    rows = _export_rows()
     log_audit('purchase_orders', 'export_csv', None, f'{len(rows)} records',
               notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
