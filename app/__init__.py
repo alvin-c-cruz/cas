@@ -239,6 +239,11 @@ def create_app(config_name=None):
     login_manager.login_view = 'users.login'
     login_manager.login_message = 'Please log in to access this page.'
     login_manager.login_message_category = 'info'
+    # Remember me slides (RM-1 B). Must be registered AFTER init_app: Flask runs after-request
+    # hooks last-registered-first, and this one has to mark the cookie before Flask-Login's
+    # own hook writes it. See app/users/remember.py.
+    from app.users.remember import slide_remember_cookie
+    app.after_request(slide_remember_cookie)
 
     # User loader for Flask-Login
     @login_manager.user_loader

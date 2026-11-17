@@ -5,6 +5,21 @@ Loads configuration from environment variables for security
 import os
 from datetime import timedelta
 
+
+def remember_cookie_days():
+    """Days a "Remember me" sign-in lasts after the user's LAST visit (RM-1 B, owner 13 Nov 2026).
+
+    Each client sets its own in .env as REMEMBER_COOKIE_DAYS. Missing, blank, zero, negative or
+    not a whole number gives 7 -- a typo must never turn into "remember for ever" or "never".
+    """
+    raw = (os.environ.get('REMEMBER_COOKIE_DAYS') or '').strip()
+    try:
+        days = int(raw)
+    except ValueError:
+        return 7
+    return days if days > 0 else 7
+
+
 class Config:
     """Base configuration with security best practices"""
 
@@ -56,7 +71,11 @@ class Config:
     # Login Security
     REMEMBER_COOKIE_SECURE = os.environ.get('REMEMBER_COOKIE_SECURE', 'False').lower() == 'true'
     REMEMBER_COOKIE_HTTPONLY = True
-    REMEMBER_COOKIE_DURATION = timedelta(days=7)
+    # Sliding: app/users/remember.py re-issues a remember cookie the browser sent on every visit,
+    # so this is N days from the last visit. Flask-Login's REMEMBER_COOKIE_REFRESH_EACH_REQUEST
+    # is deliberately NOT set: in 0.6.3 it hands a remember cookie to every signed-in user,
+    # including those who left the box unticked.
+    REMEMBER_COOKIE_DURATION = timedelta(days=remember_cookie_days())
 
     # Rate Limiting (Flask-Limiter) — IP-based throttle on auth endpoints.
     # Storage is in-memory and therefore PER WORKER PROCESS: on a multi-worker
