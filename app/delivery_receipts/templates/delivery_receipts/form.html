@@ -27,6 +27,12 @@
         {{ form.sales_order_id.label }}
         {{ form.sales_order_id(class="form-control", id="so-select") }}
       </div>
+      {# DR-NOSO (owner, 17 Nov 2026): with "No sales order" chosen, the customer is picked
+         here and the lines are entered in the "Delivered without a sales order" table. #}
+      <div class="form-group" id="dr-noso-customer" style="display:none">
+        {{ form.customer_id.label }}
+        {{ form.customer_id(class="form-control", id="dr-customer", disabled=(dr is not none)) }}
+      </div>
       <div class="form-group">
         {{ form.delivery_date.label }}
         {{ form.delivery_date(class="form-control") }}
@@ -84,6 +90,16 @@
     <p id="dr-no-lines">Select a Sales Order to load its open lines.</p>
   </div></div>
 
+  <div class="card" id="dr-noso-card" style="display:none"><div class="card-body">
+    <h2 class="card-title">Delivered without a sales order</h2>
+    <table class="table" id="dr-noso-lines">
+      <thead><tr><th>Product</th><th>Unit</th><th class="text-right">Quantity</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button type="button" class="btn btn-secondary btn-sm" id="dr-noso-add">+ Add line</button>
+  </div></div>
+  <input type="hidden" name="direct_lines" id="direct-lines-json" value="[]">
+
   {{ form.lines(id="lines-json") }}
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">{{ 'Update' if dr else 'Save' }}</button>
@@ -96,4 +112,53 @@
 <script type="application/json" id="so-lines-data">{{ so_lines|tojson }}</script>
 <script type="application/json" id="dr-existing-data">{{ existing|tojson }}</script>
 <script src="{{ url_for('static', filename='js/delivery_receipts.js') }}?v=2"></script>
+<script type="application/json" id="dr-noso-data">{{ {'products': direct_products, 'units': direct_units, 'existing': direct_existing}|tojson }}</script>
+<script>
+// DR-NOSO (owner, 17 Nov 2026): "No sales order" shows the customer picker and a direct-lines
+// table (product, unit, quantity); on submit the rows go to direct_lines as JSON.
+(function () {
+  const so = document.getElementById('so-select');
+  const data = JSON.parse(document.getElementById('dr-noso-data').textContent);
+  const body = document.querySelector('#dr-noso-lines tbody');
+  const out = document.getElementById('direct-lines-json');
+  const opt = (v, label, sel) => { const o = document.createElement('option'); o.value = v; o.textContent = label; if (sel) o.selected = true; return o; };
+  function addRow(line) {
+    line = line || {};
+    const tr = document.createElement('tr');
+    const p = document.createElement('select'); p.className = 'form-control dr-noso-product';
+    p.appendChild(opt('', '— product —'));
+    data.products.forEach(x => p.appendChild(opt(x.id, x.name, x.id === line.product_id)));
+    const u = document.createElement('select'); u.className = 'form-control dr-noso-unit';
+    u.appendChild(opt('', '— product\'s unit —'));
+    data.units.forEach(x => u.appendChild(opt(x.id, x.code, x.id === line.uom_id)));
+    p.addEventListener('change', () => {
+      const prod = data.products.find(x => String(x.id) === p.value);
+      if (prod && prod.uom_id && !u.value) u.value = String(prod.uom_id);
+    });
+    const q = document.createElement('input'); q.type = 'number'; q.step = '0.0001'; q.min = '0';
+    q.className = 'form-control dr-noso-qty'; q.value = line.delivered_quantity || '';
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'btn btn-secondary btn-sm';
+    del.textContent = 'Remove'; del.addEventListener('click', () => tr.remove());
+    [p, u, q, del].forEach(el => { const td = document.createElement('td'); td.appendChild(el); tr.appendChild(td); });
+    body.appendChild(tr);
+  }
+  function toggle() {
+    const noSo = so && so.value === '0';
+    document.getElementById('dr-noso-customer').style.display = noSo ? '' : 'none';
+    document.getElementById('dr-noso-card').style.display = noSo ? '' : 'none';
+    if (noSo && !body.children.length) addRow();
+  }
+  document.getElementById('dr-noso-add').addEventListener('click', () => addRow());
+  (data.existing || []).forEach(addRow);
+  if (so) so.addEventListener('change', toggle);
+  toggle();
+  document.getElementById('dr-form').addEventListener('submit', () => {
+    out.value = JSON.stringify([...body.querySelectorAll('tr')].map(tr => ({
+      product_id: tr.querySelector('.dr-noso-product').value || null,
+      uom_id: tr.querySelector('.dr-noso-unit').value || null,
+      delivered_quantity: tr.querySelector('.dr-noso-qty').value || 0,
+    })));
+  });
+})();
+</script>
 {% endblock %}

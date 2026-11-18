@@ -132,8 +132,8 @@
     'customer_po': dr.sales_order.customer_po_number if dr.sales_order else '',
     'status': dr.status | title,
     'customer_name': dr.customer_name,
-    'customer_tin': dr.sales_order.customer_tin if dr.sales_order else '',
-    'customer_address': dr.sales_order.customer_address if dr.sales_order else '',
+    'customer_tin': dr.sales_order.customer_tin if dr.sales_order else (dr_customer.tin if dr_customer else ''),
+    'customer_address': dr.sales_order.customer_address if dr.sales_order else (dr_customer.address if dr_customer else ''),
     'vendor_code': ('VENDOR CODE: ' + dr.sales_order.customer.vendor_code)
       if dr.sales_order and dr.sales_order.customer and dr.sales_order.customer.vendor_code else '',
     'product_code': ('PRODUCT CODE: ' + first_code) if first_code else '',

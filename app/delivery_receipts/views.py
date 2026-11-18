@@ -117,7 +117,7 @@ def _render_edit(dr, form, eligible):
     return render_template('delivery_receipts/form.html', form=form, dr=dr,
                            eligible=eligible,
                            so_lines=_so_lines_payload(eligible, exclude_dr_id=dr.id),
-                           existing=existing)
+                           existing=existing, **_direct_ctx(dr))
 
 
 def _parse_dr_lines(dr, lines_json):
@@ -140,6 +140,53 @@ def _parse_dr_lines(dr, lines_json):
             delivered_quantity=qty))
     if kept == 0:
         raise ValueError('Add at least one delivered line.')
+
+
+NO_SO_LABEL = '— No sales order —'
+
+
+def _parse_direct_lines(dr, lines_json):
+    """DR-NOSO (owner, 17 Nov 2026): attach lines entered directly, with no sales order --
+    [{product_id, uom_id, delivered_quantity}]. Each needs an active product and a quantity
+    above zero; the unit defaults to the product's."""
+    from app.products.models import Product
+    items = json.loads(lines_json) if lines_json else []
+    kept = 0
+    for d in items:
+        try:
+            qty = Decimal(str(d.get('delivered_quantity')))
+        except (InvalidOperation, TypeError):
+            qty = Decimal('0')
+        pid = d.get('product_id')
+        if not pid or qty <= 0:
+            continue
+        product = db.session.get(Product, int(pid))
+        if product is None or not product.is_active:
+            raise ValueError('A line names a product that is not active.')
+        uom_id = d.get('uom_id')
+        kept += 1
+        dr.line_items.append(DeliveryReceiptItem(
+            line_number=kept, sales_order_item_id=None, product_id=product.id,
+            own_unit_of_measure_id=int(uom_id) if uom_id else product.default_unit_of_measure_id,
+            delivered_quantity=qty))
+    if kept == 0:
+        raise ValueError('Add at least one delivered line.')
+
+
+def _direct_ctx(dr):
+    """What the form needs for a DR with no sales order: customers, products, units, and a
+    saved DR's own direct lines."""
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
+    units = UnitOfMeasure.query.filter_by(is_active=True).order_by(UnitOfMeasure.code).all()
+    existing = [] if (dr is None or dr.sales_order_id) else [
+        {'product_id': li.product_id, 'uom_id': li.own_unit_of_measure_id,
+         'delivered_quantity': float(li.delivered_quantity or 0)} for li in dr.line_items]
+    return {'direct_products': [{'id': p.id, 'name': p.name, 'uom_id': p.default_unit_of_measure_id}
+                                for p in products],
+            'direct_units': [{'id': u.id, 'code': u.code} for u in units],
+            'direct_existing': existing}
 
 
 def _dr_or_404(id):
@@ -220,16 +267,22 @@ def create():
     branch_id = session.get('selected_branch_id')
     form = DeliveryReceiptForm()
     eligible = _eligible_sales_orders(branch_id)
-    form.sales_order_id.choices = [(so.id, f'{so.so_number}: {so.customer_name}') for so in eligible]
+    # "No sales order" goes last so a new DR still opens on the first sales order.
+    form.sales_order_id.choices = ([(so.id, f'{so.so_number}: {so.customer_name}') for so in eligible]
+                                   + [(0, NO_SO_LABEL)])
+    form.customer_id.choices = [(c.id, c.name) for c in
+                                Customer.query.filter_by(is_active=True).order_by(Customer.name)]
     form.salesperson_id.choices = _salesperson_choices(branch_id)
 
+    if form.validate_on_submit() and not form.sales_order_id.data:
+        return _create_without_so(form, branch_id, eligible)
     if form.validate_on_submit():
         so = db.session.get(SalesOrder, form.sales_order_id.data)
         if not so or so.branch_id != branch_id or so.status != 'confirmed':
             flash('Select a valid confirmed Sales Order.', 'error')
             return render_template('delivery_receipts/form.html', form=form, dr=None,
                                    eligible=eligible, so_lines=_so_lines_payload(eligible),
-                                   existing=_existing_lines(None))
+                                   existing=_existing_lines(None), **_direct_ctx(None))
 
         dr_number = (form.dr_number.data or '').strip()
         if dr_number:
@@ -237,7 +290,7 @@ def create():
                 flash('Delivery Receipt number already exists.', 'error')
                 return render_template('delivery_receipts/form.html', form=form, dr=None,
                                        eligible=eligible, so_lines=_so_lines_payload(eligible),
-                                       existing=_existing_lines(None))
+                                       existing=_existing_lines(None), **_direct_ctx(None))
         else:
             dr_number = generate_dr_number(branch_id)
 
@@ -277,7 +330,46 @@ def create():
             form.sales_order_id.data = preselect
     return render_template('delivery_receipts/form.html', form=form, dr=None,
                            eligible=eligible, so_lines=_so_lines_payload(eligible),
-                           existing=_existing_lines(None))
+                           existing=_existing_lines(None), **_direct_ctx(None))
+
+
+def _create_without_so(form, branch_id, eligible):
+    """DR-NOSO (owner, 17 Nov 2026: "some DR need no SO"; "A (my pick)"): a delivery receipt
+    with no sales order -- the customer and the lines are entered directly."""
+    def again():
+        return render_template('delivery_receipts/form.html', form=form, dr=None, eligible=eligible,
+                               so_lines=_so_lines_payload(eligible), existing=_existing_lines(None),
+                               **_direct_ctx(None))
+    customer = db.session.get(Customer, form.customer_id.data) if form.customer_id.data else None
+    if customer is None or not customer.is_active:
+        flash('Choose the customer for a delivery receipt with no sales order.', 'error')
+        return again()
+    dr_number = (form.dr_number.data or '').strip()
+    if dr_number and DeliveryReceipt.query.filter(DeliveryReceipt.dr_number == dr_number).first():
+        flash('Delivery Receipt number already exists.', 'error')
+        return again()
+    try:
+        dr = DeliveryReceipt(
+            dr_number=dr_number or generate_dr_number(branch_id), branch_id=branch_id,
+            delivery_date=form.delivery_date.data, sales_order_id=None,
+            customer_id=customer.id, customer_name=customer.name,
+            remarks=form.remarks.data or None, packing_notes=form.packing_notes.data or None,
+            schedule_notes=form.schedule_notes.data or None, carrier=form.carrier.data or None,
+            checked_by=form.checked_by.data or None, approved_by=form.approved_by.data or None,
+            status='draft', created_by_id=current_user.id)
+        if form.salesperson_id.data:
+            dr.salesperson_id = form.salesperson_id.data
+        _parse_direct_lines(dr, request.form.get('direct_lines', '[]'))
+        db.session.add(dr); db.session.commit()
+        log_create(module='delivery_receipts', record_id=dr.id,
+                   record_identifier=f'{dr.dr_number} - {dr.customer_name}',
+                   new_values=model_to_dict(dr, ['dr_number', 'status', 'delivery_date']),
+                   notes='No sales order')
+        flash(f'Delivery Receipt "{dr.dr_number}" created (no sales order).', 'success')
+        return redirect(url_for('delivery_receipts.view', id=dr.id))
+    except ValueError as e:
+        db.session.rollback(); flash(str(e), 'error')
+    return again()
 
 
 @delivery_receipts_bp.route('/delivery-receipts/<int:id>')
@@ -304,7 +396,10 @@ def edit(id):
     eligible = _eligible_sales_orders(branch_id)
     if dr.sales_order and dr.sales_order not in eligible:
         eligible = [dr.sales_order] + eligible      # its own SO stays pickable while editing
-    form.sales_order_id.choices = [(so.id, f'{so.so_number}: {so.customer_name}') for so in eligible]
+    # A DR keeps what it was made with: its sales order, or "No sales order" (DR-NOSO).
+    form.sales_order_id.choices = ([(0, NO_SO_LABEL)] if not dr.sales_order_id else
+                                   [(so.id, f'{so.so_number}: {so.customer_name}') for so in eligible])
+    form.customer_id.choices = [(dr.customer_id, dr.customer_name)]
     form.salesperson_id.choices = _salesperson_choices(branch_id)
 
     if form.validate_on_submit():
@@ -331,7 +426,10 @@ def edit(id):
             # Rebuild lines through the ORM collection so delete-orphan evicts the old
             # rows; a bulk Query.delete() would leave a stale cached relationship.
             dr.line_items.clear()
-            _parse_dr_lines(dr, request.form.get('lines', '[]'))
+            if dr.sales_order_id:
+                _parse_dr_lines(dr, request.form.get('lines', '[]'))
+            else:                      # DR-NOSO: its lines are entered directly
+                _parse_direct_lines(dr, request.form.get('direct_lines', '[]'))
             db.session.commit()
             log_update(module='delivery_receipts', record_id=dr.id,
                        record_identifier=f'{dr.dr_number} - {dr.customer_name}',
@@ -345,7 +443,8 @@ def edit(id):
             db.session.rollback(); flash('An error occurred updating the Delivery Receipt.', 'error')
 
     if request.method == 'GET':
-        form.sales_order_id.data = dr.sales_order_id
+        form.sales_order_id.data = dr.sales_order_id or 0
+        form.customer_id.data = dr.customer_id
         form.salesperson_id.data = dr.salesperson_id or 0
     return _render_edit(dr, form, eligible)
 
@@ -364,6 +463,8 @@ def approve(id):
     # Guard: committing these lines must not exceed each SO line's OPEN qty.
     # `open` excludes THIS dr so a re-check stays idempotent.
     for li in dr.line_items:
+        if li.sales_order_item_id is None:
+            continue                   # DR-NOSO: no order line, so no ordered quantity to cap
         open_qty = so_line_open_qty(li.sales_order_item, exclude_dr_id=dr.id)
         if Decimal(str(li.delivered_quantity)) > open_qty:
             soi = li.sales_order_item
@@ -469,6 +570,7 @@ def print_dr(id):
     if dr_print_form == 'preprinted':
         return render_template(
             'delivery_receipts/print_preprinted.html', dr=dr, company=company,
+            dr_customer=(db.session.get(Customer, dr.customer_id) if not dr.sales_order_id else None),
             printed_at=ph_now(), layout=get_layout(dr.branch_id),
             can_edit_layout=current_user.can_edit_print_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,

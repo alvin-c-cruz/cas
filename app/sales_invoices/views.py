@@ -713,11 +713,39 @@ def billable_drs():
                    DeliveryReceipt.sales_invoice_id.is_(None))
            .order_by(DeliveryReceipt.delivery_date.desc(), DeliveryReceipt.id.desc()).all())
     out = []
+    # DR-NOSO (owner, 17 Nov 2026): a line with no SO line is priced from the product's
+    # default price and taxed by the customer's defaults -- all editable on the invoice.
+    from app.customers.models import Customer
+    from app.sales_vat_categories.models import SalesVATCategory
+    cust = db.session.get(Customer, customer_id)
+    cust_vat = cust.default_vat_category if cust else None
+    vat_row = SalesVATCategory.query.filter_by(code=cust_vat).first() if cust_vat else None
+    cust_wts = list(cust.withholding_taxes) if cust else []
+    cust_wt = cust_wts[0] if len(cust_wts) == 1 else None
     for dr in drs:
         lines = []
         for li in dr.line_items:
             soi = li.sales_order_item
             product = li.product or (soi.product if soi else None)
+            if soi is None:
+                unit = li.unit_of_measure
+                lines.append({
+                    'sales_order_item_id': None,
+                    'product_id': product.id if product else None,
+                    'product_code': product.code if product else None,
+                    'product_name': product.name if product else None,
+                    'quantity': float(li.delivered_quantity) if li.delivered_quantity is not None else 0.0,
+                    'unit_price': (float(product.default_unit_price)
+                                   if product and product.default_unit_price is not None else None),
+                    'uom_id': unit.id if unit else None,
+                    'uom_display': unit.code if unit else None,
+                    'vat_category': cust_vat,
+                    'vat_rate': float(vat_row.rate) if vat_row else 0.0,
+                    'wt_id': cust_wt.id if cust_wt else None,
+                    'wt_rate': float(cust_wt.rate) if cust_wt else None,
+                    'account_id': (product.default_account_id if product else None),
+                })
+                continue
             lines.append({
                 'sales_order_item_id': li.sales_order_item_id,
                 'product_id': product.id if product else None,

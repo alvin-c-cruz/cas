@@ -20,7 +20,9 @@ class DeliveryReceipt(RowVersioned, db.Model):
     dr_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
     delivery_date = db.Column(db.Date, nullable=False, index=True)
 
-    sales_order_id = db.Column(db.Integer, db.ForeignKey('sales_orders.id'), nullable=False, index=True)
+    # Optional since DR-NOSO (owner, 17 Nov 2026: "some DR need no SO"; migration drnoso_0001): a DR
+    # made with "No sales order" names its customer and products directly.
+    sales_order_id = db.Column(db.Integer, db.ForeignKey('sales_orders.id'), nullable=True, index=True)
     sales_order = db.relationship('SalesOrder', foreign_keys=[sales_order_id])
 
     # Customer snapshot (from the SO at create; no picker).
@@ -92,8 +94,12 @@ class DeliveryReceiptItem(db.Model):
     delivery_receipt_id = db.Column(db.Integer, db.ForeignKey('delivery_receipts.id'),
                                     nullable=False, index=True)
     line_number = db.Column(db.Integer, nullable=False)
+    # NULL on a line of a DR made without a sales order (DR-NOSO); such a line keeps its
+    # own unit in own_unit_of_measure_id, since there is no SO line to take it from.
     sales_order_item_id = db.Column(db.Integer, db.ForeignKey('sales_order_items.id'),
-                                    nullable=False, index=True)
+                                    nullable=True, index=True)
+    own_unit_of_measure_id = db.Column(db.Integer, db.ForeignKey('units_of_measure.id'), nullable=True)
+    own_unit_of_measure = db.relationship('UnitOfMeasure', foreign_keys=[own_unit_of_measure_id])
     sales_order_item = db.relationship('SalesOrderItem', foreign_keys=[sales_order_item_id])
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)  # snapshot for print
     product = db.relationship('Product', foreign_keys=[product_id])
@@ -109,7 +115,9 @@ class DeliveryReceiptItem(db.Model):
     @property
     def unit_of_measure(self):
         soi = self.sales_order_item
-        return soi.unit_of_measure if soi else None
+        if soi:
+            return soi.unit_of_measure
+        return self.own_unit_of_measure or (self.product.default_unit_of_measure if self.product else None)
 
     @property
     def uom_text(self):

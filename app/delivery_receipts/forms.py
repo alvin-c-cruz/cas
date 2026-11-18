@@ -12,8 +12,10 @@ class DeliveryReceiptForm(RowVersionFormMixin, FlaskForm):
     # falls back to server-side auto-generation, same as before this field existed.
     dr_number = StringField('DR #', validators=[Optional(), Length(max=50)])
 
-    sales_order_id = SelectField('Sales Order', coerce=int, validators=[DataRequired()],
+    # 0 = "No sales order" (DR-NOSO, owner 17 Nov 2026): then customer_id and the direct lines apply.
+    sales_order_id = SelectField('Sales Order', coerce=int, validators=[Optional()],
                                  validate_choice=False)
+    customer_id = SelectField('Customer', coerce=int, validators=[Optional()], validate_choice=False)
     delivery_date = DateField('Delivery Date', validators=[DataRequired()],
                               format='%Y-%m-%d', default=date.today)
     salesperson_id = SelectField('Salesperson', coerce=int, validators=[Optional()],

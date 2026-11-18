@@ -184,7 +184,9 @@ def test_the_migration_starts_every_user_unflagged_and_downgrades_cleanly(tmp_pa
     assert con.execute("SELECT must_change_password FROM users").fetchall() == [(0,)]
     con.close()
     heads = run('heads').stdout
-    assert heads.count('(head)') == 1 and 'pwforce_0001' in heads
+    # One head, whichever migration is newest (cdvslip_0001 followed pwforce_0001 on 17 Nov
+    # 2026); this test upgraded to pwforce_0001 explicitly above, so its downgrade is still exact.
+    assert heads.count('(head)') == 1
     run('downgrade', 'chqpay_0001')
     con = sqlite3.connect(db_path)
     assert 'must_change_password' not in {r[1] for r in con.execute("PRAGMA table_info(users)")}
