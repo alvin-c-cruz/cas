@@ -17,6 +17,13 @@
     </div>
 </div>
 
+{# VAT 2.6 B (owner 14 Nov 2026): with no second reviewer, you may review and apply your own
+   request, with a reason that goes into the audit log. sole_reviewer comes from
+   sole_full_access_user_can_auto_approve(); with a second reviewer the two-person rule holds. #}
+{% if sole_reviewer and requests | selectattr('status', 'equalto', 'pending') | selectattr('requested_by_id', 'equalto', current_user.id) | list %}
+<div class="alert alert-info">No other Administrator or Chief Accountant can review your requests, so you may review and apply your own. Applying one needs a reason, which is recorded in the audit log. You can also withdraw it.</div>
+{% endif %}
+
 <div class="card">
     <div class="card-body">
         <table class="data-table">
@@ -62,6 +69,9 @@
                             {% if request.requested_by_id != current_user.id %}
                             <a href="{{ url_for('vat_categories.review_change_request', id=request.id) }}" class="btn-action btn-action-edit">Review</a>
                             {% elif request.status == 'pending' %}
+                            {% if sole_reviewer %}
+                            <a href="{{ url_for('vat_categories.review_change_request', id=request.id) }}" class="btn-action btn-action-edit">Review</a>
+                            {% endif %}
                             <form method="POST" action="{{ url_for('vat_categories.withdraw_change_request', id=request.id) }}" style="display: inline;" data-confirm="Withdraw this pending change request?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <button type="submit" class="btn-action btn-action-delete">Withdraw</button>

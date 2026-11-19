@@ -36,6 +36,19 @@ def sole_full_access_user_can_auto_approve():
     return total == 1
 
 
+def approval_audit_note(own_request, review_notes):
+    """The audit note for an approved tax-master change request.
+
+    VAT 2.6 B (owner 14 Nov 2026): a sole full-access user may apply their OWN request,
+    and the reason they give goes into the audit log, so the row says so plainly.
+    """
+    base = f'Approved by {current_user.username}'
+    if own_request:
+        return (f'{base}: own request, applied as the sole reviewer (no other Administrator or '
+                f'Chief Accountant). Reason: {(review_notes or "").strip()}')
+    return base
+
+
 def another_active_reviewer_exists():
     """True if an active full-access reviewer (admin or CA) other than the current
     user exists. Blocks four-eyes self-approval while a lone reviewer can self-resolve."""

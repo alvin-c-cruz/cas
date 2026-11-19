@@ -13,7 +13,8 @@ from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
 from app.utils.admin_approval import (
     admin_required, sole_full_access_user_can_auto_approve,
-    another_active_reviewer_exists, tax_edit_may_auto_approve, tax_rate_changed)
+    another_active_reviewer_exists, tax_edit_may_auto_approve, tax_rate_changed,
+    approval_audit_note)
 from app.utils.cache_helpers import clear_vat_cache
 import json
 
@@ -421,7 +422,8 @@ def change_requests():
         }
         requests_with_data.append(req_dict)
 
-    return render_template('vat_categories/change_requests.html', requests=requests_with_data)
+    return render_template('vat_categories/change_requests.html', requests=requests_with_data,
+                           sole_reviewer=sole_full_access_user_can_auto_approve())
 
 
 @vat_categories_bp.route('/change-requests/<int:id>/withdraw', methods=['POST'])
@@ -476,7 +478,10 @@ def review_change_request(id):
     change_request = db.get_or_404(VATCategoryChangeRequest, id)
 
     # Cannot review own requests when another admin exists (four-eyes rule)
-    if change_request.requested_by_id == current_user.id and another_active_reviewer_exists():
+    # VAT 2.6 B (owner 14 Nov 2026): your OWN request only when you are the sole full-access
+    # user -- the app's existing sole_full_access_user_can_auto_approve(); otherwise four eyes.
+    own_request = change_request.requested_by_id == current_user.id
+    if own_request and not sole_full_access_user_can_auto_approve():
         flash('You cannot review your own change request.', 'error')
         return redirect(url_for('vat_categories.change_requests'))
 
@@ -504,6 +509,9 @@ def review_change_request(id):
             action = form.action.data
             if action == 'approve' and rate_changed and not (form.review_notes.data or '').strip():
                 flash('A review note is required to approve a change to a tax rate.', 'error')
+                return redirect(url_for('vat_categories.review_change_request', id=change_request.id))
+            if action == 'approve' and own_request and not (form.review_notes.data or '').strip():
+                flash('Applying your own change request needs a reason; it is recorded in the audit log.', 'error')
                 return redirect(url_for('vat_categories.review_change_request', id=change_request.id))
             change_request.status = 'approved' if action == 'approve' else 'rejected'
             change_request.reviewed_by_id = current_user.id
@@ -550,7 +558,7 @@ def review_change_request(id):
                         record_id=vat_category.id,
                         record_identifier=f'{vat_category.code} - {vat_category.name}',
                         new_values=model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id', 'transaction_nature']),
-                        notes=f'Approved by {current_user.username}'
+                        notes=approval_audit_note(own_request, form.review_notes.data)
                     )
 
                     flash(f'Input VAT category "{vat_category.name}" has been created successfully.', 'success')
@@ -581,7 +589,7 @@ def review_change_request(id):
                             record_identifier=f'{vat_category.code} - {vat_category.name}',
                             old_values=old_values,
                             new_values=new_values,
-                            notes=f'Approved by {current_user.username}'
+                            notes=approval_audit_note(own_request, form.review_notes.data)
                         )
 
                         flash(f'Input VAT category "{vat_category.name}" has been updated successfully.', 'success')
@@ -605,7 +613,7 @@ def review_change_request(id):
                             record_id=vat_id,
                             record_identifier=vat_identifier,
                             old_values=old_values,
-                            notes=f'Approved by {current_user.username}'
+                            notes=approval_audit_note(own_request, form.review_notes.data)
                         )
 
                         flash(f'Input VAT category "{vat_name}" has been deleted successfully.', 'success')
@@ -674,4 +682,5 @@ def review_change_request(id):
                          proposed_account=proposed_account,
                          old_rate=old_rate, new_rate=new_rate,
                          rate_changed=rate_changed,
+                         own_request=own_request,
                          form=form)

@@ -12,7 +12,8 @@ from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
 from app.utils.admin_approval import (
     admin_required, sole_full_access_user_can_auto_approve,
-    another_active_reviewer_exists, tax_edit_may_auto_approve, tax_rate_changed)
+    another_active_reviewer_exists, tax_edit_may_auto_approve, tax_rate_changed,
+    approval_audit_note)
 from app.utils.cache_helpers import clear_withholding_tax_cache
 import json
 
@@ -401,6 +402,7 @@ def change_requests():
         requests_with_data.append(req_dict)
 
     return render_template('withholding_tax/change_requests.html', requests=requests_with_data,
+                           sole_reviewer=sole_full_access_user_can_auto_approve(),
                          tax_type_labels=TAX_TYPE_LABELS)
 
 
@@ -455,7 +457,10 @@ def review_change_request(id):
     change_request = db.get_or_404(WithholdingTaxChangeRequest, id)
 
     # Cannot review own requests when another admin exists (four-eyes rule)
-    if change_request.requested_by_id == current_user.id and another_active_reviewer_exists():
+    # VAT 2.6 B (owner 14 Nov 2026): your OWN request only when you are the sole full-access
+    # user -- the app's existing sole_full_access_user_can_auto_approve(); otherwise four eyes.
+    own_request = change_request.requested_by_id == current_user.id
+    if own_request and not sole_full_access_user_can_auto_approve():
         flash('You cannot review your own change request.', 'error')
         return redirect(url_for('withholding_tax.change_requests'))
 
@@ -479,6 +484,9 @@ def review_change_request(id):
             action = form.action.data
             if action == 'approve' and rate_changed and not (form.review_notes.data or '').strip():
                 flash('A review note is required to approve a change to a tax rate.', 'error')
+                return redirect(url_for('withholding_tax.review_change_request', id=change_request.id))
+            if action == 'approve' and own_request and not (form.review_notes.data or '').strip():
+                flash('Applying your own change request needs a reason; it is recorded in the audit log.', 'error')
                 return redirect(url_for('withholding_tax.review_change_request', id=change_request.id))
             change_request.status = 'approved' if action == 'approve' else 'rejected'
             change_request.reviewed_by_id = current_user.id
@@ -527,7 +535,7 @@ def review_change_request(id):
                         record_id=withholding_tax.id,
                         record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
                         new_values=model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'tax_type', 'is_active', 'payable_account_id', 'receivable_account_id']),
-                        notes=f'Approved by {current_user.username}'
+                        notes=approval_audit_note(own_request, form.review_notes.data)
                     )
                     clear_withholding_tax_cache()
 
@@ -561,7 +569,7 @@ def review_change_request(id):
                             record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
                             old_values=old_values,
                             new_values=new_values,
-                            notes=f'Approved by {current_user.username}'
+                            notes=approval_audit_note(own_request, form.review_notes.data)
                         )
                         clear_withholding_tax_cache()
 
@@ -586,7 +594,7 @@ def review_change_request(id):
                             record_id=wt_id,
                             record_identifier=wt_identifier,
                             old_values=old_values,
-                            notes=f'Approved by {current_user.username}'
+                            notes=approval_audit_note(own_request, form.review_notes.data)
                         )
                         clear_withholding_tax_cache()
 
@@ -652,4 +660,5 @@ def review_change_request(id):
                          tax_type_labels=TAX_TYPE_LABELS,
                          old_rate=old_rate, new_rate=new_rate,
                          rate_changed=rate_changed,
+                         own_request=own_request,
                          form=form)

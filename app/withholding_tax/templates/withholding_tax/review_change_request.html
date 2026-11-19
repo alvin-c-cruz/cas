@@ -156,6 +156,9 @@
             {{ form.hidden_tag() }}
 
             {{ render_field(form.action) }}
+            {% if own_request %}
+            <div class="form-hint" style="margin: 0 0 8px;">This is your own request. You are the only Administrator or Chief Accountant, so you may apply it yourself: write the reason below. It is recorded in the audit log.</div>
+            {% endif %}
             {{ render_field(form.review_notes) }}
 
             <div class="form-actions">
