@@ -126,8 +126,10 @@ def edit(id):
     """Edit branch."""
     branch = db.get_or_404(Branch, id)
     form = BranchForm(obj=branch)
+    from app.sales_invoices.withholding_expected import set_wt_expected, wt_expected
     if request.method == 'GET':
         form.use_custom_theme.data = branch.theme_color is not None
+        form.si_wt_expected.data = wt_expected(branch.id)
 
     if form.validate_on_submit():
         # Check for duplicate code (excluding current branch)
@@ -159,6 +161,15 @@ def edit(id):
                 old_values=old_values,
                 new_values=new_values
             )
+
+            # WTX A: the per-branch withholding warning switch, audited when it changes.
+            was_on, now_on = wt_expected(branch.id), bool(form.si_wt_expected.data)
+            if was_on != now_on:
+                set_wt_expected(branch.id, now_on)
+                log_audit(module='branch', action='si_wt_expected', record_id=branch.id,
+                          record_identifier=f'{branch.code} - {branch.name}',
+                          old_values={'si_wt_expected': was_on}, new_values={'si_wt_expected': now_on},
+                          notes=f'"Sales invoices should carry withholding tax" turned {"on" if now_on else "off"}')
 
             flash(f'Branch "{branch.name}" updated successfully!', 'success')
             return redirect(url_for('branches.list_branches'))

@@ -45,6 +45,14 @@
                             {% if invoice %}&#10003; {{ invoice.customer_name }}{% else %}Select Customer{% endif %}
                         </div>
                         <div id="customerBadges" class="vendor-badges"></div>
+                        {# WTX A (owner 14 Nov 2026): shown by updateWtExpectedWarning() when this
+                           branch's invoices should carry withholding and the chosen customer has no
+                           withholding tax code. Never blocks. #}
+                        {% set _wt_branch = invoice.branch_id if invoice else session.get('selected_branch_id') %}
+                        <div id="siWtExpectedWarning" class="alert alert-warning" style="display:none"
+                             data-wt-expected="{{ '1' if si_wt_expected(_wt_branch) else '0' }}">
+                            Sales invoices in this branch should carry withholding tax, but this customer has no withholding tax code. If they withhold, set it on the customer first.
+                        </div>
                         <div>
                             <label class="form-label" for="customer_id">Customer *</label>
                             <select name="customer_id" id="customer_id" class="form-control" required
@@ -408,6 +416,12 @@ if (uomMasterOn    && typeof initUomQuickAdd     === 'function') initUomQuickAdd
 
 // ── Customer card state (mirrors the APV vendor card) ────────────────────────
 let currentCustomerWHTs        = [];
+// WTX A: show the branch's "should carry withholding" warning when the customer has no code.
+function updateWtExpectedWarning() {
+    const el = document.getElementById('siWtExpectedWarning');
+    if (!el) return;
+    el.style.display = (el.dataset.wtExpected === '1' && !(currentCustomerWHTs || []).length) ? 'block' : 'none';
+}
 let currentCustomerVatCategory = '';
 let currentCustomerLastAccountId = null;
 let currentCustomerName        = '';
@@ -531,6 +545,7 @@ if (customerSel) {
             .then(r => r.json())
             .then(data => {
                 currentCustomerWHTs          = data.withholding_taxes || [];
+                updateWtExpectedWarning();
                 currentCustomerVatCategory   = resolveVatCode(data.default_vat_category || '');
                 currentCustomerLastAccountId = data.last_account_id || null;
                 applyCustomerTerms(data.payment_terms || 'Net 30');
@@ -1246,6 +1261,7 @@ initOverrides();
         .then(r => r.json())
         .then(data => {
             currentCustomerWHTs          = data.withholding_taxes || [];
+            updateWtExpectedWarning();
             currentCustomerVatCategory   = resolveVatCode(data.default_vat_category || '');
             currentCustomerLastAccountId = data.last_account_id || null;
             setCustomerDone(name, data);

@@ -32,6 +32,18 @@
                 </div>
             </div>
 
+            {% if branch %}
+            {# WTX A (owner 14 Nov 2026): on a branch whose customers withhold (RIC CORP), a sales
+               invoice warns when its customer has no withholding tax code. Nothing is blocked. #}
+            <div class="form-group">
+                <div class="checkbox-wrapper">
+                    {{ form.si_wt_expected() }}
+                    <label for="{{ form.si_wt_expected.id }}">{{ form.si_wt_expected.label.text }}</label>
+                </div>
+                <div class="form-hint">When ticked, a sales invoice in this branch warns if its customer has no withholding tax code. It never blocks.</div>
+            </div>
+            {% endif %}
+
             <div class="form-group">
                 <div class="checkbox-wrapper">
                     {{ form.use_custom_theme(id='use-custom-theme-field') }}

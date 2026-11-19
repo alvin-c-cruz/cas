@@ -28,6 +28,9 @@ class BranchForm(FlaskForm):
         Length(max=120, message='Email must be 120 characters or less.')
     ])
     is_active = BooleanField('Active')
+    # WTX A (owner 14 Nov 2026): stored in app_settings as si_wt_expected:<branch id>, not on
+    # the branch row -- see app/sales_invoices/withholding_expected.py.
+    si_wt_expected = BooleanField('Sales invoices in this branch should carry withholding tax')
     use_custom_theme = BooleanField('Use a custom sidebar color for this branch')
     theme_color = ColorField('Sidebar Color', validators=[
         Optional(),

@@ -41,6 +41,14 @@ from werkzeug.utils import secure_filename
 sales_invoices_bp = Blueprint('sales_invoices', __name__, template_folder='templates')
 
 
+@sales_invoices_bp.app_template_global('si_wt_expected')
+def _si_wt_expected_global(branch_id):
+    """WTX A: is the per-branch 'should carry withholding' switch on? Read by the invoice
+    form, which has many render paths, so it is a template global rather than a context var."""
+    from app.sales_invoices.withholding_expected import wt_expected
+    return wt_expected(branch_id)
+
+
 def _customer_quick_add_whts():
     """Active WHT list for the inline Add-Customer modal (mirrors vendor quick-add)."""
     return WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
@@ -1378,7 +1386,10 @@ def view(id):
     from app.delivery_receipts.models import DeliveryReceipt
     source_drs = (DeliveryReceipt.query.filter_by(sales_invoice_id=invoice.id)
                  .order_by(DeliveryReceipt.delivery_date).all())
-    return render_template('sales_invoices/detail.html', invoice=invoice,
+    from app.sales_invoices.withholding_expected import customer_lacks_withholding, wt_expected
+    wt_missing = (wt_expected(invoice.branch_id) and customer_lacks_withholding(invoice.customer)
+                  and not (invoice.withholding_tax_amount or 0))
+    return render_template('sales_invoices/detail.html', invoice=invoice, wt_missing=wt_missing,
                            je_entries=je_entries, sv_print_access=sv_print_access,
                            sv_print_form=sv_print_form, payments=payments,
                            source_drs=source_drs, can_modify=can_modify,

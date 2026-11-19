@@ -4,6 +4,11 @@
 {% block page_title %}Sales Invoice - {{ invoice.invoice_number }}{% endblock %}
 
 {% block content %}
+{# WTX A (owner 14 Nov 2026): this branch's invoices should carry withholding, but the
+   customer has no withholding tax code and the invoice withholds nothing. Never blocks. #}
+{% if wt_missing %}
+<div class="alert alert-warning" data-si-wt-missing>Sales invoices in this branch should carry withholding tax, but {{ invoice.customer_name }} has no withholding tax code and this invoice withholds nothing. If they withhold, set the code on the customer and edit the invoice.</div>
+{% endif %}
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=5">
 
 {# ── Image preview modals (one per image attachment) ─────────────────────── #}
