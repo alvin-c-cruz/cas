@@ -44,13 +44,18 @@ def _so_dict(so):
 
 
 def _line_item_dict(li):
+    """DR = the sum of the line's committed delivery receipts, the same rows the
+    drill-down lists. It used to be ordered - so_line_open_qty, and that helper returns
+    0 for a short-closed line or a cancelled/closed order, so the whole ordered
+    quantity read as delivered (SOM, owner 14 Nov 2026; work order
+    2026-08-06-so-monitor-closed-line-dr-overstated). Undelivered still reads
+    so_line_open_qty: 0 for those lines on purpose, as nothing more will ship."""
     base = li.to_dict()
-    undelivered = so_line_open_qty(li)
-    ordered = Decimal(str(li.quantity or 0))
-    delivered = ordered - undelivered
+    deliveries = _deliveries(li)
+    delivered = sum((Decimal(str(d['quantity'])) for d in deliveries), Decimal('0'))
     base['dr_qty'] = float(delivered)
-    base['undelivered_qty'] = float(undelivered)
-    base['deliveries'] = _deliveries(li)
+    base['undelivered_qty'] = float(so_line_open_qty(li))
+    base['deliveries'] = deliveries
     return base
 
 
