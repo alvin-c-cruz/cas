@@ -226,13 +226,12 @@ def test_leaf_accounts_by_type_excludes_parents(db_session):
     assert '60501' not in codes  # wrong type excluded
 
 
-def test_leaf_accounts_by_type_excludes_childless_top_level_account(db_session):
-    """A freshly-created top-level (parent_id is None) account with no children
-    yet is still a non-postable PARENT/header by CAS's hierarchy rule (a node is
-    a header if it is top-level OR has children). Regression for the bug where
-    leaf_accounts_by_type only checked 'has no children' (id not in parent_ids)
-    and never checked parent_id -- a childless top-level account has nothing
-    pointing to it as a parent, so the old code wrongly included it as postable."""
+def test_leaf_accounts_by_type_includes_a_childless_top_level_account(db_session):
+    """ACCT-RULE B (owner, 17 Nov 2026: "B (my pick)"): one rule for every picker -- an
+    account is a header only when it has sub-accounts. A top-level account with no
+    sub-accounts yet is postable here too, as it already was on the nine voucher and tax
+    pickers. Was the opposite (top-level = header) until the shared helper,
+    app/accounts/postable.py."""
     top_level = Account(code='170', name='Fixed Assets', account_type='Asset',
                         normal_balance='Debit')
     db_session.add(top_level)
@@ -240,4 +239,4 @@ def test_leaf_accounts_by_type_excludes_childless_top_level_account(db_session):
 
     leaves = leaf_accounts_by_type('Asset')
     codes = {a.code for a in leaves}
-    assert '170' not in codes
+    assert '170' in codes

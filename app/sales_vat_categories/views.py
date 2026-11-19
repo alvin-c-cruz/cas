@@ -22,11 +22,10 @@ sales_vat_categories_bp = Blueprint('sales_vat_categories', __name__, template_f
 
 
 def _output_vat_account_choices():
-    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-    parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
-    choices = [(0, '-- None (zero-rate) --')]
-    choices += [(a.id, f'{a.code} : {a.name}') for a in accounts if a.id not in parent_ids]
-    return choices
+    """Active postable accounts for the output-VAT picker (headers are not postable)."""
+    # ACCT-PICK (owner 14 Nov 2026): the one postable-account rule, app/accounts/postable.py.
+    from app.accounts.postable import postable_choices
+    return postable_choices('-- None (zero-rate) --')
 
 
 PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '

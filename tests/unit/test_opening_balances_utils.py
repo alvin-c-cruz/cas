@@ -61,12 +61,14 @@ def test_leaf_account_helpers_exclude_group_accounts(db_session):
     db.session.add(standalone)
     db.session.commit()
 
+    # ACCT-RULE B (owner, 17 Nov 2026): a header is an account WITH sub-accounts; a top-level
+    # account with none (standalone) is postable, as on every other picker (app/accounts/postable.py).
     leaf_ids = opening_leaf_account_ids()
     assert child.id in leaf_ids
     assert parent.id not in leaf_ids
-    assert standalone.id not in leaf_ids
+    assert standalone.id in leaf_ids
 
     by_id = {a['id']: a for a in opening_account_choices()}
     assert by_id[parent.id]['is_group'] is True
     assert by_id[child.id]['is_group'] is False
-    assert by_id[standalone.id]['is_group'] is True
+    assert by_id[standalone.id]['is_group'] is False

@@ -28,13 +28,14 @@ journal_entries_bp = Blueprint('journal_entries', __name__, template_folder='tem
 
 def _accounts_for_select():
     """Active accounts for the JV line-item picker, each with a derived `is_group`
-    flag (top-level or has children => non-postable group header, shown disabled).
+    flag (has sub-accounts => non-postable group header, shown disabled).
     Mirrors the AP picker so the JV account select behaves like the other vouchers.
     """
-    all_accts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-    parent_ids = {a.parent_id for a in all_accts if a.parent_id is not None}
-    return [{'id': a.id, 'code': a.code, 'name': a.name,
-             'is_group': a.id in parent_ids} for a in all_accts]
+    # ACCT-PICK (owner 14 Nov 2026): the one postable-account rule, app/accounts/postable.py.
+    from app.accounts.postable import active_accounts, header_ids
+    accounts = active_accounts()
+    heads = header_ids(accounts)
+    return [{'id': a.id, 'code': a.code, 'name': a.name, 'is_group': a.id in heads} for a in accounts]
 
 
 def accountant_or_admin_required(f):

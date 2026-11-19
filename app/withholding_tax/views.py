@@ -21,13 +21,10 @@ withholding_tax_bp = Blueprint('withholding_tax', __name__, template_folder='tem
 
 
 def _wht_account_choices(placeholder='-- None --'):
-    """Active leaf accounts for WHT GL pickers (groups are not postable)."""
-    from app.accounts.models import Account
-    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-    parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
-    choices = [(0, placeholder)]
-    choices += [(a.id, f'{a.code} : {a.name}') for a in accounts if a.id not in parent_ids]
-    return choices
+    """Active postable accounts for this GL picker (headers are not postable)."""
+    # ACCT-PICK (owner 14 Nov 2026): the one postable-account rule, app/accounts/postable.py.
+    from app.accounts.postable import postable_choices
+    return postable_choices(placeholder)
 
 
 PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '

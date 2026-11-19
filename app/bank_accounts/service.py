@@ -58,7 +58,9 @@ def cash_bank_leaf_account_choices():
     code = get_cash_bank_parent_code()
     parent = _resolve_cash_bank_parent(code)
     if parent is None:
-        leaves = [a for a in Account.query.filter_by(is_active=True).all() if not a.children]  # fail-soft: all leaves
+        # fail-soft: every postable account -- the one rule, app/accounts/postable.py (ACCT-PICK).
+        from app.accounts.postable import postable_accounts
+        leaves = postable_accounts()
     else:
         leaves = _leaf_accounts(parent)
     return [(a.id, f'{a.code} — {a.name}') for a in sorted(leaves, key=lambda a: a.code)]

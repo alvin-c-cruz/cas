@@ -227,26 +227,11 @@ def _get_invoice_for_view(id):
 
 
 def _get_all_accounts_for_select():
-    """Full COA for Choices.js account picker — groups marked non-selectable."""
-    all_accts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-    parent_ids = {a.parent_id for a in all_accts if a.parent_id is not None}
-    id_map = {a.id: a for a in all_accts}
-
-    def _depth(acct):
-        d, p, visited = 0, acct.parent_id, set()
-        while p and p in id_map and p not in visited:
-            visited.add(p)
-            d += 1
-            p = id_map[p].parent_id
-        return d
-
-    result = []
-    for a in all_accts:
-        d = a.to_dict()
-        d['is_group'] = a.id in parent_ids
-        d['depth'] = _depth(a)
-        result.append(d)
-    return result
+    """Every active account for the account picker, with `is_group` (a header: it has
+    sub-accounts -- shown, not selectable) and `depth`. Its non-group ids are the server-side allowlist."""
+    # ACCT-PICK (owner 14 Nov 2026): the one postable-account rule, app/accounts/postable.py.
+    from app.accounts.postable import picker_rows
+    return picker_rows()
 
 
 def _apply_overrides(invoice):

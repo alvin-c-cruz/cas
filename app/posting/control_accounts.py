@@ -237,10 +237,8 @@ def assign_default_control_accounts(updated_by='system'):
 
 
 def get_postable_accounts():
-    """Active leaf (postable) accounts, ordered by code. A node is a group
-    header if it is top-level (no parent_id) OR has children; otherwise it is
-    a leaf (matches the derived-hierarchy rule used across CAS)."""
-    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-    parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
-    return [a for a in accounts
-            if a.parent_id is not None and a.id not in parent_ids]
+    """Active postable accounts, ordered by code: every active account that has
+    no active sub-accounts (ACCT-RULE B, owner 17 Nov 2026)."""
+    # ACCT-PICK (owner 14 Nov 2026): the one postable-account rule, app/accounts/postable.py.
+    from app.accounts.postable import postable_accounts
+    return postable_accounts()

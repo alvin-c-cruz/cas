@@ -30,28 +30,11 @@ def is_opening_locked(branch_id):
 def opening_account_choices():
     """All active accounts as dicts with is_group + depth for the Choices.js picker.
 
-    Group accounts (top-level or having children) are shown but non-selectable.
-    Mirrors app/accounts_payable/views.py::_get_all_accounts_for_select.
+    Group accounts (those with sub-accounts) are shown but non-selectable.
     """
-    all_accts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-    parent_ids = {a.parent_id for a in all_accts if a.parent_id is not None}
-    id_map = {a.id: a for a in all_accts}
-
-    def _depth(acct):
-        d, p, visited = 0, acct.parent_id, set()
-        while p and p in id_map and p not in visited:
-            visited.add(p)
-            d += 1
-            p = id_map[p].parent_id
-        return d
-
-    result = []
-    for a in all_accts:
-        d = a.to_dict()
-        d['is_group'] = (a.parent_id is None) or (a.id in parent_ids)
-        d['depth'] = _depth(a)
-        result.append(d)
-    return result
+    # ACCT-PICK (owner 14 Nov 2026): the one postable-account rule, app/accounts/postable.py.
+    from app.accounts.postable import picker_rows
+    return picker_rows()
 
 
 def opening_leaf_account_ids():

@@ -75,22 +75,10 @@ def get_tags_for_document(source_type, source_id):
 
 
 def leaf_accounts_by_type(account_type):
-    """Active leaf (postable) accounts of a given account_type, code-sorted.
-    'Leaf' means it has a parent (not top-level) AND no other active account
-    has it as a parent -- mirrors the is_header computation in
-    app/accounts/views.py: a node is a PARENT (non-postable) if it is
-    top-level (no parent_id) OR has children; otherwise it is a LEAF."""
-    all_active = Account.query.filter_by(is_active=True).all()
-    parent_ids = {a.parent_id for a in all_active if a.parent_id}
-    return sorted(
-        (
-            a for a in all_active
-            if a.account_type == account_type
-            and a.parent_id is not None
-            and a.id not in parent_ids
-        ),
-        key=lambda a: a.code,
-    )
+    """Active leaf (postable) accounts of a given account_type, code-sorted."""
+    # ACCT-PICK (owner 14 Nov 2026): the one postable-account rule, app/accounts/postable.py.
+    from app.accounts.postable import postable_accounts
+    return postable_accounts(account_type=account_type)
 
 
 def create_fixed_asset(**kwargs):

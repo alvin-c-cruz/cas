@@ -51,7 +51,12 @@ def test_every_dropdown_offers_the_postable_accounts_on_a_fresh_schema(client, d
     from app.posting.control_accounts import get_postable_accounts, visible_control_accounts
     _fresh_instance_with_two_leaves()
     postable = [a.code for a in get_postable_accounts()]
-    assert postable == ['114001', '811001']             # the parents are group headers, not choices
+    # ACCT-RULE B (owner, 17 Nov 2026): a header is an account WITH sub-accounts, so the two
+    # parents that got a leaf drop out and the leaves appear; the other standard parents have no
+    # sub-accounts yet and are postable, as on every other picker (app/accounts/postable.py).
+    assert '114001' in postable and '811001' in postable
+    assert '114000' not in postable and '811000' not in postable
+    assert len(postable) == 27 and postable == sorted(postable)
 
     _login(client, 'accountant', 'accountant123')
     resp = client.get('/settings/control-accounts')
@@ -71,11 +76,13 @@ def test_an_account_added_after_a_first_visit_shows_on_the_next(client, db_sessi
     seed_standard_parent_accounts()
     _login(client, 'accountant', 'accountant123')
     first = _dropdowns(client.get('/settings/control-accounts').get_data(as_text=True))
-    assert first and all(values == [''] for values in first.values())   # nothing postable yet
+    # ACCT-RULE B: the 27 standard parents have no sub-accounts yet, so all are offered.
+    assert first and all(len(values) == 28 and '114000' in values for values in first.values())
 
     _leaf('114001', 'Inventory - Trade Goods', '114000')
     again = _dropdowns(client.get('/settings/control-accounts').get_data(as_text=True))
-    assert all(values == ['', '114001'] for values in again.values())
+    # The new leaf shows at once, and its parent became a header.
+    assert all('114001' in values and '114000' not in values for values in again.values())
 
 
 def test_an_assigned_account_comes_back_selected(client, db_session, accountant_user):
