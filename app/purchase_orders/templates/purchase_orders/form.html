@@ -458,18 +458,26 @@
 
   // amount = qty x unit_price, rounded to 2dp -- the same rule as
   // PurchaseOrderItem.calculate_amounts, so what the buyer reads on screen is
-  // what the server stores. A row with either side missing keeps whatever amount
-  // it already had (a service line may carry an amount with no qty/price).
+  // what the server stores. A row with a product, a quantity or a price that does
+  // not multiply out is 0 -- it used to keep its last figure, which was then posted
+  // and saved (PO-AMEND, owner 14 Nov 2026). Only a description-only row with
+  // neither quantity nor price keeps the amount it came with.
   function recalcRow(tr) {
     if (!tr) return;
     const qEl = tr.querySelector('.po-qty');
     const pEl = tr.querySelector('.po-price');
     const aEl = tr.querySelector('.po-amount');
     if (!qEl || !pEl || !aEl) return;
-    const q = parseFloat(String(qEl.value).replace(/,/g, ''));
-    const p = parseFloat(String(pEl.value).replace(/,/g, ''));
+    const qRaw = String(qEl.value).replace(/,/g, '').trim();
+    const pRaw = String(pEl.value).replace(/,/g, '').trim();
+    const q = parseFloat(qRaw);
+    const p = parseFloat(pRaw);
+    const prodEl = tr.querySelector('.po-product');
+    const hasProduct = !!(prodEl && prodEl.value);
     if (isFinite(q) && isFinite(p) && q > 0 && p > 0) {
       aEl.textContent = amtFmt(Math.round(q * p * 100) / 100);
+    } else if (hasProduct || qRaw !== '' || pRaw !== '') {
+      aEl.textContent = amtFmt(0);
     }
     recalcTotals();
   }

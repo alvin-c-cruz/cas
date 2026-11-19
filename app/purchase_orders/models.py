@@ -310,11 +310,21 @@ class PurchaseOrderItem(db.Model):
     source_pr_item_id = db.Column(db.Integer, nullable=True, index=True)
 
     def calculate_amounts(self):
-        """Extract VAT from VAT-inclusive amount. Mirrors SalesOrderItem/QuotationItem."""
-        if self.quantity is not None and self.unit_price is not None:
-            q = Decimal(str(self.quantity)); up = Decimal(str(self.unit_price))
-            if q > 0 and up > 0:
-                self.amount = (q * up).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        """Extract VAT from VAT-inclusive amount. Mirrors SalesOrderItem/QuotationItem.
+
+        amount = qty x unit_price. A line with a product, a quantity or a price that does
+        not multiply out (one cleared, or zero) is 0 -- it used to keep whatever amount was
+        posted, so clearing one line's price on a multi-line PO left a phantom figure in the
+        total (PO-AMEND, owner 14 Nov 2026; triage BUG-PO-AMEND-STALE-AMOUNT-CELL). Only a
+        description-only line with neither quantity nor price keeps the amount it was given.
+        purchase_orders/form.html::recalcRow applies the same rule on screen.
+        """
+        q = Decimal(str(self.quantity)) if self.quantity is not None else None
+        up = Decimal(str(self.unit_price)) if self.unit_price is not None else None
+        if q is not None and up is not None and q > 0 and up > 0:
+            self.amount = (q * up).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        elif self.product_id is not None or q is not None or up is not None:
+            self.amount = Decimal('0.00')
         amt = Decimal(str(self.amount or 0))
         rate = Decimal(str(self.vat_rate or 0))
         if rate > 0:
