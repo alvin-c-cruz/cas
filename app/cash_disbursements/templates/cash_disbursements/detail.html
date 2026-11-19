@@ -90,6 +90,15 @@
 </div>
 {% endif %}
 
+{# RRP-1 A (owner 14 Nov 2026): receiving reports this voucher settled outside AP -- the
+   receipts it paid for that no AP voucher bills. Each reopens if this voucher is cancelled. #}
+{% if settled_rrs %}
+<div class="alert alert-info" data-cdv-settled-rrs>
+  Settles receiving report{{ 's' if settled_rrs|length != 1 else '' }}:
+  {% for r in settled_rrs %}<a href="{{ url_for('receiving_reports.view', id=r.id) }}">RR {{ r.rr_number }}</a> ({{ r.receipt_date.strftime('%d %b %Y') if r.receipt_date else '' }}){% if not loop.last %}, {% endif %}{% endfor %}.
+</div>
+{% endif %}
+
 <div class="card">
   <div class="card-header">
     <div style="display:flex;align-items:center;gap:12px;">

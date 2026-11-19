@@ -1570,8 +1570,13 @@ def view(id):
     }
     fixed_asset_tags = {k: v for k, v in fixed_asset_tags.items() if v is not None}
 
+    # RRP-1 A (owner 14 Nov 2026): the receipts this voucher settled outside AP.
+    from app.receiving_reports.models import ReceivingReport
+    settled_rrs = (ReceivingReport.query.filter_by(settled_cdv_id=cdv.id)
+                   .order_by(ReceivingReport.receipt_date, ReceivingReport.rr_number).all())
     return render_template('cash_disbursements/detail.html',
                            cdv=cdv, je_entries=je_entries, now=ph_now(),
+                           settled_rrs=settled_rrs,
                            cd_print_access=cd_print_access, cd_print_form=cd_print_form,
                            check_printable=check_printable,
                            fixed_asset_tags=fixed_asset_tags,

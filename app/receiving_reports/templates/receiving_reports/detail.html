@@ -49,23 +49,43 @@
   {% endif %}
 </div></div>
 
-{# Administrator only (owner, 2026-10-03) -- the routes check the role too. #}
-{% if current_user.is_admin and rr.status == 'approved' and not rr.accounts_payable_id and not rr.settled_cdv_id %}
+{# RRP-1 A (owner 14 Nov 2026): a voucher that looks like it paid for these goods ahead of
+   delivery -- posted, to this vendor, within 30 days before the receipt, paying no AP voucher
+   and settling no receipt (purchase_billing.paid_ahead_cdvs). Shown to everyone who can see
+   the receipt; settling it is an approver's step. #}
+{% if paid_ahead %}
+<div class="alert alert-warning" data-rr-paid-already>
+  Paid already? {% for c in paid_ahead %}<a href="{{ url_for('cash_disbursements.view', id=c.id) }}">CDV {{ c.cdv_number }}</a> ({{ c.cdv_date.strftime('%d %b %Y') }}, {{ '{:,.2f}'.format(c.total_amount or 0) }}){% if not loop.last %}, {% endif %}{% endfor %}
+  paid this vendor within 30 days before the receipt and pays no AP voucher. If it paid for these goods, settle this receipt by it instead of billing it.
+</div>
+{% endif %}
+
+{# Approvers -- accountant or full access (RRP-2 B, owner 14 Nov 2026; administrator only
+   before). The routes check the role too. #}
+{% if can_settle %}
 <div class="card"><div class="card-body">
   <h3>Settle by CDV (outside AP)</h3>
-  <p class="text-muted" style="font-size:13px;">For a receipt no AP voucher will ever bill &mdash; paid
-    directly by a posted cash disbursement voucher to this vendor. The receipt leaves the unbilled list.</p>
+  <p class="text-muted" style="font-size:13px;">For a receipt a cash disbursement voucher already paid &mdash;
+    paid ahead of delivery, or before the AP module. It is settled by that voucher instead of being billed,
+    and leaves the unbilled list.</p>
   <form method="POST" action="{{ url_for('receiving_reports.settle', id=rr.id) }}" class="rr-settle-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-group"><label>CDV number</label>
-      <input type="text" name="cdv_number" class="form-control" required style="max-width:200px"></div>
+    {% if settle_choices %}
+    <div class="form-group"><label>The voucher that paid it</label>
+      <select name="cdv_id" class="form-control" required style="max-width:560px">
+        {% for c in settle_choices %}<option value="{{ c.id }}">{{ c.label }}</option>{% endfor %}
+      </select>
+      <div class="form-hint">This vendor's posted vouchers that pay no AP voucher, newest first, any branch.</div></div>
+    {% else %}
+    <p class="text-muted" style="font-size:13px;">No posted CDV to this vendor is free to settle it (every one pays an AP voucher).</p>
+    {% endif %}
     <div class="form-group"><label>Reason (at least 10 characters)</label>
       <textarea name="settle_reason" class="form-control" rows="2" required minlength="10"></textarea></div>
     <button type="submit" class="btn btn-primary">Settle by CDV</button>
   </form>
 </div></div>
 {% endif %}
-{% if current_user.is_admin and rr.settled_cdv_id %}
+{% if may_reopen and rr.settled_cdv_id %}
 <div class="card"><div class="card-body">
   <form method="POST" action="{{ url_for('receiving_reports.reopen_settlement', id=rr.id) }}" class="rr-reopen-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

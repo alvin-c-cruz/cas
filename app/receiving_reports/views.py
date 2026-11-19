@@ -914,8 +914,14 @@ def view(id):
     rr = _rr_or_404(id)
     # Read HERE rather than in the template, so the Print button and print_rr()'s
     # own guard read one value.
+    from app.purchase_billing import paid_ahead_cdvs, settle_choices_for
+    can_settle = (_may_settle() and rr.status == 'approved' and not rr.accounts_payable_id
+                  and not rr.settled_cdv_id)
     return render_template('receiving_reports/detail.html', rr=rr,
                            vendor_open_lines=_vendor_open_lines_for_review(rr),
+                           can_settle=can_settle, may_reopen=_may_settle(),
+                           settle_choices=settle_choices_for(rr) if can_settle else [],
+                           paid_ahead=paid_ahead_cdvs(rr),
                            rr_print_form=AppSettings.get_setting('rr_print_form',
                                                                  'current'))
 
@@ -1306,6 +1312,13 @@ def cancel(id):
 
 # -- settled outside AP (rrsettle_0001) -----------------------------------------
 
+def _may_settle():
+    """Who may settle a receipt by a CDV, or reopen that settlement: an approver -- the
+    same people who approve receipts (_approve_role_gate). RRP-2 B, owner 14 Nov 2026;
+    administrator only before."""
+    return bool(current_user.has_full_access or current_user.role == 'accountant')
+
+
 def _settle_audit_values(rr):
     return {'status': rr.status,
             'settled_cdv': rr.settled_cdv.cdv_number if rr.settled_cdv else None,
@@ -1315,20 +1328,27 @@ def _settle_audit_values(rr):
 @receiving_reports_bp.route('/receiving-reports/<int:id>/settle', methods=['POST'])
 @login_required
 def settle(id):
-    """Close an approved, unbilled receipt against the CDV that paid it, outside AP.
+    """Close an approved, unbilled receipt against the CDV that already paid it, outside AP.
 
-    Administrator only (owner, 2026-10-03). For receipts no AP bill can ever exist for --
-    August receipts paid by legacy cash vouchers, before the AP module started.
+    For any receipt a cash voucher paid: ahead of delivery, or before the AP module started
+    (owner, 2026-10-03; RRP-1 A, 14 Nov 2026). Approvers -- accountant or full access -- may
+    settle (RRP-2 B, 14 Nov 2026; was administrator only). The voucher is PICKED from the
+    settle box (`cdv_id`); a typed `cdv_number` is still accepted.
     """
     rr = _rr_or_404(id)
-    if not current_user.is_admin:
-        flash('Only the administrator can settle a Receiving Report by a CDV.', 'error')
+    if not _may_settle():
+        flash('Only an approver (accountant or administrator) can settle a Receiving Report by a CDV.',
+              'error')
         return redirect(url_for('receiving_reports.view', id=id))
     from app.cash_disbursements.models import CashDisbursementVoucher
     from app.purchase_billing import settle_rr_by_cdv
+    cdv_id = request.form.get('cdv_id', type=int)
     number = (request.form.get('cdv_number') or '').strip()
-    cdv = (CashDisbursementVoucher.query.filter_by(cdv_number=number).first()
-           if number else None)
+    if cdv_id:
+        cdv = db.session.get(CashDisbursementVoucher, cdv_id)
+    else:
+        cdv = (CashDisbursementVoucher.query.filter_by(cdv_number=number).first()
+               if number else None)
     before = _settle_audit_values(rr)
     try:
         settle_rr_by_cdv(rr, cdv, request.form.get('settle_reason'), current_user)
@@ -1348,10 +1368,11 @@ def settle(id):
 @receiving_reports_bp.route('/receiving-reports/<int:id>/reopen-settlement', methods=['POST'])
 @login_required
 def reopen_settlement(id):
-    """Undo a CDV settlement: the receipt is approved and unbilled again. Administrator only."""
+    """Undo a CDV settlement: the receipt is approved and unbilled again. Approvers (RRP-2 B)."""
     rr = _rr_or_404(id)
-    if not current_user.is_admin:
-        flash('Only the administrator can reopen a settled Receiving Report.', 'error')
+    if not _may_settle():
+        flash('Only an approver (accountant or administrator) can reopen a settled Receiving Report.',
+              'error')
         return redirect(url_for('receiving_reports.view', id=id))
     if rr.settled_cdv_id is None:
         flash('This Receiving Report was not settled by a CDV.', 'error')

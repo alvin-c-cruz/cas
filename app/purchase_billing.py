@@ -212,6 +212,8 @@ def billable_rrs_for(branch_id, vendor_id):
         out.append({'id': rr.id, 'rr_number': rr.rr_number,
                     'receipt_date': rr.receipt_date.isoformat() if rr.receipt_date else None,
                     'purchase_order_number': rr.po_number_display or None,
+                    # RRP-1 A: a voucher that looks like it paid ahead -- shown in the picker.
+                    'paid_hint': paid_ahead_hint(rr),
                     'lines': lines})
     return out
 
@@ -219,8 +221,10 @@ def billable_rrs_for(branch_id, vendor_id):
 # -- settled outside AP (rrsettle_0001) ----------------------------------------
 #
 # Owner, 2026-10-03: the AP module started in September, so a receipt paid in August by a
-# legacy cash voucher can never be billed and would sit 'approved, unbilled' for good. An
-# administrator may close such a receipt against the CDV that paid it. The receipt goes to
+# legacy cash voucher can never be billed and would sit 'approved, unbilled' for good. Since
+# RRP-1 A / RRP-2 B (owner, 14 Nov 2026) this covers ANY receipt a cash voucher already paid
+# (paid ahead of delivery, or before the AP module), and an approver (accountant or full
+# access), not only the administrator, may close it against the CDV that paid it. The receipt goes to
 # 'billed' -- the state that already keeps it off every billable list and out of cancel() --
 # and settled_cdv_id records that the payment was a CDV, not an AP bill.
 
@@ -237,7 +241,7 @@ def _cdv_vendor_id(cdv):
 
 
 def settle_rr_by_cdv(rr, cdv, reason, user):
-    """Close an approved, unbilled receipt against the cash voucher that paid it.
+    """Close an approved, unbilled receipt against the cash voucher that already paid it.
 
     Raises ValueError with a user-facing message and changes nothing when the receipt or
     the voucher does not qualify. The caller commits and writes the audit row.
@@ -266,6 +270,74 @@ def settle_rr_by_cdv(rr, cdv, reason, user):
     rr.settled_by_id = user.id
     rr.settled_at = ph_now()
     rr.settle_reason = reason
+
+
+#: How far back a voucher may lie before a receipt and still be pointed out as having paid
+#: for it ahead of delivery (RRP-1 A, owner 14 Nov 2026).
+PAID_AHEAD_DAYS = 30
+
+
+def _free_vendor_cdvs(vendor_id):
+    """Query: POSTED vouchers paid to *vendor_id* (any branch) that pay no AP voucher.
+
+    Mirrors _cdv_vendor_id in SQL: a vendor payee, matched on vendor_id or, when that is
+    empty, on payee_id. A voucher that pays an AP voucher is the AP route, not this one.
+    """
+    from app import db
+    from app.cash_disbursements.models import CashDisbursementVoucher as CDV, CDVApLine
+    return (CDV.query
+            .filter(CDV.status.in_(SETTLING_CDV_STATUSES),
+                    db.or_(CDV.payee_type == 'vendor', CDV.payee_type.is_(None)),
+                    db.or_(CDV.vendor_id == vendor_id,
+                           db.and_(CDV.vendor_id.is_(None), CDV.payee_id == vendor_id)),
+                    ~db.exists().where(CDVApLine.cdv_id == CDV.id)))
+
+
+def settle_choices_for(rr, limit=30):
+    """The settle box's choices (RRP-1 A): the vendor's posted vouchers that pay no AP
+    voucher, newest first, any branch. Each names the receipts it already settles, since
+    one voucher may pay for several deliveries."""
+    from app.cash_disbursements.models import CashDisbursementVoucher as CDV
+    from app.receiving_reports.models import ReceivingReport
+    cdvs = (_free_vendor_cdvs(rr.vendor_id)
+            .order_by(CDV.cdv_date.desc(), CDV.id.desc()).limit(limit).all())
+    out = []
+    for cdv in cdvs:
+        settles = [r.rr_number for r in ReceivingReport.query.filter_by(settled_cdv_id=cdv.id)
+                   .order_by(ReceivingReport.id)]
+        label = (f'CDV {cdv.cdv_number} · {cdv.cdv_date.strftime("%d %b %Y")} · '
+                 f'{float(cdv.total_amount or 0):,.2f}'
+                 + (f' · {cdv.branch.code}' if cdv.branch else '')
+                 + (f' · already settles RR {", ".join(settles)}' if settles else ''))
+        out.append({'id': cdv.id, 'label': label})
+    return out
+
+
+def paid_ahead_cdvs(rr):
+    """'Paid already?' (RRP-1 A): posted vouchers to the receipt's vendor dated on or within
+    PAID_AHEAD_DAYS before the receipt, that pay no AP voucher and settle no receipt. Only
+    for a receipt that could still go either way -- submitted, or approved and unbilled."""
+    from datetime import timedelta
+    from app import db
+    from app.cash_disbursements.models import CashDisbursementVoucher as CDV
+    from app.receiving_reports.models import ReceivingReport
+    if (rr.status not in ('submitted', 'approved') or rr.accounts_payable_id is not None
+            or rr.settled_cdv_id is not None or rr.receipt_date is None):
+        return []
+    return (_free_vendor_cdvs(rr.vendor_id)
+            .filter(CDV.cdv_date <= rr.receipt_date,
+                    CDV.cdv_date >= rr.receipt_date - timedelta(days=PAID_AHEAD_DAYS),
+                    ~db.exists().where(ReceivingReport.settled_cdv_id == CDV.id))
+            .order_by(CDV.cdv_date.desc(), CDV.id.desc()).all())
+
+
+def paid_ahead_hint(rr):
+    """One line for the AP voucher's receipt picker, or None."""
+    cdvs = paid_ahead_cdvs(rr)
+    if not cdvs:
+        return None
+    named = ', '.join(f'CDV {c.cdv_number} ({c.cdv_date.strftime("%d %b %Y")})' for c in cdvs[:3])
+    return f'paid already? {named}: settle by the CDV instead of billing'
 
 
 def reopen_settled_rr(rr):

@@ -5,6 +5,9 @@ legacy cash voucher can never be billed -- it would sit 'approved, unbilled' for
 show in every unbilled-receipt check. The administrator (only -- "is B accessible for
 users?") may close such a receipt against a POSTED CDV paid to the same vendor. The receipt
 becomes 'billed' with `settled_cdv_id` naming the voucher; cancelling that voucher reopens it.
+
+Since RRP-2 B (owner, 14 Nov 2026) any approver -- accountant or full access -- may settle
+and reopen; staff still may not. See test_rr_settle_picker.py.
 """
 from datetime import date
 from decimal import Decimal
@@ -151,19 +154,20 @@ class TestSettling:
 
 class TestRefusals:
 
-    @pytest.mark.parametrize('who', ['staff_user', 'accountant_user'])
-    def test_only_the_administrator_may_settle(
-            self, request, client, main_branch, vl_vendor, cash_account, db_session, who):
-        user = request.getfixturevalue(who)
+    def test_only_an_approver_may_settle(
+            self, client, staff_user, main_branch, vl_vendor, cash_account, db_session):
+        """RRP-2 B (owner, 14 Nov 2026): approvers -- accountant or full access -- may settle;
+        it was administrator only (3 Oct). Staff still may not. The accountant's side is
+        tests/integration/test_rr_settle_picker.py::TestApprovers."""
         rr = _approved_rr(db_session, main_branch, vl_vendor)
         _cdv(db_session, main_branch, vl_vendor, cash_account)
-        _as(client, user, main_branch, db_session)
+        _as(client, staff_user, main_branch, db_session)
 
         resp = _settle(client, rr)
 
         db_session.refresh(rr)
         assert (rr.status, rr.settled_cdv_id) == ('approved', None)
-        assert b'Only the administrator' in resp.data
+        assert b'Only an approver' in resp.data
 
     @pytest.mark.parametrize('status', ['draft', 'voided', 'cancelled'])
     def test_only_a_posted_cdv_settles(

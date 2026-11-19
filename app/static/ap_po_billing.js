@@ -98,8 +98,10 @@
         function () { injectLines(po.lines); pushId(srcPo, po.id); refreshNotes(false); }));
     });
     rrs.forEach(function (rr) {
-      listEl.appendChild(rowButton('RR ' + rr.rr_number,
-        rr.purchase_order_number ? '(from ' + rr.purchase_order_number + ')' : '',
+      // RRP-1 A (owner 14 Nov 2026): name a voucher that looks like it paid ahead.
+      const sub = (rr.purchase_order_number ? '(from ' + rr.purchase_order_number + ')' : '')
+        + (rr.paid_hint ? ' \u2014 ' + rr.paid_hint : '');
+      listEl.appendChild(rowButton('RR ' + rr.rr_number, sub,
         function () { injectLines(rr.lines); pushId(srcRr, rr.id); refreshNotes(false); }));
     });
     lockIfNeeded();
