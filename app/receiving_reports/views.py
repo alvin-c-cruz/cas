@@ -40,7 +40,7 @@ from app.utils.branch_scope import require_same_branch
 
 receiving_reports_bp = Blueprint('receiving_reports', __name__, template_folder='templates')
 
-VALID_RR_STATUSES = {'draft', 'approved', 'billed', 'cancelled'}
+VALID_RR_STATUSES = {'draft', 'submitted', 'approved', 'billed', 'cancelled'}
 
 # Which orders a receipt may draw on. 'submitted' is here by owner decision
 # (2026-09-21): goods turn up before the approver gets to the order, and the

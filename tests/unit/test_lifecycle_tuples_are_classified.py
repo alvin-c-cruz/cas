@@ -39,7 +39,7 @@ import re
 import pytest
 
 from app.purchase_orders.models import PurchaseOrder
-from app.purchase_orders.utils import OPEN_PO_STATUSES
+from app.purchase_orders.utils import OPEN_PO_STATUSES, TO_APPROVE_PO_STATUSES
 from app.purchase_orders.progress import _AS_STORED as PO_PROGRESS_AS_STORED
 from app.purchase_requests.allocation import (
     APPROVED_PR, COMMITTED_PO, PULLABLE_PR, RECOMPUTABLE_PR)
@@ -172,32 +172,34 @@ REGISTRY = [
                 'is derived and never stored',
         }),
     Tuple_(
+        'purchase_orders.utils.TO_APPROVE_PO_STATUSES', TO_APPROVE_PO_STATUSES,
+        'purchase order',
+        'does this order count towards the list page\'s "To approve" card?',
+        {
+            'approved':
+                'approved is the "Open" card\'s (OPEN_PO_STATUSES)',
+            'cancelled':
+                'a withdrawn order is not work, and deliberately appears in no card',
+            'closed':
+                'counted by its own card (closed_count)',
+        }),
+    Tuple_(
         'purchase_orders.utils.OPEN_PO_STATUSES', OPEN_PO_STATUSES,
         'purchase order',
         'does this order count towards the list page\'s "Open" card and open '
         'value total?',
         {
             'draft':
-                'counted by its own card -- compute_po_summary counts '
-                "status == 'draft' exactly for draft_count",
+                'counted by the "To approve" card (TO_APPROVE_PO_STATUSES)',
+            'submitted':
+                'counted by the "To approve" card with drafts: not yet approved '
+                '(POC A, owner 14 Nov 2026; was a known gap since 2026-08-27)',
             'cancelled':
                 'a withdrawn order is not open work, and deliberately appears '
                 'in no card',
             'closed':
                 'counted by its own card (closed_count); "Open" is labelled '
                 '"approved, not yet closed"',
-        },
-        known_gap={
-            'submitted':
-                'FOUND 2026-08-27 generalising this guard. A submitted order '
-                'is counted by NO card: draft_count matches draft exactly, '
-                'open_count reads this tuple, closed_count matches closed. The '
-                'card labelled "Draft / to approve" is exactly where an order '
-                'awaiting approval belongs, so either this tuple or '
-                'draft_count is wrong -- an owner decision, not a test fix. '
-                'Same root cause as the bug this file was built for: the PO '
-                'submit step (cas 579e12ed) shipped and its sibling '
-                'enumerations were never revisited.',
         }),
     Tuple_(
         'purchase_orders.models.PurchaseOrder.AMEND_STATUSES',
