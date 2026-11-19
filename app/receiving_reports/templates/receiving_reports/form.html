@@ -210,6 +210,7 @@
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='search-select.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/rr_no_po_matches.js') }}?v=1"></script>
 
 <script>
   // -- the LINE block: build rows, serialise them, keep them honest to the vendor.
@@ -618,26 +619,24 @@
     // the selected vendor and already excluding this receipt, and its rows carry
     // po_number as well. Fetching on open also keeps the index current, which narrows
     // the window where an order is approved between picking and saving.
-    let OPEN_BY_PRODUCT = {};
+    // RR-1 A (owner 17 Nov 2026): EVERY open line of this vendor's orders, not only the
+    // chosen product's -- rr_no_po_matches.js puts the same-product lines first.
+    let OPEN_LINES = [];
 
     function loadOpenLines() {
       const vendorId = chosenVendorId();
-      OPEN_BY_PRODUCT = {};
+      OPEN_LINES = [];
       if (!vendorId) return Promise.resolve();
       const url = '/receiving-reports/open-lines?vendor_id=' + vendorId
                 + (excludeRrId ? ('&exclude_rr_id=' + excludeRrId) : '');
       return fetch(url, {credentials: 'same-origin'})
         .then(function (r) { return r.json(); })
         .then(function (d) {
-          (d.lines || []).forEach(function (row) {
-            if (!row.product_id || !(row.open > 0)) return;
-            (OPEN_BY_PRODUCT[row.product_id] =
-              OPEN_BY_PRODUCT[row.product_id] || []).push(row);
-          });
+          OPEN_LINES = (d.lines || []).filter(function (row) { return row.open > 0; });
         })
-        .catch(function () { OPEN_BY_PRODUCT = {}; });   // a warning is guidance; its
-                                                          // absence must never block a
-                                                          // receipt from being recorded
+        .catch(function () { OPEN_LINES = []; });   // a warning is guidance; its
+                                                     // absence must never block a
+                                                     // receipt from being recorded
     }
 
     const warnBox = document.getElementById('directPoWarning');
@@ -645,34 +644,32 @@
     const reasonInput = document.getElementById('directNoPoReason');
     const usePoContainer = document.getElementById('directUsePoContainer');
 
-    function matchesFor(productId) { return OPEN_BY_PRODUCT[productId] || []; }
-
     function refreshWarning() {
       // A reason belongs to the product it was typed for -- cleared unconditionally,
       // not only on the no-match branch below, so switching from product A (typed a
       // reason) to product B never lets A's text ride along and get stored on B's
       // line further down at Add-to-receipt time.
       reasonInput.value = '';
-      const matches = matchesFor(parseInt(sel.value, 10));
-      if (!matches.length) {
+      const m = rrNoPoMatches(OPEN_LINES, parseInt(sel.value, 10));
+      if (!m.same.length && !m.others.length) {
         warnBox.style.display = 'none';
         usePoContainer.innerHTML = '';
         return;
       }
-      warnText.textContent = 'This vendor has '
-        + matches.map(function (m) { return m.open + ' open on ' + m.po_number; }).join(', ')
-        + '.';
-      // One button per match -- the warning already enumerates every open order, and
-      // the design is explicit that the receiver chooses which one, the system does
-      // not guess. Each button carries its own matched row (the fetched row IS the
-      // shape rrAddLine expects, same as the Pull picker's own rows) so the delegated
-      // listener below can act on exactly the order that was clicked.
-      usePoContainer.innerHTML = matches.map(function (m) {
+      warnText.textContent = rrNoPoWarningText(m);
+      // One button per open line, same product first -- the receiver chooses which
+      // order this delivery belongs to; the system does not guess. Each button carries
+      // its own row (the fetched row IS the shape rrAddLine expects, same as the Pull
+      // picker's own rows), so receiving against another product's line brings that
+      // ORDERED product in, which is the point: the receipt follows the order.
+      const button = function (r, isSame) {
         return '<button type="button" class="btn btn-secondary directUsePoBtn"'
-             + ' data-row=\'' + escHtml(JSON.stringify(m)) + '\''
-             + ' style="padding:2px 10px;margin:0 6px 6px 0;">Receive against '
-             + escHtml(m.po_number) + '</button>';
-      }).join('');
+             + ' data-row=\'' + escHtml(JSON.stringify(r)) + '\''
+             + ' style="padding:2px 10px;margin:0 6px 6px 0;">'
+             + escHtml(rrNoPoButtonLabel(r, isSame)) + '</button>';
+      };
+      usePoContainer.innerHTML = m.same.map(function (r) { return button(r, true); }).join('')
+                               + m.others.map(function (r) { return button(r, false); }).join('');
       warnBox.style.display = 'block';
     }
     sel.addEventListener('change', refreshWarning);

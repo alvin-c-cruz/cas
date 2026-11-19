@@ -915,8 +915,28 @@ def view(id):
     # Read HERE rather than in the template, so the Print button and print_rr()'s
     # own guard read one value.
     return render_template('receiving_reports/detail.html', rr=rr,
+                           vendor_open_lines=_vendor_open_lines_for_review(rr),
                            rr_print_form=AppSettings.get_setting('rr_print_form',
                                                                  'current'))
+
+
+def _vendor_open_lines_for_review(rr, cap=6):
+    """The vendor's open PO lines in this receipt's branch, for the note beside each
+    no-PO line while the receipt is still draft or submitted (RR-1 A, owner 17 Nov 2026):
+    the approver sees what the line might belong to before approving it. ([], 0) once
+    the receipt is past review, or when it has no no-PO line, or nothing is open.
+
+    Same source as the form's warning (/open-lines: _eligible_purchase_orders +
+    _po_lines_payload), with this receipt excluded from its own open quantity.
+    Returns (rows, more): rows carry po_number/product_name/open; more = rows not shown.
+    """
+    if rr.status not in ('draft', 'submitted') or not any(li.is_direct for li in rr.line_items):
+        return [], 0
+    eligible = _eligible_purchase_orders(rr.branch_id, rr.vendor_id)
+    payload = _po_lines_payload(eligible, exclude_rr_id=rr.id)
+    rows = [dict(row, po_number=po.po_number)
+            for po in eligible for row in payload.get(po.id, []) if row['open'] > 0]
+    return rows[:cap], max(0, len(rows) - cap)
 
 
 @receiving_reports_bp.route('/receiving-reports/<int:id>/edit', methods=['GET', 'POST'])

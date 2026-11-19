@@ -95,6 +95,17 @@
             {% if li.is_direct %}
             <span title="{{ li.no_po_reason or 'Received without a purchase order' }}"
                   style="margin-left:6px;color:var(--amber);font-weight:600;">no PO{% if li.no_po_reason %}: {{ li.no_po_reason }}{% endif %}</span>
+            {# RR-1 A (owner 17 Nov 2026): while the receipt is draft or submitted, name the
+               vendor's open PO lines so the approver can see what this line may belong to.
+               Empty (and absent) once past review -- views._vendor_open_lines_for_review. #}
+            {% set open_rows, open_more = vendor_open_lines %}
+            {% if open_rows %}
+            <div data-rr-open-po-lines style="font-size:12px;color:var(--text-3);margin-top:2px;">
+              Open on this vendor's orders:
+              {% for r in open_rows %}PO {{ r.po_number }} {{ r.product_name }} ({{ '{:,.4g}'.format(r.open) }} open){% if not loop.last %}; {% endif %}{% endfor %}{% if open_more %}; and {{ open_more }} more{% endif %}.
+              If it was delivered against one, return the receipt to draft and receive it against that order.
+            </div>
+            {% endif %}
             {% endif %}
           </td>
           <td class="text-end">{{ '{:,.4f}'.format(d.ordered_quantity) if d.ordered_quantity is not none else '-' }}</td>
