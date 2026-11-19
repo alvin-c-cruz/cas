@@ -551,7 +551,11 @@ def list_po():
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
 
     from app.purchase_orders.progress import BADGES, LABELS, progress_keys
+    # RCPT A (owner, 17 Nov 2026): each order's paper trail, one query per column for the page.
+    from app.purchase_orders.chain import chain_links_for_po_ids
+    rr_links, ap_links, cd_links = chain_links_for_po_ids([po.id for po in pagination.items])
     return render_template('purchase_orders/list.html',
+                           rr_links=rr_links, ap_links=ap_links, cd_links=cd_links,
                            po_list=pagination.items,
                            pagination=pagination,
                            vendors=vendors,

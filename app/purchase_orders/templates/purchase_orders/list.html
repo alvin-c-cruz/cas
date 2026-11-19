@@ -73,7 +73,7 @@
         <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>PO #</th><th>Date</th><th>Vendor</th><th style="text-align:right;">Total</th><th>Status</th><th>Actions</th></tr>
+                <tr><th>PO #</th><th>Date</th><th>Vendor</th><th style="text-align:right;">Total</th><th>Status</th><th>RR #</th><th>AP #</th><th>CD #</th><th>Actions</th></tr>
             </thead>
             <tbody>
                 {% for po in po_list %}
@@ -84,6 +84,21 @@
                     <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(po.total_amount or 0) }}</td>
                     {% set pk = progress[po.id] %}
                     <td><span class="badge badge-{{ progress_badges.get(pk, 'draft') }}" data-po-id="{{ po.id }}" data-po-progress="{{ pk }}">{{ progress_labels.get(pk, pk) }}</span> {% if attachment_incomplete_count('purchase_orders', po) %}<span class="badge badge-warning" title="Approved with required files missing">⚠</span>{% endif %}</td>
+                    {# RCPT A (owner, 17 Nov 2026): the paper trail, as on the PR list -- resolved
+                       once for the page in list_po() (purchase_orders/chain.py). A number links
+                       only when the viewer has that module: the purchaser sees numbers he cannot
+                       open as plain text. An em dash reads as answered, not as a gap. #}
+                    {% for links, endpoint, module in [(rr_links, 'receiving_reports.view', 'receiving_reports'),
+                                                       (ap_links, 'accounts_payable.view', 'accounts_payable'),
+                                                       (cd_links, 'cash_disbursements.view', 'cash_disbursements')] %}
+                    {% set may_open = can_access_module(current_user, module) %}
+                    <td>
+                      {%- for doc_id, number in links.get(po.id, []) -%}
+                        {%- if may_open -%}<a href="{{ url_for(endpoint, id=doc_id) }}">{{ number }}</a>{%- else -%}{{ number }}{%- endif -%}
+                        {{- ', ' if not loop.last -}}
+                      {%- else -%}—{%- endfor -%}
+                    </td>
+                    {% endfor %}
                     <td>
                         <a href="{{ url_for('purchase_orders.view', id=po.id) }}" class="pb-btn-action">👁️</a>
                         {% if po.status == 'draft' %}<a href="{{ url_for('purchase_orders.edit', id=po.id) }}" class="pb-btn-action">✏️</a>{% endif %}
