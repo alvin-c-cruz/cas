@@ -542,6 +542,11 @@ def edit_user(id):
                 # Someone else's password set by an admin must be changed at the next login;
                 # an admin changing their OWN password is not flagged (work order 2026-11-10).
                 user.must_change_password = current_user.id != user.id
+                if current_user.id != user.id:
+                    # A reset is how a locked-out user gets back in: clear the lockout too,
+                    # as `flask reset-password` does (ADMIN-RESET A, 14 Nov 2026).
+                    account_unlocked = user.is_account_locked()
+                    user.reset_failed_attempts()
 
             # Update book permissions from form. Iterate all_permission_keys()
             # (not optional OR per_user) -- the SAME grantable set the edit grid

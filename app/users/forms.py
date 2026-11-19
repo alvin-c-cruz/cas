@@ -94,10 +94,14 @@ class UserForm(FlaskForm):
         Optional(),
         PasswordPolicy(min_length=12)
     ])
-    confirm_password = PasswordField('Confirm Password', validators=[
-        Optional(),
-        EqualTo('password', message='Passwords must match.')
-    ])
+    # No Optional() here: it stops the chain on an empty field, so a typed password with
+    # a BLANK confirmation used to be accepted unchecked (found building ADMIN-RESET A,
+    # 17 Nov 2026). Both blank = keep the current password.
+    confirm_password = PasswordField('Confirm Password')
+
+    def validate_confirm_password(self, field):
+        if (self.password.data or field.data) and field.data != self.password.data:
+            raise ValidationError('Passwords must match.')
 
 
 class ChangePasswordForm(FlaskForm):

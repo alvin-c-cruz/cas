@@ -185,14 +185,24 @@
                 </div>
             </div>
 
-            {% if not user %}
+            {# The password pair: on create, and when an admin edits SOMEONE ELSE (ADMIN-RESET A,
+               owner 14 Nov 2026). Not on your own record: you use Change password. edit_user()
+               sets must_change_password and clears the lockout for another user's reset; the
+               field is a PasswordField, so a refused save never echoes what was typed.
+               Pinned by tests/integration/test_admin_reset_on_edit_user.py (GETs this page). #}
+            {% if not user or user.id != current_user.id %}
             <hr style="margin: 24px 0; border: none; border-top: 1px solid #e2e8f0;">
+
+            {% if user %}
+            <h3 style="margin: 0 0 4px;">Set a new password</h3>
+            <div class="form-hint" style="margin-bottom: 12px;">Leave both blank to keep the current password. A password set here must be changed by {{ user.username }} at the next sign-in, and a locked account is unlocked.</div>
+            {% endif %}
 
             <div class="form-row-2">
                 <div class="form-group">
                     {{ form.password.label(class='form-label') }}
-                    {{ form.password(class='form-control') }}
-                    <div class="form-hint">Required for new users. Minimum 12 characters with uppercase letter and special character.</div>
+                    {{ form.password(class='form-control', autocomplete='new-password') }}
+                    <div class="form-hint">{% if not user %}Required for new users. {% endif %}Minimum 12 characters with uppercase letter and special character.</div>
                     {% if form.password.errors %}
                         <div class="form-error">
                             {% for error in form.password.errors %}{{ error }}{% endfor %}
@@ -202,7 +212,7 @@
 
                 <div class="form-group">
                     {{ form.confirm_password.label(class='form-label') }}
-                    {{ form.confirm_password(class='form-control') }}
+                    {{ form.confirm_password(class='form-control', autocomplete='new-password') }}
                     {% if form.confirm_password.errors %}
                         <div class="form-error">
                             {% for error in form.confirm_password.errors %}{{ error }}{% endfor %}
