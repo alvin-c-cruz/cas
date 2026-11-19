@@ -1574,9 +1574,18 @@ def view(id):
     from app.receiving_reports.models import ReceivingReport
     settled_rrs = (ReceivingReport.query.filter_by(settled_cdv_id=cdv.id)
                    .order_by(ReceivingReport.receipt_date, ReceivingReport.rr_number).all())
+    from app.common import deposit_slip as ds
+    cheque_to = (cdv.check_payee_name or '').strip()
+    payee_name = (cdv.payee_display_name or '').strip()
+    # CVS-3 A: the cheque names someone other than the payee (e.g. CASH for a reimbursement).
+    cheque_to_other = (cdv.payment_method == 'check' and bool(cheque_to) and bool(payee_name)
+                       and cheque_to.lower() != payee_name.lower())
     return render_template('cash_disbursements/detail.html',
                            cdv=cdv, je_entries=je_entries, now=ph_now(),
                            settled_rrs=settled_rrs,
+                           slip_deposit_to=ds.voucher_deposit_to(cdv),
+                           cheque_to_other=cheque_to_other, cheque_to=cheque_to, payee_name=payee_name,
+                           wt_other_payee=cheque_to_other and (cdv.total_wt or 0) > 0,
                            cd_print_access=cd_print_access, cd_print_form=cd_print_form,
                            check_printable=check_printable,
                            fixed_asset_tags=fixed_asset_tags,
@@ -2093,25 +2102,16 @@ def print_deposit_slip(id):
     fail = lambda msg: (flash(msg, 'error'),
                         redirect(url_for('cash_disbursements.view', id=id)))[1]
 
-    if cdv.payment_method != 'check':
-        return fail('This voucher is not paid by check.')
-    access = AppSettings.get_setting('cd_check_print_access', 'posted_only')
-    status_ok = access != 'hidden' and (
-        (cdv.status == 'posted') if access != 'draft_and_posted'
-        else (cdv.status not in ('voided', 'cancelled')))
-    if not status_ok:
-        return fail('This voucher is not eligible for a deposit slip.')
-    if not (cdv.check_number or '').strip():
-        return fail('A check number is required to print a deposit slip.')
-    if (cdv.total_amount or 0) <= 0:
-        return fail('Cannot print a deposit slip for a zero amount.')
+    refusal = _deposit_slip_refusal(cdv)
+    if refusal:
+        return fail(refusal)
 
     values, deposit_bank = ds.cdv_values(cdv)
     notice = ''
+    if not form_key and cdv.slip_form in ds.FORMS:     # saved on this voucher (CVS-1 A)
+        form_key = cdv.slip_form
     if not form_key:       # the payee's own form, else its bank's (owner, 10 Nov 2026: "VS-2 A, VS-3 A")
-        payee = ds.cdv_payee(cdv)
-        form_key, notice = ds.pick_form(payee.deposit_slip_form if payee else None, deposit_bank,
-                                        payee=cdv.payee_type or 'vendor')
+        form_key, notice = ds.cdv_default_form(cdv)
     log_audit(module='cash_disbursements', action='print_deposit_slip', record_id=cdv.id,
               record_identifier=cdv.cdv_number, notes=f'check {cdv.check_number} / {form_key}')
     # Bank/Branch kept per cash account (owner, 13 Nov 2026: "BB-1 A")
@@ -2124,7 +2124,63 @@ def print_deposit_slip(id):
         save_url=url_for('cash_disbursements.save_deposit_slip_layout', form_key=form_key),
         notice=notice,
         deposit_to=ds.deposit_to_line(deposit_bank, values['account_name'], values['account_number']),
-        bank_keep=bank_keep)
+        bank_keep=bank_keep,
+        voucher_save={'save_url': url_for('cash_disbursements.save_deposit_slip_on_voucher', id=cdv.id),
+                      'reset_url': url_for('cash_disbursements.reset_deposit_slip_on_voucher', id=cdv.id),
+                      'saved': ds.voucher_saved(cdv)})
+
+
+def _deposit_slip_refusal(cdv):
+    """Why this CDV cannot have a deposit slip, or None. Shared by the slip page and by Save /
+    Use the defaults (CVS-2 A, owner 14 Nov 2026: whoever may print the voucher's cheque and slip
+    may save its slip details -- the same status rule as Print Check)."""
+    if cdv.payment_method != 'check':
+        return 'This voucher is not paid by check.'
+    access = AppSettings.get_setting('cd_check_print_access', 'posted_only')
+    status_ok = access != 'hidden' and (
+        (cdv.status == 'posted') if access != 'draft_and_posted'
+        else (cdv.status not in ('voided', 'cancelled')))
+    if not status_ok:
+        return 'This voucher is not eligible for a deposit slip.'
+    if not (cdv.check_number or '').strip():
+        return 'A check number is required to print a deposit slip.'
+    if (cdv.total_amount or 0) <= 0:
+        return 'Cannot print a deposit slip for a zero amount.'
+    return None
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/deposit-slip/save', methods=['POST'])
+@login_required
+def save_deposit_slip_on_voucher(id):
+    """'Save on this voucher' (CVS-1 A, owner 14 Nov 2026): keep this voucher's Account Name,
+    Account Number, Bank/Branch and slip form -- only what differs from the defaults. Nothing is
+    written to any master. Answers JSON."""
+    from app.common import deposit_slip as ds
+    cdv = _get_cdv_or_404(id)
+    refusal = _deposit_slip_refusal(cdv)
+    if refusal:
+        return jsonify(ok=False, error=refusal), 400
+    raw = request.get_json(silent=True) or {}
+    form_key = raw.get('form') if raw.get('form') in ds.FORMS else None
+    ds.save_on_voucher(cdv, raw, form_key, current_user.username)
+    db.session.commit()
+    values, _bank = ds.cdv_values(cdv)
+    return jsonify(ok=True, saved=ds.voucher_saved(cdv), values=values,
+                   source=ds.cdv_check_bank(cdv)[1])
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/deposit-slip/reset', methods=['POST'])
+@login_required
+def reset_deposit_slip_on_voucher(id):
+    """'Use the defaults' (CVS-1 A): forget what was saved on this voucher. Answers JSON."""
+    from app.common import deposit_slip as ds
+    cdv = _get_cdv_or_404(id)
+    refusal = _deposit_slip_refusal(cdv)
+    if refusal:
+        return jsonify(ok=False, error=refusal), 400
+    ds.clear_voucher(cdv, current_user.username)
+    db.session.commit()
+    return jsonify(ok=True, saved=False)
 
 
 @cash_disbursements_bp.route('/cash-disbursements/<int:id>/deposit-slip-bank', methods=['POST'])

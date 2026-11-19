@@ -303,9 +303,13 @@ def keep_bank(cash_account_id, text, username):
     return clean
 
 
-def cdv_check_bank(cdv, bank_acct=None):
-    """(Bank/Branch, the line saying where it came from) for a CDV's slip: the value kept for
-    its cash account, else the Bank Accounts master's bank name, else the voucher's Bank."""
+def cdv_check_bank(cdv, bank_acct=None, use_saved=True):
+    """(Bank/Branch, the line saying where it came from) for a CDV's slip: the value saved on
+    this voucher (CVS-1 A), else the value kept for its cash account, else the Bank Accounts
+    master's bank name, else the voucher's Bank. `use_saved=False` gives the default the
+    voucher's own value is measured against."""
+    if use_saved and (cdv.slip_check_bank or '').strip():
+        return cdv.slip_check_bank, 'Saved on this voucher.'
     label = cash_account_label(cdv.cash_account_id)
     kept = kept_bank(cdv.cash_account_id)
     if kept:
@@ -325,7 +329,79 @@ def cdv_payee(cdv):
     return cdv.vendor if cdv.payee_type == 'vendor' else None
 
 
-def cdv_values(cdv):
+def cdv_values(cdv, use_saved=True):
+    """(values, deposit bank) for a CDV's slip: the defaults (cdv_default_values) with what was
+    saved on this voucher on top (CVS-1 A). Cheque number and amounts always come from the
+    voucher itself."""
+    values, deposit_bank = cdv_default_values(cdv)
+    if use_saved:
+        for key, col in SAVED_FIELDS.items():
+            saved = getattr(cdv, col)
+            if saved is not None and saved.strip() != '':
+                values[key] = saved
+    return values, deposit_bank
+
+
+#: Slip box -> the CDV column that keeps this voucher's own value (CVS-1 A, cdvslip_0001).
+SAVED_FIELDS = {'account_name': 'slip_account_name', 'account_number': 'slip_account_number',
+                'check_bank': 'slip_check_bank'}
+_SAVED_MAX = {'slip_account_name': 200, 'slip_account_number': 50, 'slip_check_bank': 100}
+
+
+def voucher_saved(cdv):
+    return any(getattr(cdv, c) for c in list(SAVED_FIELDS.values()) + ['slip_form'])
+
+
+def cdv_default_form(cdv):
+    """The slip form a CDV opens on when nothing is saved: the payee's own, else its bank's."""
+    payee = cdv_payee(cdv)
+    _values, deposit_bank = cdv_default_values(cdv)
+    return pick_form(payee.deposit_slip_form if payee else None, deposit_bank,
+                     payee=cdv.payee_type or 'vendor')
+
+
+def _slip_audit_values(cdv):
+    return {c: getattr(cdv, c) for c in list(SAVED_FIELDS.values()) + ['slip_form']}
+
+
+def save_on_voucher(cdv, raw, form_key, username):
+    """Keep this voucher's slip boxes and form, ONLY where they differ from the defaults (so
+    the defaults stay live), and audit it. Nothing is written to any master. Caller commits."""
+    old = _slip_audit_values(cdv)
+    defaults, _bank = cdv_default_values(cdv)
+    defaults['check_bank'] = cdv_check_bank(cdv, use_saved=False)[0]
+    raw = raw or {}
+    for key, col in SAVED_FIELDS.items():
+        value = str(raw.get(key) or '').strip()[:_SAVED_MAX[col]]
+        setattr(cdv, col, value if value != (defaults.get(key) or '').strip() else None)
+    default_form = cdv_default_form(cdv)[0]
+    cdv.slip_form = form_key if (form_key in FORMS and form_key != default_form) else None
+    log_audit(module='cash_disbursements', action='save_deposit_slip', record_id=cdv.id,
+              record_identifier=cdv.cdv_number, old_values=old, new_values=_slip_audit_values(cdv),
+              notes=f'Deposit slip details saved on this voucher by {username}')
+
+
+def clear_voucher(cdv, username):
+    """'Use the defaults': forget everything saved on this voucher. Caller commits."""
+    old = _slip_audit_values(cdv)
+    for col in list(SAVED_FIELDS.values()) + ['slip_form']:
+        setattr(cdv, col, None)
+    log_audit(module='cash_disbursements', action='reset_deposit_slip', record_id=cdv.id,
+              record_identifier=cdv.cdv_number, old_values=old, new_values=_slip_audit_values(cdv),
+              notes=f'Deposit slip back to the defaults, by {username}')
+
+
+def voucher_deposit_to(cdv):
+    """The CDV page's line when this voucher keeps its own slip details, else ''."""
+    if not voucher_saved(cdv):
+        return ''
+    values, _bank = cdv_values(cdv)
+    parts = [p for p in (values['account_name'], values['account_number']) if p]
+    return ('Deposit slip to ' + ', '.join(parts) + ' (saved on this voucher)') if parts else \
+        'Deposit slip details saved on this voucher'
+
+
+def cdv_default_values(cdv):
     """(values, deposit bank) for Philgen's own cheque deposited into the payee's account.
 
     The payee's account, from the vendor's or the employee's bank details (employees since
@@ -344,7 +420,7 @@ def cdv_values(cdv):
         'account_name': name or cdv.vendor_name or '',
         'account_number': ((payee.bank_account_number or '').strip() if payee else ''),
         'total_amount': amount,
-        'check_bank': cdv_check_bank(cdv, bank_acct)[0],
+        'check_bank': cdv_check_bank(cdv, bank_acct, use_saved=False)[0],
         'check_number': (cdv.check_number or '').strip(),
         'check_amount': amount,
     }
@@ -372,11 +448,13 @@ def crv_values(crv):
     return values, (bank_acct.bank_name if bank_acct else '')
 
 
-def render_slip(title, form_key, values, form_url, save_url, notice='', deposit_to='', bank_keep=None):
+def render_slip(title, form_key, values, form_url, save_url, notice='', deposit_to='', bank_keep=None,
+                voucher_save=None):
     """The slip page: the values at the form's layout positions, editable before printing;
     for full-access users it doubles as the layout designer, as the cheque page does.
     `bank_keep` (a CDV slip only: {'source', 'account', 'url'}) adds the line under Bank/Branch
-    saying where it came from and, for full access, the Keep button."""
+    saying where it came from and, for full access, the Keep button. `voucher_save` (a CDV slip:
+    {'save_url', 'reset_url', 'saved'}) adds "Save on this voucher" / "Use the defaults" (CVS-1 A)."""
     from datetime import date
     from flask import render_template
     from flask_login import current_user
@@ -388,7 +466,7 @@ def render_slip(title, form_key, values, form_url, save_url, notice='', deposit_
         date_formats=DATE_FORMATS,
         date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()},
         today=ph_now().date(), form_url=form_url, save_url=save_url, notice=notice, deposit_to=deposit_to,
-        bank_keep=bank_keep, can_edit_layout=current_user.has_full_access)
+        bank_keep=bank_keep, voucher_save=voucher_save, can_edit_layout=current_user.has_full_access)
 
 
 def save_layout(form_key, raw, username):

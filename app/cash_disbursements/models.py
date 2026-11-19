@@ -47,6 +47,15 @@ class CashDisbursementVoucher(RowVersioned, db.Model):
     # to the payee master, as before.
     check_payee_name = db.Column(db.String(200))
 
+    # This voucher's own deposit-slip details (CVS-1 A, owner 14 Nov 2026; migration cdvslip_0001):
+    # ONLY what differs from the defaults (payee master, kept Bank/Branch, the payee's slip form),
+    # so the defaults stay live. NULL = use the default. Never written back to any master.
+    # app/common/deposit_slip.py reads and writes them.
+    slip_account_name = db.Column(db.String(200))
+    slip_account_number = db.Column(db.String(50))
+    slip_check_bank = db.Column(db.String(100))
+    slip_form = db.Column(db.String(30))
+
     #: Methods that pay INTO the vendor's bank account, so the voucher shows that account
     #: (vendor bank details, 2026-09-23) the way a check payment shows its check details.
     DEPOSIT_METHODS = ('bank_transfer', 'online')

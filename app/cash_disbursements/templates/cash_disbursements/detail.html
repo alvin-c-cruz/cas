@@ -161,10 +161,23 @@
         {{ field('Check Date', cdv.effective_check_date.strftime('%b %d, %Y') if cdv.effective_check_date else '—') }}
         {{ field('Bank', cdv.check_bank or '—') }}
         {{ field('Pay to (on cheque)', cdv.check_payee_name or '—') }}
+        {#- CVS-3 A (owner, 14 Nov 2026): the cheque names someone other than the payee. -#}
+        {% if cheque_to_other %}
+        <div data-cdv-cheque-to-other style="font-size:12px;font-weight:600;color:var(--amber);text-align:right;">Cheque to {{ cheque_to }}, not to {{ payee_name }}</div>
+        {% endif %}
+        {#- CVS-1 A: this voucher's own deposit slip details. -#}
+        {% if slip_deposit_to %}
+        <div data-cdv-deposit-to style="font-size:12px;color:var(--text-2);text-align:right;">{{ slip_deposit_to }}</div>
+        {% endif %}
         {% endif %}
         {{ field('Cash / Bank Acct', (cdv.cash_account.code ~ ' — ' ~ cdv.cash_account.name) if cdv.cash_account else '—') }}
       </div>
       <div style="display:flex;flex-direction:column;gap:16px;">
+        {#- CVS-4 A (owner, 14 Nov 2026): a reimbursement cheque (to someone other than the payee)
+            that still withholds. Whether to withhold is the owner's accounting call; CAS only asks. -#}
+        {% if wt_other_payee %}
+        <div class="alert alert-warning" data-cdv-wt-other-payee>The cheque goes to {{ cheque_to }}, not to {{ payee_name }}. If someone else paid {{ payee_name }} in full, check the withholding: {{ '{:,.2f}'.format(cdv.total_wt or 0) }} withheld here comes out of what the person who paid gets back.</div>
+        {% endif %}
         <div>
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-bottom:6px;">Vendor</div>
           <div style="border:2px solid var(--green,#22c55e);background:var(--alert-success-bg);border-radius:8px;padding:16px 20px;">

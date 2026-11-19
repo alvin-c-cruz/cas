@@ -141,6 +141,8 @@
             {{ render_field(form.check_date) }}
             {{ render_field(form.check_bank) }}
             {{ render_field(form.check_payee_name) }}
+            {#- CVS-4 A (owner, 14 Nov 2026): shown by updateWtOtherPayeeWarning(). Never blocks. -#}
+            <div id="cdvWtOtherPayeeWarning" class="alert alert-warning" style="display:none;font-size:12px;"></div>
           </div>
 
           <!-- Cash/Bank Account (Choices.js) -->
@@ -1096,6 +1098,8 @@ function recalculate() {
     document.getElementById('vatAddBackDisplay').textContent  = fmt(vatUsed);
     if (!wtOverrideActive)  document.getElementById('wtDisplay').textContent  = '-' + fmt(wtUsed);
     document.getElementById('totalDisplay').textContent = fmt(total);
+    cdvLastWtUsed = wtUsed;               // CVS-4 A
+    updateWtOtherPayeeWarning();
 
     renderCdvJEPreview(apApplied, vatUsed, wtUsed, total);
     validateForm();
@@ -1325,6 +1329,39 @@ function serializeData() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+// CVS-4 A (owner, 14 Nov 2026): the cheque goes to someone other than the payee (a reimbursement,
+// often CASH) while the voucher withholds -- say so; never block. Whether to withhold is the
+// owner's accounting call; this only puts the question in front of the preparer.
+let cdvLastWtUsed = 0;
+function updateWtOtherPayeeWarning() {
+    const box = document.getElementById('cdvWtOtherPayeeWarning');
+    if (!box) return;
+    const method = document.getElementById('payment_method');
+    const payTo = ((document.getElementById('check_payee_name') || {}).value || '').trim();
+    const sel = document.getElementById('payee');
+    let payee = '';
+    if (sel && sel.selectedIndex > 0) {
+        const txt = sel.options[sel.selectedIndex].text;
+        const i = txt.indexOf(' : ');
+        payee = (i >= 0 ? txt.slice(i + 3) : txt).replace(/\s*\[(Vendor|Employee)\]\s*$/, '').trim();
+    }
+    const other = payTo && payee && payTo.toLowerCase() !== payee.toLowerCase();
+    if ((!method || method.value === 'check') && other && cdvLastWtUsed > 0) {
+        box.textContent = 'The cheque goes to ' + payTo + ', not to ' + payee + '. If someone else paid '
+            + payee + ' in full, check the withholding: ' + fmt(cdvLastWtUsed)
+            + ' withheld here comes out of what the person who paid gets back.';
+        box.style.display = 'block';
+    } else {
+        box.style.display = 'none';
+    }
+}
+document.addEventListener('input', function (e) {
+    if (e.target && e.target.id === 'check_payee_name') updateWtOtherPayeeWarning();
+});
+document.addEventListener('change', function (e) {
+    if (e.target && (e.target.id === 'payee' || e.target.id === 'payment_method')) updateWtOtherPayeeWarning();
+});
 
 // ── Restore state on edit ────────────────────────────────────────────────────
 {% if cdv %}
