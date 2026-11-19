@@ -29,12 +29,17 @@ def format_value(value):
     """Format value for export (convert dates, decimals, etc.)"""
     if value is None:
         return ''
+    elif isinstance(value, bool):           # before int/float: True is an int
+        return 'Yes' if value else 'No'
     elif isinstance(value, (date, datetime)):
         return value.strftime('%Y-%m-%d') if isinstance(value, date) else value.strftime('%Y-%m-%d %H:%M:%S')
     elif isinstance(value, Decimal):
         return float(value)
-    elif isinstance(value, bool):
-        return 'Yes' if value else 'No'
+    elif isinstance(value, (int, float)):
+        # A number stays a number. It used to go through str(), so float amounts (the General
+        # Ledger's, among others) landed in Excel as TEXT and a SUM skipped them (GLX A, owner
+        # 14 Nov 2026; work order 2026-11-09-recommendation-gl-export-format).
+        return value
     else:
         return str(value)
 

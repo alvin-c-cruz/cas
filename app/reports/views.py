@@ -761,11 +761,14 @@ def general_ledger_export_excel():
     rb = _basis()
     ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id, reporting_basis=rb)
     _attach_source_links(ledger, branch_id)
-    rows = _flatten_ledger(ledger)
-    return export_to_excel(
-        rows, _GL_COLUMNS, _GL_HEADERS,
+    # GLX A (owner, 14 Nov 2026): the owner's layout -- company, account, title, period, a live
+    # running balance -- see app/reports/gl_export.py. The CSV export keeps the flat rows.
+    from app.reports.gl_export import gl_excel_response
+    from app.settings import AppSettings
+    return gl_excel_response(
+        ledger, start_date, end_date, AppSettings.get_setting('company_name', '') or '',
         filename=f'general_ledger_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx',
-        title=f'General Ledger - {start_date.isoformat()} to {end_date.isoformat()}' + (f' - {OWNERS_NOTE}' if rb == OWNERS else ''))
+        note=OWNERS_NOTE if rb == OWNERS else None)
 
 
 @reports_bp.route('/reports/general-ledger/export/csv')
