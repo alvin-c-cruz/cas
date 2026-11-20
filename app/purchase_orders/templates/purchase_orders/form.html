@@ -97,6 +97,8 @@
            changes this order only. Left blank, the printout shows an empty ruled
            line to sign by hand. #}
         <div class="form-row-3" style="margin-top:12px;">
+          {# RICL-4d: filled from the requisition when its lines are pulled (below); editable. #}
+          <div class="form-group">{{ form.requested_by.label(class='form-label') }} {{ form.requested_by(class="form-control") }}</div>
           <div class="form-group">{{ form.prepared_by.label(class='form-label') }} {{ form.prepared_by(class="form-control") }}</div>
           <div class="form-group">{{ form.checked_by.label(class='form-label') }} {{ form.checked_by(class="form-control") }}</div>
           <div class="form-group">{{ form.approved_by.label(class='form-label') }} {{ form.approved_by(class="form-control") }}</div>
@@ -746,6 +748,10 @@
           // and inventing one here would defeat the PR/PO split.
         });
         appended += 1;
+        {# Requested by starts from the first requisition pulled (its Prepared by, else its creator); a name
+           already there, typed or pulled, is left alone. #}
+        const reqEl = document.getElementById('requested_by');
+        if (reqEl && !reqEl.value && row.requested_by) reqEl.value = row.requested_by;
       });
       if (appended) blanksBefore.forEach(tr => tr.remove());
       modal.style.display = 'none';

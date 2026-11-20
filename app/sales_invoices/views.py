@@ -689,6 +689,22 @@ def _unbill_drs(invoice):
         dr.sales_invoice_id = None
 
 
+def _dr_delivery_site(dr):
+    """The delivery site(s) of the SO lines this DR delivered, once each, '; '-joined; None when none has one.
+
+    Starts the SI's typed Delivery Address on a DR pull (RICL-4e). Sites carry only a name (no address column, owner
+    decision), so the name is what the box starts with."""
+    from app.sales_orders.models import SalesOrderItem
+    ids = [li.sales_order_item_id for li in dr.line_items if li.sales_order_item_id]
+    if not ids:
+        return None
+    names = []
+    for soi in SalesOrderItem.query.filter(SalesOrderItem.id.in_(ids)).order_by(SalesOrderItem.line_number).all():
+        if soi.delivery_site and soi.delivery_site.name not in names:
+            names.append(soi.delivery_site.name)
+    return '; '.join(names) or None
+
+
 @sales_invoices_bp.route('/sales-invoices/billable-drs')
 @login_required
 def billable_drs():
@@ -758,6 +774,8 @@ def billable_drs():
         out.append({'id': dr.id, 'dr_number': dr.dr_number,
                     'delivery_date': dr.delivery_date.isoformat() if dr.delivery_date else None,
                     'customer_po_number': dr.sales_order.customer_po_number if dr.sales_order else None,
+                    'so_number': dr.sales_order.so_number if dr.sales_order else None,
+                    'delivery_site': _dr_delivery_site(dr),
                     'lines': lines})
     return jsonify({'consolidate': _si_billing_consolidate(), 'drs': out})
 
@@ -913,6 +931,8 @@ def create():
                 customer_address=cust.address,
                 customer_po_number=form.customer_po_number.data or None,
                 customer_po_date=form.customer_po_date.data or None,
+                so_number=(form.so_number.data or '').strip() or None,
+                delivery_address=(form.delivery_address.data or '').strip() or None,
                 salesperson_id=(form.salesperson_id.data or None),
                 payment_terms=form.payment_terms.data,
                 reference=form.reference.data,
@@ -1098,6 +1118,8 @@ def edit(id):
             invoice.customer_address = cust.address
             invoice.customer_po_number = form.customer_po_number.data or None
             invoice.customer_po_date = form.customer_po_date.data or None
+            invoice.so_number = (form.so_number.data or '').strip() or None
+            invoice.delivery_address = (form.delivery_address.data or '').strip() or None
             invoice.payment_terms = form.payment_terms.data
             invoice.reference = form.reference.data
             if current_user.has_full_access:
@@ -1650,8 +1672,12 @@ def print_invoice(id):
         billed_drs = (DeliveryReceipt.query.filter_by(sales_invoice_id=invoice.id)
                       .order_by(DeliveryReceipt.delivery_date, DeliveryReceipt.id).all())
         dr_numbers = ', '.join(d.dr_number for d in billed_drs) or (invoice.reference or '')
+        # SO No. (RICL-4a): the sales orders behind those DRs, once each in delivery order; else as typed.
+        linked_sos = list(dict.fromkeys(d.sales_order.so_number for d in billed_drs if d.sales_order))
+        so_numbers = ', '.join(linked_sos) or (invoice.so_number or '')
         return render_template(
             'sales_invoices/print_preprinted.html', invoice=invoice, dr_numbers=dr_numbers,
+            so_numbers=so_numbers,
             je_entries=je_entries, company=company, printed_at=ph_now(),
             layout=get_layout(invoice.branch_id), can_edit_layout=can_edit_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,

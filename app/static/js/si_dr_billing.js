@@ -45,6 +45,17 @@
     if (poEl && !poEl.value && dr.customer_po_number) {
       poEl.value = dr.customer_po_number;
     }
+    // RIC's form (RICL-4a / 4e): the SO No. and the delivery site start from the DR's sales order. A second DR on
+    // a consolidated invoice adds its SO once; an address already typed or pulled is left alone.
+    var soEl = document.getElementById('so_number');
+    if (soEl && dr.so_number) {
+      var sos = soEl.value ? soEl.value.split(/\s*,\s*/) : [];
+      if (sos.indexOf(dr.so_number) === -1) { sos.push(dr.so_number); soEl.value = sos.join(', '); }
+    }
+    var addrEl = document.getElementById('delivery_address');
+    if (addrEl && !addrEl.value && dr.delivery_site) {
+      addrEl.value = dr.delivery_site;
+    }
     sync();
     if (typeof window.refreshNotesAutofill === 'function') { window.refreshNotesAutofill(); }
     pulled = true;

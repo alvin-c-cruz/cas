@@ -52,6 +52,11 @@ class SalesInvoice(RowVersioned, db.Model):
 
     # Customer PO / reference
     customer_po_number = db.Column(db.String(100))
+    # RIC's pre-printed SI (RICL-4a / 4e, migration riclay_0001). `so_number` is the typed SO No.; the print
+    # prefers the sales orders behind the DRs this invoice bills. `delivery_address` is typed, started from the
+    # SO line's delivery site when the invoice is pulled from a DR (si_dr_billing.js).
+    so_number = db.Column(db.String(100))
+    delivery_address = db.Column(db.Text)
     customer_po_date = db.Column(db.Date)
 
     # Payment terms
@@ -207,6 +212,8 @@ class SalesInvoice(RowVersioned, db.Model):
             'salesperson_id': self.salesperson_id,
             'salesperson_name': self.salesperson.full_name if self.salesperson else None,
             'customer_po_number': self.customer_po_number,
+            'so_number': self.so_number,
+            'delivery_address': self.delivery_address,
             'payment_terms': self.payment_terms,
             'reference': self.reference,
             'ar_trade_account_id': self.ar_trade_account_id,

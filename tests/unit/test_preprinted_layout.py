@@ -131,7 +131,8 @@ class TestFieldHidden:
         # Fields added for Philgen's legacy invoice (3 Nov 2026) start hidden, so a layout
         # saved before they existed prints exactly as it did; every other field starts shown.
         out = sanitize_layout({})
-        hidden_by_default = {'dr_number', 'customer_business_style'}
+        # RIC's SO No. and Delivery Address (RICL-4a / 4e, 19 Nov 2026) start hidden too.
+        hidden_by_default = {'dr_number', 'customer_business_style', 'so_number', 'delivery_address'}
         assert all(f['hidden'] is (k in hidden_by_default) for k, f in out['fields'].items())
 
     def test_field_can_be_hidden_and_round_trips(self):

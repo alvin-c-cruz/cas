@@ -1,0 +1,20 @@
+{#- Custom paper size (RICL-1 A) and whole-page shift (RICL-2 A), shared by every pre-printed print page and the cheque.
+    Included right after the paper picker (<select id="ppPaper">); pp_paper.js shows it while the designer is in edit
+    mode, the size boxes only when "Custom size" is chosen. The shift moves the whole print on paper only: the screen
+    keeps the designer's geometry, as with the deposit slip's "Nudge print (mm)". Values come from the sanitized layout
+    (app/common/print_paper.py), so they are plain numbers; an unsaved layout in the older modules is their raw
+    defaults, without these keys, hence the fallbacks. -#}
+{%- set _pp_size = layout.paperSize or pp_paper.DEFAULT_PAPER_SIZE -%}
+{%- set _pp_off = layout.offset or {'x': 0.0, 'y': 0.0} -%}
+<span id="ppPaperExtra" class="screen-only" style="display:none;">
+  <span id="ppCustomSize" title="Custom paper size, in inches">
+    W <input type="number" id="ppPaperW" step="0.01" min="{{ pp_paper.W_MIN_IN }}" max="{{ pp_paper.W_MAX_IN }}" value="{{ _pp_size.w }}" style="width:5em;">
+    &times; H <input type="number" id="ppPaperH" step="0.01" min="{{ pp_paper.H_MIN_IN }}" max="{{ pp_paper.H_MAX_IN }}" value="{{ _pp_size.h }}" style="width:5em;"> in
+  </span>
+  <span title="Moves the whole print on paper, set from a test print: + is right / down">
+    Shift whole page (mm): X <input type="number" id="ppShiftX" step="0.1" min="-{{ pp_paper.OFFSET_MAX_MM }}" max="{{ pp_paper.OFFSET_MAX_MM }}" value="{{ _pp_off.x }}" style="width:4.5em;">
+    Y <input type="number" id="ppShiftY" step="0.1" min="-{{ pp_paper.OFFSET_MAX_MM }}" max="{{ pp_paper.OFFSET_MAX_MM }}" value="{{ _pp_off.y }}" style="width:4.5em;">
+  </span>
+</span>
+<style id="ppShiftStyle">@media print { #ppCanvas { transform: translate({{ _pp_off.x }}mm, {{ _pp_off.y }}mm); } }</style>
+<script src="{{ url_for('static', filename='js/pp_paper.js') }}?v=1"></script>

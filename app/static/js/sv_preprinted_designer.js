@@ -425,6 +425,7 @@
     const em = endMark();
     return {
       paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
+      ...(window.ppPaperExtra ? window.ppPaperExtra() : {}),
       // Echoed back so save_print_layout can verify the invoice's own branch
       // still matches the currently selected branch at SAVE time (a render-time
       // UI gate alone can't catch the selected branch changing between page

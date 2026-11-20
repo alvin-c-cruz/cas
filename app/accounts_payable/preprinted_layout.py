@@ -16,6 +16,7 @@ import json
 from app.settings import AppSettings
 from app.audit.utils import log_audit
 from app.common.preprinted_texts import clean_texts, clean_wrap_width
+from app.common.print_paper import clean_paper
 
 LAYOUT_SETTING_KEY = 'ap_preprinted_layout'
 
@@ -319,7 +320,8 @@ def sanitize_layout(raw):
     """Return a fully-populated, validated layout built from `raw` over the defaults."""
     raw = raw if isinstance(raw, dict) else {}
     d = DEFAULT_APV_PREPRINTED_LAYOUT
-    paper = raw.get('paper') if raw.get('paper') in ALLOWED_PAPERS else d['paper']
+    pap = clean_paper(raw, ALLOWED_PAPERS, d['paper'])   # RICL-1/2: custom size + whole-page shift
+    paper = pap['paper']
     date_fmt = raw.get('dateFormat') if raw.get('dateFormat') in ALLOWED_DATE_FORMATS else d['dateFormat']
     font = (raw.get('page') or {}).get('fontFamily')
     page = {'fontFamily': font if font in ALLOWED_FONTS else d['page']['fontFamily']}
@@ -335,7 +337,8 @@ def sanitize_layout(raw):
         'bold': bool(raw_li.get('bold', dli['bold'])),
         'columns': _clean_columns(raw_li.get('columns')),
     }
-    return {'paper': paper, 'dateFormat': date_fmt, 'extras': _clean_extras(raw.get('extras')),
+    return {'paper': paper, 'paperSize': pap['paperSize'], 'offset': pap['offset'],
+            'dateFormat': date_fmt, 'extras': _clean_extras(raw.get('extras')),
             'texts': clean_texts(raw.get('texts'), DEFAULT_APV_PREPRINTED_LAYOUT['texts']),
             'page': page, 'fields': fields, 'lineItems': line_items,
             'journalEntry': _clean_je(raw.get('journalEntry'))}

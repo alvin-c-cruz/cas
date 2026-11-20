@@ -11,6 +11,7 @@ import json
 from app.settings import AppSettings
 from app.audit.utils import log_audit
 from app.common.preprinted_texts import clean_texts, clean_wrap_width
+from app.common.print_paper import clean_paper
 
 LAYOUT_SETTING_KEY = 'sv_preprinted_layout'
 
@@ -52,6 +53,8 @@ FIELD_KEYS = [
     'customer_name', 'customer_tin', 'customer_address', 'customer_po',
     # Legacy-invoice fields (Philgen, 3 Nov 2026); hidden until placed in the designer.
     'dr_number', 'customer_business_style',
+    # RIC's form (RICL-4a / 4e, 19 Nov 2026); hidden until placed, like every element added after a layout exists.
+    'so_number', 'delivery_address',
     # BIR-standard SI summary
     'gross_sales', 'output_vat', 'net_of_vat', 'wht_amount', 'amount_collectible',
     'notes',
@@ -69,6 +72,8 @@ FIELD_LABELS = {
     'customer_address': 'Address',
     'customer_po': 'PO No.',
     'dr_number': 'DR No.',
+    'so_number': 'SO No.',
+    'delivery_address': 'Delivery Address',
     'customer_business_style': 'Business Style',
     'gross_sales': 'Total Sales (VAT-incl.)',
     'output_vat': 'VAT',
@@ -159,6 +164,8 @@ DEFAULT_SV_PREPRINTED_LAYOUT = {
         'customer_po':        {'x': 60,  'y': 122, 'fontSize': 11, 'bold': False},
         'dr_number':          {'x': 60,  'y': 146, 'fontSize': 11, 'bold': False, 'hidden': True},
         'customer_business_style': {'x': 60, 'y': 170, 'fontSize': 11, 'bold': False, 'hidden': True},
+        'so_number':          {'x': 520, 'y': 170, 'fontSize': 11, 'bold': False, 'hidden': True},
+        'delivery_address':   {'x': 60,  'y': 194, 'fontSize': 11, 'bold': False, 'hidden': True},
         'gross_sales':        {'x': 620, 'y': 470, 'fontSize': 10, 'bold': False},
         'output_vat':         {'x': 620, 'y': 494, 'fontSize': 10, 'bold': False},
         'net_of_vat':         {'x': 620, 'y': 518, 'fontSize': 10, 'bold': False},
@@ -284,7 +291,8 @@ def sanitize_layout(raw):
     """Return a fully-populated, validated layout built from `raw` over the defaults."""
     raw = raw if isinstance(raw, dict) else {}
     d = DEFAULT_SV_PREPRINTED_LAYOUT
-    paper = raw.get('paper') if raw.get('paper') in ALLOWED_PAPERS else d['paper']
+    pap = clean_paper(raw, ALLOWED_PAPERS, d['paper'])   # RICL-1/2: custom size + whole-page shift
+    paper = pap['paper']
     date_fmt = raw.get('dateFormat') if raw.get('dateFormat') in ALLOWED_DATE_FORMATS else d['dateFormat']
     font = (raw.get('page') or {}).get('fontFamily')
     page = {'fontFamily': font if font in ALLOWED_FONTS else d['page']['fontFamily']}
@@ -300,7 +308,8 @@ def sanitize_layout(raw):
         'columns': _clean_columns(raw_li.get('columns')),
         'endMarker': _clean_end_marker(raw_li.get('endMarker')),
     }
-    return {'paper': paper, 'dateFormat': date_fmt, 'extras': _clean_extras(raw.get('extras')),
+    return {'paper': paper, 'paperSize': pap['paperSize'], 'offset': pap['offset'],
+            'dateFormat': date_fmt, 'extras': _clean_extras(raw.get('extras')),
             'texts': clean_texts(raw.get('texts'), DEFAULT_SV_PREPRINTED_LAYOUT['texts']),
             'page': page, 'fields': fields, 'lineItems': line_items}
 

@@ -658,6 +658,7 @@ def create():
                 prepared_by=(form.prepared_by.data or '').strip() or None,
                 checked_by=(form.checked_by.data or '').strip() or None,
                 approved_by=(form.approved_by.data or '').strip() or None,
+                requested_by=(form.requested_by.data or '').strip() or None,
                 status='draft',
                 created_by_id=current_user.id,
             )
@@ -825,6 +826,7 @@ def edit(id):
             po.notes = form.notes.data or ''
             for _sig in PurchaseOrderForm.SIGNATORY_FIELDS:
                 setattr(po, _sig, (getattr(form, _sig).data or '').strip() or None)
+            po.requested_by = (form.requested_by.data or '').strip() or None
 
             db.session.execute(db.delete(PurchaseOrderItem)
                                .where(PurchaseOrderItem.purchase_order_id == po.id))
@@ -981,6 +983,7 @@ def amend(id):
             po.notes = form.notes.data or ''
             for _sig in PurchaseOrderForm.SIGNATORY_FIELDS:
                 setattr(po, _sig, (getattr(form, _sig).data or '').strip() or None)
+            po.requested_by = (form.requested_by.data or '').strip() or None
 
             # UPDATE IN PLACE -- do NOT delete-and-rebuild the way edit() does.
             # See _apply_amended_po_lines: a rebuild strands every

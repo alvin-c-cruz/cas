@@ -32,6 +32,10 @@ class SalesInvoiceForm(RowVersionFormMixin, FlaskForm):
         Optional(), Length(max=100)
     ])
 
+    # RIC's pre-printed SI (RICL-4a / 4e). Both start from the DR pull and stay editable.
+    so_number = StringField('SO No.', validators=[Optional(), Length(max=100)])
+    delivery_address = StringField('Delivery Address', validators=[Optional(), Length(max=500)])
+
     customer_po_date = DateField('Customer PO Date', validators=[Optional()],
                                  format='%Y-%m-%d')
 

@@ -39,6 +39,8 @@ EXPECTED_FIELDS = {
     'prepared_by':     {'x': 60,  'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
     'checked_by':      {'x': 320, 'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
     'approved_by':     {'x': 580, 'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
+    # RICL-4d (riclay_0001): RIC's Requested By line. Hidden on a layout saved before it (hide_unknown).
+    'requested_by':    {'x': 60,  'y': 530, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
 }
 
 EXPECTED_LINE_ITEMS = {
@@ -69,6 +71,7 @@ def test_it_declares_every_po_header_field():
         # Per-order signatories (posig_0001). Positioned FIELDS, not the static
         # TEXT_KEYS other documents use, because the value differs per order.
         'prepared_by', 'checked_by', 'approved_by',
+        'requested_by',   # RICL-4d
     ]
 
 
@@ -91,6 +94,7 @@ def test_the_field_labels_are_pinned_exactly():
         'prepared_by': 'Prepared by',
         'checked_by': 'Checked by',
         'approved_by': 'Approved by',
+        'requested_by': 'Requested by',
     }
 
 

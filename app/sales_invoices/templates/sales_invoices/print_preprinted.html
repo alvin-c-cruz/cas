@@ -1,4 +1,6 @@
 <!DOCTYPE html>
+{#- RICL-1/2: add this layout's custom paper size to the paper list (app/common/print_paper.py) -#}
+{%- set _pp = pp_paper_ctx(layout, paper_sizes, paper_labels) %}{% set paper_sizes = _pp.paper_sizes %}{% set paper_labels = _pp.paper_labels -%}
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -88,6 +90,7 @@
     <option value="{{ key }}" data-w="{{ sz.w }}" data-h="{{ sz.h }}" data-css="{{ sz.css }}" {{ 'selected' if key == layout.paper else '' }}>{{ paper_labels[key] }}</option>
     {% endfor %}
   </select>
+  {% include '_pp_paper_extra.html' %}
   <select id="ppFontFamily" class="screen-only" style="display:none;">
     {% for group, fonts in font_groups %}
     <optgroup label="{{ group }}">
@@ -126,6 +129,8 @@
     'customer_address': invoice.customer_address or '',
     'customer_po': invoice.customer_po_number or '',
     'dr_number': dr_numbers,
+    'so_number': so_numbers,
+    'delivery_address': invoice.delivery_address or '',
     'customer_business_style': (invoice.customer.business_style if invoice.customer else '') or '',
     'gross_sales': '{:,.2f}'.format(invoice.subtotal or 0),
     'output_vat': '{:,.2f}'.format(invoice.vat_amount or 0),

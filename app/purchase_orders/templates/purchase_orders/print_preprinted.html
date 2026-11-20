@@ -1,4 +1,6 @@
 <!DOCTYPE html>
+{#- RICL-1/2: add this layout's custom paper size to the paper list (app/common/print_paper.py) -#}
+{%- set _pp = pp_paper_ctx(layout, paper_sizes, paper_labels) %}{% set paper_sizes = _pp.paper_sizes %}{% set paper_labels = _pp.paper_labels -%}
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -91,6 +93,7 @@
     <option value="{{ key }}" data-w="{{ sz.w }}" data-h="{{ sz.h }}" data-css="{{ sz.css }}" {{ 'selected' if key == layout.paper else '' }}>{{ paper_labels[key] }}</option>
     {% endfor %}
   </select>
+  {% include '_pp_paper_extra.html' %}
   <select id="ppFontFamily" class="screen-only" style="display:none;">
     {% for group, fonts in font_groups %}
     <optgroup label="{{ group }}">
@@ -166,6 +169,7 @@
     'prepared_by': po.prepared_by or '',
     'checked_by': po.checked_by or '',
     'approved_by': po.approved_by or '',
+    'requested_by': po.requested_by or '',
   } %}
   {% set field_isos = {
     'order_date': po.order_date.isoformat() if po.order_date else '',

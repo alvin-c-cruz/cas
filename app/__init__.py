@@ -143,6 +143,13 @@ def create_app(config_name=None):
     app.jinja_env.globals['module_enabled'] = module_enabled
     app.jinja_env.globals['build_sidebar'] = build_sidebar
 
+    # Pre-printed print pages and the cheque: the custom paper size and whole-page shift (RICL-1/2,
+    # app/common/print_paper.py). Each page widens its paper list with pp_paper_ctx, and
+    # _pp_paper_extra.html reads the limits from pp_paper.
+    from app.common import print_paper as _print_paper
+    app.jinja_env.globals['pp_paper_ctx'] = _print_paper.paper_ctx
+    app.jinja_env.globals['pp_paper'] = _print_paper
+
     # products/_quick_add_modal.html needs the category list to render its select.
     # A global, not seven context additions: the partial is included by AP, SI,
     # CDV, CRV, SO, Quotations and PR, and threading `product_categories` through

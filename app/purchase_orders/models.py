@@ -52,7 +52,7 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
         'vendor_tin', 'vendor_address', 'payment_terms', 'reference', 'purpose', 'notes',
         # Header state an amendment must preserve: Rev 0 has to record WHO the
         # order was routed past when it was originally approved.
-        'prepared_by', 'checked_by', 'approved_by',
+        'prepared_by', 'checked_by', 'approved_by', 'requested_by',
         'submitted_by_id', 'submitted_at',
         'vat_treatment', 'status', 'subtotal', 'vat_amount', 'vat_override',
         'total_amount', 'purchase_request_id',
@@ -116,6 +116,11 @@ class PurchaseOrder(Amendable, RowVersioned, db.Model):
     prepared_by = db.Column(db.String(100))
     checked_by = db.Column(db.String(100))
     approved_by = db.Column(db.String(100))
+    # Who asked for it (RICL-4d, owner 17 Nov 2026: "request by should be added and is pre-filled from PR").
+    # Pre-filled on the form from the requisition a pulled line came from (its Prepared by, else its creator),
+    # editable, typed when there is none. Deliberately NOT one of SIGNATORY_FIELDS: it belongs to the
+    # requisition, so it is never carried forward from the purchaser's last order. Migration riclay_0001.
+    requested_by = db.Column(db.String(100))
     vat_treatment = db.Column(db.String(10), default='inclusive', nullable=False)
 
     # Legacy-pad parity (owner directive 2026-08-31, from the annotation on PO 00984:

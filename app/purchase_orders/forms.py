@@ -64,6 +64,8 @@ class PurchaseOrderForm(RowVersionFormMixin, FlaskForm):
     prepared_by = StringField('Prepared by', validators=[Optional(), Length(max=100)])
     checked_by = StringField('Checked by', validators=[Optional(), Length(max=100)])
     approved_by = StringField('Approved by', validators=[Optional(), Length(max=100)])
+    # RICL-4d: filled from the requisition on a pull (form.html), editable; not carried from the last order.
+    requested_by = StringField('Requested by', validators=[Optional(), Length(max=100)])
 
     SIGNATORY_FIELDS = ('prepared_by', 'checked_by', 'approved_by')
 

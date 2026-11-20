@@ -31,6 +31,7 @@ import json
 from app.settings import AppSettings
 from app.audit.utils import log_audit
 from app.common.preprinted_texts import clean_texts
+from app.common.print_paper import clean_paper
 
 # Dot-matrix continuous-form stock: 9.5in x 10.5in. At 96dpi (CSS px) that is the
 # canvas size, so what is dragged on screen maps 1:1 to the printed form.
@@ -539,7 +540,8 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
         """
         raw = raw if isinstance(raw, dict) else {}
         d = default_layout
-        paper = raw.get('paper') if raw.get('paper') in ALLOWED_PAPERS else d['paper']
+        pap = clean_paper(raw, ALLOWED_PAPERS, d['paper'])   # RICL-1/2: custom size + page shift
+        paper = pap['paper']
         date_fmt = raw.get('dateFormat') if raw.get('dateFormat') in ALLOWED_DATE_FORMATS else d['dateFormat']
         # `page` is isinstance-guarded like every sibling key: stored JSON of
         # {"page": "Arial, sans-serif"} or {"page": [1]} parses fine, so an
@@ -562,6 +564,8 @@ def build_layout_api(setting_key, field_keys, default_layout, audit_module, audi
         texts = clean_texts(raw.get('texts'), _texts_defaults(d))
         return {
             'paper': paper,
+            'paperSize': pap['paperSize'],
+            'offset': pap['offset'],
             'dateFormat': date_fmt,
             'page': page,
             'fields': fields,

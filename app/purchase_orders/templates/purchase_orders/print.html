@@ -102,7 +102,8 @@
      derived from created_by/approved_by, which are CAS users while the
      designated signatories frequently are not. #}
   <div class="sig-row">
-    {% for label, name in [('Prepared by', po.prepared_by),
+    {% for label, name in [('Requested by', po.requested_by),
+                           ('Prepared by', po.prepared_by),
                            ('Checked by', po.checked_by),
                            ('Approved by', po.approved_by)] %}
     <div class="sig">

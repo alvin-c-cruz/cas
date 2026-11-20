@@ -23,6 +23,9 @@ FIELD_KEYS = [
     # order -- it is typed on the form and carried forward from this purchaser's
     # own last PO, not a fixed label printed in the same place every time.
     'prepared_by', 'checked_by', 'approved_by',
+    # RIC's pad has a Requested By line (RICL-4d, 19 Nov 2026). A layout saved before it existed (Philgen's) gets
+    # it hidden by hide_unknown, one click from shown; a new branch's default prints it, like every PO field.
+    'requested_by',
 ]
 
 FIELD_LABELS = {
@@ -41,6 +44,7 @@ FIELD_LABELS = {
     'prepared_by': 'Prepared by',
     'checked_by': 'Checked by',
     'approved_by': 'Approved by',
+    'requested_by': 'Requested by',
 }
 
 COLUMN_KEYS = ['line_number', 'pr_number', 'product', 'description', 'quantity',
@@ -100,6 +104,7 @@ DEFAULT_PO_PREPRINTED_LAYOUT = {
         'prepared_by':     {'x': 60,  'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
         'checked_by':      {'x': 320, 'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
         'approved_by':     {'x': 580, 'y': 500, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
+        'requested_by':    {'x': 60,  'y': 530, 'w': 200, 'fontSize': 11, 'bold': False, 'hidden': False},
     },
     # Line items: each column is INDEPENDENTLY positioned (its own x) so it can
     # line up with the pre-printed column boxes; all columns share the band top

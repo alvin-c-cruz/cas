@@ -512,6 +512,7 @@
     if (jeAny) jeLayout.fontSize = parseInt(getComputedStyle(jeAny).fontSize) || jeLayout.fontSize || 9;
     return {
       paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
+      ...(window.ppPaperExtra ? window.ppPaperExtra() : {}),
       dateFormat: (dateSel && dateSel.value) || 'long',
       extras,
       texts,

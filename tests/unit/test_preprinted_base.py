@@ -47,6 +47,10 @@ DEFAULT = {
 # full, as a literal -- NOT derived by calling the sanitiser on DEFAULT.
 EXPECTED_DEFAULT = {
     'paper': 'continuous',
+    # RICL-1/2 (19 Nov 2026): the custom paper size (remembered even on a fixed paper) and the
+    # whole-page print shift in mm joined every layout; app/common/print_paper.py.
+    'paperSize': {'w': 9.5, 'h': 5.5},
+    'offset': {'x': 0.0, 'y': 0.0},
     'dateFormat': 'iso',
     'page': {'fontFamily': FONT},
     'fields': {

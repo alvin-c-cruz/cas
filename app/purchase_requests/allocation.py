@@ -442,6 +442,11 @@ def open_lines_for_branch(branch_id, exclude_po_id=None):
     # per requisition.
     blocked = pr_ids_blocked_by_pending_amendment([pr.id for pr in prs])
     prs = [pr for pr in prs if pr.id not in blocked]
+    # Who asked (RICL-4d): the requisition's Prepared by, else its creator's name. Looked up once.
+    from app.users.models import User
+    creator_ids = {pr.created_by_id for pr in prs if pr.created_by_id}
+    creators = ({u.id: u.full_name for u in User.query.filter(User.id.in_(creator_ids)).all()}
+                if creator_ids else {})
     out = []
     for pr in prs:
         for li in pr.line_items:
@@ -459,6 +464,7 @@ def open_lines_for_branch(branch_id, exclude_po_id=None):
                 # the whole order. Rendered as a chip, not as a filter: pulling
                 # early is the POINT, so the row stays offered.
                 'pr_status': pr.status,
+                'requested_by': (pr.prepared_by or '').strip() or creators.get(pr.created_by_id) or '',
                 'date_needed': pr.date_needed.isoformat() if pr.date_needed else None,
                 'date_needed_asap': bool(pr.date_needed_asap),
                 'product_id': li.product_id,
