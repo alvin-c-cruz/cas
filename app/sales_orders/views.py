@@ -914,6 +914,11 @@ def amend(id):
                 so, current_user.id,
                 reason=(form.amend_reason.data or '').strip(),
                 authorizing_po=(form.authorizing_po_number.data or '').strip() or None)
+            # SO-CLOSED A: an amendment down to what was delivered closes the order. Judged
+            # after write_revision, so the revision records the amendment as confirmed and
+            # the close is its own audited step.
+            from app.sales_orders.closing import sync_status, report_status_changes
+            so_change = sync_status(so)
             db.session.commit()
 
             log_update(
@@ -925,6 +930,8 @@ def amend(id):
 
             flash(f'Sales Order "{so.so_number}" amended '
                   f'(Rev {rev.revision_number}).', 'success')
+            report_status_changes([so_change] if so_change else [],
+                                  f'amended to Rev {rev.revision_number}')
             return redirect(url_for('sales_orders.view', id=so.id))
 
         except ValueError as e:
@@ -1246,15 +1253,18 @@ def close_line(id, item_id):
         flash('You do not have permission to close a Sales Order line.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
 
+    # Checked BEFORE the order's status: closing an order's last open line now closes
+    # the order itself (SO-CLOSED A, app/sales_orders/closing.py), so a repeated close of
+    # that line must still hear "already closed", not "only on a confirmed order".
+    if item.line_status == 'closed':
+        flash('This line is already closed.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
     # Only a confirmed SO has lines worth closing -- a draft SO's lines are edited
     # directly, and a cancelled/closed SO's lines are already fully closed via
     # so_line_open_qty()'s header-status check.
     if so.status != 'confirmed':
         flash('Only lines on a confirmed Sales Order can be closed.', 'error')
-        return redirect(url_for('sales_orders.view', id=id))
-
-    if item.line_status == 'closed':
-        flash('This line is already closed.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
 
     # Note: unlike cancel()'s P-60 billed guard (so_is_billed), close_line
@@ -1296,6 +1306,8 @@ def close_line(id, item_id):
     item.closed_by_id = current_user.id
     item.closed_at = ph_now()
     item.closed_reason = closed_reason
+    from app.sales_orders.closing import sync_status, report_status_changes
+    so_change = sync_status(so)   # SO-CLOSED A: closing the last open line closes the order
     db.session.commit()
 
     log_update(
@@ -1308,4 +1320,5 @@ def close_line(id, item_id):
     )
 
     flash(f'Line {item.line_number} of "{so.so_number}" has been closed.', 'success')
+    report_status_changes([so_change] if so_change else [], f'line {item.line_number} closed short')
     return redirect(url_for('sales_orders.view', id=id))

@@ -475,10 +475,13 @@ def approve(id):
     dr.status = 'approved'
     dr.approved_by_id = current_user.id
     dr.approved_at = ph_now()
+    from app.sales_orders.closing import sync_orders_of_dr, report_status_changes
+    so_changes = sync_orders_of_dr(dr)   # SO-CLOSED A: the order closes when every line is done
     db.session.commit()
     log_audit(module='delivery_receipts', action='approve', record_id=dr.id,
               record_identifier=dr.dr_number, notes='Approved')
     flash(f'Delivery Receipt "{dr.dr_number}" approved.', 'success')
+    report_status_changes(so_changes, f'DR {dr.dr_number} approved')
     return redirect(url_for('delivery_receipts.view', id=id))
 
 
@@ -542,10 +545,13 @@ def cancel(id):
         db.session.rollback()
         flash(str(e), 'error')
         return redirect(url_for('delivery_receipts.view', id=id))
+    from app.sales_orders.closing import sync_orders_of_dr, report_status_changes
+    so_changes = sync_orders_of_dr(dr)   # SO-CLOSED A: released quantity reopens a closed order
     db.session.commit()   # cancelling drops it out of COMMITTED_STATUSES -> qty released
     log_audit(module='delivery_receipts', action='update', record_id=dr.id,
               record_identifier=dr.dr_number, notes=f'Cancelled: {reason}')
     flash(f'Delivery Receipt "{dr.dr_number}" cancelled.', 'warning')
+    report_status_changes(so_changes, f'DR {dr.dr_number} cancelled')
     return redirect(url_for('delivery_receipts.view', id=id))
 
 

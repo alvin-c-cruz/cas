@@ -154,14 +154,21 @@ def so_line_open_qty(so_item, exclude_dr_id=None):
     if so_item.order is not None and so_item.order.status in ('cancelled', 'closed'):
         return Decimal('0')
     ordered = Decimal(str(so_item.quantity or 0))
+    return ordered - so_line_committed_qty(so_item, exclude_dr_id=exclude_dr_id)
+
+
+def so_line_committed_qty(so_item, exclude_dr_id=None):
+    """Quantity of an SO line already committed by DR lines in COMMITTED_STATUSES -- the real
+    figure, with none of so_line_open_qty's header/line-status short-circuits. The SO
+    auto-close (app/sales_orders/closing.py) reads this, because it must judge a CLOSED order's
+    lines too, where so_line_open_qty would answer 0 by its own rule."""
     q = (db.session.query(db.func.coalesce(db.func.sum(DeliveryReceiptItem.delivered_quantity), 0))
          .join(DeliveryReceipt, DeliveryReceiptItem.delivery_receipt_id == DeliveryReceipt.id)
          .filter(DeliveryReceiptItem.sales_order_item_id == so_item.id)
          .filter(DeliveryReceipt.status.in_(COMMITTED_STATUSES)))
     if exclude_dr_id is not None:
         q = q.filter(DeliveryReceipt.id != exclude_dr_id)
-    committed = Decimal(str(q.scalar() or 0))
-    return ordered - committed
+    return Decimal(str(q.scalar() or 0))
 
 
 def so_is_billed(so):
