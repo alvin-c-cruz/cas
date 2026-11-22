@@ -510,7 +510,13 @@ function recomputeDueDate(termsOverride) {
     if (dueDateField) dueDateField.value = due.toISOString().split('T')[0];
 }
 
+// A1 (22 Nov 2026, Philgen trial): the default fills Payment Terms only while the user has not chosen one. Choosing
+// the vendor applied its default every time, so a term picked first -- the dimmed header blocks the mouse, not the
+// keyboard -- was silently replaced and saved (Net 60 for a chosen Net 90). Only the user's own pick fires a change
+// event here: Choices' setChoiceByValue fires none.
+let termsChosenByUser = false;
 function applyVendorTerms(terms) {
+    if (termsChosenByUser) { recomputeDueDate(); return; }
     if (paymentTermsChoices) paymentTermsChoices.setChoiceByValue(terms);
     recomputeDueDate(terms);
 }
@@ -1350,6 +1356,11 @@ const ptSel = document.getElementById('payment_terms');
 if (ptSel) {
     paymentTermsChoices = new Choices(ptSel, {
         searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false
+    });
+    // The due date follows the terms the user chose (it stayed at the default's).
+    ptSel.addEventListener('change', function () {
+        termsChosenByUser = true;
+        recomputeDueDate();
     });
 }
 
