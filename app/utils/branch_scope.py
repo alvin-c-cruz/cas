@@ -34,9 +34,36 @@ the accessibility test.
 A JSON request keeps the 404 as well: an XHR is a background call from a page the
 user is already on, and switching their whole session underneath that page would
 be a surprise, not a convenience.
+
+THE SWITCHER, 22 Nov 2026 (BRANCH-SWITCH B)
+-------------------------------------------
+Relying on the guard alone had one bad case: switching branch FROM a document page.
+The switcher redirected back to the document, the guard switched the session back
+to the document's branch, and the user read "You are now working in: EXTRA" while
+the sidebar and the session said CORP. Owner, 22 Nov 2026: "What I want to happen
+here is that the user will be redirected to the other Branch's Disbursement page",
+then "all 15 modules". So the switcher now has its own rule after all:
+list_url_for_document_page() sends a switch made from a document page to that
+module's list in the new branch. Following a link to another branch's document is
+unchanged -- the guard still switches to the document's branch.
+
+The rule applies whenever a branch was already selected, not only when the new one
+differs: a page left open while the branch was switched in another tab still shows
+the old branch's document. The sign-in branch picker is not the switcher (no branch
+is selected yet) and still takes the user to the page they asked for.
+
+BRANCH-SWITCH-2 (owner, 22 Nov 2026: "A") puts five more modules under the same
+rule: petty cash, production runs, bank accounts, manufacturing departments and
+work centers (SESSION_SCOPED_LIST_ENDPOINTS). They never used the guard; their
+record pages are "not found" in any other branch, which is where the switcher used
+to send the user back to.
 """
-from flask import abort, request, session
+from urllib.parse import urlsplit
+
+from flask import abort, current_app, request, session, url_for
 from flask_login import current_user
+from werkzeug.exceptions import HTTPException
+from werkzeug.routing import BuildError
 
 #: blueprint name -> the module's collection route. Kept from the redirect era:
 #: `list_endpoint` is still accepted by require_same_branch for the two memo
@@ -66,6 +93,59 @@ BRANCH_LIST_ENDPOINTS = {
 #: Where to send someone whose blueprint has no entry and passed none. Never a
 #: dead end, and never a leak -- the dashboard is branch-agnostic.
 FALLBACK_ENDPOINT = 'dashboard.index'
+
+#: The two guarded blueprints with a debit and a credit list. Their endpoints are
+#: named '<kind>_<action>' (credit_view, debit_print ...), so a page's own endpoint
+#: names its list: '<kind>_list'.
+MEMO_BLUEPRINTS = ('purchase_memos', 'sales_memos')
+
+#: blueprint name -> list route, for the modules that do NOT call require_same_branch.
+#: Each loads its record as "this id in the session's branch, else 404"
+#: (`.filter_by(id=id, branch_id=session.get('selected_branch_id')).first_or_404()`),
+#: so a branch switch that returned to one of their record pages met "not found" --
+#: the owner's 22 Sep complaint, never fixed for these five. BRANCH-SWITCH-2 (owner,
+#: 22 Nov 2026: "A") gives them the switcher's rule too. Kept apart from
+#: BRANCH_LIST_ENDPOINTS because tests/unit/test_branch_scope_registry.py ties that
+#: table to the callers of require_same_branch; this one is tied to the lookup above
+#: by tests/integration/test_branch_switch_from_document.py. Petty cash has one list,
+#: its funds; vouchers and replenishments land there.
+SESSION_SCOPED_LIST_ENDPOINTS = {
+    'bank_accounts': 'bank_accounts.list_accounts',
+    'manufacturing_departments': 'manufacturing_departments.list',
+    'petty_cash': 'petty_cash.fund_list',
+    'production_runs': 'production_runs.list',
+    'work_centers': 'work_centers.list',
+}
+
+
+def list_url_for_document_page(next_url):
+    """The list a branch switch should land on when it was made from a document page
+    of a branch-bound module, or None when `next_url` is any other page
+    (BRANCH-SWITCH B, and BRANCH-SWITCH-2 for the five session-scoped modules).
+
+    A document page is a GET route of such a blueprint that takes URL arguments: it
+    is about ONE record, whatever the argument is called -- view, edit, print, a
+    payslip of a run, an SO revision, a requisition's amendment request (`req_id`),
+    a new voucher under one petty cash fund (`fund_id`). Lists, create pages and the
+    dashboard take none. The list endpoint comes from BRANCH_LIST_ENDPOINTS or
+    SESSION_SCOPED_LIST_ENDPOINTS, or for the memo blueprints from the page's own
+    endpoint name."""
+    try:
+        endpoint, args = current_app.url_map.bind('').match(urlsplit(next_url).path, method='GET')
+    except HTTPException:          # no such page, wrong method, or a routing redirect
+        return None
+    if not args:
+        return None
+    blueprint, _, name = endpoint.partition('.')
+    list_endpoint = BRANCH_LIST_ENDPOINTS.get(blueprint) or SESSION_SCOPED_LIST_ENDPOINTS.get(blueprint)
+    if list_endpoint:
+        return url_for(list_endpoint)
+    if blueprint in MEMO_BLUEPRINTS:
+        try:
+            return url_for(f'{blueprint}.{name.split("_")[0]}_list')
+        except BuildError:
+            return None
+    return None
 
 
 def _wants_json():

@@ -243,6 +243,7 @@ def select_branch():
             return render_template('users/select_branch.html', branches=accessible_branches, next_url=next_url)
 
         # Set selected branch
+        previous_branch_id = session.get('selected_branch_id')
         session['selected_branch_id'] = branch_id
         session.pop('needs_branch_selection', None)
 
@@ -258,6 +259,21 @@ def select_branch():
         )
 
         flash(f'You are now working in: {selected_branch.name}', 'success')
+        # BRANCH-SWITCH B (owner, 22 Nov 2026): a switch made FROM a document page goes
+        # to that module's list in the new branch. Returning to the document would let
+        # its branch guard switch the session straight back (app/utils/branch_scope.py).
+        #
+        # "A branch was already selected" is what tells the sidebar switcher from the
+        # sign-in picker: validate_branch_session only sends a user to the picker with
+        # NO valid branch in the session, and that user asked for the page in `next`, so
+        # the picker still takes them to it. Deliberately NOT compared with the new
+        # branch: when the branch was already switched in another tab, this page still
+        # shows the old branch's document, and going back to it would flip the session.
+        if previous_branch_id is not None:
+            from app.utils.branch_scope import list_url_for_document_page
+            list_url = list_url_for_document_page(next_url)
+            if list_url:
+                return redirect(list_url)
         return redirect(next_url)
 
     return render_template('users/select_branch.html', branches=accessible_branches, next_url=next_url)
