@@ -134,7 +134,7 @@
         <td>{{ item.line_number }}</td>
         <td>{{ item.description or '—' }}</td>
         {% if module_enabled('products') %}
-        <td>{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}</td>
+        <td>{% if item.product %}{{ item.product.name }}{% else %}—{% endif %}</td>
         {% endif %}
         {% if module_enabled('units_of_measure') %}
         <td class="amount">{{ item | qty_fmt('—') }}</td>

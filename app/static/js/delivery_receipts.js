@@ -130,7 +130,7 @@
     (soLines[orderId] || []).forEach(function (r) {
       var tr = make('tr');
       cell(tr, r.line_number);
-      cell(tr, r.product_code ? r.product_code + ': ' + r.product_name : r.product_name);
+      cell(tr, r.product_name);           // the product code is retired from display (owner, 9 Sep 2026)
       cell(tr, r.uom || '');
       cell(tr, r.ordered, 'text-right dr-col-so');
       cell(tr, r.delivered, 'text-right dr-col-so');

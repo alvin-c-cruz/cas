@@ -173,7 +173,7 @@
                     <tr>
                         <td>{{ item.line_number }}</td>
                         <td style="font-size:12px; color:var(--text-2);">
-                            {% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
+                            {% if item.product %}{{ item.product.name }}{% else %}—{% endif %}
                         </td>
                         <td style="text-align:right; font-family:var(--mono);">{{ item | qty_fmt('—') }}</td>
                         <td style="font-size:12px;">

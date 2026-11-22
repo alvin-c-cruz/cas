@@ -226,7 +226,7 @@
             <td>{{ rev.line_number }}</td>
             {% if module_enabled('products') %}
             <td style="font-size:12px;">
-              {%- if rev.product %}{{ rev.product.code }} — {{ rev.product.name }}{% else %}—{% endif %}
+              {%- if rev.product %}{{ rev.product.name }}{% else %}—{% endif %}
             </td>
             {% endif %}
             <td>{{ rev.description or '—' }}</td>

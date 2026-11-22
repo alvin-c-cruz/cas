@@ -271,7 +271,7 @@ function addLineItem(existingItem) {
         <td style="text-align:center; color:var(--text-2); font-size:12px; white-space:nowrap;" class="line-num-cell">${rowNum}</td>
         <td><select class="form-control" id="prod-sel-${id}" onchange="onProductPick(${id}, this.value)">
               <option value="">— select product —</option>
-              ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
+              ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.name)}</option>`).join('')}
               ${productMasterOn ? '<option value="__add_product__">+ Add Product…</option>' : ''}
             </select></td>
         <td><input type="number" step="0.0001" min="0" id="qty-${id}" class="form-control"
@@ -347,7 +347,7 @@ function addProductOptionToAllLineSelects(p) {
     document.querySelectorAll('select[id^="prod-sel-"]').forEach(sel => {
         const opt = document.createElement('option');
         opt.value = String(p.id);
-        opt.textContent = `${p.code} — ${p.name}`;
+        opt.textContent = p.name;
         const sentinel = sel.querySelector('option[value="__add_product__"]');
         if (sentinel) sel.insertBefore(opt, sentinel); else sel.appendChild(opt);
     });

@@ -437,7 +437,7 @@ function addLineItem(existingItem) {
         <td><select class="form-control" id="prod-sel-${id}" required onchange="onProductPick(${id}, this.value)">
               <option value="">— select product —</option>
               ${productMasterOn ? '<option value="__add_product__">+ Add Product</option>' : ''}
-              ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
+              ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.name)}</option>`).join('')}
             </select></td>
         <td><input type="text" id="qty-${id}" class="form-control"
                    style="text-align:right;"
@@ -627,7 +627,7 @@ function onProductPick(id, productId) {
                              default_account_id: p.default_account_id });
             if (lineChoices[id] && lineChoices[id].prod) {
                 lineChoices[id].prod.setChoices(
-                    [{ value: String(p.id), label: escHtml(p.code) + ': ' + escHtml(p.name), customProperties: { name: p.name } }],
+                    [{ value: String(p.id), label: escHtml(p.name), customProperties: { name: p.name } }],
                     'value', 'label', false
                 );
                 lineChoices[id].prod.setChoiceByValue(String(p.id));

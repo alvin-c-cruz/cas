@@ -59,17 +59,15 @@ def test_print_shows_the_product_name_without_its_code(client, db_session, admin
     assert f'{CODE} — {NAME}' not in html
 
 
-def test_the_detail_page_still_shows_the_code(client, db_session, admin_user, main_branch,
-                                              sales_orders_module_enabled):
-    """CONTROL: only the PRINTOUT drops the code.
-
-    Internal screens still need it to tell two similarly-named products apart --
-    this pins the change to the print surface instead of the product display
-    everywhere.
-    """
+def test_the_detail_page_shows_the_name_only_too(client, db_session, admin_user, main_branch,
+                                                 sales_orders_module_enabled):
+    """This was a CONTROL (21 Aug 2026: only the printout drops the code). The owner's later rule, 8-9 Sep 2026,
+    retires the product code from display everywhere -- clients do not use it, and a product made since has none --
+    and the sales side followed on 22 Nov 2026 (NULL-LABEL; tests/integration/test_product_code_retired_sales.py)."""
     so = _so_with_product(db_session, main_branch)
     _login(client, admin_user); _select_branch(client, main_branch.id)
 
     html = client.get(f'/sales-orders/{so.id}').get_data(as_text=True)
 
-    assert CODE in html
+    assert NAME in html
+    assert CODE not in html

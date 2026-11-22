@@ -146,7 +146,7 @@ def test_a_customer_with_one_open_order_starts_on_that_order(dr_page):
     rows = _rows(page)
     assert len(rows) == 1, rows
     line, product, uom, ordered, delivered, open_qty, deliver_now = rows[0]
-    assert (line, product, uom, deliver_now) == ('1', 'P001: Widget Standard', 'PC', ''), rows
+    assert (line, product, uom, deliver_now) == ('1', 'Widget Standard', 'PC', ''), rows
     assert (float(ordered), float(delivered), float(open_qty)) == (10.0, 0.0, 10.0), rows
     assert page.locator('#dr-no-lines').is_hidden()
     assert page.locator('#dr-add-line').is_hidden()          # the lines of an order are not added by hand
@@ -252,7 +252,7 @@ def test_a_customer_with_several_open_orders_must_pick_one(dr_page, dr_server):
     assert shown(page, ORDER).endswith(' · PO 4411')
     assert page.locator('#dr-source-error').is_hidden()
     rows = _rows(page)
-    assert len(rows) == 1 and rows[0][1] == 'P002: Gadget Deluxe' and float(rows[0][3]) == 8.0, rows
+    assert len(rows) == 1 and rows[0][1] == 'Gadget Deluxe' and float(rows[0][3]) == 8.0, rows
 
 
 def test_changing_the_way_keeps_what_was_typed(dr_page):
@@ -316,7 +316,7 @@ def test_coming_from_a_sales_order_opens_on_its_customer_and_the_order(dr_page, 
     assert shown(page, CUSTOMER) == 'C003 - Gamma Stores'
     assert _way(page, 'so').is_checked()
     assert shown(page, ORDER).startswith('SO-E2E-0102 · ')
-    assert _rows(page)[0][1] == 'P002: Gadget Deluxe'
+    assert _rows(page)[0][1] == 'Gadget Deluxe'
 
 
 def test_editing_keeps_the_customer_and_the_order_and_changes_the_quantity(dr_page):

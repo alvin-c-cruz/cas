@@ -1,5 +1,6 @@
 """CRV printout: Product and Description collapse into a single Description
-column. Product (code — name) wins when present; otherwise the description
+column. Product (its name: the code is retired from display, owner 9 Sep 2026, NULL-LABEL 22 Nov) wins when
+present; otherwise the description
 field; otherwise empty. Printout only — detail/form keep both fields.
 """
 from datetime import date
@@ -64,7 +65,8 @@ def test_printout_has_no_separate_product_column(client, db_session, admin_user,
 def test_product_line_shows_product_and_hides_its_description(
         client, db_session, admin_user, main_branch, cash_account):
     body = _get_print(client, db_session, main_branch, cash_account)
-    assert 'MANGO-001 — A ONE DRIED MANGO SLICES 100g' in body   # product wins
+    assert 'A ONE DRIED MANGO SLICES 100g' in body                # product wins, by its name
+    assert 'MANGO-001' not in body                               # the code is retired from display
     assert 'DECOY-MUST-NOT-PRINT' not in body                    # its description is not shown
 
 

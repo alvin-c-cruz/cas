@@ -179,7 +179,8 @@ def _has_any_dr_reference(item):
 
 
 def _line_label(item):
-    return item.product.code if item.product else 'line %s' % item.line_number
+    """How an amendment message names a line. The product code is retired from display (owner, 8-9 Sep 2026; the sales side followed on 22 Nov 2026, NULL-LABEL). A product made since then has no code, and 'code: name' read 'null: NAME' / 'None — NAME'."""
+    return item.product.name if item.product else 'line %s' % item.line_number
 
 
 def validate_amendment(so, new_lines):

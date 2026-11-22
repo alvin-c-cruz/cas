@@ -653,7 +653,7 @@ function addLineItem(existingItem) {
         <td><select class="form-control prod-select">
               <option value="">—</option>
               <option value="__add_product__">+ Add Product</option>
-              ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
+              ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.name)}</option>`).join('')}
             </select></td>` : ''}
         ${uomMasterOn ? `
         <td><input type="text" id="qty-${id}" class="form-control"
@@ -756,7 +756,7 @@ function addLineItem(existingItem) {
                                      default_uom_id: p.default_uom_id,
                                      default_unit_price: p.unit_price,
                                      default_account_id: p.default_account_id });
-                    prodC.setChoices([{value: String(p.id), label: escHtml(p.code) + ': ' + escHtml(p.name), customProperties: {name: p.name}}], 'value', 'label', false);
+                    prodC.setChoices([{value: String(p.id), label: escHtml(p.name), customProperties: {name: p.name}}], 'value', 'label', false);
                     prodC.setChoiceByValue(String(p.id));
                     onProductPick(id, String(p.id));
                 });

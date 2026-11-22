@@ -29,15 +29,16 @@ def _select_branch(client, branch_id):
         sess['selected_branch_id'] = branch_id
 
 
-def test_product_option_uses_colon_separator(client, db_session, accountant_user, main_branch):
+def test_product_option_shows_the_name_only(client, db_session, accountant_user, main_branch):
+    """It was "code: name". The product code is retired from display (owner, 8-9 Sep 2026); a product made since has
+    none, and the option read "null: NAME" (NULL-LABEL, 22 Nov 2026)."""
     _login(client, accountant_user)
     _select_branch(client, main_branch.id)
     resp = client.get('/sales-orders/create')
     assert resp.status_code == 200
     body = resp.data.decode('utf-8')
-    assert "escHtml(p.code)}: ${escHtml(p.name)" in body, (
-        'Product option template must use "code: name" (colon), matching UOM\'s '
-        'existing separator convention')
+    assert "'selected' : ''}>${escHtml(p.name)}</option>" in body
+    assert 'escHtml(p.code)' not in body
     assert "escHtml(p.code)} — ${escHtml(p.name)" not in body, (
         'Product option template must not use the old em-dash separator')
 

@@ -142,7 +142,7 @@
       {%- for item in so.line_items %}
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
-        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code ~ ' — ' ~ item.product.name }}{% else %}{{ '' }}{% endif %}
+        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.name }}{% else %}{{ '' }}{% endif %}
         {%- elif col.key == 'quantity' -%}{{ item | qty_fmt }}
         {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.name if item.unit_of_measure else (item.uom_text or '') }}
         {%- elif col.key == 'unit_price' -%}{{ '{:,.2f}'.format(item.unit_price) if item.unit_price is not none else '' }}

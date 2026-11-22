@@ -84,7 +84,7 @@ class TestTheCreatePage:
         _login(client, admin_user); _branch(client, main_branch.id)
         html = _page(client)
         for part in ("transactions.css", "accounts_payable_form.css", "choices.min.css", "choices.min.js",
-                     "search-select.js", "js/delivery_receipts.js?v=3",
+                     "search-select.js", "js/delivery_receipts.js?v=4",
                      'class="card card--lines page-sales-invoice page-delivery-receipt"', 'class="form-main-grid',
                      'id="customerCard"', 'id="customerCardLabel"', 'id="lineItemsLocked"', 'id="lineItemsSection"'):
             assert part in html, part

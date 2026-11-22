@@ -19,6 +19,7 @@ _OMIT = object()
 class _FakeProduct:
     def __init__(self, code):
         self.code = code
+        self.name = 'Product %s' % code      # the real one always has a name; messages name the line by it
 
 
 class _Line:

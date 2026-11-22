@@ -165,8 +165,8 @@
                     <tr>
                         <td>{{ line.line_number }}</td>
                         <td style="font-size:12px; color:var(--text-2);">
-                            {% if line.product_code or line.product_name %}
-                                {{ line.product_code }} — {{ line.product_name }}
+                            {% if line.product_name %}
+                                {{ line.product_name }}
                             {% else %}
                                 —
                             {% endif %}
