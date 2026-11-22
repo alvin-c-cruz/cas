@@ -331,6 +331,15 @@
                 Staff or Viewer is approved immediately (no admin review). Accountant-position
                 requests still require admin approval.</div>
 
+            <label class="checkbox-label" style="margin-top:12px;">
+                {{ form.bug_report_pictures() }}
+                <span>{{ form.bug_report_pictures.label.text }}</span>
+            </label>
+            <div class="form-hint">When on, "Report a problem" sends a small picture of the page with
+                each report, and the user may add one screenshot of their own. The pictures are kept
+                on this server and deleted 30 days after the report is closed. When off (default),
+                reports are text only.</div>
+
             {% if module_states.payroll %}
             <div class="settings-grid-3" style="margin-top:16px;">
                 {{ render_field(form.payroll_semi_monthly_timing) }}

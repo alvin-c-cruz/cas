@@ -202,6 +202,10 @@ class CompanySettingsForm(FlaskForm):
     job_order_slips_show_drafts = BooleanField(
         'Show draft Sales Orders on the Job Order Slips list (off = confirmed/cancelled/closed only)')
 
+    # SHOT-1 (owner, 22 Nov 2026): the one exception to "no files are uploaded to the server", per server.
+    bug_report_pictures = BooleanField(
+        'Bug reports include a page picture (off = reports are text only)')
+
     manufacturing_discrete_enabled = BooleanField(
         'Enable Discrete Manufacturing (Work Orders / Routing)')
 

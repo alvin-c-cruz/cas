@@ -2,29 +2,42 @@
 reports-http.ts (C:/envs/sanay); what changed for CAS is in the spec,
 app-docs/superpowers/specs/2026-10-15-bug-reports-design.md beside the checkout.
 
-Reports are text only since 23 Oct 2026 (owner: no files are uploaded to the server, whose free disk
-filled up). Pictures already stored by reports sent before then are still shown and purged."""
+Pictures (SHOT-1, owner 22 Nov 2026) are the one exception to "no files are uploaded to the server"
+(21/23 Oct 2026): a report may carry one compressed picture of the page and one screenshot of the
+user's own, ONLY while the server's switch is on (Company Settings, "Bug reports include a page
+picture", off by default; pictures_enabled() below). Each is a JPEG of at most 200 KB; one that
+breaks a rule is left out and the report's text is still kept. They are deleted 30 days after the
+report is closed. With the switch off a report is text only, whatever the browser sends."""
+import base64
+import binascii
 import json
 import os
 import re
 import subprocess
+import uuid
 from datetime import timedelta
 
 from flask import current_app, session
 
 from app import db
 from app.audit.utils import log_audit, log_update
-from app.bug_reports.models import BugReport
+from app.bug_reports.models import BugReport, BugReportImage
 from app.bug_reports.statuses import CLOSED_STATUSES, OPEN_STATUSES, is_closed
 from app.utils import ph_now
 
 LIMITS = {
-    'body_bytes': 2_000_000,  # room for the pictures a page still running the old script sends; they are dropped
+    'body_bytes': 2_000_000,
     'message': 5000,
     'context_bytes': 64_000,
+    'image_bytes': 200_000,
+    'images': 2,              # one of the page and one of the user's own
     'per_day': 10,
-    'keep_pictures_days': 90,
+    'keep_pictures_days': 30,
 }
+PICTURES_SETTING = 'bug_report_pictures'
+KINDS = ('page', 'own')
+EXTENSIONS = {'image/jpeg': 'jpg'}   # what is written now; older rows keep the mime they were stored with
+_BASE64 = re.compile(r'[A-Za-z0-9+/]+={0,2}')
 
 
 class ReportRejected(Exception):
@@ -36,16 +49,61 @@ class ReportRejected(Exception):
         self.status = status
 
 
+def sniff_mime(data):
+    """JPEG, PNG or WebP, recognised by their first bytes; anything else is None."""
+    if data[:3] == b'\xff\xd8\xff':
+        return 'image/jpeg'
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'image/png'
+    if len(data) >= 12 and data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'image/webp'
+    return None
+
+
 def first_words(message):
     """The message on one line, cut at a word after 57 characters, for a notification."""
     line = ' '.join(message.split())
     return line if len(line) <= 60 else re.sub(r'\s+\S*$', '', line[:57]) + '…'
 
 
-def parse_report(body):
-    """Check a decoded JSON body. Returns (message, context). The browser's own 'server' key is
-    dropped: only the server writes it. An 'images' key, sent by a page still running the script from
-    before reports became text only, is not read. Raises ReportRejected."""
+def pictures_enabled():
+    """The server's switch: Company Settings, "Bug reports include a page picture". Off until set."""
+    from app.settings import AppSettings
+    return AppSettings.get_setting(PICTURES_SETTING, '0') == '1'
+
+
+def _pictures(raw):
+    """The pictures of a report that keep the rules, and how many were left out: at most one of
+    the page and one of the user's own, each a JPEG (told from its bytes, not its label) of at most
+    LIMITS['image_bytes']. Never raises: a bad picture is not a reason to lose the text."""
+    if raw is None:
+        return [], 0
+    if not isinstance(raw, list):
+        return [], 1
+    kept, left_out = [], 0
+    for im in raw:
+        data = im.get('data') if isinstance(im, dict) else None
+        kind = im.get('kind') if isinstance(im, dict) else None
+        decoded = None
+        if kind in KINDS and isinstance(data, str) and _BASE64.fullmatch(data):
+            try:
+                decoded = base64.b64decode(data, validate=True)
+            except (binascii.Error, ValueError):
+                decoded = None
+        if (decoded is None or len(decoded) > LIMITS['image_bytes'] or sniff_mime(decoded) != 'image/jpeg'
+                or any(k == kind for k, _, _ in kept)):
+            left_out += 1
+            continue
+        kept.append((kind, 'image/jpeg', decoded))
+    return kept, left_out
+
+
+def parse_report(body, pictures=False):
+    """Check a decoded JSON body. Returns (message, context, images, left_out): images being
+    (kind, mime, bytes) for the pictures that keep the rules, left_out how many did not. With
+    `pictures` False (the server's switch is off) whatever the browser sent as pictures is ignored
+    and left_out is 0. The browser's own 'server' key is dropped: only the server writes it.
+    Raises ReportRejected for the text and the context only."""
     if not isinstance(body, dict):
         raise ReportRejected('bad_json')
 
@@ -61,12 +119,18 @@ def parse_report(body):
     context.pop('server', None)
     if len(json.dumps(context, ensure_ascii=False).encode('utf-8')) > LIMITS['context_bytes']:
         raise ReportRejected('context_too_large', 413)
-    return message, context
+
+    images, left_out = _pictures(body.get('images')) if pictures else ([], 0)
+    return message, context, images, left_out
+
+
+def _write_file(path, data):
+    with open(path, 'wb') as f:
+        f.write(data)
 
 
 def report_dir(report_id):
-    """Where the pictures of a report sent before reports became text only live, beside the
-    attachments (app/attachments/service.py)."""
+    """Where a report's pictures live, beside the attachments (app/attachments/service.py)."""
     return os.path.join(current_app.config['UPLOAD_FOLDER'], 'bug_reports', str(report_id))
 
 
@@ -110,18 +174,58 @@ def server_context(user):
     }
 
 
-def create_report(user, message, context, now):
-    """Store a report and one notification per active admin in ONE commit, then audit it. Nothing
-    is written to disk. On any failure nothing stays behind: the session is rolled back. Returns the
-    report id."""
+def _remove_quietly(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _rmdir_quietly(folder):
+    """Remove the folder if it is empty; leave it otherwise."""
+    try:
+        os.rmdir(folder)
+    except OSError:
+        pass
+
+
+def create_report(user, message, context, images, now):
+    """Store a report, its pictures and one notification per active admin in ONE commit, then
+    audit it. `images` is parse_report's list of (kind, mime, bytes). A picture whose file cannot be
+    written (no room on the disk) is left out and the report is still stored, as for a picture that
+    breaks a rule: the report's BugReportImage rows say what was kept. If the report itself cannot
+    be saved nothing stays behind: the session is rolled back and every file already written is
+    deleted. Either way there is never a row whose file is missing or a file with no row. Returns
+    the report id."""
     from app.notifications.models import Notification
     from app.users.models import User
 
+    written, folder = [], None
     try:
         report = BugReport(user_id=user.id, message=message, created_at=now,
                            context=json.dumps(context, ensure_ascii=False))
         db.session.add(report)
         db.session.flush()
+        if images:
+            folder = report_dir(report.id)
+            try:
+                os.makedirs(folder, exist_ok=True)
+            except OSError:
+                current_app.logger.exception('bug reports: no folder for the pictures of report %s', report.id)
+                folder, images = None, []
+        for kind, mime, data in images:
+            name = f'{uuid.uuid4().hex}.{EXTENSIONS[mime]}'
+            path = os.path.join(folder, name)
+            try:
+                _write_file(path, data)
+            except OSError:
+                # No room on the disk, most likely. The picture is left out; the text is not lost for it.
+                current_app.logger.exception('bug reports: could not write a picture of report %s', report.id)
+                _remove_quietly(path)
+                continue
+            written.append(path)
+            db.session.add(BugReportImage(report_id=report.id, kind=kind, mime=mime, stored_name=name,
+                                          size_bytes=len(data), created_at=now))
         # CAS sends no email and shows no notifications yet; the rows wait for a notifications page.
         for admin in User.query.filter_by(role='admin', is_active=True).all():
             db.session.add(Notification(user_id=admin.id, title='Bug report',
@@ -130,9 +234,15 @@ def create_report(user, message, context, now):
         db.session.commit()
     except Exception:
         db.session.rollback()
+        for path in written:
+            _remove_quietly(path)
+        if folder:
+            _rmdir_quietly(folder)
         raise
+    if folder and not written:
+        _rmdir_quietly(folder)
     log_audit('bug_report', 'create', report.id, record_identifier=f'Bug report #{report.id}',
-              new_values={'message': first_words(message)}, user_id=user.id)
+              new_values={'message': first_words(message), 'images': len(written)}, user_id=user.id)
     return report.id
 
 
@@ -184,8 +294,7 @@ def set_status(report, status, now):
 
 
 def purge_old_pictures(now):
-    """Delete the pictures of reports closed more than 90 days before `now`; the report stays. Only
-    reports sent before reports became text only (23 Oct 2026) have any.
+    """Delete the pictures of reports closed more than 30 days before `now`; the report stays.
     A file already gone is fine; a file that cannot be deleted keeps its row for the next try."""
     cutoff = now - timedelta(days=LIMITS['keep_pictures_days'])
     old = (BugReport.query

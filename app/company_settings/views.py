@@ -470,6 +470,16 @@ def edit_settings():
                 old_values[_jok] = _jo_old
                 new_values[_jok] = _jo_new
 
+            # Bug reports: whether this server keeps pictures with them (SHOT-1, default OFF;
+            # app/bug_reports/service.py pictures_enabled()).
+            _bpk = 'bug_report_pictures'
+            _bp_old = AppSettings.get_setting(_bpk, '0')
+            _bp_new = '1' if form.bug_report_pictures.data else '0'
+            if _bp_old != _bp_new:
+                AppSettings.set_setting(_bpk, _bp_new, updated_by=current_user.username)
+                old_values[_bpk] = _bp_old
+                new_values[_bpk] = _bp_new
+
             # Manufacturing mode toggles (R-07 Wave 0, default OFF).
             _mdk = 'manufacturing_discrete_enabled'
             _md_old = AppSettings.get_setting(_mdk, '0')
@@ -521,6 +531,8 @@ def edit_settings():
             AppSettings.get_setting('ap_billing_consolidate', '0') == '1')
         form.job_order_slips_show_drafts.data = (
             AppSettings.get_setting('job_order_slips_show_drafts', '0') == '1')
+        form.bug_report_pictures.data = (
+            AppSettings.get_setting('bug_report_pictures', '0') == '1')
         form.manufacturing_discrete_enabled.data = (
             AppSettings.get_setting('manufacturing_discrete_enabled', '0') == '1')
         form.manufacturing_process_enabled.data = (

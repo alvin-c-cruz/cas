@@ -1,8 +1,11 @@
 """Bug reports sent from the "Report a problem" button (app/static/js/bug-report.js).
 
-Reports are text only since 23 Oct 2026 (owner: no files are uploaded to the server). BugReportImage
-names the pictures that reports sent before then left under UPLOAD_FOLDER/bug_reports/<report id>/;
-nothing adds rows any more, and they are purged 90 days after their report closes. No branch_id: a bug report is not an accounting record (the branch is in the
+Pictures are files under UPLOAD_FOLDER/bug_reports/<report id>/; a BugReportImage row only names
+one. They are stored only while the server's switch is on (SHOT-1, 22 Nov 2026: Company Settings,
+"Bug reports include a page picture", off by default; app/bug_reports/service.py): at most one of
+the page and one of the user's own per report, JPEG, deleted 30 days after the report is closed.
+Reports were text only from 23 Oct to 22 Nov 2026, and still are wherever the switch is off.
+No branch_id: a bug report is not an accounting record (the branch is in the
 context), and a branch_id would make the mapper-derived branch-delete guard refuse branch deletes
 over bug reports.
 """

@@ -1,7 +1,6 @@
 """The administrator's Bug Reports pages (spec sections 4 and 5)."""
 import json
 import os
-import uuid
 from datetime import timedelta
 
 import pytest
@@ -24,20 +23,9 @@ def uploads(app, tmp_path, monkeypatch):
 
 
 def _report(user, status='new', created=None, closed=None, images=(), message='Broken'):
-    """`images`: pictures as a report sent before reports became text-only (23 Oct 2026) left them, a
-    file under the report's folder and a bug_report_images row each. Those are still shown and purged."""
     report_id = service.create_report(user, message, {'where': {'path': '/sales-invoices/3'}},
-                                      created or ph_now())
+                                      list(images), created or ph_now())
     report = db.session.get(BugReport, report_id)
-    for kind, mime, data in images:
-        folder = service.report_dir(report_id)
-        os.makedirs(folder, exist_ok=True)
-        name = f'{uuid.uuid4().hex}.jpg'
-        with open(os.path.join(folder, name), 'wb') as f:
-            f.write(data)
-        db.session.add(BugReportImage(report_id=report_id, kind=kind, mime=mime, stored_name=name,
-                                      size_bytes=len(data)))
-    db.session.commit()
     if status != 'new':
         report.status = status
         report.closed_at = closed
@@ -185,11 +173,11 @@ def test_another_reports_picture_or_a_missing_file_is_404(client, admin_user, ma
     assert client.get(f'/admin/bug-reports/{a.id}/images/{a.images[0].id}').status_code == 404
 
 
-def test_opening_the_list_deletes_pictures_of_reports_closed_over_90_days_ago(client, admin_user, main_branch,
+def test_opening_the_list_deletes_pictures_of_reports_closed_over_30_days_ago(client, admin_user, main_branch,
                                                                               uploads):
     now = ph_now()
-    old = _report(admin_user, status='fixed', closed=now - timedelta(days=91), images=[('page', 'image/jpeg', JPEG)])
-    recent = _report(admin_user, status='fixed', closed=now - timedelta(days=89), images=[('page', 'image/jpeg', JPEG)])
+    old = _report(admin_user, status='fixed', closed=now - timedelta(days=31), images=[('page', 'image/jpeg', JPEG)])
+    recent = _report(admin_user, status='fixed', closed=now - timedelta(days=29), images=[('page', 'image/jpeg', JPEG)])
     still_open = _report(admin_user, images=[('page', 'image/jpeg', JPEG)])
     old_id, keep_ids = old.id, (recent.id, still_open.id)
     login(client, admin_user, 'admin123', main_branch)

@@ -3,6 +3,7 @@ import base64
 
 JPEG = b'\xff\xd8\xff\xe0' + b'\x00' * 60
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 60
+GIF = b'GIF89a' + b'\x00' * 60
 
 
 def b64(data):
@@ -10,8 +11,7 @@ def b64(data):
 
 
 def payload(message='The save button did nothing.', images=None, **extra):
-    """A body as bug-report.js sends it: the message and the context. `images` adds the pictures a
-    page still running the script from before 23 Oct 2026 sends."""
+    """A body as bug-report.js sends it."""
     body = {
         'message': message,
         'context': {
@@ -19,9 +19,9 @@ def payload(message='The save button did nothing.', images=None, **extra):
             'before': {'taps': [], 'pages': [], 'errors': [], 'requests': [], 'sizes': []},
             'device': {'userAgent': 'pytest'},
         },
+        'images': images if images is not None else [
+            {'kind': 'page', 'mime': 'image/jpeg', 'data': b64(JPEG)}],
     }
-    if images is not None:
-        body['images'] = images
     body.update(extra)
     return body
 
@@ -36,3 +36,11 @@ def login(client, user, password, branch=None):
 
 def post_report(client, body, headers=None):
     return client.post('/bug-reports', json=body, headers=headers or {})
+
+
+def pictures_on():
+    """Turn on the server's switch "Bug reports include a page picture" (SHOT-1; it is off by default)."""
+    from app import db
+    from app.settings import AppSettings
+    AppSettings.set_setting('bug_report_pictures', '1')
+    db.session.commit()

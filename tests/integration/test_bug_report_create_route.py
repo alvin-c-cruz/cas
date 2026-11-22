@@ -9,7 +9,7 @@ from app import db
 from app.bug_reports.models import BugReport
 from app.users.models import User
 from app.users.module_access import default_all_permissions, module_key_for_endpoint
-from tests.integration._bug_report_helpers import JPEG, PNG, b64, login, payload, post_report
+from tests.integration._bug_report_helpers import GIF, JPEG, PNG, b64, login, payload, pictures_on, post_report
 
 pytestmark = [pytest.mark.integration, pytest.mark.bug_reports]
 
@@ -25,9 +25,11 @@ def _report(resp):
 
 
 def test_a_signed_in_user_files_a_report(client, accountant_user, main_branch, uploads):
+    pictures_on()
     login(client, accountant_user, 'accountant123', main_branch)
     resp = post_report(client, payload())
     assert resp.status_code == 201
+    assert resp.get_json() == {'id': resp.get_json()['id'], 'pictures': 1, 'left_out': 0}
     report = _report(resp)
     assert report.user_id == accountant_user.id
     assert report.message == 'The save button did nothing.'
@@ -38,8 +40,7 @@ def test_a_signed_in_user_files_a_report(client, accountant_user, main_branch, u
     assert server['user'] == {'id': accountant_user.id, 'username': 'accountant',
                               'full_name': 'Accountant User', 'role': 'accountant'}
     assert server['branch'] == {'id': main_branch.id, 'name': 'Main Office'}
-    assert report.images == []
-    assert list(uploads.rglob('*')) == []
+    assert [im.mime for im in report.images] == ['image/jpeg']
 
 
 def test_the_body_cannot_choose_the_user_or_write_the_server_block(client, accountant_user, staff_user,
@@ -58,18 +59,91 @@ def test_signed_out_gets_json_401_not_a_redirect(client, db_session):
     assert resp.get_json() == {'error': 'signed_out'}
 
 
-def test_pictures_sent_by_a_page_still_running_the_old_script_are_not_stored(client, accountant_user,
-                                                                             main_branch, uploads):
-    """Reports are text only since 23 Oct 2026 (owner: no files are uploaded to the server). A page
-    opened before that still sends pictures: the report is saved, nothing is written to disk."""
+def test_with_the_switch_off_the_report_is_kept_and_no_picture_is(client, accountant_user, main_branch, uploads):
+    """The default. A page still running an older script may send pictures; nothing is stored and nothing is said."""
     login(client, accountant_user, 'accountant123', main_branch)
-    resp = post_report(client, payload(images=[{'kind': 'page', 'mime': 'image/jpeg', 'data': b64(JPEG)},
-                                               {'kind': 'own', 'mime': 'image/jpeg', 'data': b64(PNG)}]))
+    resp = post_report(client, payload())
     assert resp.status_code == 201
+    assert resp.get_json() == {'id': resp.get_json()['id'], 'pictures': 0, 'left_out': 0}
     report = _report(resp)
     assert report.message == 'The save button did nothing.'
     assert report.images == []
-    assert list(uploads.rglob('*')) == []
+    assert not (uploads / 'bug_reports').exists()
+
+
+def test_the_page_picture_and_one_own_screenshot_are_stored(client, accountant_user, main_branch, uploads):
+    pictures_on()
+    login(client, accountant_user, 'accountant123', main_branch)
+    resp = post_report(client, payload(images=[{'kind': 'page', 'mime': 'image/jpeg', 'data': b64(JPEG)},
+                                               {'kind': 'own', 'mime': 'image/jpeg', 'data': b64(JPEG)}]))
+    assert resp.get_json()['pictures'] == 2 and resp.get_json()['left_out'] == 0
+    report = _report(resp)
+    assert [(im.kind, im.mime) for im in report.images] == [('page', 'image/jpeg'), ('own', 'image/jpeg')]
+    folder = uploads / 'bug_reports' / str(report.id)
+    assert sorted(p.name for p in folder.iterdir()) == sorted(im.stored_name for im in report.images)
+    assert all(im.stored_name.endswith('.jpg') for im in report.images)
+
+
+@pytest.mark.parametrize('bad', [
+    {'kind': 'own', 'mime': 'image/jpeg', 'data': b64(PNG)},                              # a PNG labelled JPEG
+    {'kind': 'page', 'mime': 'image/jpeg', 'data': b64(GIF)},
+    {'kind': 'page', 'mime': 'image/jpeg', 'data': b64(b'\xff\xd8\xff' + b'\x00' * 200_000)},   # over 200 KB
+])
+def test_a_picture_that_breaks_a_rule_is_left_out_and_the_report_is_kept(client, accountant_user, main_branch,
+                                                                         uploads, bad):
+    pictures_on()
+    login(client, accountant_user, 'accountant123', main_branch)
+    resp = post_report(client, payload(images=[bad]))
+    assert resp.status_code == 201
+    assert resp.get_json()['pictures'] == 0 and resp.get_json()['left_out'] == 1
+    report = _report(resp)
+    assert report.message == 'The save button did nothing.'
+    assert report.images == []
+    assert not (uploads / 'bug_reports').exists()
+
+
+def test_a_picture_the_server_cannot_write_is_left_out_and_the_sheet_is_told(client, accountant_user, main_branch,
+                                                                             uploads, monkeypatch):
+    from app.bug_reports import service
+
+    def no_room(path, data):
+        raise OSError('disk full')
+
+    pictures_on()
+    login(client, accountant_user, 'accountant123', main_branch)
+    monkeypatch.setattr(service, '_write_file', no_room)
+    resp = post_report(client, payload(images=[{'kind': 'page', 'mime': 'image/jpeg', 'data': b64(JPEG)},
+                                               {'kind': 'own', 'mime': 'image/jpeg', 'data': b64(PNG)}]))
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert (body['pictures'], body['left_out']) == (0, 2)        # one broke a rule, one could not be written
+    report = _report(resp)
+    assert report.message == 'The save button did nothing.'
+    assert report.images == []
+    assert [p for p in uploads.rglob('*') if p.is_file()] == []
+
+
+def test_one_picture_written_and_one_not_is_counted_as_one_each(client, accountant_user, main_branch, uploads,
+                                                                monkeypatch):
+    from app.bug_reports import service
+    real = service._write_file
+    calls = []
+
+    def second_write_fails(path, data):
+        calls.append(path)
+        if len(calls) == 2:
+            raise OSError('disk full')
+        real(path, data)
+
+    pictures_on()
+    login(client, accountant_user, 'accountant123', main_branch)
+    monkeypatch.setattr(service, '_write_file', second_write_fails)
+    resp = post_report(client, payload(images=[{'kind': 'page', 'mime': 'image/jpeg', 'data': b64(JPEG)},
+                                               {'kind': 'own', 'mime': 'image/jpeg', 'data': b64(JPEG)}]))
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert (body['pictures'], body['left_out']) == (1, 1)
+    assert [im.kind for im in _report(resp).images] == ['page']
 
 
 @pytest.mark.parametrize('change, status, error', [

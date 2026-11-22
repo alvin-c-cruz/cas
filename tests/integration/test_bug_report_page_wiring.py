@@ -29,7 +29,19 @@ def test_signed_in_pages_carry_the_button_and_the_script(client, accountant_user
     assert '/static/js/bug-report.js' in html
     assert '/static/css/bug-report.css' in html
     assert 'data-endpoint="/bug-reports"' in html
-    assert 'data-lib=' not in html and 'modern-screenshot' not in html   # no picture library (23 Oct 2026)
+    assert '/static/js/bug-report.js?v=3' in html and '/static/css/bug-report.css?v=3' in html
+    # the switch is off by default: the page says nothing of pictures
+    assert 'data-pictures' not in html
+    assert 'modern-screenshot' not in html
+
+
+def test_with_the_switch_on_the_script_is_told_and_given_the_picture_library(client, accountant_user, main_branch):
+    from tests.integration._bug_report_helpers import pictures_on
+    pictures_on()
+    login(client, accountant_user, 'accountant123', main_branch)
+    html = _page(client)
+    assert 'data-pictures="1"' in html
+    assert 'data-lib="/static/vendor/modern-screenshot-4.7.0.js"' in html
 
 
 def test_signed_out_pages_do_not(client, db_session):
@@ -39,8 +51,8 @@ def test_signed_out_pages_do_not(client, db_session):
 
 
 def test_the_admin_sidebar_shows_the_new_count(client, admin_user, staff_user, main_branch, uploads):
-    first = service.create_report(staff_user, 'one', {}, ph_now())
-    service.create_report(staff_user, 'two', {}, ph_now())
+    first = service.create_report(staff_user, 'one', {}, [], ph_now())
+    service.create_report(staff_user, 'two', {}, [], ph_now())
     login(client, admin_user, 'admin123', main_branch)
     html = _page(client)
     assert 'href="/admin/bug-reports"' in html

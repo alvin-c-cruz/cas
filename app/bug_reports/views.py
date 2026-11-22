@@ -39,7 +39,8 @@ def create():
     if (request.content_length or 0) > service.LIMITS['body_bytes']:
         return jsonify(error='too_large'), 413
     try:
-        message, context = service.parse_report(request.get_json(silent=True))
+        message, context, images, left_out = service.parse_report(request.get_json(silent=True),
+                                                                  pictures=service.pictures_enabled())
     except service.ReportRejected as e:
         return jsonify(error=e.code), e.status
 
@@ -47,8 +48,11 @@ def create():
     if service.reports_since(current_user.id, now - timedelta(days=1)) >= service.LIMITS['per_day']:
         return jsonify(error='too_many'), 429
     context['server'] = service.server_context(current_user)
-    report_id = service.create_report(current_user, message, context, now)
-    return jsonify(id=report_id), 201
+    report_id = service.create_report(current_user, message, context, images, now)
+    kept = BugReportImage.query.filter_by(report_id=report_id).count() if images else 0
+    # `left_out`: pictures the server did not keep: too large, not a JPEG, one too many, or no room on the
+    # disk to write it. The text is in either way.
+    return jsonify(id=report_id, pictures=kept, left_out=left_out + len(images) - kept), 201
 
 
 @bug_reports_bp.route('/admin/bug-reports')
@@ -92,9 +96,8 @@ def set_status(report_id):
 @login_required
 @admin_panel_required
 def image(report_id, image_id):
-    """A picture of a report sent before reports became text only (23 Oct 2026), never cached, under
-    the attachment-preview policy (app/attachments/views.py). The path is built only from the
-    server-generated name."""
+    """The picture itself, never cached, under the attachment-preview policy
+    (app/attachments/views.py). The path is built only from the server-generated name."""
     picture = BugReportImage.query.filter_by(id=image_id, report_id=report_id).first()
     if picture is None:
         abort(404)
@@ -108,6 +111,19 @@ def image(report_id, image_id):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
     return response
+
+
+@bug_reports_bp.app_context_processor
+def inject_bug_report_pictures():
+    """Whether this server keeps pictures with bug reports (SHOT-1): base.html and the print pages
+    tell bug-report.js with it. Off when the setting cannot be read."""
+    if not current_user.is_authenticated:   # only signed-in pages carry the report button
+        return {'bug_report_pictures': False}
+    try:
+        return {'bug_report_pictures': service.pictures_enabled()}
+    except Exception:  # an unmigrated database must not take every page down with it
+        db.session.rollback()
+        return {'bug_report_pictures': False}
 
 
 @bug_reports_bp.app_context_processor
