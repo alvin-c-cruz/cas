@@ -72,6 +72,23 @@ def app():
 
 
 @pytest.fixture(autouse=True)
+def _empty_app_cache(app):
+    """Every test starts with the app's in-memory cache empty, as it starts with an empty database.
+
+    The app object lives for the whole session (one per xdist worker), and so does its SimpleCache:
+    the memoized lookups in app/utils/cache_helpers.py (products, units, accounts, VAT and tax codes,
+    branches, module switches) keep, for up to an hour, what an EARLIER test's database held. Ids
+    restart in every test's fresh database, so a later test that adds its rows without going through
+    the views that clear those caches saw the earlier test's list. It failed or passed depending on
+    which tests its worker ran first (test_so_company_inventory.py's SO-form test, 22 Nov 2026, after
+    one new test file shifted the full-suite chunks). Servers are not affected: there every write goes
+    through the views, which clear the cache they change."""
+    from app import cache
+    cache.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _attachment_uploads_marker(request):
     """Attachments are off on every server and in TestingConfig (app/attachments/switch.py). A test
     of the upload feature itself is marked @pytest.mark.attachment_uploads and runs with them on."""
