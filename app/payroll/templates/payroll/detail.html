@@ -3,6 +3,7 @@
 {% block page_title %}Payroll Run {{ run.run_number }}{% endblock %}
 
 {% block content %}
+{% with nav_module='payroll', nav_record=run %}{% include '_record_nav.html' %}{% endwith %}
 
 <!-- Post modal (draft only) -->
 {% if run.status == 'draft' %}

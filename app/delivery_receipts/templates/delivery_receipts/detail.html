@@ -2,6 +2,7 @@
 {% block title %}{{ dr.dr_number }}{% endblock %}
 {% block page_title %}Delivery Receipt — {{ dr.dr_number }}{% endblock %}
 {% block content %}
+{% with nav_module='delivery_receipts', nav_record=dr %}{% include '_record_nav.html' %}{% endwith %}
 {% set may_approve = current_user.has_full_access or current_user.role == 'accountant' %}
 {% set may_edit = current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
 {% set badge_map = {'draft':'draft','approved':'approved','delivered':'posted','billed':'billed','cancelled':'cancelled'} %}

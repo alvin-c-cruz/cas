@@ -4,6 +4,7 @@
                      'vendor_credit': 'Vendor credit balance'} %}
 {% block title %}{{ doc_title }} {{ memo.memo_number }}{% endblock %}
 {% block content %}
+{% with nav_module='purchase_memos', nav_record=memo %}{% include '_record_nav.html' %}{% endwith %}
 <div class="page-header">
   <h1>{{ doc_title }} {{ memo.memo_number }}</h1>
   <div class="page-actions">

@@ -4,6 +4,7 @@
 {% block page_title %}Journal Entry - {{ entry.display_number }}{% endblock %}
 
 {% block content %}
+{% with nav_module='journal_entries', nav_record=entry %}{% include '_record_nav.html' %}{% endwith %}
 {% set may_manage = current_user.role == 'accountant' or current_user.has_full_access %}
 
 {% if admin_override %}

@@ -4,6 +4,7 @@
 {% block page_title %}Quotation — {{ quote.quotation_number }}{% endblock %}
 
 {% block content %}
+{% with nav_module='quotations', nav_record=quote %}{% include '_record_nav.html' %}{% endwith %}
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=5">
 
 {% include "quotations/_action_modals.html" ignore missing %}

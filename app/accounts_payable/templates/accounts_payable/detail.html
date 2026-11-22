@@ -4,6 +4,7 @@
 {% block page_title %}AP Voucher - {{ ap.ap_number }}{% endblock %}
 
 {% block content %}
+{% with nav_module='accounts_payable', nav_record=ap %}{% include '_record_nav.html' %}{% endwith %}
 
 {% for att in ap.attachments %}{% if att.is_image %}
 <div id="previewModal-{{ att.id }}"

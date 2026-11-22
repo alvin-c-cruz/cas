@@ -4,6 +4,7 @@
 {% block page_title %}Sales Invoice - {{ invoice.invoice_number }}{% endblock %}
 
 {% block content %}
+{% with nav_module='sales_invoices', nav_record=invoice %}{% include '_record_nav.html' %}{% endwith %}
 {# WTX A (owner 14 Nov 2026): this branch's invoices should carry withholding, but the
    customer has no withholding tax code and the invoice withholds nothing. Never blocks. #}
 {% if wt_missing %}

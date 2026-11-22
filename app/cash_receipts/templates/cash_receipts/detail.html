@@ -3,6 +3,7 @@
 {% block page_title %}Cash Receipt Voucher — {{ crv.crv_number }}{% endblock %}
 
 {% block content %}
+{% with nav_module='cash_receipts', nav_record=crv %}{% include '_record_nav.html' %}{% endwith %}
 
 <!-- Post modal (draft only) -->
 {% if crv.status == 'draft' %}

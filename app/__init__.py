@@ -150,6 +150,11 @@ def create_app(config_name=None):
     app.jinja_env.globals['pp_paper_ctx'] = _print_paper.paper_ctx
     app.jinja_env.globals['pp_paper'] = _print_paper
 
+    # Previous / Next on the 15 document modules' record pages (BUG-9, app/common/record_nav.py). A global, not
+    # fifteen context additions: templates/_record_nav.html is included by every record page and asks for itself.
+    from app.common.record_nav import record_nav as _record_nav
+    app.jinja_env.globals['record_nav'] = _record_nav
+
     # products/_quick_add_modal.html needs the category list to render its select.
     # A global, not seven context additions: the partial is included by AP, SI,
     # CDV, CRV, SO, Quotations and PR, and threading `product_categories` through

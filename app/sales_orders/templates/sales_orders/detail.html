@@ -4,6 +4,7 @@
 {% block page_title %}Sales Order — {{ so.so_number }}{% endblock %}
 
 {% block content %}
+{% with nav_module='sales_orders', nav_record=so %}{% include '_record_nav.html' %}{% endwith %}
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=5">
 
 {# ── Confirm modal (draft only, Task 8 wires the logic) ─────────────────── #}

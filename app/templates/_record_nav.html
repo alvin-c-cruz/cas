@@ -1,0 +1,22 @@
+{#- Previous / Next among a module's records (BUG-9; owner, 22 Nov 2026): "The module's list in its default order, in
+    the current branch, every status. Filters and searches on the list are ignored. The button greys out at either end."
+    Included at the top of each record page as
+        {% with nav_module='<blueprint>', nav_record=<record> %}{% include '_record_nav.html' %}{% endwith %}
+    record_nav (app/common/record_nav.py, a template global) finds the neighbours. A record that is not on its module's
+    list gets nothing. A real <button disabled> at each end, so the app's own disabled style greys it. -#}
+{%- set _nav = record_nav(nav_module, nav_record) -%}
+{%- if _nav %}
+<div class="record-nav" style="display:flex; justify-content:flex-end; gap:6px; margin:0 0 10px;">
+  {% if _nav.prev_url -%}
+  <a class="btn btn-secondary btn-sm" data-record-nav="prev" href="{{ _nav.prev_url }}" title="The record above this one on the list">&larr; Previous</a>
+  {%- else -%}
+  <button type="button" class="btn btn-secondary btn-sm" data-record-nav="prev" disabled title="This is the first record on the list">&larr; Previous</button>
+  {%- endif %}
+  {% if _nav.next_url -%}
+  <a class="btn btn-secondary btn-sm" data-record-nav="next" href="{{ _nav.next_url }}" title="The record below this one on the list">Next &rarr;</a>
+  {%- else -%}
+  <button type="button" class="btn btn-secondary btn-sm" data-record-nav="next" disabled title="This is the last record on the list">Next &rarr;</button>
+  {%- endif %}
+</div>
+<style>@media print { .record-nav { display: none !important; } }</style>
+{%- endif %}

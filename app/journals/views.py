@@ -398,7 +398,10 @@ def voucher():
 
     query = _voucher_query(branch_id, status_filter, date_from, date_to,
                            q=request.args.get('q', ''))
-    pagination = query.order_by(JournalEntry.entry_date.desc()).paginate(
+    # Same-date vouchers in the order they were entered. The list had no tiebreaker, so that order was only what
+    # SQLite happened to return; BUG-9's Previous / Next buttons step through this list (app/common/record_nav.py)
+    # and need it stated. Kept as the list already behaved, not changed to newest-first.
+    pagination = query.order_by(JournalEntry.entry_date.desc(), JournalEntry.id.asc()).paginate(
         page=page, per_page=50, error_out=False)
 
     from app.utils_helpers import list_period_context

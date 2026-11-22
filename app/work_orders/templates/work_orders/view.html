@@ -4,6 +4,7 @@
 {% block page_title %}{{ wo.wo_number }}{% endblock %}
 
 {% block content %}
+{% with nav_module='work_orders', nav_record=wo %}{% include '_record_nav.html' %}{% endwith %}
 
 <div class="content-header">
     <div>
