@@ -47,7 +47,7 @@ class TestCreating:
     def test_the_form_offers_no_sales_order(self, client, db_session, admin_user, main_branch, stuff):
         _login(client, admin_user); _branch(client, main_branch.id)
         html = client.get('/delivery-receipts/create').get_data(as_text=True)
-        assert 'No sales order' in html and 'id="dr-noso-lines"' in html and 'name="direct_lines"' in html
+        assert 'Deliver without a sales order' in html and 'name="direct_lines"' in html
 
     def test_a_dr_with_no_sales_order(self, client, db_session, admin_user, main_branch, stuff):
         cust, prod, box = stuff
@@ -81,7 +81,7 @@ class TestItsLife:
         _create(client, cust.id, [{'product_id': prod.id, 'delivered_quantity': '3'}])
         dr = _last()
         page = client.get(f'/delivery-receipts/{dr.id}/edit').get_data(as_text=True)
-        assert 'Delivered without a sales order' in page
+        assert 'Deliver without a sales order' in page
         client.post(f'/delivery-receipts/{dr.id}/edit', data={
             'sales_order_id': '0', 'customer_id': str(cust.id), 'delivery_date': '2026-11-17',
             'row_version': str(dr.row_version),

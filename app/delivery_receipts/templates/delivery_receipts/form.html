@@ -1,164 +1,214 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if dr else 'Enter' }} Delivery Receipt{% endblock %}
-{% block page_title %}{{ 'Edit' if dr else 'Enter' }} Delivery Receipt{% endblock %}
+
+{% block title %}
+  {% if dr %}Edit Delivery Receipt {{ dr.dr_number }}{% else %}Enter Delivery Receipt{% endif %}
+{% endblock %}
+{% block page_title %}
+  {% if dr %}Edit Delivery Receipt {{ dr.dr_number }}{% else %}Enter Delivery Receipt{% endif %}
+{% endblock %}
+
 {% block content %}
-<div class="page-header">
-  <h1>{{ 'Edit' if dr else 'Enter' }} Delivery Receipt</h1>
-  <a href="{{ url_for('delivery_receipts.list') }}" class="btn btn-secondary btn-sm">Back to list</a>
+{# BUG-10 A (owner, 22 Nov 2026): this form follows the Sales Invoice form. The same header grid,
+   customer card, locked placeholder and stylesheets as the SI and SO forms; the customer comes first,
+   then one plain choice -- against a sales order, or without one -- and one lines table for both.
+   What the page does is in static/js/delivery_receipts.js. #}
+{% from "macros.html" import render_field %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=12">
+<style>
+  /* The two ways, and the order picker beside the first. */
+  .page-delivery-receipt .dr-way-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .page-delivery-receipt .dr-way { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: var(--text); margin: 0; }
+  .page-delivery-receipt .dr-way input[type="radio"] { width: 18px; height: 18px; cursor: pointer; }
+  .page-delivery-receipt .dr-way input[type="radio"]:disabled { cursor: not-allowed; }
+  .page-delivery-receipt .dr-way input[type="radio"]:disabled + span { color: var(--text-2); }
+  /* The order picker looks like the customer picker in the card above (accounts_payable_form.css), caret included:
+     transactions.css makes every search-select compact and hides its caret, which suits a line of the table only. */
+  .page-delivery-receipt .dr-order-picker { flex: 1 1 260px; min-width: 0; max-width: 520px; }
+  .page-delivery-receipt .dr-order-picker .choices { width: 100%; margin-bottom: 0; }
+  .page-delivery-receipt .dr-order-picker .choices__inner {
+      display: flex !important; align-items: center !important; box-sizing: border-box !important;
+      border: 1px solid var(--border) !important; border-radius: 6px !important; background: var(--card) !important;
+      min-height: unset !important; height: auto !important; padding: 7px 36px 7px 14px !important;
+      font-size: 14px !important; overflow: hidden !important; }
+  .page-delivery-receipt .dr-order-picker .choices.is-focused .choices__inner,
+  .page-delivery-receipt .dr-order-picker .choices.is-open .choices__inner {
+      border-color: var(--blue) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.1) !important; }
+  .page-delivery-receipt .dr-order-picker .choices[data-type*='select-one']::after {
+      display: block !important; border-color: var(--text-2) transparent transparent !important; right: 14px !important; }
+  .page-delivery-receipt .dr-order-picker .choices[data-type*='select-one'].is-open::after {
+      border-color: transparent transparent var(--text-2) !important; }
+  /* A saved DR keeps its customer and its order: both pickers then read as fixed. */
+  .page-delivery-receipt .dr-order-picker .choices.is-disabled .choices__inner,
+  .page-delivery-receipt .vendor-step-card .choices.is-disabled .choices__inner { background: var(--bg) !important; cursor: not-allowed; }
+  /* One lines table: the order's own columns show only against a sales order, the remove column only without. */
+  #lineItemsTable.dr-mode-so .dr-col-free, #lineItemsTable.dr-mode-free .dr-col-so { display: none; }
+  #lineItemsTable.dr-mode-so #dr-free-body, #lineItemsTable.dr-mode-free #dr-so-body { display: none; }
+  /* The table takes the SI's line-item look from its id (accounts_payable_form.css), where a field shows its
+     box only on hover. The quantity is the one thing typed on every line, so its box always shows. */
+  .page-delivery-receipt #lineItemsTable tbody td .qty-input { text-align: right; max-width: 150px; margin-left: auto; border-color: var(--border); background: var(--card); }
+  .page-delivery-receipt .dr-notes-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 768px) { .page-delivery-receipt .dr-notes-pair { grid-template-columns: 1fr; } }
+</style>
+
+{% set has_customer = selected.customer_id is not none %}
+{# card--lines: a card clips what hangs out of it, and the pickers' dropdowns hang below the last line
+   (accounts_payable_form.css). Nothing in this card needs clipping. #}
+<div class="card card--lines page-sales-invoice page-delivery-receipt">
+    <div class="card-body">
+        <form method="POST" novalidate id="dr-form"
+              action="{{ url_for('delivery_receipts.edit', id=dr.id) if dr else url_for('delivery_receipts.create') }}">
+            {# CSRF only -- NOT form.hidden_tag(): that also emits the `lines` HiddenField, which is
+               rendered explicitly below (id="lines-json") for the script to fill. Emitting both makes
+               a duplicate name="lines" and Flask reads the empty first copy (BUG-DR-DUP-LINES). #}
+            {{ form.csrf_token }}
+            {# Lost-update token -- MUST be posted; hidden_tag() is avoided here on purpose, so
+               render it explicitly or every draft-DR edit false-conflicts (BUG-DR-EDIT-FALSE-CONFLICT). #}
+            {{ form.row_version }}
+
+            {# ── Header grid: left fields | customer card | remarks | the two note boxes ── #}
+            <div class="form-main-grid form-main-grid--signatories">
+
+                {# Left 1/3: header fields #}
+                <div class="left-col-fields header-fields{% if has_customer %} header-fields--active{% endif %}">
+                    {{ render_field(form.dr_number) }}
+                    {{ render_field(form.delivery_date) }}
+                    {% if module_enabled('employees') %}{{ render_field(form.salesperson_id) }}{% endif %}
+                    {{ render_field(form.carrier) }}
+                    {{ render_field(form.checked_by) }}
+                    {{ render_field(form.approved_by) }}
+                </div>
+
+                {# Right 2/3: customer picker card. A saved DR keeps its customer. #}
+                <div class="right-col">
+                    <div class="vendor-step-card{% if has_customer %} vendor-step-card--done{% endif %}" id="customerCard">
+                        <div class="vendor-step-label" id="customerCardLabel">
+                            {% if has_customer %}&#10003; {{ selected_customer_name }}{% else %}Select Customer{% endif %}
+                        </div>
+                        <div>
+                            <label class="form-label" for="dr-customer">Customer *</label>
+                            <select name="customer_id" id="dr-customer" class="form-control"{% if dr %} disabled{% endif %}>
+                                <option value="">-- Select Customer --</option>
+                                {% for c in customers %}
+                                <option value="{{ c.id }}"{% if selected.customer_id == c.id %} selected{% endif %}>
+                                    {{ c.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                {# Remarks: under the customer card, as the SI's notes are #}
+                <div class="notes-col header-fields{% if has_customer %} header-fields--active{% endif %}">
+                    {{ form.remarks.label(class='form-label') }}
+                    {{ form.remarks(class='form-control', style='resize:vertical', autocomplete='new-password',
+                                    **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
+                </div>
+
+                {# The two blocks printed on the pre-printed slip: full width, as the SO's signatories are #}
+                <div class="signatories-col header-fields{% if has_customer %} header-fields--active{% endif %}">
+                    <div class="dr-notes-pair">
+                        <div>
+                            {{ form.packing_notes.label(class='form-label') }}
+                            {{ form.packing_notes(class='form-control', rows='3', style='resize:vertical') }}
+                        </div>
+                        <div>
+                            {{ form.schedule_notes.label(class='form-label') }}
+                            {{ form.schedule_notes(class='form-control', rows='3', style='resize:vertical') }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# ── With or without a sales order; shown once a customer is chosen ── #}
+            <div id="drSourceSection" style="margin-top: 20px;{% if not has_customer %} display:none;{% endif %}">
+              <div class="card card--lines"><div class="card-body">
+                <h3 style="font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); margin-bottom:12px;">Sales Order</h3>
+                <div class="dr-way-row">
+                    <label class="dr-way">
+                        <input type="radio" name="dr_source" value="so"{% if selected.source == 'so' %} checked{% endif %}{% if dr %} disabled{% endif %}>
+                        <span>Deliver against a sales order</span>
+                    </label>
+                    <div class="dr-order-picker">
+                        <select id="so-select" class="form-control" aria-label="Sales order"{% if dr %} disabled{% endif %}>
+                            <option value="">Select the sales order…</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-hint" id="dr-no-orders" style="display:none; margin:0 0 10px 26px;">This customer has no confirmed sales order with open lines.</div>
+                <div class="dr-way-row">
+                    <label class="dr-way">
+                        <input type="radio" name="dr_source" value="none"{% if selected.source == 'none' %} checked{% endif %}{% if dr %} disabled{% endif %}>
+                        <span>Deliver without a sales order</span>
+                    </label>
+                </div>
+                <div class="form-error" id="dr-source-error" style="display:none;"></div>
+              </div></div>
+            </div>
+            <input type="hidden" name="sales_order_id" id="sales-order-id"
+                   value="{% if selected.source == 'none' %}0{% elif selected.sales_order_id %}{{ selected.sales_order_id }}{% endif %}">
+
+            {# ── Line Items Locked Placeholder (until a customer is chosen) ── #}
+            <div id="lineItemsLocked" class="line-items-locked{% if has_customer %} line-items-locked--hidden{% endif %}">
+                <div style="font-size: 28px; margin-bottom: 10px;">&#128274;</div>
+                <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
+                    Select a customer above to enter the delivery
+                </div>
+            </div>
+
+            {# ── Lines: ONE table, for a delivery against an order and for one without ── #}
+            <div id="lineItemsSection" style="margin-top: 24px;{% if not has_customer %} display:none;{% endif %}">
+                <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 12px;">Lines to Deliver</h3>
+
+                {# In a div of its own: on a phone "#lineItemsSection > div" scrolls sideways (transactions.css),
+                   so a wide table moves inside its box instead of pushing the whole page wide. #}
+                <div>
+                <table class="table dr-mode-so" id="lineItemsTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 4%; white-space: nowrap; color: var(--text-2);">#</th>
+                            <th>Product</th>
+                            <th style="width: 14%;">Unit</th>
+                            <th class="dr-col-so" style="width: 10%; text-align: right;">Ordered</th>
+                            <th class="dr-col-so" style="width: 12%; text-align: right;">Already Delivered</th>
+                            <th class="dr-col-so" style="width: 10%; text-align: right;">Open</th>
+                            <th style="width: 14%; text-align: right;">Deliver Now</th>
+                            <th class="dr-col-free" style="width: 4%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="dr-so-body"></tbody>
+                    <tbody id="dr-free-body"></tbody>
+                </table>
+                </div>
+                <p id="dr-no-lines" class="form-hint" style="display:none;">Select the sales order to load its open lines.</p>
+                <button type="button" class="btn btn-secondary" id="dr-add-line" style="margin-top: 8px; display:none;">+ Add Line</button>
+                <div class="form-error" id="dr-lines-error" style="display:none;"></div>
+
+                <div class="form-actions" style="margin-top: 32px;">
+                    <button type="submit" class="btn btn-primary">{{ 'Update' if dr else 'Save' }}</button>
+                    {% if dr %}
+                    <a href="{{ url_for('delivery_receipts.view', id=dr.id) }}" class="btn btn-secondary">Back</a>
+                    {% else %}
+                    <a href="{{ url_for('delivery_receipts.list') }}" class="btn btn-secondary">Back</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            {{ form.lines(id="lines-json") }}
+            <input type="hidden" name="direct_lines" id="direct-lines-json" value="[]">
+        </form>
+    </div>
 </div>
 
-<form method="POST" id="dr-form"
-      action="{{ url_for('delivery_receipts.edit', id=dr.id) if dr else url_for('delivery_receipts.create') }}">
-  {# CSRF only -- NOT form.hidden_tag(): that also emits the `lines` HiddenField, which is
-     rendered explicitly below (id="lines-json") for the JS to populate. Emitting both makes
-     a duplicate name="lines" and Flask reads the empty first copy (BUG-DR-DUP-LINES). #}
-  {{ form.csrf_token }}
-  {# Lost-update token -- MUST be posted; hidden_tag() is avoided here on purpose, so
-     render it explicitly or every draft-DR edit false-conflicts (BUG-DR-EDIT-FALSE-CONFLICT). #}
-  {{ form.row_version }}
-
-  <div class="card"><div class="card-body">
-    <div class="form-row">
-      <div class="form-group">
-        {{ form.dr_number.label }}
-        {{ form.dr_number(class="form-control") }}
-      </div>
-      <div class="form-group">
-        {{ form.sales_order_id.label }}
-        {{ form.sales_order_id(class="form-control", id="so-select") }}
-      </div>
-      {# DR-NOSO (owner, 17 Nov 2026): with "No sales order" chosen, the customer is picked
-         here and the lines are entered in the "Delivered without a sales order" table. #}
-      <div class="form-group" id="dr-noso-customer" style="display:none">
-        {{ form.customer_id.label }}
-        {{ form.customer_id(class="form-control", id="dr-customer", disabled=(dr is not none)) }}
-      </div>
-      <div class="form-group">
-        {{ form.delivery_date.label }}
-        {{ form.delivery_date(class="form-control") }}
-      </div>
-      <div class="form-group">
-        {{ form.salesperson_id.label }}
-        {{ form.salesperson_id(class="form-control") }}
-      </div>
-    </div>
-    <div class="form-group">
-      {{ form.remarks.label }}
-      {{ form.remarks(class="form-control", rows="2") }}
-    </div>
-    <div class="form-group">
-      {{ form.packing_notes.label }}
-      {{ form.packing_notes(class="form-control", rows="3") }}
-    </div>
-    <div class="form-group">
-      {{ form.schedule_notes.label }}
-      {{ form.schedule_notes(class="form-control", rows="2") }}
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        {{ form.carrier.label }}
-        {{ form.carrier(class="form-control") }}
-      </div>
-      <div class="form-group">
-        {{ form.checked_by.label }}
-        {{ form.checked_by(class="form-control") }}
-      </div>
-      <div class="form-group">
-        {{ form.approved_by.label }}
-        {{ form.approved_by(class="form-control") }}
-      </div>
-    </div>
-  </div></div>
-
-  <div class="card"><div class="card-body">
-    <h2 class="card-title">Lines to deliver</h2>
-    <div class="table-responsive">
-      <table class="table" id="dr-lines">
-        <thead>
-          <tr>
-            <th class="text-right">SO Line</th>
-            <th>Product</th><th>UOM</th>
-            <th class="text-right">Ordered</th>
-            <th class="text-right">Already delivered</th>
-            <th class="text-right">Open</th>
-            <th class="text-right">Deliver now</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <p id="dr-no-lines">Select a Sales Order to load its open lines.</p>
-  </div></div>
-
-  <div class="card" id="dr-noso-card" style="display:none"><div class="card-body">
-    <h2 class="card-title">Delivered without a sales order</h2>
-    <table class="table" id="dr-noso-lines">
-      <thead><tr><th>Product</th><th>Unit</th><th class="text-right">Quantity</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <button type="button" class="btn btn-secondary btn-sm" id="dr-noso-add">+ Add line</button>
-  </div></div>
-  <input type="hidden" name="direct_lines" id="direct-lines-json" value="[]">
-
-  {{ form.lines(id="lines-json") }}
-  <div class="form-actions">
-    <button type="submit" class="btn btn-primary">{{ 'Update' if dr else 'Save' }}</button>
-    <a href="{{ url_for('delivery_receipts.list') }}" class="btn btn-secondary">Cancel</a>
-  </div>
-</form>
-
-{# Payload is emitted via |tojson (XSS-safe) and read as JSON; rows are built with
-   textContent so a product name can never inject markup. #}
+{# The page's data is emitted via |tojson (XSS-safe) and read as JSON by the script. #}
+<script type="application/json" id="dr-selected-data">{{ selected|tojson }}</script>
+<script type="application/json" id="dr-orders-data">{{ orders|tojson }}</script>
 <script type="application/json" id="so-lines-data">{{ so_lines|tojson }}</script>
 <script type="application/json" id="dr-existing-data">{{ existing|tojson }}</script>
-<script src="{{ url_for('static', filename='js/delivery_receipts.js') }}?v=2"></script>
 <script type="application/json" id="dr-noso-data">{{ {'products': direct_products, 'units': direct_units, 'existing': direct_existing}|tojson }}</script>
-<script>
-// DR-NOSO (owner, 17 Nov 2026): "No sales order" shows the customer picker and a direct-lines
-// table (product, unit, quantity); on submit the rows go to direct_lines as JSON.
-(function () {
-  const so = document.getElementById('so-select');
-  const data = JSON.parse(document.getElementById('dr-noso-data').textContent);
-  const body = document.querySelector('#dr-noso-lines tbody');
-  const out = document.getElementById('direct-lines-json');
-  const opt = (v, label, sel) => { const o = document.createElement('option'); o.value = v; o.textContent = label; if (sel) o.selected = true; return o; };
-  function addRow(line) {
-    line = line || {};
-    const tr = document.createElement('tr');
-    const p = document.createElement('select'); p.className = 'form-control dr-noso-product';
-    p.appendChild(opt('', '— product —'));
-    data.products.forEach(x => p.appendChild(opt(x.id, x.name, x.id === line.product_id)));
-    const u = document.createElement('select'); u.className = 'form-control dr-noso-unit';
-    u.appendChild(opt('', '— product\'s unit —'));
-    data.units.forEach(x => u.appendChild(opt(x.id, x.code, x.id === line.uom_id)));
-    p.addEventListener('change', () => {
-      const prod = data.products.find(x => String(x.id) === p.value);
-      if (prod && prod.uom_id && !u.value) u.value = String(prod.uom_id);
-    });
-    const q = document.createElement('input'); q.type = 'number'; q.step = '0.0001'; q.min = '0';
-    q.className = 'form-control dr-noso-qty'; q.value = line.delivered_quantity || '';
-    const del = document.createElement('button'); del.type = 'button'; del.className = 'btn btn-secondary btn-sm';
-    del.textContent = 'Remove'; del.addEventListener('click', () => tr.remove());
-    [p, u, q, del].forEach(el => { const td = document.createElement('td'); td.appendChild(el); tr.appendChild(td); });
-    body.appendChild(tr);
-  }
-  function toggle() {
-    const noSo = so && so.value === '0';
-    document.getElementById('dr-noso-customer').style.display = noSo ? '' : 'none';
-    document.getElementById('dr-noso-card').style.display = noSo ? '' : 'none';
-    if (noSo && !body.children.length) addRow();
-  }
-  document.getElementById('dr-noso-add').addEventListener('click', () => addRow());
-  (data.existing || []).forEach(addRow);
-  if (so) so.addEventListener('change', toggle);
-  toggle();
-  document.getElementById('dr-form').addEventListener('submit', () => {
-    out.value = JSON.stringify([...body.querySelectorAll('tr')].map(tr => ({
-      product_id: tr.querySelector('.dr-noso-product').value || null,
-      uom_id: tr.querySelector('.dr-noso-unit').value || null,
-      delivered_quantity: tr.querySelector('.dr-noso-qty').value || 0,
-    })));
-  });
-})();
-</script>
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/delivery_receipts.js') }}?v=3"></script>
 {% endblock %}

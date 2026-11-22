@@ -192,6 +192,29 @@ with app.app_context():
                     product_id=p001.id, delivered_quantity=Decimal('10')))
                 db.session.add(dr); db.session.commit()
 
+            # BUG-10 A (the DR form follows the SI form: the customer first, then with or without a
+            # sales order). Seeded ONLY for the DR form's own smokes (E2E_SEED_EXTRA=dr_form), so the
+            # other Sales-cycle smokes keep their single customer: a customer with no order, and a
+            # customer with two open orders.
+            if os.environ.get('E2E_SEED_EXTRA') == 'dr_form' and not Customer.query.filter_by(code='C002').first():
+                p002 = Product.query.filter_by(code='P002').first()
+                gamma = Customer(code='C003', name='Gamma Stores', is_active=True)
+                db.session.add_all([Customer(code='C002', name='Borromeo Trading', is_active=True), gamma])
+                db.session.commit()
+                for number, product, qty, po in (('SO-E2E-0101', p001, '6', None),
+                                                 ('SO-E2E-0102', p002, '8', '4411')):
+                    so3 = SalesOrder(
+                        so_number=number, branch_id=branch.id, order_date=today, customer_id=gamma.id,
+                        customer_name=gamma.name, notes='', status='confirmed', customer_po_number=po)
+                    li = SalesOrderItem(
+                        line_number=1, product_id=product.id, quantity=Decimal(qty),
+                        unit_price=Decimal('100.00'), unit_of_measure_id=pc.id,
+                        vat_category='V0', vat_rate=Decimal('0'))
+                    li.calculate_amounts()
+                    so3.line_items.append(li); so3.calculate_totals()
+                    db.session.add(so3)
+                db.session.commit()
+
 if __name__ == '__main__':
     port = int(os.environ.get('E2E_PORT', '5099'))
     # threaded=True so Playwright's sequential actions never block; reloader off for a clean child.

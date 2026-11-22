@@ -110,14 +110,98 @@ def _submitted_existing_lines():
     return out
 
 
-def _render_edit(dr, form, eligible):
-    """Render the DR edit form, carrying submitted quantities back on a failed POST."""
-    existing = (_submitted_existing_lines() if request.method == 'POST'
-                else _existing_lines(dr))
-    return render_template('delivery_receipts/form.html', form=form, dr=dr,
-                           eligible=eligible,
-                           so_lines=_so_lines_payload(eligible, exclude_dr_id=dr.id),
-                           existing=existing, **_direct_ctx(dr))
+def _submitted_direct_lines():
+    """The lines typed for a delivery without a sales order, rebuilt from the POSTed JSON, in the
+    shape _direct_ctx() gives a saved one's: what _submitted_existing_lines() is to an order's
+    quantities."""
+    def whole(value):
+        try:
+            return int(value) if value not in (None, '') else None
+        except (TypeError, ValueError):
+            return None
+    try:
+        items = json.loads(request.form.get('direct_lines', '[]') or '[]')
+    except (ValueError, TypeError):
+        return []
+    out = []
+    for d in items if isinstance(items, type([])) else []:      # `list` in this module is the list VIEW
+        if not isinstance(d, dict):
+            continue
+        try:
+            qty = float(d.get('delivered_quantity') or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        out.append({'product_id': whole(d.get('product_id')), 'uom_id': whole(d.get('uom_id')),
+                    'delivered_quantity': qty})
+    return out
+
+
+SO_REQUIRED = 'Select the sales order to deliver against, or choose "Deliver without a sales order".'
+
+
+def _order_label(so):
+    """How an order reads in the form's order picker. Its customer is already chosen by then."""
+    label = f"{so.so_number} · {so.order_date.strftime('%b %d, %Y')}"
+    return f'{label} · PO {so.customer_po_number}' if so.customer_po_number else label
+
+
+def _form_customers(eligible, dr):
+    """The customers the form offers, read "CODE - Name" and ordered by name as on the Sales
+    Invoice form: the active ones, and any whose order is still open (a customer made inactive
+    since must not strand its order). A saved DR offers only its own."""
+    if dr is not None:
+        own = db.session.get(Customer, dr.customer_id)
+        return [{'id': dr.customer_id, 'name': f'{own.code} - {own.name}' if own else dr.customer_name}]
+    with_open_order = {so.customer_id for so in eligible}
+    customers = Customer.query.filter(db.or_(Customer.is_active.is_(True),
+                                             Customer.id.in_(with_open_order))).order_by(Customer.name).all()
+    return [{'id': c.id, 'name': f'{c.code} - {c.name}'} for c in customers]
+
+
+def _chosen(dr, form, eligible):
+    """What the page opens on: the customer, the way (against a sales order, or without one) and
+    the order. A saved DR keeps what it was made with ('locked'). A new one starts empty, or on
+    the order named by ?so=, or -- after a refused save -- on what the user had chosen."""
+    if dr is not None:
+        return {'customer_id': dr.customer_id, 'source': 'so' if dr.sales_order_id else 'none',
+                'sales_order_id': dr.sales_order_id, 'locked': True}
+    by_id = {so.id: so for so in eligible}
+    if request.method == 'POST':
+        order = by_id.get(form.sales_order_id.data or 0)
+        source = request.form.get('dr_source')
+        if source not in ('so', 'none'):
+            source = 'so' if order else 'none'
+        customer_id = form.customer_id.data or (order.customer_id if order else None)
+        if order and order.customer_id != customer_id:
+            order = None                                # another customer's order is not this one's to pick
+        return {'customer_id': customer_id, 'source': source if customer_id else '',
+                'sales_order_id': order.id if (order and source == 'so') else None, 'locked': False}
+    order = by_id.get(request.args.get('so', type=int) or 0)
+    if order:
+        return {'customer_id': order.customer_id, 'source': 'so', 'sales_order_id': order.id, 'locked': False}
+    return {'customer_id': None, 'source': '', 'sales_order_id': None, 'locked': False}
+
+
+def _render_form(dr, form, eligible):
+    """The create / edit page (BUG-10 A: it follows the Sales Invoice form -- the customer first,
+    then with or without a sales order). On a refused save it carries back what the user chose
+    and typed, not what the database holds."""
+    posted = request.method == 'POST'
+    orders = ([dr.sales_order] if dr.sales_order else []) if dr is not None else eligible
+    chosen = _chosen(dr, form, eligible)
+    customers = _form_customers(eligible, dr)
+    if chosen['customer_id'] not in {c['id'] for c in customers}:
+        # A customer the page does not offer (made inactive meanwhile) is not given back as chosen.
+        chosen = {'customer_id': None, 'source': '', 'sales_order_id': None, 'locked': False}
+    direct = _direct_ctx(dr)
+    if posted:
+        direct['direct_existing'] = _submitted_direct_lines()
+    return render_template(
+        'delivery_receipts/form.html', form=form, dr=dr, customers=customers, selected=chosen,
+        selected_customer_name=next((c['name'] for c in customers if c['id'] == chosen['customer_id']), ''),
+        orders=[{'id': so.id, 'customer_id': so.customer_id, 'label': _order_label(so)} for so in orders],
+        so_lines=_so_lines_payload(orders, exclude_dr_id=dr.id if dr is not None else None),
+        existing=_submitted_existing_lines() if posted else _existing_lines(dr), **direct)
 
 
 def _parse_dr_lines(dr, lines_json):
@@ -134,15 +218,14 @@ def _parse_dr_lines(dr, lines_json):
             continue
         kept += 1
         soi = db.session.get(SalesOrderItem, int(soi_id))
+        if soi is None or soi.sales_order_id != dr.sales_order_id:
+            raise ValueError('A line does not belong to this sales order.')
         dr.line_items.append(DeliveryReceiptItem(
             line_number=kept, sales_order_item_id=int(soi_id),
-            product_id=(soi.product_id if soi else None),
+            product_id=soi.product_id,
             delivered_quantity=qty))
     if kept == 0:
         raise ValueError('Add at least one delivered line.')
-
-
-NO_SO_LABEL = '— No sales order —'
 
 
 def _parse_direct_lines(dr, lines_json):
@@ -267,30 +350,34 @@ def create():
     branch_id = session.get('selected_branch_id')
     form = DeliveryReceiptForm()
     eligible = _eligible_sales_orders(branch_id)
-    # "No sales order" goes last so a new DR still opens on the first sales order.
-    form.sales_order_id.choices = ([(so.id, f'{so.so_number}: {so.customer_name}') for so in eligible]
-                                   + [(0, NO_SO_LABEL)])
-    form.customer_id.choices = [(c.id, c.name) for c in
-                                Customer.query.filter_by(is_active=True).order_by(Customer.name)]
+    # The page draws the customer and the order pickers itself (the customer comes first, BUG-10 A);
+    # neither field checks its value against a list of choices.
+    form.sales_order_id.choices = []
+    form.customer_id.choices = []
     form.salesperson_id.choices = _salesperson_choices(branch_id)
 
-    if form.validate_on_submit() and not form.sales_order_id.data:
+    # The way the user chose, when the page says so: 'so' = against a sales order, 'none' = without.
+    source = request.form.get('dr_source')
+    if form.validate_on_submit() and source == 'so' and not form.sales_order_id.data:
+        # Never fall through to "without a sales order" because the order came empty.
+        flash(SO_REQUIRED, 'error')
+        return _render_form(None, form, eligible)
+    if form.validate_on_submit() and (source == 'none' or not form.sales_order_id.data):
         return _create_without_so(form, branch_id, eligible)
     if form.validate_on_submit():
         so = db.session.get(SalesOrder, form.sales_order_id.data)
         if not so or so.branch_id != branch_id or so.status != 'confirmed':
             flash('Select a valid confirmed Sales Order.', 'error')
-            return render_template('delivery_receipts/form.html', form=form, dr=None,
-                                   eligible=eligible, so_lines=_so_lines_payload(eligible),
-                                   existing=_existing_lines(None), **_direct_ctx(None))
+            return _render_form(None, form, eligible)
+        if form.customer_id.data and form.customer_id.data != so.customer_id:
+            flash('That sales order belongs to another customer.', 'error')
+            return _render_form(None, form, eligible)
 
         dr_number = (form.dr_number.data or '').strip()
         if dr_number:
             if DeliveryReceipt.query.filter(DeliveryReceipt.dr_number == dr_number).first():
                 flash('Delivery Receipt number already exists.', 'error')
-                return render_template('delivery_receipts/form.html', form=form, dr=None,
-                                       eligible=eligible, so_lines=_so_lines_payload(eligible),
-                                       existing=_existing_lines(None), **_direct_ctx(None))
+                return _render_form(None, form, eligible)
         else:
             dr_number = generate_dr_number(branch_id)
 
@@ -325,21 +412,14 @@ def create():
     if request.method == 'GET':
         form.dr_number.data = generate_dr_number(branch_id)
         form.delivery_date.data = ph_now().date()
-        preselect = request.args.get('so', type=int)
-        if preselect and any(so.id == preselect for so in eligible):
-            form.sales_order_id.data = preselect
-    return render_template('delivery_receipts/form.html', form=form, dr=None,
-                           eligible=eligible, so_lines=_so_lines_payload(eligible),
-                           existing=_existing_lines(None), **_direct_ctx(None))
+    return _render_form(None, form, eligible)
 
 
 def _create_without_so(form, branch_id, eligible):
     """DR-NOSO (owner, 17 Nov 2026: "some DR need no SO"; "A (my pick)"): a delivery receipt
     with no sales order -- the customer and the lines are entered directly."""
     def again():
-        return render_template('delivery_receipts/form.html', form=form, dr=None, eligible=eligible,
-                               so_lines=_so_lines_payload(eligible), existing=_existing_lines(None),
-                               **_direct_ctx(None))
+        return _render_form(None, form, eligible)
     customer = db.session.get(Customer, form.customer_id.data) if form.customer_id.data else None
     if customer is None or not customer.is_active:
         flash('Choose the customer for a delivery receipt with no sales order.', 'error')
@@ -393,13 +473,11 @@ def edit(id):
         return redirect(url_for('delivery_receipts.view', id=dr.id))
     branch_id = session.get('selected_branch_id')
     form = DeliveryReceiptForm(obj=dr)
-    eligible = _eligible_sales_orders(branch_id)
-    if dr.sales_order and dr.sales_order not in eligible:
-        eligible = [dr.sales_order] + eligible      # its own SO stays pickable while editing
-    # A DR keeps what it was made with: its sales order, or "No sales order" (DR-NOSO).
-    form.sales_order_id.choices = ([(0, NO_SO_LABEL)] if not dr.sales_order_id else
-                                   [(so.id, f'{so.so_number}: {so.customer_name}') for so in eligible])
-    form.customer_id.choices = [(dr.customer_id, dr.customer_name)]
+    # A DR keeps what it was made with: its customer, and its sales order or none (DR-NOSO). The
+    # page shows both and lets neither be changed; nothing below reads them from the form.
+    eligible = []
+    form.sales_order_id.choices = []
+    form.customer_id.choices = []
     form.salesperson_id.choices = _salesperson_choices(branch_id)
 
     if form.validate_on_submit():
@@ -412,7 +490,7 @@ def edit(id):
             if not claim_version(DeliveryReceipt, dr.id, submitted_version()):
                 db.session.rollback()
                 flash(conflict_message('delivery_receipts', dr.id), 'error')
-                return _render_edit(dr, form, eligible)
+                return _render_form(dr, form, eligible)
 
             dr.delivery_date = form.delivery_date.data
             dr.remarks = form.remarks.data or None
@@ -443,10 +521,8 @@ def edit(id):
             db.session.rollback(); flash('An error occurred updating the Delivery Receipt.', 'error')
 
     if request.method == 'GET':
-        form.sales_order_id.data = dr.sales_order_id or 0
-        form.customer_id.data = dr.customer_id
         form.salesperson_id.data = dr.salesperson_id or 0
-    return _render_edit(dr, form, eligible)
+    return _render_form(dr, form, eligible)
 
 
 # -- lifecycle transitions -----------------------------------------------------
