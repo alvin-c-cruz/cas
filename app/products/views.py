@@ -40,6 +40,18 @@ def _populate_choices(form):
         form.category_id.validators = [Optional()]
 
 
+@products_bp.app_template_global()
+def product_quick_add_form():
+    """The inline "Add product" box's form on the transaction forms (products/_quick_add_modal.html): the Products
+    form itself, with its lists, starting Active (PROD-QA, owner 22 Nov 2026: "the two should be identical"). Its
+    fields carry the prefix "pqa-" so they never repeat an id of the page around them; product-quick-add.js takes the
+    prefix off before posting to create() below, which the Products page posts to as well."""
+    form = ProductForm(prefix='pqa')
+    _populate_choices(form)
+    form.is_active.data = '1'
+    return form
+
+
 def _int_or_none(v):
     """Convert a SelectField string value to int, or None for the blank sentinel."""
     return int(v) if v not in (None, '', 'None') else None
@@ -102,13 +114,11 @@ def create():
         clear_product_cache()
         log_create('products', p.id, p.name, p.to_dict())
         if is_ajax:
-            return jsonify(ok=True, product={
-                'id': p.id, 'name': p.name,
-                'label': p.name,
-                'default_uom_id': p.default_unit_of_measure_id,
-                'unit_price': float(p.default_unit_price or 0),
-                'default_account_id': p.default_account_id,
-            })
+            # The whole product, as the transaction forms load their products with the page (to_dict), so a line
+            # takes its unit, allowed units, price, account and inventory factor at once (PROD-QA). `label` and
+            # `unit_price` are what the forms read before; kept.
+            return jsonify(ok=True, product=dict(p.to_dict(), label=p.name,
+                                                 unit_price=float(p.default_unit_price or 0)))
         flash('Product created.', 'success')
         return redirect(url_for('products.list'))
     if is_ajax and request.method == 'POST':

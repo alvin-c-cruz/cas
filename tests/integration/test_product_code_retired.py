@@ -279,11 +279,12 @@ class TestPurchasingDocumentsDoNotShowIt:
             sess['selected_branch_id'] = main_branch.id
         body = client.get('/purchase-requests/create').data.decode()
 
-        # Control: the modal rendered at all, so the absence below is real.
-        assert 'id="pqa_name"' in body, 'the quick-add modal did not render'
+        # Control: the modal rendered at all, so the absence below is real. Since PROD-QA (22 Nov 2026) the box
+        # renders the Products form's own fields, named "pqa-<field>".
+        assert 'id="pqa-name"' in body, 'the quick-add modal did not render'
 
-        assert 'id="pqa_code"' not in body
-        assert 'name="code"' not in body
+        assert 'id="pqa_code"' not in body and 'id="pqa-code"' not in body
+        assert 'name="code"' not in body and 'name="pqa-code"' not in body
 
     def test_the_purchase_order_overlay_prints_the_name_only(
             self, client, db_session, admin_user, main_branch):

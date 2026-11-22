@@ -11,90 +11,8 @@
         <form method="POST" novalidate>
             {{ form.hidden_tag() }}
 
-            <div class="form-row-2">
-                {{ render_field(form.name, required=True) }}
-            </div>
-
-            <div class="form-group">
-                {{ render_field(form.customer_code) }}
-                <div class="form-hint">The customer's own code/SKU for this product (e.g. their
-                    ERP article number). Prints on documents where the customer expects to see
-                    their own code.</div>
-            </div>
-
-            <div class="form-group">
-                {{ render_field(form.description) }}
-            </div>
-
-            <div class="form-group">
-                {{ render_field(form.job_order_name) }}
-                <div class="form-hint">Shown on the Job Order Slip instead of the regular
-                    name. Leave blank to use the regular name.</div>
-            </div>
-
-            <div class="form-row-2">
-                {{ render_field(form.default_unit_of_measure_id) }}
-                {{ render_field(form.default_account_id) }}
-            </div>
-
-            <div class="form-group">
-                {{ form.allowed_unit_ids.label }}
-                {{ form.allowed_unit_ids(class='form-control', multiple=true, size=6, style='height:auto;') }}
-                <div class="form-hint">Leave empty to allow any active unit. Selecting units limits no-PO receiving to those units (the default unit is always allowed). Hold Ctrl (Cmd on Mac) to select multiple.</div>
-            </div>
-
-            <div class="form-row-2">
-                {{ render_field(form.category_id, required=category_required) }}
-                {{ render_field(form.default_unit_price) }}
-            </div>
-
-            <div class="form-row-2">
-                {{ render_field(form.standard_cost) }}
-                <div></div>
-            </div>
-
-            {# COMPANY INVENTORY on the Sales Order and Job Order Slip (owner, 4-5 Nov 2026). #}
-            <div class="form-row-2">
-                {{ render_field(form.inventory_unit_id) }}
-                <div>
-                    {{ render_field(form.inventory_qty_per_unit) }}
-                    <div class="form-hint">How many of the inventory unit make one selling unit:
-                        0.1 KG for a 100 g pack, 24 CANS for a box of 24. The Sales Order and Job
-                        Order Slip then show each line in this unit too. Leave both blank if not
-                        needed.</div>
-                </div>
-            </div>
-
-            {% if module_enabled('inventory') %}
-            <div class="form-group">
-                <label class="form-label" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                    {{ form.track_inventory(id='track_inventory', style="width:auto; margin:0;") }}
-                    {{ form.track_inventory.label.text }}
-                </label>
-                <small class="form-hint">Enable stock costing for this item. Requires a costing
-                    method and the standard cost above.</small>
-                {% if form.track_inventory.errors %}
-                <div class="field-errors">
-                    {% for error in form.track_inventory.errors %}
-                        <span class="error-message">{{ error }}</span>
-                    {% endfor %}
-                </div>
-                {% endif %}
-            </div>
-
-            <div id="inventory-fields" class="form-group" style="display: none;">
-                {{ render_field(form.costing_method) }}
-            </div>
-            <div id="inventory-fields-2" class="form-group" style="display: none;">
-                {{ render_field(form.reorder_level) }}
-                <div class="form-hint">Optional reorder alert threshold, in the item's default
-                    unit of measure. Informational only for now.</div>
-            </div>
-            {% endif %}
-
-            <div class="form-group">
-                {{ status_toggle(form.is_active, label_class='') }}
-            </div>
+            {# The fields are shared with the inline "Add product" box on the transaction forms (PROD-QA). #}
+            {% include "products/_form_fields.html" %}
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">
@@ -105,22 +23,5 @@
         </form>
     </div>
 </div>
-
-{% if module_enabled('inventory') %}
-<script>
-(function () {
-    var cb = document.getElementById('track_inventory');
-    var panels = [document.getElementById('inventory-fields'),
-                  document.getElementById('inventory-fields-2')];
-    function sync() {
-        panels.forEach(function (p) { if (p) { p.style.display = cb.checked ? '' : 'none'; } });
-    }
-    if (cb) {
-        cb.addEventListener('change', sync);
-        sync();
-    }
-})();
-</script>
-{% endif %}
 
 {% endblock %}

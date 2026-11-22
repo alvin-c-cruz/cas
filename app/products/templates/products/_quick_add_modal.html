@@ -1,13 +1,16 @@
-{# Inline "Add Product" quick-add modal for transaction forms. #}
-{# Resolved once: the select, the empty-state notice and the submit button's
-   disabled state all key off the same list. #}
+{# Inline "Add Product" box for the eight transaction forms (AP, CDV, CRV, PO, PR, quotations, SI, SO).
+   PROD-QA (owner, 22 Nov 2026: "the two should be identical"): it renders the Products page's own fields
+   (products/_form_fields.html) from product_quick_add_form() (products/views.py), prefixed "pqa-" so no id repeats one
+   of the page around it, and posts to the same view as the Products page (product-quick-add.js takes the prefix off).
+   Before, it took three of the master's fields: Category, Name and Price. #}
+{# Resolved once: the empty-state notice and the Create button's disabled state key off the same list. #}
 {% set _pqa_needs_category = module_enabled('product_categories') %}
 {% set _pqa_categories = active_product_categories() if _pqa_needs_category else [] %}
 {% set _pqa_blocked = _pqa_needs_category and not _pqa_categories %}
 <div id="productQuickAddOverlay"
      style="display:none; position:fixed; inset:0; background:var(--backdrop);
             z-index:1200; align-items:flex-start; justify-content:center; overflow:auto; padding:32px 16px;">
-  <div style="background:var(--card); border-radius:8px; padding:24px; max-width:520px; width:100%;
+  <div style="background:var(--card); border-radius:8px; padding:24px; max-width:880px; width:100%;
               box-shadow:var(--shadow-md);">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
       <h3 style="margin:0; font-size:18px;">Add Product</h3>
@@ -22,58 +25,21 @@
     <form id="productQuickAddForm" method="POST"
           action="{{ url_for('products.create') }}" novalidate>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="is_active" value="1">
-      <input type="hidden" name="default_unit_of_measure_id" value="">
-      <input type="hidden" name="default_account_id" value="">
 
-      {# Category, ONLY when the product_categories module is on -- which is
-         exactly when products.create swaps category_id to DataRequired. Without
-         this field that requirement was unsatisfiable, so every "+ Add Product"
-         on every transaction form failed with "Category is required." and no way
-         to supply one. Rendered as a real select (not a hidden blank, as the UOM
-         and account fields above are) precisely because it is mandatory.
-         When the module is off the view relaxes it back to Optional(), so the
-         field is omitted rather than shown-but-empty. #}
-      {% if _pqa_needs_category %}
-        {% if _pqa_categories %}
-      <div class="form-group" style="margin-bottom:12px;">
-        <label class="form-label" for="pqa_category">Category <span style="color:var(--alert-error-text);">*</span></label>
-        <select id="pqa_category" name="category_id" class="form-control" required>
-          <option value="">&mdash; Select &mdash;</option>
-          {% for c in _pqa_categories %}
-          <option value="{{ c.id }}">{{ c.code }}: {{ c.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-        {% else %}
-      {# A required select with nothing in it is a dead end: the user can fill
-         every field and still be refused, with no way to comply. Say so, and
-         disable Create rather than let them find out from a server error. #}
+      {% if _pqa_blocked %}
+      {# A required select with nothing in it is a dead end: the user can fill every field and still be refused, with
+         no way to comply. Say so, and disable Create rather than let them find out from a server error. #}
       <div class="alert alert-info" style="margin-bottom:12px;">
         A category is required for new products, but none have been set up yet.
         Add one under Product Categories first.
       </div>
-        {% endif %}
       {% endif %}
 
-      {# The Code field was removed here on 2026-09-09 (owner): the product code
-         is retired, and ProductForm no longer carries it, so this input was
-         REQUIRING the user to type a value that WTForms then silently discarded.
-         Name takes the full row rather than sitting in a half-width column with
-         a gap beside it. This modal is shared by eight transaction forms, so
-         removing the field fixes all of them at once. #}
-      <div class="form-group" style="margin-bottom:12px;">
-        <label class="form-label" for="pqa_name">Name <span style="color:var(--alert-error-text);">*</span></label>
-        <input type="text" id="pqa_name" name="name" class="form-control" maxlength="200" required>
-      </div>
+      {% with form = product_quick_add_form(), category_required = _pqa_needs_category %}
+        {% include "products/_form_fields.html" %}
+      {% endwith %}
 
-      <div class="form-group" style="margin-bottom:16px;">
-        <label class="form-label" for="pqa_price">Default Unit Price (₱, VAT-inclusive)</label>
-        <input type="number" id="pqa_price" name="default_unit_price" class="form-control"
-               min="0" step="0.01" placeholder="0.00">
-      </div>
-
-      <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px;">
         <button type="button" id="productQuickAddCancel" class="btn btn-secondary">Cancel</button>
         <button type="submit" id="productQuickAddSubmit" class="btn btn-primary"
                 {% if _pqa_blocked %}disabled{% endif %}>Create</button>

@@ -372,9 +372,7 @@ function onProductPick(id, productId) {
         if (typeof openProductModal === 'function') {
             openProductModal(id, function (p) {
                 if (!products.some(pp => String(pp.id) === String(p.id))) {
-                    products.push({ id: p.id, code: p.code, name: p.name,
-                                    default_uom_id: p.default_uom_id,
-                                    default_unit_price: p.unit_price });
+                    products.push(p);      // the whole product, as one loaded with the page (PROD-QA)
                     addProductOptionToAllLineSelects(p);
                 }
                 const sel = document.getElementById(`prod-sel-${id}`);

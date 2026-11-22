@@ -63,24 +63,33 @@ def ap_form(client, db_session, admin_user, main_branch, category):
 class TestCategoryFieldRendered:
 
     def test_modal_offers_a_category_select(self, ap_form):
-        assert b'name="category_id"' in ap_form
+        # The box renders the Products form's own fields, named "pqa-<field>" (PROD-QA, 22 Nov 2026);
+        # product-quick-add.js posts them as category_id etc.
+        assert b'name="pqa-category_id"' in ap_form
 
     def test_category_select_lists_active_categories(self, ap_form, category):
         html = ap_form.decode()
         assert f'value="{category.id}"' in html
         assert CAT_CODE in html
 
-    def test_category_absent_when_module_off(self, client, db_session, admin_user,
-                                             main_branch, category):
+    def test_category_not_demanded_when_module_off(self, client, db_session, admin_user,
+                                                   main_branch, category):
         """Control. With product_categories off the view relaxes category_id back
         to Optional(), so demanding one would block a create that the server would
-        happily accept."""
+        happily accept. Since PROD-QA (22 Nov 2026) the box shows the Products
+        form's own fields, Category included, as the Products page does: offered,
+        not demanded."""
+        import re
         _set_modules(db_session, '1', 'products')
         _set_modules(db_session, '0', 'product_categories')
         _login(client, admin_user, main_branch)
 
-        data = client.get('/accounts-payable/create').data
-        assert b'name="category_id"' not in data
+        data = client.get('/accounts-payable/create').data.decode()
+        tag = re.search(r'<select[^>]*name="pqa-category_id"[^>]*>', data).group(0)
+        assert 'required' not in tag
+        box = data[data.index('id="productQuickAddForm"'):]
+        label = box[box.index('for="pqa-category_id"'):]
+        assert not label[:label.index('</div>')].count('class="required"')
 
 
 class TestNoCategoriesDefinedYet:
@@ -100,10 +109,14 @@ class TestNoCategoriesDefinedYet:
         assert resp.status_code == 200
         return resp.data
 
-    def test_explains_why_instead_of_showing_an_empty_required_select(
-            self, form_no_categories):
-        assert b'none have been set up yet' in form_no_categories
-        assert b'id="pqa_category"' not in form_no_categories
+    def test_explains_why_and_offers_no_category(self, form_no_categories):
+        """Since PROD-QA (22 Nov 2026) the box shows the Products form's own fields, so the Category list is there,
+        empty, as on the Products page; the explanation above it and the disabled Create (below) remain."""
+        import re
+        html = form_no_categories.decode()
+        assert 'none have been set up yet' in html
+        options = re.search(r'<select[^>]*name="pqa-category_id"[^>]*>(.*?)</select>', html, re.S).group(1)
+        assert re.findall(r'value="([^"]*)"', options) == ['']
 
     def test_create_button_is_disabled(self, form_no_categories):
         html = form_no_categories.decode()
