@@ -114,7 +114,8 @@
             {%- elif item.product %}{{ item.product.name }}{% endif -%}
           </td>
           <td>{{ item.to_dict()['uom'] or '' }}</td>
-          <td class="text-right">{{ item.sales_order_item | qty_fmt }}</td>
+          {# No order line (DR-NOSO): nothing was ordered. #}
+          <td class="text-right">{{ (item.sales_order_item | qty_fmt) if item.sales_order_item else '—' }}</td>
           <td class="text-right">{{ item | qty_fmt }}</td>
         </tr>
         {% endfor %}

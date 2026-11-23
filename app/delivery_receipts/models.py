@@ -133,7 +133,10 @@ class DeliveryReceiptItem(db.Model):
             'ordered_quantity': float(soi.quantity) if (soi and soi.quantity is not None) else None,
             'product_code': soi.product.code if (soi and soi.product) else (self.product.code if self.product else None),
             'product_name': soi.product.name if (soi and soi.product) else (self.product.name if self.product else None),
-            'uom': (soi.unit_of_measure.code if (soi and soi.unit_of_measure) else (soi.uom_text if soi else None)),
+            # Without an order line (DR-NOSO) the unit is the line's own, else its product's: the unit it was
+            # delivered in. It showed blank on the DR page and print (Philgen trial, D12a, 22 Nov 2026).
+            'uom': ((soi.unit_of_measure.code if soi.unit_of_measure else soi.uom_text) if soi
+                    else (self.unit_of_measure.code if self.unit_of_measure else None)),
             'unit_price': float(soi.unit_price) if (soi and soi.unit_price is not None) else None,
         }
 
