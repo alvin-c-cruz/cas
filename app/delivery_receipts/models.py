@@ -220,3 +220,18 @@ def generate_dr_number(branch_id=None):
     """
     from app.utils.doc_numbering import next_document_number
     return next_document_number(DeliveryReceipt, DeliveryReceipt.dr_number, branch_id)
+
+
+def last_dr_number(branch_id=None):
+    """The highest plain-digit DR number in the series a new DR on this branch continues, as written ('0275'), or
+    None. The same numbers generate_dr_number counts: company-wide, or this branch's own when the series is per branch
+    (app/utils/doc_numbering.py). The DR form hints when a lower number is typed (B5-W A, owner 23 Nov 2026)."""
+    from app.utils.doc_numbering import BRANCH, _resolve_scope
+    per_branch = _resolve_scope() == BRANCH and branch_id is not None
+    best = None
+    for value, row_branch_id in db.session.query(DeliveryReceipt.dr_number, DeliveryReceipt.branch_id).all():
+        if not value or not value.isdigit() or (per_branch and row_branch_id != branch_id):
+            continue
+        if best is None or int(value) > int(best):
+            best = value
+    return best

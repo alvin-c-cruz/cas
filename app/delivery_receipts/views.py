@@ -9,7 +9,7 @@ from flask_login import login_required, current_user
 
 from app import db
 from app.delivery_receipts.models import (
-    DeliveryReceipt, DeliveryReceiptItem, so_line_open_qty, generate_dr_number)
+    DeliveryReceipt, DeliveryReceiptItem, so_line_open_qty, generate_dr_number, last_dr_number)
 from app.delivery_receipts.forms import DeliveryReceiptForm
 from app.delivery_receipts.preprinted_layout import (
     get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
@@ -208,6 +208,8 @@ def _render_form(dr, form, eligible):
     direct = _direct_ctx(dr)
     if posted:
         direct['direct_existing'] = _submitted_direct_lines()
+    # B5-W A: a new DR's number is compared with the last one while it is typed (a saved DR's own is older anyway).
+    direct['last_dr_number'] = last_dr_number(session.get('selected_branch_id')) if dr is None else None
     return render_template(
         'delivery_receipts/form.html', form=form, dr=dr, customers=customers, selected=chosen,
         selected_customer_name=next((c['name'] for c in customers if c['id'] == chosen['customer_id']), ''),
