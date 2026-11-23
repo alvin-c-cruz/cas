@@ -37,9 +37,9 @@ def _assert_custom_page(html):
     # the paper picker offers and selects "Custom size", carrying its geometry for the designer
     opt = re.search(r'<option value="custom"[^>]*>[^<]*</option>', html).group(0)
     assert 'selected' in opt and 'data-css="9.5in 6.5in"' in opt and 'Custom size' in opt, opt
-    # the shift: on paper only, in mm
+    # the shift: on paper only, in mm; it moves the fields inside a canvas that clips at the paper (SHIFT-SCALE)
     shift = re.search(r'<style id="ppShiftStyle">(.*?)</style>', html, flags=re.S).group(1)
-    assert '@media print' in shift and 'translate(1.2mm, -0.8mm)' in shift, shift
+    assert '@media print' in shift and 'translate: 1.2mm -0.8mm;' in shift and 'overflow: hidden' in shift, shift
     # the designer's inputs carry the saved values
     assert re.search(r'id="ppPaperW"[^>]*value="9.5"', html)
     assert re.search(r'id="ppPaperH"[^>]*value="6.5"', html)
@@ -54,7 +54,7 @@ def _assert_plain_page(html):
     assert 'size: 9.5in 10.5in' in page_style, page_style
     opt = re.search(r'<option value="custom"[^>]*>', html).group(0)
     assert 'selected' not in opt
-    assert 'translate(0.0mm, 0.0mm)' in re.search(r'<style id="ppShiftStyle">(.*?)</style>', html, flags=re.S).group(1)
+    assert 'translate: 0.0mm 0.0mm;' in re.search(r'<style id="ppShiftStyle">(.*?)</style>', html, flags=re.S).group(1)
 
 
 class TestCdvPage:

@@ -3,7 +3,8 @@
  * The page renders these controls from templates/_pp_paper_extra.html, right after the paper picker. Each designer
  * already resizes the canvas and rewrites the @page rule from the selected <option>'s data-w / data-h / data-css when
  * the picker changes; this script keeps the "Custom size" option's data in step with the W x H boxes and re-fires
- * that change, so no designer needs its own custom-size code. The shift rewrites the print-only translate live.
+ * that change, so no designer needs its own custom-size code. The shift rewrites the print rule live: the same rule
+ * templates/_pp_print_shift.html renders (the canvas clips at the paper's edge; the fields move inside it, SHIFT-SCALE).
  * Each designer's collect() spreads window.ppPaperExtra() beside `paper`, so the save carries both; the server
  * clamps them again (app/common/print_paper.py).
  */
@@ -57,7 +58,8 @@
 
   function syncShift() {
     const s = shift();
-    shiftStyle.textContent = '@media print { #ppCanvas { transform: translate(' + s.x + 'mm, ' + s.y + 'mm); } }';
+    if (!shiftStyle) return;
+    shiftStyle.textContent = '@media print { #ppCanvas { overflow: hidden; } #ppCanvas .pp-el, #ppCanvas .pp-col, #ppCanvas .pp-jecol { translate: ' + s.x + 'mm ' + s.y + 'mm; } }';
   }
 
   [wIn, hIn].forEach((input) => input.addEventListener('input', () => syncCustomOption(true)));

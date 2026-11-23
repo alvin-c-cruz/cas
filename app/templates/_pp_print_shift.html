@@ -1,0 +1,11 @@
+{#- The print rule of every pre-printed page and the cheque (SHIFT-SCALE, 23 Nov 2026; work order
+    2026-11-23-page-shift-shrinks-print.md). Included right after the page's @page rule, OUTSIDE its can_edit_layout
+    block, so everyone who prints gets it (it used to sit in _pp_paper_extra.html, inside that block: a viewer, and on
+    the cheque anyone but admin or Chief Accountant, printed without the shift).
+    - The canvas is exactly the paper's size; in print it clips there, so nothing on it can make the page wider than
+      the paper (the browser shrinks a wider page to fit, which is what shrank Philgen's PO "Manila" by about 4%).
+    - "Shift whole page" (RICL-2 A) moves the placed fields inside the canvas with the CSS `translate` property, which
+      adds to any transform an element has; the canvas itself stays on the paper. Screen and designer are unchanged.
+    pp_paper.js rewrites #ppShiftStyle with the same rule while the shift is typed. -#}
+{%- set _pp_shift = layout.offset or {'x': 0.0, 'y': 0.0} -%}
+<style id="ppShiftStyle">@media print { #ppCanvas { overflow: hidden; } #ppCanvas .pp-el, #ppCanvas .pp-col, #ppCanvas .pp-jecol { translate: {{ _pp_shift.x }}mm {{ _pp_shift.y }}mm; } }</style>

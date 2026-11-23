@@ -3,7 +3,8 @@
     mode, the size boxes only when "Custom size" is chosen. The shift moves the whole print on paper only: the screen
     keeps the designer's geometry, as with the deposit slip's "Nudge print (mm)". Values come from the sanitized layout
     (app/common/print_paper.py), so they are plain numbers; an unsaved layout in the older modules is their raw
-    defaults, without these keys, hence the fallbacks. -#}
+    defaults, without these keys, hence the fallbacks. The print rule itself is _pp_print_shift.html, which every page
+    includes for every user (SHIFT-SCALE); pp_paper.js rewrites it live from the X / Y boxes. -#}
 {%- set _pp_size = layout.paperSize or pp_paper.DEFAULT_PAPER_SIZE -%}
 {%- set _pp_off = layout.offset or {'x': 0.0, 'y': 0.0} -%}
 <span id="ppPaperExtra" class="screen-only" style="display:none;">
@@ -16,7 +17,6 @@
     Y <input type="number" id="ppShiftY" step="0.1" min="-{{ pp_paper.OFFSET_MAX_MM }}" max="{{ pp_paper.OFFSET_MAX_MM }}" value="{{ _pp_off.y }}" style="width:4.5em;">
   </span>
 </span>
-<style id="ppShiftStyle">@media print { #ppCanvas { transform: translate({{ _pp_off.x }}mm, {{ _pp_off.y }}mm); } }</style>
 {#- Fields off the page (RICL-W A): pp_paper.js marks them and fills the bar; screen only, never on paper. -#}
 <style>
   @media screen { #ppCanvas [data-pp-off] { outline: 2px solid #c62828 !important; outline-offset: 0 !important; } }
