@@ -20,6 +20,8 @@ class DeliveryReceiptForm(RowVersionFormMixin, FlaskForm):
                               format='%Y-%m-%d', default=date.today)
     salesperson_id = SelectField('Salesperson', coerce=int, validators=[Optional()],
                                  validate_choice=False)
+    # B2 A: the page fills it from the chosen order's PO; the user may change it, or type one without an order.
+    customer_po_number = StringField('Customer PO', validators=[Optional(), Length(max=100)])
     remarks = TextAreaField('Remarks', validators=[Optional()])
     # Legacy-mirroring free-text blocks -- feed the DR pre-printed layout's positioned
     # multiline fields (e.g. RIC's packing/lot breakdown and BO/CO delivery-window notes).

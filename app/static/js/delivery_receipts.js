@@ -13,6 +13,11 @@
    A saved DR keeps its customer and its way: the page then opens "locked" and only the header and
    the lines change.
 
+   The Customer PO box (B2 A, owner 23 Nov 2026) takes the chosen order's PO. Until the user changes
+   it, it follows the order: another order puts that order's PO in, "without a sales order" or another
+   customer empties it. A PO the user typed is never replaced. The page opening (an edit, a refused
+   save, ?so=) leaves the box as the server sent it.
+
    Rows are built with textContent, so a product or customer name can never inject markup. */
 (function () {
   'use strict';
@@ -55,6 +60,7 @@
   var addButton = document.getElementById('dr-add-line');
   var linesHidden = document.getElementById('lines-json');
   var directHidden = document.getElementById('direct-lines-json');
+  var poBox = document.getElementById('customer_po_number');
 
   var PICK_ORDER = 'Select the sales order to deliver against, or choose "Deliver without a sales order".';
   var ORDER_PLACEHOLDER = 'Select the sales order…';
@@ -62,6 +68,7 @@
   var shownOrder = '';        // the order whose lines are in the table
   var soPicker = null;        // the search-select on the order picker
   var customerPicker = null;
+  var poFromOrder = null;     // the order PO the box holds, while the user has not changed it
 
   function num(v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; }
   function show(node, yes) { if (node) { node.style.display = yes ? '' : 'none'; } }
@@ -236,6 +243,22 @@
     soHidden.value = way === 'so' ? orderValue() : (way === 'none' ? '0' : '');
   }
 
+  // -- the Customer PO -------------------------------------------------------------------------------
+
+  function orderPo(id) {
+    var o = orders.filter(function (x) { return String(x.id) === String(id); })[0];
+    return o && o.po ? String(o.po) : '';
+  }
+
+  /* The box takes the chosen order's PO (none without an order), unless the user has typed one. */
+  function followOrderPo() {
+    if (!poBox || locked) { return; }
+    if (poBox.value !== '' && poBox.value !== poFromOrder) { return; }      // typed by the user: theirs
+    var po = way === 'so' ? orderPo(orderValue()) : '';
+    poBox.value = po;
+    poFromOrder = po || null;
+  }
+
   // -- the way: against a sales order, or without one -----------------------------------------------
 
   function setWay(next, fill) {
@@ -257,6 +280,7 @@
       show(noLines, false);
     }
     show(addButton, way === 'none');
+    if (!fill) { followOrderPo(); }        // the page opening keeps the box as the server sent it
     serialize();
   }
 
@@ -329,4 +353,8 @@
   });
 
   setCustomer(chosen.customer_id ? String(chosen.customer_id) : customerSel.value, true);
+  // Opened on an order whose PO the box already holds (?so=): it still follows that order.
+  if (poBox && way === 'so' && poBox.value !== '' && poBox.value === orderPo(orderValue())) {
+    poFromOrder = poBox.value;
+  }
 })();

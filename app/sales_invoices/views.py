@@ -773,7 +773,7 @@ def billable_drs():
             })
         out.append({'id': dr.id, 'dr_number': dr.dr_number,
                     'delivery_date': dr.delivery_date.isoformat() if dr.delivery_date else None,
-                    'customer_po_number': dr.sales_order.customer_po_number if dr.sales_order else None,
+                    'customer_po_number': dr.customer_po_number,       # the DR's own (B2 A)
                     'so_number': dr.sales_order.so_number if dr.sales_order else None,
                     'delivery_site': _dr_delivery_site(dr),
                     'lines': lines})

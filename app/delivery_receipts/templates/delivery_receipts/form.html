@@ -74,6 +74,8 @@
                 <div class="left-col-fields header-fields{% if has_customer %} header-fields--active{% endif %}">
                     {{ render_field(form.dr_number) }}
                     {{ render_field(form.delivery_date) }}
+                    {# B2 A: filled from the chosen order's PO (delivery_receipts.js); may be changed or typed. #}
+                    {{ render_field(form.customer_po_number) }}
                     {% if module_enabled('employees') %}{{ render_field(form.salesperson_id) }}{% endif %}
                     {{ render_field(form.carrier) }}
                     {{ render_field(form.checked_by) }}
@@ -210,5 +212,5 @@
 <script type="application/json" id="dr-noso-data">{{ {'products': direct_products, 'units': direct_units, 'existing': direct_existing}|tojson }}</script>
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='search-select.js') }}?v=3"></script>
-<script src="{{ url_for('static', filename='js/delivery_receipts.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='js/delivery_receipts.js') }}?v=5"></script>
 {% endblock %}

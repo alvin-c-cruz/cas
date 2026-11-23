@@ -1,5 +1,8 @@
 """BUG-SI-PULL-DR-NO-PO-AUTOFILL: billable_drs() must include each DR's
-source SO's customer_po_number so the frontend Pull handler can autofill it."""
+customer_po_number so the frontend Pull handler can autofill it.
+
+Since B2 A (owner, 23 Nov 2026) that is the DR's OWN PO, which starts as its order's when the DR is made (and the
+migration drpo_0001 gave every older DR its order's). The DRs below are built directly, so they carry it themselves."""
 import pytest
 from decimal import Decimal
 from datetime import date
@@ -31,7 +34,7 @@ def test_billable_drs_includes_customer_po_number(client, db_session, staff_user
 
     dr = DeliveryReceipt(dr_number='DR-PO-0001', delivery_date=date(2026, 7, 10),
                          sales_order_id=so.id, customer_id=customer.id, customer_name=customer.name,
-                         status='delivered', branch_id=main_branch.id)
+                         status='delivered', branch_id=main_branch.id, customer_po_number='PO-12345')
     db_session.add(dr); db_session.commit()
     dr.line_items.append(DeliveryReceiptItem(line_number=1, sales_order_item_id=li.id,
                                              delivered_quantity=Decimal('10')))

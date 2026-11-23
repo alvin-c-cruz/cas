@@ -139,6 +139,18 @@ def _submitted_direct_lines():
 SO_REQUIRED = 'Select the sales order to deliver against, or choose "Deliver without a sales order".'
 
 
+def _posted_po(default=None):
+    """B2 A: the Customer PO as sent, trimmed; a blank one is none. A page opened before the box existed sends no
+    Customer PO at all: then `default` stands (the order's PO on a new DR, the DR's own on an edit)."""
+    if 'customer_po_number' not in request.form:
+        return default
+    return (request.form.get('customer_po_number') or '').strip() or None
+
+
+def _order_po(so):
+    return ((so.customer_po_number or '').strip() or None) if so else None
+
+
 def _order_label(so):
     """How an order reads in the form's order picker. Its customer is already chosen by then."""
     label = f"{so.so_number} · {so.order_date.strftime('%b %d, %Y')}"
@@ -199,7 +211,8 @@ def _render_form(dr, form, eligible):
     return render_template(
         'delivery_receipts/form.html', form=form, dr=dr, customers=customers, selected=chosen,
         selected_customer_name=next((c['name'] for c in customers if c['id'] == chosen['customer_id']), ''),
-        orders=[{'id': so.id, 'customer_id': so.customer_id, 'label': _order_label(so)} for so in orders],
+        orders=[{'id': so.id, 'customer_id': so.customer_id, 'label': _order_label(so), 'po': _order_po(so) or ''}
+                for so in orders],
         so_lines=_so_lines_payload(orders, exclude_dr_id=dr.id if dr is not None else None),
         existing=_submitted_existing_lines() if posted else _existing_lines(dr), **direct)
 
@@ -386,6 +399,7 @@ def create():
                 dr_number=dr_number, branch_id=branch_id,
                 delivery_date=form.delivery_date.data, sales_order_id=so.id,
                 customer_id=so.customer_id, customer_name=so.customer_name,
+                customer_po_number=_posted_po(_order_po(so)),
                 remarks=form.remarks.data or None,
                 packing_notes=form.packing_notes.data or None,
                 schedule_notes=form.schedule_notes.data or None,
@@ -412,6 +426,9 @@ def create():
     if request.method == 'GET':
         form.dr_number.data = generate_dr_number(branch_id)
         form.delivery_date.data = ph_now().date()
+        # Coming from a sales order (?so=): the Customer PO starts as that order's (B2 A).
+        from_order = next((so for so in eligible if so.id == request.args.get('so', type=int)), None)
+        form.customer_po_number.data = _order_po(from_order)
     return _render_form(None, form, eligible)
 
 
@@ -432,7 +449,7 @@ def _create_without_so(form, branch_id, eligible):
         dr = DeliveryReceipt(
             dr_number=dr_number or generate_dr_number(branch_id), branch_id=branch_id,
             delivery_date=form.delivery_date.data, sales_order_id=None,
-            customer_id=customer.id, customer_name=customer.name,
+            customer_id=customer.id, customer_name=customer.name, customer_po_number=_posted_po(),
             remarks=form.remarks.data or None, packing_notes=form.packing_notes.data or None,
             schedule_notes=form.schedule_notes.data or None, carrier=form.carrier.data or None,
             checked_by=form.checked_by.data or None, approved_by=form.approved_by.data or None,
@@ -493,6 +510,7 @@ def edit(id):
                 return _render_form(dr, form, eligible)
 
             dr.delivery_date = form.delivery_date.data
+            dr.customer_po_number = _posted_po(dr.customer_po_number)
             dr.remarks = form.remarks.data or None
             dr.packing_notes = form.packing_notes.data or None
             dr.schedule_notes = form.schedule_notes.data or None

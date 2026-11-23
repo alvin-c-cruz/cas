@@ -84,7 +84,7 @@ class TestTheCreatePage:
         _login(client, admin_user); _branch(client, main_branch.id)
         html = _page(client)
         for part in ("transactions.css", "accounts_payable_form.css", "choices.min.css", "choices.min.js",
-                     "search-select.js", "js/delivery_receipts.js?v=4",
+                     "search-select.js", "js/delivery_receipts.js?v=5",
                      'class="card card--lines page-sales-invoice page-delivery-receipt"', 'class="form-main-grid',
                      'id="customerCard"', 'id="customerCardLabel"', 'id="lineItemsLocked"', 'id="lineItemsSection"'):
             assert part in html, part
@@ -118,8 +118,8 @@ class TestTheCreatePage:
         _order('SO-C-3', acme, widget, main_branch.id, status='draft')            # not confirmed: not offered
         _login(client, admin_user); _branch(client, main_branch.id)
         assert _data(_page(client), 'dr-orders-data') == [
-            {'id': second.id, 'customer_id': acme.id, 'label': 'SO-C-2 · Jul 10, 2026 · PO 4411'},
-            {'id': so.id, 'customer_id': acme.id, 'label': 'SO-C-1 · Jul 09, 2026'}]
+            {'id': second.id, 'customer_id': acme.id, 'label': 'SO-C-2 · Jul 10, 2026 · PO 4411', 'po': '4411'},
+            {'id': so.id, 'customer_id': acme.id, 'label': 'SO-C-1 · Jul 09, 2026', 'po': ''}]
 
     def test_a_customer_made_inactive_is_still_offered_while_an_order_of_theirs_is_open(self, client, admin_user,
                                                                                         main_branch, books):
@@ -262,7 +262,7 @@ class TestTheEditPage:
             'customer_id': acme.id, 'source': 'so', 'sales_order_id': so.id, 'locked': True}
         # only its own order: a draft's order cannot be swapped for another
         assert _data(html, 'dr-orders-data') == [
-            {'id': so.id, 'customer_id': acme.id, 'label': 'SO-C-1 · Jul 09, 2026'}]
+            {'id': so.id, 'customer_id': acme.id, 'label': 'SO-C-1 · Jul 09, 2026', 'po': ''}]
         assert _data(html, 'dr-existing-data') == {str(so.line_items[0].id): 4.0}
         assert re.search(r'<select[^>]*id="dr-customer"[^>]*\bdisabled\b', html)
         assert '&#10003; C1 - Acme' in html              # "CODE - Name", as the SI form reads its customers

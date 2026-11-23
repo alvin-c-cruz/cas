@@ -81,6 +81,7 @@
         <a href="{{ url_for('sales_orders.view', id=dr.sales_order_id) }}">{{ dr.sales_order.so_number }}</a>
         {% endif %}
       </div>
+      {% if dr.customer_po_number %}<div><strong>Customer PO:</strong> {{ dr.customer_po_number }}</div>{% endif %}
       <div><strong>Salesperson:</strong> {{ dr.salesperson.full_name if dr.salesperson else 'Company Account' }}</div>
       {% if dr.remarks %}<div><strong>Remarks:</strong> {{ dr.remarks }}</div>{% endif %}
       {% if dr.packing_notes %}<div><strong>Packing/Lot Breakdown:</strong> <span style="white-space:pre-line;">{{ dr.packing_notes }}</span></div>{% endif %}

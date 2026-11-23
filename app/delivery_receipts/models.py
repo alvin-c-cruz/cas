@@ -29,6 +29,11 @@ class DeliveryReceipt(RowVersioned, db.Model):
     customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False, index=True)
     customer_name = db.Column(db.String(200), nullable=False)
 
+    # The customer's PO this delivery is for (B2 A, owner 23 Nov 2026; migration drpo_0001). Against an order it starts
+    # as the order's PO and can be changed; without one it is typed. The DR page, both DR prints and the invoice's DR
+    # billing read this, not the order's.
+    customer_po_number = db.Column(db.String(100), nullable=True)
+
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
     remarks = db.Column(db.Text)
     # Legacy-mirroring free-text blocks (RIC's "Stacking" / "Production Date" textareas):

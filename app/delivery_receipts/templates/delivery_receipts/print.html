@@ -52,6 +52,9 @@
     <td>{{ dr.salesperson.full_name if dr.salesperson else 'Company Account' }}</td>
     <td class="label">Status</td><td>{{ dr.status | title }}</td>
   </tr>
+  {% if dr.customer_po_number %}
+  <tr><td class="label">PO No.</td><td>{{ dr.customer_po_number }}</td><td></td><td></td></tr>
+  {% endif %}
   {% if dr.remarks %}
   <tr><td class="label">Remarks</td><td colspan="3">{{ dr.remarks }}</td></tr>
   {% endif %}

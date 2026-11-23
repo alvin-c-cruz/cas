@@ -43,6 +43,7 @@ def _billed_dr(db_session, main_branch, admin_user, packing_notes=None, schedule
                           delivery_date=date(2026, 7, 10), sales_order_id=so.id,
                           customer_id=c.id, customer_name=c.name, status='billed',
                           created_by_id=admin_user.id,
+                          customer_po_number='2200099999',   # its own PO, taken from the SO when made (B2 A)
                           packing_notes=packing_notes, schedule_notes=schedule_notes,
                           remarks=remarks, carrier=carrier, checked_by=checked_by,
                           approved_by=approved_by)
@@ -72,7 +73,7 @@ def test_print_preprinted_renders_overlay(client, db_session, admin_user, main_b
     assert b'pp-canvas' in resp.data
     assert b'350 BAGS X 20 PCS' in resp.data
     assert b'BO: JULY 16 - 17, 2026' in resp.data
-    assert b'2200099999' in resp.data  # customer_po, sourced from the linked SO
+    assert b'2200099999' in resp.data  # customer_po: the DR's own since B2 A (it started as the SO's)
     assert b'PRODUCT CODE: 220176' in resp.data  # the single first-line product_code field, labeled
     body = resp.data.decode('utf-8')
     assert '>220176<' in body  # AND the per-line customer_product_code column, bare/unlabeled

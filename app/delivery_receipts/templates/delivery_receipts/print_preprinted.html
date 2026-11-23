@@ -132,7 +132,7 @@
     'dr_no': dr.dr_number,
     'delivery_date': dr.delivery_date.strftime(date_fmt) if dr.delivery_date else '',
     'so_no': dr.sales_order.so_number if dr.sales_order else '',
-    'customer_po': dr.sales_order.customer_po_number if dr.sales_order else '',
+    'customer_po': dr.customer_po_number or '',
     'status': dr.status | title,
     'customer_name': dr.customer_name,
     'customer_tin': dr.sales_order.customer_tin if dr.sales_order else (dr_customer.tin if dr_customer else ''),
