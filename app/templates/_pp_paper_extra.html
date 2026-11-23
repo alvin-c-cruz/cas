@@ -17,4 +17,14 @@
   </span>
 </span>
 <style id="ppShiftStyle">@media print { #ppCanvas { transform: translate({{ _pp_off.x }}mm, {{ _pp_off.y }}mm); } }</style>
-<script src="{{ url_for('static', filename='js/pp_paper.js') }}?v=1"></script>
+{#- Fields off the page (RICL-W A): pp_paper.js marks them and fills the bar; screen only, never on paper. -#}
+<style>
+  @media screen { #ppCanvas [data-pp-off] { outline: 2px solid #c62828 !important; outline-offset: 0 !important; } }
+  .pp-off-page { display: none; position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 1900;
+                 max-width: 90vw; padding: 8px 14px; border: 1px solid #c62828; border-radius: 4px; background: #fdecea;
+                 color: #b71c1c; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+                 box-shadow: 0 2px 6px rgba(0, 0, 0, .15); pointer-events: none; }
+  .pp-off-page.pp-show { display: block; }
+  @media print { .pp-off-page { display: none !important; } }
+</style>
+<script src="{{ url_for('static', filename='js/pp_paper.js') }}?v=2"></script>
