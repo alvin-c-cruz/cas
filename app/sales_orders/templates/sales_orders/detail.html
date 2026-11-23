@@ -344,6 +344,25 @@
                         <td></td>
                         <td></td>
                     </tr>
+                    {# The VAT inside the total, and the amount net of it, worded as on the SI page (Philgen trial, B5, 22 Nov 2026). #}
+                    <tr>
+                        <td colspan="8" style="text-align:right; color:var(--text-2);">Less: Output VAT</td>
+                        <td style="text-align:right; font-family:var(--mono); color:var(--text-2);">{{ '{:,.2f}'.format(so.vat_amount or 0) }}</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td colspan="8" style="text-align:right; color:var(--text-2);">Net of VAT</td>
+                        <td style="text-align:right; font-family:var(--mono); color:var(--text-2);">{{ '{:,.2f}'.format((so.total_amount or 0) - (so.vat_amount or 0)) }}</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
                 </tfoot>
             </table>
         </div>
