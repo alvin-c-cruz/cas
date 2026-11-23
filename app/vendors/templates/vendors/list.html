@@ -62,7 +62,7 @@
                     <td>{{ vendor.contact_person or '—' }}</td>
                     <td>{{ vendor.phone or '—' }}</td>
                     <td>{{ vendor.tin or '—' }}</td>
-                    <td>{{ vendor.payment_terms }}</td>
+                    <td>{{ vendor.payment_terms | terms_label }}</td>
                     <td>
                         {% if vendor.default_vat_category %}
                         <span class="badge badge-vat">{{ vendor.default_vat_category }}</span>

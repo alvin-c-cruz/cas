@@ -58,7 +58,7 @@
     <div><strong>Order Date:</strong> {{ po.order_date.strftime('%b %d, %Y') if po.order_date else '' }}</div>
     <div><strong>Expected:</strong> {{ po.expected_date.strftime('%b %d, %Y') if po.expected_date else '-' }}</div>
     <div><strong>VAT Treatment:</strong> {{ po.vat_treatment }}</div>
-    <div><strong>Payment Terms:</strong> {{ po.payment_terms }}</div>
+    <div><strong>Payment Terms:</strong> {{ po.payment_terms | terms_label }}</div>
     {# The currency is settable on the form and printed beside the total, so it has to
        be readable on the record itself -- otherwise the only way to find out what a
        saved order is denominated in is to print it. Found by the branch's own browser

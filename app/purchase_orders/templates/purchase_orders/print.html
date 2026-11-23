@@ -44,7 +44,7 @@
     <div><strong>Date:</strong> {{ po.order_date.strftime('%B %d, %Y') if po.order_date else '' }}</div>
     <div><strong>Vendor:</strong> {{ po.vendor_name }}{% if po.vendor_tin %} (TIN: {{ po.vendor_tin }}){% endif %}</div>
     {% if po.expected_date %}<div><strong>Expected:</strong> {{ po.expected_date.strftime('%B %d, %Y') }}</div>{% endif %}
-    <div><strong>Payment Terms:</strong> {{ po.payment_terms }}</div>
+    <div><strong>Payment Terms:</strong> {{ po.payment_terms | terms_label }}</div>
   </div>
 
   {# What the order is FOR -- one caption above the items, never a per-line

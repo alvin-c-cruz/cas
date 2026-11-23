@@ -175,7 +175,7 @@
     'apv_no': ap.ap_number,
     'apv_date': ap.ap_date.strftime(date_fmt) if ap.ap_date else '',
     'due_date': ap.due_date.strftime(date_fmt) if ap.due_date else '',
-    'terms': ap.payment_terms or '',
+    'terms': ap.payment_terms | terms_label,
     'vendor_name': ap.vendor_name,
     'vendor_tin': ap.vendor_tin or '',
     'vendor_invoice_no': ap.vendor_invoice_number or '',

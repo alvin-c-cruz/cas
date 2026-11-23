@@ -4,6 +4,7 @@ Forms for Customer management
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, SelectField, BooleanField
 from wtforms.validators import DataRequired, Length, Email, Optional
+from app.utils.payment_terms import PAYMENT_TERMS_CHOICES   # "30 DAYS" labels (TERMS-1)
 
 
 class CustomerForm(FlaskForm):
@@ -45,15 +46,7 @@ class CustomerForm(FlaskForm):
         Length(max=200, message='Business style must be 200 characters or less.')
     ])
 
-    payment_terms = SelectField('Payment Terms', choices=[
-        ('Net 15', 'Net 15'),
-        ('Net 30', 'Net 30'),
-        ('Net 45', 'Net 45'),
-        ('Net 60', 'Net 60'),
-        ('Net 90', 'Net 90'),
-        ('Cash on Delivery', 'Cash on Delivery'),
-        ('Advance Payment', 'Advance Payment')
-    ])
+    payment_terms = SelectField('Payment Terms', choices=PAYMENT_TERMS_CHOICES)
 
     is_active = SelectField('Status', choices=[
         ('1', 'Active'),

@@ -6,6 +6,7 @@ from wtforms import StringField, DateField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Length, Optional
 from app.utils.concurrency import RowVersionFormMixin
 from datetime import date
+from app.utils.payment_terms import PAYMENT_TERMS_CHOICES   # "30 DAYS" labels (TERMS-1)
 
 
 class SalesInvoiceForm(RowVersionFormMixin, FlaskForm):
@@ -39,12 +40,7 @@ class SalesInvoiceForm(RowVersionFormMixin, FlaskForm):
     customer_po_date = DateField('Customer PO Date', validators=[Optional()],
                                  format='%Y-%m-%d')
 
-    payment_terms = SelectField('Payment Terms', validators=[DataRequired()], choices=[
-        ('Net 15', 'Net 15'), ('Net 30', 'Net 30'), ('Net 45', 'Net 45'),
-        ('Net 60', 'Net 60'), ('Net 90', 'Net 90'),
-        ('Cash on Delivery', 'Cash on Delivery'),
-        ('Advance Payment', 'Advance Payment'),
-    ], default='Net 30')
+    payment_terms = SelectField('Payment Terms', validators=[DataRequired()], choices=PAYMENT_TERMS_CHOICES, default='Net 30')
 
     reference = StringField('Reference', validators=[Optional(), Length(max=100)])
 

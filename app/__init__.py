@@ -163,6 +163,9 @@ def create_app(config_name=None):
     # column-only and the template reads id/code/name, never a relationship.
     from app.utils.cache_helpers import get_active_product_categories
     app.jinja_env.globals['active_product_categories'] = get_active_product_categories
+    # Payment terms read "30 DAYS"; the stored value stays "Net 30" (TERMS-1 A, owner 22 Nov 2026).
+    from app.utils.payment_terms import terms_label
+    app.jinja_env.filters['terms_label'] = terms_label
 
     from app.users.utils import role_label
     app.jinja_env.filters['role_label'] = role_label

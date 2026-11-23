@@ -112,7 +112,7 @@ class TestVendorDetail:
         resp = client.get(f'/vendors/{vendor.id}')
         assert resp.status_code == 200
         assert b'DV002' in resp.data
-        assert b'Net 30' in resp.data
+        assert b'30 DAYS' in resp.data          # the stored "Net 30" reads as days (TERMS-1 A, 22 Nov 2026)
 
     def test_detail_bills_tab_renders(self, client, db_session, admin_user, main_branch):
         login(client)

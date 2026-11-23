@@ -89,7 +89,7 @@
       <tr><td class="label">Valid Until</td>
           <td>{{ quote.valid_until.strftime('%d %B %Y') if quote.valid_until else '—' }}</td></tr>
       <tr><td class="label">VAT Treatment</td><td>{{ treatment_label }}</td></tr>
-      <tr><td class="label">Terms</td><td>{{ quote.payment_terms or '—' }}</td></tr>
+      <tr><td class="label">Terms</td><td>{{ (quote.payment_terms | terms_label) or '—' }}</td></tr>
       {% if quote.reference %}
       <tr><td class="label">Reference</td><td>{{ quote.reference }}</td></tr>
       {% endif %}

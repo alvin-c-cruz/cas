@@ -78,7 +78,7 @@
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700;
                                  text-transform:uppercase; letter-spacing:0.04em;">Payment Terms</span>
-                    <span>{{ header.payment_terms or '—' }}</span>
+                    <span>{{ (header.payment_terms | terms_label) or '—' }}</span>
                 </div>
                 {% if header.reference %}
                 <div style="display:flex; justify-content:space-between; align-items:center;">

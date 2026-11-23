@@ -4,6 +4,7 @@ Forms for Vendor management
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, BooleanField, SelectField
 from wtforms.validators import DataRequired, Length, Email, Optional
+from app.utils.payment_terms import PAYMENT_TERMS_CHOICES   # "30 DAYS" labels (TERMS-1)
 
 
 class VendorForm(FlaskForm):
@@ -48,15 +49,7 @@ class VendorForm(FlaskForm):
         Length(max=50, message='TIN must be 50 characters or less.')
     ])
 
-    payment_terms = SelectField('Payment Terms', choices=[
-        ('Net 15', 'Net 15'),
-        ('Net 30', 'Net 30'),
-        ('Net 45', 'Net 45'),
-        ('Net 60', 'Net 60'),
-        ('Net 90', 'Net 90'),
-        ('Cash on Delivery', 'Cash on Delivery'),
-        ('Advance Payment', 'Advance Payment')
-    ])
+    payment_terms = SelectField('Payment Terms', choices=PAYMENT_TERMS_CHOICES)
 
     is_active = SelectField('Status', choices=[
         ('1', 'Active'),

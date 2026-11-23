@@ -61,7 +61,7 @@
                 <tr><td>Email</td><td>{{ customer.email or '—' }}</td></tr>
                 <tr><td>Address</td><td>{{ customer.address or '—' }}</td></tr>
                 <tr><td>Postal Code</td><td>{{ customer.postal_code or '—' }}</td></tr>
-                <tr><td>Payment Terms</td><td>{{ customer.payment_terms or '—' }}</td></tr>
+                <tr><td>Payment Terms</td><td>{{ (customer.payment_terms | terms_label) or '—' }}</td></tr>
                 <tr>
                     <td>Default VAT</td>
                     <td>

@@ -90,7 +90,7 @@
       <tr><td class="label">APV No.</td><td><strong>{{ ap.ap_number }}</strong></td></tr>
       <tr><td class="label">Date</td><td>{{ ap.ap_date.strftime('%d %B %Y') }}</td></tr>
       <tr><td class="label">Due Date</td><td>{{ ap.due_date.strftime('%d %B %Y') if ap.due_date else '—' }}</td></tr>
-      <tr><td class="label">Terms</td><td>{{ ap.payment_terms or '—' }}</td></tr>
+      <tr><td class="label">Terms</td><td>{{ (ap.payment_terms | terms_label) or '—' }}</td></tr>
     </table>
     <table>
       <tr><td colspan="2" class="label vendor-header">VENDOR</td></tr>

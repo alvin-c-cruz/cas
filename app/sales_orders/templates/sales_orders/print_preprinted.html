@@ -116,7 +116,7 @@
     'customer_address': so.customer_address or '',
     'customer_po': so.customer_po_number or '',
     'po_date': so.customer_po_date.strftime(date_fmt) if so.customer_po_date else '',
-    'terms': so.payment_terms or '',
+    'terms': so.payment_terms | terms_label,
     'salesperson': so.salesperson.full_name if so.salesperson else 'Company Account',
     'total_sales': '{:,.2f}'.format(so.total_amount or 0),
   } %}

@@ -160,7 +160,7 @@
     'vendor_name': po.vendor_name or '',
     'vendor_tin': po.vendor_tin or '',
     'vendor_address': po.vendor_address or '',
-    'payment_terms': po.payment_terms or '',
+    'payment_terms': po.payment_terms | terms_label,
     'reference': po.reference or '',
     'purpose': po.purpose or '',
     'vat_treatment': po.vat_treatment_label,

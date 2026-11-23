@@ -6,6 +6,7 @@ from wtforms import StringField, DateField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Length, Optional
 from app.utils.concurrency import RowVersionFormMixin
 from app.purchase_orders.models import VAT_TREATMENTS
+from app.utils.payment_terms import PAYMENT_TERMS_CHOICES   # "30 DAYS" labels (TERMS-1)
 
 
 class PurchaseOrderForm(RowVersionFormMixin, FlaskForm):
@@ -42,12 +43,7 @@ class PurchaseOrderForm(RowVersionFormMixin, FlaskForm):
         ('non_vat', 'Non-VAT'),
     ], default='inclusive', validators=[DataRequired()])
 
-    payment_terms = SelectField('Payment Terms', validators=[DataRequired()], choices=[
-        ('Net 15', 'Net 15'), ('Net 30', 'Net 30'), ('Net 45', 'Net 45'),
-        ('Net 60', 'Net 60'), ('Net 90', 'Net 90'),
-        ('Cash on Delivery', 'Cash on Delivery'),
-        ('Advance Payment', 'Advance Payment'),
-    ], default='Net 30')
+    payment_terms = SelectField('Payment Terms', validators=[DataRequired()], choices=PAYMENT_TERMS_CHOICES, default='Net 30')
 
     reference = StringField('Reference', validators=[Optional(), Length(max=100)])
     # What the order is FOR ("FOR PRODUCTION USE") -- printed once above the

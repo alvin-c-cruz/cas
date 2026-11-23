@@ -15,6 +15,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from app.utils.payment_terms import terms_label
 from tests.e2e.conftest import _launch_seeded_server, _login_admin
 
 pytestmark = [pytest.mark.e2e]
@@ -96,13 +97,13 @@ def _choose_terms_by_keyboard(page, term):
     for _ in range(12):
         lit = page.evaluate("""() => { const h = document.getElementById('payment_terms').closest('.choices')
             .querySelector('.choices__list--dropdown .is-highlighted'); return h ? h.textContent.trim() : ''; }""")
-        if lit == term:
+        if lit == terms_label(term):
             break
         page.keyboard.press('ArrowDown')
         page.wait_for_timeout(80)
     page.keyboard.press('Enter')
     page.wait_for_timeout(250)
-    assert _terms(page) == [term, term]
+    assert _terms(page) == [term, terms_label(term)]      # stored value, and what it reads as
 
 
 def _days_after(iso, days):
@@ -118,14 +119,14 @@ def test_so_a_term_chosen_before_the_customer_is_kept_and_saved(page, server):
     _pick(page, '#customer_id_display', NET60_CUSTOMER)
     page.wait_for_selector('#lineItemsSection', state='visible')
     page.wait_for_timeout(500)
-    assert _terms(page) == ['Net 90', 'Net 90']
+    assert _terms(page) == ['Net 90', '90 DAYS']
     _pick(page, '#prod-sel-1', 'Widget Standard')
     page.fill('#qty-1', '10')
     page.locator('#qty-1').blur()
     page.locator('#soForm button[type="submit"]').first.click()
     page.wait_for_url(re.compile(r'/sales-orders/\d+/edit$'), timeout=15000)   # a saved draft opens for editing
     page.wait_for_load_state('networkidle')
-    assert _terms(page) == ['Net 90', 'Net 90']                                    # as stored
+    assert _terms(page) == ['Net 90', '90 DAYS']                                    # as stored
 
 
 def test_so_an_untouched_term_takes_the_customers_default(page, server):
@@ -134,7 +135,7 @@ def test_so_an_untouched_term_takes_the_customers_default(page, server):
     _pick(page, '#customer_id_display', NET60_CUSTOMER)
     page.wait_for_selector('#lineItemsSection', state='visible')
     page.wait_for_timeout(500)
-    assert _terms(page) == ['Net 60', 'Net 60']
+    assert _terms(page) == ['Net 60', '60 DAYS']
 
 
 def test_so_a_chosen_term_survives_a_change_of_customer(page, server):
@@ -143,10 +144,10 @@ def test_so_a_chosen_term_survives_a_change_of_customer(page, server):
     _pick(page, '#customer_id_display', NET60_CUSTOMER)
     page.wait_for_selector('#lineItemsSection', state='visible')
     page.wait_for_timeout(500)
-    _pick(page, '#payment_terms', 'Net 90')
+    _pick(page, '#payment_terms', '90 DAYS')
     _pick(page, '#customer_id_display', 'Acme Customer Inc')
     page.wait_for_timeout(800)
-    assert _terms(page) == ['Net 90', 'Net 90']
+    assert _terms(page) == ['Net 90', '90 DAYS']
 
 
 # --- Sales Invoice -------------------------------------------------------------------------------------------------
@@ -157,7 +158,7 @@ def test_si_a_term_chosen_before_the_customer_is_kept_and_the_due_date_follows_i
     _choose_terms_by_keyboard(page, 'Net 90')
     _pick(page, '#customer_id', NET60_CUSTOMER)
     page.wait_for_timeout(800)
-    assert _terms(page) == ['Net 90', 'Net 90']
+    assert _terms(page) == ['Net 90', '90 DAYS']
     invoice_date = page.locator('#invoice_date').input_value()
     assert page.locator('#due_date').input_value() == _days_after(invoice_date, 90)
 
@@ -168,9 +169,9 @@ def test_si_the_due_date_follows_a_change_of_terms(page, server):
     _pick(page, '#customer_id', NET60_CUSTOMER)
     page.wait_for_timeout(800)
     invoice_date = page.locator('#invoice_date').input_value()
-    assert _terms(page) == ['Net 60', 'Net 60']
+    assert _terms(page) == ['Net 60', '60 DAYS']
     assert page.locator('#due_date').input_value() == _days_after(invoice_date, 60)
-    _pick(page, '#payment_terms', 'Net 90')
+    _pick(page, '#payment_terms', '90 DAYS')
     assert page.locator('#due_date').input_value() == _days_after(invoice_date, 90)
 
 
@@ -182,7 +183,7 @@ def test_quotation_a_term_chosen_before_the_customer_is_kept(page, server):
     _choose_terms_by_keyboard(page, 'Net 90')
     _pick(page, '#customer_id_display', NET60_CUSTOMER)
     page.wait_for_timeout(800)
-    assert _terms(page) == ['Net 90', 'Net 90']
+    assert _terms(page) == ['Net 90', '90 DAYS']
 
 
 # --- AP voucher ----------------------------------------------------------------------------------------------------
@@ -193,6 +194,6 @@ def test_ap_a_term_chosen_before_the_vendor_is_kept_and_the_due_date_follows_it(
     _choose_terms_by_keyboard(page, 'Net 90')
     _pick(page, '#payee', NET60_VENDOR)
     page.wait_for_timeout(800)
-    assert _terms(page) == ['Net 90', 'Net 90']
+    assert _terms(page) == ['Net 90', '90 DAYS']
     base = page.locator('#vendor_invoice_date').input_value() or page.locator('#ap_date').input_value()
     assert page.locator('#due_date').input_value() == _days_after(base, 90)
